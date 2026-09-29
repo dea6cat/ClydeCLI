@@ -3,14 +3,14 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "clawd-codex"
+name = "clyde-cli"
 version = "0.1.0"
 description = "A complete Python reimplementation of Claude Code CLI - Drop-in replacement experience"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
 authors = [
-    {name = "Clawd Codex Team", email = "team@example.com"}
+    {name = "dea6cat", email = "notalexander24@gmail.com"}
 ]
 keywords = ["claude", "cli", "ai", "llm", "anthropic", "openai", "glm"]
 classifiers = [
@@ -41,12 +41,12 @@ dev = [
 ]
 
 [project.scripts]
-clawd = "src.cli:main"
+clyde = "src.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/GPT-AGI/Clawd-Codex"
-Repository = "https://github.com/GPT-AGI/Clawd-Codex"
-Documentation = "https://github.com/GPT-AGI/Clawd-Codex#readme"
+Homepage = "https://github.com/dea6cat/ClydeCLI"
+Repository = "https://github.com/dea6cat/ClydeCLI"
+Documentation = "https://github.com/dea6cat/ClydeCLI#readme"
 
 [tool.setuptools.packages.find]
 where = ["."]
