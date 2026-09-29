@@ -609,7 +609,7 @@ class ClydeREPL:
             body,
             border_style="bright_black",
             title="[bold bright_cyan] CLYDE CLI [/bold bright_cyan]",
-            subtitle="[dim]interactive terminal[/dim]",
+            subtitle="[dim]still here.[/dim]",
             padding=(1, 2),
         )
         self.console.print(header)
