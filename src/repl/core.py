@@ -1245,52 +1245,21 @@ class ClydeREPL:
 
     def _handle_relogin(self):
         """Handle re-authentication when API key fails."""
-        from rich.prompt import Prompt
+        from src.cli import prompt_provider_credentials
         from src.config import set_api_key, set_default_provider
         from src.providers import PROVIDER_INFO
 
         self.console.print("\n[bold blue]🔑 Reconfigure API Key[/bold blue]\n")
 
-        # Show available providers and defaults
-        provider_names = list(PROVIDER_INFO.keys())
         self.console.print("[bold]Available providers:[/bold]")
         for name, info in PROVIDER_INFO.items():
             self.console.print(f"  [cyan]{name}[/cyan] - {info['label']} (default model: {info['default_model']})")
         self.console.print()
 
-        # Select provider
-        provider = Prompt.ask(
-            "Select LLM provider",
-            choices=provider_names,
-            default=self.provider_name if self.provider_name in provider_names else "anthropic"
-        )
-
-        info = PROVIDER_INFO[provider]
-
-        # Input API Key
-        api_key = Prompt.ask(
-            f"Enter {provider.upper()} API Key",
-            password=True
-        )
-
-        if not api_key:
-            self.console.print("\n[red]Error: API Key cannot be empty[/red]")
+        credentials = prompt_provider_credentials(self.console, default_provider=self.provider_name)
+        if credentials is None:
             return
-
-        # Optional: Base URL (show default)
-        self.console.print(f"\n[dim]Default:[/dim] {info['default_base_url']}")
-        base_url = Prompt.ask(
-            f"{provider.upper()} Base URL",
-            default=info["default_base_url"]
-        )
-
-        # Optional: Default Model (show options)
-        self.console.print(f"\n[dim]Available models:[/dim] {', '.join(info['available_models'])}")
-        self.console.print(f"[dim]Default:[/dim] [bold]{info['default_model']}[/bold]")
-        default_model = Prompt.ask(
-            f"{provider.upper()} Default Model",
-            default=info["default_model"]
-        )
+        provider, api_key, base_url, default_model = credentials
 
         # Save configuration
         set_api_key(provider, api_key=api_key, base_url=base_url, default_model=default_model)

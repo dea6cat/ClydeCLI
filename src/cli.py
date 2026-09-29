@@ -99,52 +99,59 @@ def _show_provider_defaults_table() -> None:
     console.print()
 
 
+def prompt_secret(label: str) -> str:
+    """Read a secret, echoing '*' per character so the user can see a paste landed."""
+    try:
+        from prompt_toolkit import prompt
+    except ImportError:
+        return Prompt.ask(label, password=True).strip()
+    return prompt(f"{label}: ", is_password=True).strip()
+
+
+def prompt_provider_credentials(console: Console, default_provider: str = "anthropic") -> tuple[str, str, str, str] | None:
+    """Ask for provider, API key, base URL and model. Returns None if the key is empty."""
+    from rich.prompt import Confirm
+    from src.providers import PROVIDER_INFO
+
+    provider_names = list(PROVIDER_INFO.keys())
+    provider = Prompt.ask(
+        "Select LLM provider",
+        choices=provider_names,
+        default=default_provider if default_provider in provider_names else "anthropic",
+    )
+    info = PROVIDER_INFO[provider]
+
+    api_key = prompt_secret(f"Enter {provider.upper()} API Key")
+    if not api_key:
+        console.print("\n[red]Error: API Key cannot be empty[/red]")
+        return None
+
+    console.print(f"\n[dim]Default:[/dim] {info['default_base_url']}")
+    base_url = Prompt.ask(f"{provider.upper()} Base URL", default=info["default_base_url"]).strip()
+
+    console.print(f"\n[dim]Available models:[/dim] {', '.join(info['available_models'])}")
+    console.print(f"[dim]Default:[/dim] [bold]{info['default_model']}[/bold]")
+    default_model = Prompt.ask(f"{provider.upper()} Default Model", default=info["default_model"]).strip()
+    if default_model not in info["available_models"] and not Confirm.ask(
+        f"'{default_model}' isn't a known {provider} model. Use it anyway?", default=False
+    ):
+        default_model = info["default_model"]
+
+    return provider, api_key, base_url, default_model
+
+
 def handle_login():
     """Interactive API configuration."""
     console = Console()
     console.print("\n[bold blue]ClydeCLI - API Configuration[/bold blue]\n")
 
-    # Show available providers and their defaults
     _show_provider_defaults_table()
 
-    # Select provider
-    from src.providers import PROVIDER_INFO
-    provider_names = list(PROVIDER_INFO.keys())
-
-    provider = Prompt.ask(
-        "Select LLM provider",
-        choices=provider_names,
-        default="anthropic"
-    )
-
-    info = PROVIDER_INFO[provider]
-
-    # Input API Key
-    api_key = Prompt.ask(
-        f"Enter {provider.upper()} API Key",
-        password=True
-    )
-
-    if not api_key:
-        console.print("\n[red]Error: API Key cannot be empty[/red]")
+    credentials = prompt_provider_credentials(console)
+    if credentials is None:
         return 1
+    provider, api_key, base_url, default_model = credentials
 
-    # Optional: Base URL (show default)
-    console.print(f"\n[dim]Default:[/dim] {info['default_base_url']}")
-    base_url = Prompt.ask(
-        f"{provider.upper()} Base URL",
-        default=info["default_base_url"]
-    )
-
-    # Optional: Default Model (show available options)
-    console.print(f"\n[dim]Available models:[/dim] {', '.join(info['available_models'])}")
-    console.print(f"[dim]Default:[/dim] [bold]{info['default_model']}[/bold]")
-    default_model = Prompt.ask(
-        f"{provider.upper()} Default Model",
-        default=info["default_model"]
-    )
-
-    # Save configuration
     from src.config import set_api_key, set_default_provider
 
     set_api_key(provider, api_key=api_key, base_url=base_url, default_model=default_model)
