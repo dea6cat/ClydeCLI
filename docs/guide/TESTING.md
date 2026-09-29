@@ -1,6 +1,6 @@
 # Testing Guide
 
-This document describes the testing strategy and how to run tests for Clawd Codex.
+This document describes the testing strategy and how to run tests for ClydeCLI.
 
 ## Test Structure
 
@@ -153,7 +153,7 @@ Tests for interactive REPL:
 ```python
 def test_handle_command_multiline_toggle(self):
     """Test /multiline command."""
-    repl = ClawdREPL(provider_name="glm")
+    repl = ClydeREPL(provider_name="glm")
 
     # Initially False
     assert repl.multiline_mode is False
@@ -303,7 +303,7 @@ Common test data is stored in fixtures:
 def setUp(self):
     """Set up test fixtures."""
     self.temp_dir = tempfile.mkdtemp()
-    self.config_dir = Path(self.temp_dir) / ".clawd"
+    self.config_dir = Path(self.temp_dir) / ".clyde"
     self.config_dir.mkdir(parents=True, exist_ok=True)
 ```
 

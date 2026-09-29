@@ -1,165 +1,165 @@
-# Claude Code Python Feature List & PR Roadmap
+# ClydeCLI Feature List & PR Roadmap
 
-> 面向社区贡献者的能力清单、路线图与 PR 指南。
+> Capability list, roadmap, and PR guide for community contributors.
 >
-> 项目定位：**基于真实 Claude Code 源码结构的 Python 重构版**。当前已经具备可用的多 Provider 聊天 CLI、完整工具系统框架与 Agent Loop，正在分阶段完善原生 Claude Code 的关键能力。
+> Project positioning: **a Python rewrite based on the real Claude Code source structure**. It already provides a usable multi-provider chat CLI, a complete tool system framework, and an Agent Loop, and is filling in the key capabilities of native Claude Code in phases.
 
 ---
 
-## 状态说明
+## Status Legend
 
-| 状态 | 含义 |
+| Status | Meaning |
 |------|------|
-| ✅ 已实现 | 当前仓库中已有可验证实现 |
-| 🟡 部分完成 | 已有骨架、镜像层或部分能力，但未形成完整闭环 |
-| ⏳ 规划中 | 已明确方向，欢迎提交 PR |
-| 🚫 未开始 | 当前尚无实现 |
+| ✅ Implemented | A verifiable implementation exists in the current repository |
+| 🟡 Partial | A skeleton, mirror layer, or partial capability exists, but the loop is not yet complete |
+| ⏳ Planned | Direction is defined; PRs welcome |
+| 🚫 Not started | No implementation yet |
 
 ---
 
-## 项目亮点
+## Project Highlights
 
-- **Python 重构版**：不是单纯 UI 模仿，而是按 Claude Code 的架构思路重建。
-- **多模型先行**：当前已支持 Anthropic、OpenAI、GLM 三类 Provider。
-- **CLI / REPL 可用**：已经具备基础交互能力，适合持续迭代。
-- **工具系统框架完整**：已实现 30+ 工具模块、Agent Loop、权限系统框架。
-- **更适合社区共建**：Python 生态更易二开，适合工具、自动化、数据工程场景扩展。
-- **强调真实性**：优先补齐真正可运行的核心链路，而不是只扩大命令/工具名录。
+- **Python rewrite**: Not just a UI imitation, but a rebuild following Claude Code's architectural approach.
+- **Multi-model first**: Currently supports three providers: Anthropic, OpenAI, and GLM.
+- **Usable CLI / REPL**: Basic interaction already works and is ready for continued iteration.
+- **Complete tool system framework**: 30+ tool modules, an Agent Loop, and a permission system framework are implemented.
+- **Built for community collaboration**: The Python ecosystem is easier to extend, well suited to tooling, automation, and data engineering scenarios.
+- **Emphasis on authenticity**: Prioritizes completing core paths that actually run, rather than just growing the list of command/tool names.
 
 ---
 
-## 核心系统
+## Core Systems
 
-| 能力 | 状态 | 当前情况 |
+| Capability | Status | Current State |
 |------|------|----------|
-| CLI 启动入口 | ✅ | 已支持 `clawd`、`login`、`config`、`--version` |
-| 交互式 REPL | ✅ | 支持交互式输出、历史记录、Tab 补全、多行输入 |
-| Slash Commands | ✅ | 已支持 `/help`、`/clear`、`/save`、`/load`、`/multiline`、`/exit` |
-| 多 Provider 抽象 | ✅ | 已支持 Anthropic / OpenAI / GLM |
-| Provider 配置管理 | ✅ | 支持默认 Provider、Base URL、默认模型配置 |
-| 会话持久化 | ✅ | 支持保存/加载本地会话 |
-| 会话消息管理 | ✅ | 支持会话历史维护与序列化 |
-| 错误恢复 / 重新登录 | 🟡 | 已有基础认证错误处理与重新配置流程 |
-| Token / Cost 跟踪 | 🚫 | 当前聊天 CLI 尚未形成完整统计视图 |
-| 上下文构建 | 🟡 | 已有 `context_system` 基础版，支持 workspace / git / `CLAUDE.md` 注入，仍缺 README 摘要、memory、compact |
-| Claude Code Agent Loop | ✅ | 已实现 agent_loop.py，支持工具调用循环 |
-| `/resume` 会话恢复体验 | 🚫 | 暂无独立恢复流程与 UI |
-| `/compact` 对话压缩 | 🚫 | 暂无自动/手动压缩能力 |
-| `/doctor` 诊断系统 | 🚫 | 暂无环境、配置、权限、依赖诊断命令 |
-| Hook 系统 | 🚫 | 暂无 pre/post tool use hooks |
-| 权限系统 | 🟡 | 已有 permissions.py 框架，尚未完全集成 |
+| CLI entry point | ✅ | Supports `clyde`, `login`, `config`, `--version` |
+| Interactive REPL | ✅ | Supports interactive output, history, Tab completion, multi-line input |
+| Slash Commands | ✅ | Supports `/help`, `/clear`, `/save`, `/load`, `/multiline`, `/exit` |
+| Multi-provider abstraction | ✅ | Supports Anthropic / OpenAI / GLM |
+| Provider configuration management | ✅ | Supports default provider, Base URL, and default model configuration |
+| Session persistence | ✅ | Supports saving/loading local sessions |
+| Session message management | ✅ | Supports session history maintenance and serialization |
+| Error recovery / re-login | 🟡 | Basic authentication error handling and reconfiguration flow exist |
+| Token / Cost tracking | 🚫 | The chat CLI does not yet have a complete statistics view |
+| Context building | 🟡 | A basic `context_system` exists, supporting workspace / git / `CLAUDE.md` injection; still missing README summaries, memory, compact |
+| Claude Code Agent Loop | ✅ | agent_loop.py implemented, supports the tool-call loop |
+| `/resume` session recovery experience | 🚫 | No dedicated recovery flow or UI yet |
+| `/compact` conversation compaction | 🚫 | No automatic/manual compaction yet |
+| `/doctor` diagnostics | 🚫 | No environment, config, permission, or dependency diagnostic command yet |
+| Hook system | 🚫 | No pre/post tool use hooks yet |
+| Permission system | 🟡 | A permissions.py framework exists but is not fully integrated |
 
 ---
 
-## 工具系统
+## Tool System
 
-> **重大进展**：当前仓库已实现完整的工具系统框架，包括 30+ 工具模块、Agent Loop、Schema 验证、权限框架等。
+> **Major progress**: The repository now implements a complete tool system framework, including 30+ tool modules, an Agent Loop, schema validation, a permission framework, and more.
 
-### 工具框架
+### Tool Framework
 
-| 能力 | 状态 | 当前情况 |
+| Capability | Status | Current State |
 |------|------|----------|
-| Tool Registry | ✅ | 已实现工具注册与发现机制 |
-| Tool Protocol | ✅ | 已定义工具协议与基类 |
-| Schema Validation | ✅ | 已实现参数校验系统 |
-| Agent Loop | ✅ | 已实现完整的工具调用循环 |
-| Tool Context | ✅ | 已实现工具上下文管理 |
-| Permission Framework | 🟡 | 已有权限检查框架，待完善集成 |
-| Error Handling | ✅ | 已定义工具错误类型与处理 |
-| Task Manager | ✅ | 已实现任务管理器 |
+| Tool Registry | ✅ | Tool registration and discovery implemented |
+| Tool Protocol | ✅ | Tool protocol and base class defined |
+| Schema Validation | ✅ | Parameter validation system implemented |
+| Agent Loop | ✅ | Complete tool-call loop implemented |
+| Tool Context | ✅ | Tool context management implemented |
+| Permission Framework | 🟡 | Permission check framework exists; integration pending |
+| Error Handling | ✅ | Tool error types and handling defined |
+| Task Manager | ✅ | Task manager implemented |
 
-### 已实现工具模块
+### Implemented Tool Modules
 
-| 工具类别 | 工具名称 | 文件 | 状态 |
+| Tool Category | Tool Name | File | Status |
 |---------|---------|------|------|
-| 文件操作 | FileReadTool | `read.py` | ✅ 已实现 |
-| 文件操作 | FileWriteTool | `write.py` | ✅ 已实现 |
-| 文件操作 | FileEditTool | `edit.py` | ✅ 已实现 |
-| 文件操作 | GlobTool | `glob.py` | ✅ 已实现 |
-| 文件操作 | GrepTool | `grep.py` | ✅ 已实现 |
-| 系统操作 | BashTool | `bash.py` | ✅ 已实现 |
-| 网络工具 | WebFetchTool | `web_fetch.py` | ✅ 已实现 |
-| 网络工具 | WebSearchTool | `web_search.py` | ✅ 已实现 |
-| 交互工具 | AskUserQuestionTool | `ask_user_question.py` | ✅ 已实现 |
-| 交互工具 | SendUserMessageTool | `send_user_message.py` | ✅ 已实现 |
-| 任务管理 | TodoWriteTool | `todo_write.py` | ✅ 已实现 |
-| 任务管理 | TaskStopTool | `task_stop.py` | ✅ 已实现 |
-| 任务管理 | TasksV2Tool | `tasks_v2.py` | ✅ 已实现 |
-| 任务管理 | TaskManager | `task_manager.py` | ✅ 已实现 |
-| Agent 工具 | AgentTool | `agent.py` | ✅ 已实现 |
-| Agent 工具 | BriefTool | `brief.py` | ✅ 已实现 |
-| Agent 工具 | TeamTool | `team.py` | ✅ 已实现 |
-| 配置工具 | ConfigTool | `config.py` | ✅ 已实现 |
-| 计划模式 | PlanModeTool | `plan_mode.py` | ✅ 已实现 |
-| 定时任务 | CronTool | `cron.py` | ✅ 已实现 |
-| MCP 工具 | MCPTool | `mcp.py` | ✅ 已实现 |
-| MCP 工具 | MCPResourcesTool | `mcp_resources.py` | ✅ 已实现 |
-| 技能系统 | SkillTool | `skill.py` | ✅ 已实现 |
-| 工具搜索 | ToolSearchTool | `tool_search.py` | ✅ 已实现 |
-| LSP 集成 | LSPTool | `lsp.py` | ✅ 已实现 |
-| Worktree | WorktreeTool | `worktree.py` | ✅ 已实现 |
-| 杂项工具 | SleepTool | `sleep.py` | ✅ 已实现 |
-| 杂项工具 | StructuredOutputTool | `structured_output.py` | ✅ 已实现 |
-| 杂项工具 | MiscTools | `misc.py` | ✅ 已实现 |
+| File operations | FileReadTool | `read.py` | ✅ Implemented |
+| File operations | FileWriteTool | `write.py` | ✅ Implemented |
+| File operations | FileEditTool | `edit.py` | ✅ Implemented |
+| File operations | GlobTool | `glob.py` | ✅ Implemented |
+| File operations | GrepTool | `grep.py` | ✅ Implemented |
+| System operations | BashTool | `bash.py` | ✅ Implemented |
+| Web tools | WebFetchTool | `web_fetch.py` | ✅ Implemented |
+| Web tools | WebSearchTool | `web_search.py` | ✅ Implemented |
+| Interaction tools | AskUserQuestionTool | `ask_user_question.py` | ✅ Implemented |
+| Interaction tools | SendUserMessageTool | `send_user_message.py` | ✅ Implemented |
+| Task management | TodoWriteTool | `todo_write.py` | ✅ Implemented |
+| Task management | TaskStopTool | `task_stop.py` | ✅ Implemented |
+| Task management | TasksV2Tool | `tasks_v2.py` | ✅ Implemented |
+| Task management | TaskManager | `task_manager.py` | ✅ Implemented |
+| Agent tools | AgentTool | `agent.py` | ✅ Implemented |
+| Agent tools | BriefTool | `brief.py` | ✅ Implemented |
+| Agent tools | TeamTool | `team.py` | ✅ Implemented |
+| Config tools | ConfigTool | `config.py` | ✅ Implemented |
+| Plan mode | PlanModeTool | `plan_mode.py` | ✅ Implemented |
+| Scheduled tasks | CronTool | `cron.py` | ✅ Implemented |
+| MCP tools | MCPTool | `mcp.py` | ✅ Implemented |
+| MCP tools | MCPResourcesTool | `mcp_resources.py` | ✅ Implemented |
+| Skill system | SkillTool | `skill.py` | ✅ Implemented |
+| Tool search | ToolSearchTool | `tool_search.py` | ✅ Implemented |
+| LSP integration | LSPTool | `lsp.py` | ✅ Implemented |
+| Worktree | WorktreeTool | `worktree.py` | ✅ Implemented |
+| Miscellaneous | SleepTool | `sleep.py` | ✅ Implemented |
+| Miscellaneous | StructuredOutputTool | `structured_output.py` | ✅ Implemented |
+| Miscellaneous | MiscTools | `misc.py` | ✅ Implemented |
 
 ---
 
-## 服务与运行时
+## Services & Runtime
 
-| 模块 | 状态 | 当前情况 |
+| Module | Status | Current State |
 |------|------|----------|
-| Provider Runtime | ✅ | 已能完成基础聊天请求，Provider 层提供流式接口 |
-| REPL Runtime | ✅ | 已支持基础交互、命令分流、消息记录 |
-| Agent Loop Runtime | ✅ | 已实现完整的工具调用循环与结果处理 |
-| Tool Execution Engine | ✅ | 已实现工具加载、执行、结果回填闭环 |
-| Output Styles | ✅ | 已实现输出样式加载系统 |
-| Session Persistence | ✅ | 已有会话保存/加载能力 |
-| Context Engine | 🟡 | 已接入基础上下文构建链路，支持 workspace、git、`CLAUDE.md` prompt 注入 |
-| Permission Engine | 🟡 | 已有框架，未完全集成到工具执行流程 |
-| Compaction Engine | 🚫 | 未形成对话压缩与 token 管理能力 |
-| Hook Runtime | 🚫 | 未接入设置驱动的 hook 执行机制 |
-| MCP Runtime | 🟡 | 已有 MCP 工具，未形成完整 MCP 协议层 |
+| Provider Runtime | ✅ | Handles basic chat requests; the provider layer offers a streaming interface |
+| REPL Runtime | ✅ | Supports basic interaction, command dispatch, and message logging |
+| Agent Loop Runtime | ✅ | Complete tool-call loop and result handling implemented |
+| Tool Execution Engine | ✅ | Full loop of tool loading, execution, and result feedback implemented |
+| Output Styles | ✅ | Output style loading system implemented |
+| Session Persistence | ✅ | Session save/load available |
+| Context Engine | 🟡 | Basic context-building pipeline connected, supporting workspace, git, and `CLAUDE.md` prompt injection |
+| Permission Engine | 🟡 | Framework exists, not fully integrated into the tool execution flow |
+| Compaction Engine | 🚫 | No conversation compaction or token management yet |
+| Hook Runtime | 🚫 | No settings-driven hook execution yet |
+| MCP Runtime | 🟡 | MCP tools exist, but no complete MCP protocol layer yet |
 
 ---
 
-## 测试覆盖
+## Test Coverage
 
-| 测试类型 | 状态 | 文件 |
+| Test Type | Status | File |
 |---------|------|------|
-| 工具系统测试 | ✅ | `test_tool_system_tools.py` (427 行) |
-| Agent Loop 测试 | ✅ | `test_agent_loop.py` (134 行) |
-| Claude Code 工具对等性测试 | ✅ | `test_claude_code_tool_parity.py` (137 行) |
-| Provider 测试 | ✅ | `test_providers.py` (113 行) |
-| 输出样式测试 | ✅ | `test_output_styles.py` (64 行) |
-| 配置测试 | ✅ | `test_config.py` |
+| Tool system tests | ✅ | `test_tool_system_tools.py` (427 lines) |
+| Agent Loop tests | ✅ | `test_agent_loop.py` (134 lines) |
+| Claude Code tool parity tests | ✅ | `test_claude_code_tool_parity.py` (137 lines) |
+| Provider tests | ✅ | `test_providers.py` (113 lines) |
+| Output style tests | ✅ | `test_output_styles.py` (64 lines) |
+| Config tests | ✅ | `test_config.py` |
 
 
-## 路线图
+## Roadmap
 
-## Phase 0：可启动、可安装、可体验 ✅
+## Phase 0: Launchable, installable, usable ✅
 
-目标：先保证项目对新用户和贡献者足够顺滑。
+Goal: make the project smooth for new users and contributors first.
 
-- [x] 解耦 CLI 启动路径，`--help`、`--version`、`config` 不应依赖 Provider SDK
-- [x] Provider 改为延迟导入，缺少 SDK 时仍可浏览本地功能
-- [x] 固定并验证 Python 3.11+ 开发环境
-- [x] 完善安装说明与最小可运行示例
-- [x] 清理 README 中与当前实现不一致的表述
+- [x] Decouple the CLI startup path; `--help`, `--version`, and `config` should not depend on provider SDKs
+- [x] Lazy-import providers so local features remain browsable when an SDK is missing
+- [x] Pin and verify a Python 3.11+ development environment
+- [x] Improve installation instructions and a minimal runnable example
+- [x] Clean up statements in the README that do not match the current implementation
 
-## Phase 1：Claude Code 核心体验 MVP ✅
+## Phase 1: Claude Code core experience MVP ✅
 
-目标：先复现原生 Claude Code 最重要的第一层体验。
+Goal: reproduce the most important first layer of the native Claude Code experience.
 
-- [x] 统一聊天 REPL、slash commands、session store
-- [x] 完成工具系统框架
-- [x] 实现 Agent Loop
-- [x] 统一错误处理、重试、重登流程
-- [x] 完成 transcript 持久化与恢复基础设施
-- [x] 整理一套稳定的用户命令集合
+- [x] Unify the chat REPL, slash commands, and session store
+- [x] Complete the tool system framework
+- [x] Implement the Agent Loop
+- [x] Unify error handling, retry, and re-login flows
+- [x] Complete transcript persistence and recovery infrastructure
+- [x] Establish a stable set of user commands
 
-## Phase 2：真实工具调用闭环 ✅
+## Phase 2: Real tool-call loop ✅
 
-目标：从"镜像工具清单"走向"真正可执行的 Python Agent"。
+Goal: move from a "mirrored tool list" to a "truly executable Python agent".
 
 - [x] FileReadTool
 - [x] FileWriteTool
@@ -168,112 +168,112 @@
 - [x] AskUserQuestionTool
 - [x] TodoWriteTool
 - [x] WebFetchTool / WebSearchTool
-- [x] 工具 schema、参数校验、异常处理、调用日志
-- [x] 工具执行结果回填闭环
+- [x] Tool schemas, parameter validation, exception handling, call logging
+- [x] Tool execution result feedback loop
 
-## Phase 3：上下文、权限、恢复能力 (进行中)
+## Phase 3: Context, permissions, recovery (in progress)
 
-目标：补齐 Claude Code 的工程化能力。
+Goal: fill in Claude Code's engineering capabilities.
 
-- [ ] 工作区上下文构建完善
-- [x] git status / 文件树 / `CLAUDE.md` 注入基础版
-- [ ] README / 入口文件摘要注入
-- [ ] memory 与历史上下文管理
-- [ ] 权限系统完全集成
+- [ ] Complete workspace context building
+- [x] Basic git status / file tree / `CLAUDE.md` injection
+- [ ] README / entry file summary injection
+- [ ] Memory and history context management
+- [ ] Full permission system integration
 - [ ] `/resume`
 - [ ] `/compact`
 - [ ] `/doctor`
 - [ ] pre/post tool use hooks
 
-## Phase 4：MCP、插件、扩展生态
+## Phase 4: MCP, plugins, extension ecosystem
 
-目标：把项目从单体 CLI 升级为可扩展平台。
+Goal: upgrade the project from a monolithic CLI to an extensible platform.
 
-- [ ] MCP client/runtime 完善
-- [ ] Python 插件系统
-- [ ] 自定义 commands / tools / hooks
-- [ ] 本地模型与第三方 provider 扩展
-- [ ] 更完善的 observability 与调试工具
+- [ ] Complete MCP client/runtime
+- [ ] Python plugin system
+- [ ] Custom commands / tools / hooks
+- [ ] Local model and third-party provider extensions
+- [ ] Better observability and debugging tools
 
-## Phase 5：Python 版本的差异化亮点
+## Phase 5: Distinctive strengths of the Python version
 
-目标：做出属于 Python 重构版的特色。
+Goal: build features unique to the Python rewrite.
 
-- [ ] Notebook 友好工具链
-- [ ] 数据工程 / ETL 场景增强
-- [ ] 中国模型生态一等公民支持
-- [ ] pytest / ruff / mypy / uv 集成体验
-- [ ] 面向企业内自动化与工作流的扩展接口
-
----
-
-## 我们期待的 PR
-
-### P0：最欢迎、最容易合并
-
-- 测试覆盖增强
-- 文档完善
-- 错误处理改进
-- 性能优化
-
-### P1：高价值基础能力
-
-- 上下文自动构建
-- 权限系统完全集成
-- `/resume` 实现
-- `/compact` 实现
-- `/doctor` 实现
-
-### P2：Claude Code 关键体验补齐
-
-- Hook 系统
-- MCP 完善支持
-- Token/Cost 统计
-- 性能监控与调优
-
-### P3：Python 版亮点方向
-
-- Notebook 编辑与读取增强
-- 数据文件工具增强
-- pytest / ruff / mypy / uv 集成
-- 更多国内外模型 provider
-- 可插拔工具系统
+- [ ] Notebook-friendly toolchain
+- [ ] Enhancements for data engineering / ETL scenarios
+- [ ] First-class support for Chinese model providers (GLM, etc.)
+- [ ] pytest / ruff / mypy / uv integration experience
+- [ ] Extension interfaces for in-house enterprise automation and workflows
 
 ---
 
-## 建议的 PR 认领模块
+## PRs We're Looking For
 
-| 方向 | 适合贡献内容 |
+### P0: Most welcome, easiest to merge
+
+- Improved test coverage
+- Documentation improvements
+- Error handling improvements
+- Performance optimizations
+
+### P1: High-value foundational capabilities
+
+- Automatic context building
+- Full permission system integration
+- `/resume` implementation
+- `/compact` implementation
+- `/doctor` implementation
+
+### P2: Filling in key Claude Code experiences
+
+- Hook system
+- Full MCP support
+- Token/Cost statistics
+- Performance monitoring and tuning
+
+### P3: Python version highlights
+
+- Enhanced notebook editing and reading
+- Enhanced data file tools
+- pytest / ruff / mypy / uv integration
+- More domestic and international model providers
+- Pluggable tool system
+
+---
+
+## Suggested Modules to Claim for PRs
+
+| Area | Suitable Contributions |
 |------|--------------|
-| CLI / UX | 命令设计、帮助信息、交互体验、错误提示 |
-| Tools | 工具增强、新工具开发、工具测试 |
-| Context | repo map、git status、项目文档注入、memory |
-| Permissions | 权限集成、安全策略、命令限制 |
-| Providers | 新 provider、模型选型、流式兼容 |
-| MCP / Plugins | MCP runtime 完善、插件装载、自定义工具扩展 |
-| Quality | 测试、基准、文档、安装流程、CI |
-| Performance | 性能优化、内存管理、并发处理 |
+| CLI / UX | Command design, help text, interaction experience, error messages |
+| Tools | Tool enhancements, new tool development, tool tests |
+| Context | repo map, git status, project documentation injection, memory |
+| Permissions | Permission integration, security policies, command restrictions |
+| Providers | New providers, model selection, streaming compatibility |
+| MCP / Plugins | MCP runtime completion, plugin loading, custom tool extensions |
+| Quality | Tests, benchmarks, documentation, installation flow, CI |
+| Performance | Performance optimization, memory management, concurrency |
 
 ---
 
-## PR 提交建议
+## PR Submission Tips
 
-- 优先做真实能力，不优先堆命令名录
-- 每个 PR 尽量聚焦单一模块
-- 新功能请附带最小测试或运行示例
-- 修改 README 时请同步更新能力状态
-- 对"已完成"表述保持谨慎，优先写成可验证结果
-
----
-
-## 推荐的对外表述
-
-可以这样介绍项目：
-
-> Claude Code Python 是一个基于真实 Claude Code 源码结构的 Python 重构版。当前已经具备多 Provider 聊天 CLI、完整工具系统框架（30+ 工具）与 Agent Loop，已实现工具调用闭环，正在完善上下文构建、权限系统、会话恢复、压缩、MCP 与插件体系。欢迎围绕工具增强、runtime、permissions、context 与 Python 原生扩展能力提交 PR。
+- Prioritize real capabilities over piling up command names
+- Keep each PR focused on a single module where possible
+- Include a minimal test or runnable example with new features
+- Update capability status when modifying the README
+- Be careful with "completed" claims; prefer stating verifiable results
 
 ---
 
-## 一句话总结
+## Recommended Public Description
 
-**当前我们已经有一个具备完整工具系统框架和 Agent Loop 的 Python Agent Runtime；接下来要做的是，完善上下文构建、权限集成、恢复能力，把它真正推进成具备 Claude Code 完整体验的 Python Agent 平台。**
+You can introduce the project like this:
+
+> ClydeCLI is a Python rewrite based on the real Claude Code source structure. It already provides a multi-provider chat CLI, a complete tool system framework (30+ tools), and an Agent Loop with a working tool-call loop, and is now improving context building, the permission system, session recovery, compaction, MCP, and the plugin system. PRs are welcome around tool enhancements, runtime, permissions, context, and Python-native extension capabilities.
+
+---
+
+## One-Line Summary
+
+**We already have a Python Agent Runtime with a complete tool system framework and Agent Loop; next we will improve context building, permission integration, and recovery capabilities to turn it into a Python agent platform with the full Claude Code experience.**

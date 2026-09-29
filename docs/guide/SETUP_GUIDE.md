@@ -1,35 +1,35 @@
-# 环境配置指南
+# Environment Setup Guide
 
-## 1. 激活虚拟环境
+## 1. Activate the Virtual Environment
 
 ```bash
-# 进入项目目录
-cd /root/Clawd-Codex
+# Enter the project directory
+cd /root/ClydeCLI
 
-# 激活虚拟环境
+# Activate the virtual environment
 source .venv/bin/activate
 
-# 确认 Python 版本
-python --version  # 应该显示 Python 3.11.x
+# Confirm the Python version
+python --version  # Should show Python 3.11.x
 ```
 
-## 2. 配置 GLM API Key
+## 2. Configure the GLM API Key
 
-### 方式一：环境变量（推荐用于测试）
+### Option 1: Environment variable (recommended for testing)
 
 ```bash
-# 临时设置（当前会话有效）
+# Temporary (valid for the current session)
 export GLM_API_KEY="your_api_key_here"
 
-# 永久设置（添加到 ~/.bashrc）
+# Permanent (add to ~/.bashrc)
 echo 'export GLM_API_KEY="your_api_key_here"' >> ~/.bashrc
 source ~/.bashrc
 ```
 
-### 方式二：.env 文件（推荐用于开发）
+### Option 2: .env file (recommended for development)
 
 ```bash
-# 在项目根目录创建 .env 文件
+# Create a .env file in the project root
 cat > .env << 'EOF'
 # GLM API Configuration
 GLM_API_KEY=your_api_key_here
@@ -41,22 +41,22 @@ GLM_DEFAULT_MODEL=glm-4
 # OPENAI_API_KEY=your_openai_key
 EOF
 
-# .env 文件已在 .gitignore 中，不会被提交到 Git
+# The .env file is in .gitignore and will not be committed to Git
 ```
 
-## 3. GLM API 信息
+## 3. GLM API Information
 
-### API 端点
+### API Endpoint
 - **Base URL**: `https://open.bigmodel.cn/api/paas/v4`
-- **认证方式**: Bearer Token (API Key)
-- **文档**: https://open.bigmodel.cn/dev/api
+- **Authentication**: Bearer Token (API Key)
+- **Documentation**: https://open.bigmodel.cn/dev/api
 
-### 可用模型
-- `glm-4` - 最新的 GLM-4 模型（推荐）
-- `glm-4-flash` - 快速版本
+### Available Models
+- `glm-4` - Latest GLM-4 model (recommended)
+- `glm-4-flash` - Fast version
 - `glm-3-turbo` - GLM-3 Turbo
 
-### API 调用示例（Python）
+### API Call Example (Python)
 ```python
 from zhipuai import ZhipuAI
 
@@ -65,60 +65,60 @@ client = ZhipuAI(api_key="your_api_key")
 response = client.chat.completions.create(
     model="glm-4",
     messages=[
-        {"role": "user", "content": "你好"}
+        {"role": "user", "content": "Hello"}
     ]
 )
 print(response.choices[0].message.content)
 ```
 
-## 4. 验证配置
+## 4. Verify the Configuration
 
-### 测试环境变量
+### Test Environment Variables
 ```bash
-# 检查环境变量是否设置
+# Check whether the environment variable is set
 echo $GLM_API_KEY
 
-# 如果使用 .env 文件，Python 会自动加载
+# If using a .env file, Python loads it automatically
 python -c "from dotenv import load_dotenv; import os; load_dotenv(); print(os.getenv('GLM_API_KEY'))"
 ```
 
-## 5. 后续步骤
+## 5. Next Steps
 
-配置完成后，我会：
-1. 创建 `requirements.txt` 和 `setup.py`
-2. 安装依赖：`uv pip install -e .`
-3. 创建配置文件：`~/.clawd/config.json`
-4. 测试 GLM API 连接
+Once configuration is complete, the remaining setup steps are:
+1. Create `requirements.txt` and `setup.py`
+2. Install dependencies: `uv pip install -e .`
+3. Create the config file: `~/.clyde/config.json`
+4. Test the GLM API connection
 
 ---
 
-## 常见问题
+## FAQ
 
-### Q: API Key 在哪里获取？
-A: 访问 https://open.bigmodel.cn/ 注册账号后获取
+### Q: Where do I get an API Key?
+A: Visit https://open.bigmodel.cn/ and register an account to obtain one
 
-### Q: 如何获取 API Key？
+### Q: How do I get an API Key?
 A:
-1. 登录智谱开放平台
-2. 进入「API 密钥」页面
-3. 创建新的 API Key
+1. Log in to the Zhipu Open Platform
+2. Go to the "API Keys" page
+3. Create a new API Key
 
-### Q: 有免费额度吗？
-A: 新用户通常有免费试用额度，具体查看官网说明
+### Q: Is there a free quota?
+A: New users usually receive a free trial quota; see the official website for details
 
 ---
 
-## 下一步
+## Checklist
 
-请按以下步骤操作：
+Complete the following steps:
 
-1. ✅ **激活虚拟环境**：
+1. ✅ **Activate the virtual environment**:
    ```bash
    source .venv/bin/activate
    ```
 
-2. ✅ **配置 API Key**（二选一）：
-   - 方式一：`export GLM_API_KEY="your_key"`
-   - 方式二：创建 `.env` 文件并写入
+2. ✅ **Configure the API Key** (choose one):
+   - Option 1: `export GLM_API_KEY="your_key"`
+   - Option 2: Create a `.env` file and add the key to it
 
-3. ✅ **告诉我已完成**，我会继续后续步骤
+3. ✅ **Continue with the next steps** in section 5 once the above is done

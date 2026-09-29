@@ -28,10 +28,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Configuration management with basic API key obfuscation
 
 #### CLI Commands
-- `clawd` - Start the interactive REPL
-- `clawd login` - Interactive API key configuration
-- `clawd config` - View current configuration
-- `clawd --version` - Show version information
+- `clyde` - Start the interactive REPL
+- `clyde login` - Interactive API key configuration
+- `clyde config` - View current configuration
+- `clyde --version` - Show version information
 
 #### Provider Implementations
 - **Anthropic Provider**: Claude integration with chat + streaming interfaces
@@ -128,7 +128,7 @@ This is the initial MVP release. No migration needed.
 
 ### v0.1.0 - MVP Release
 
-This is the first public release of Clawd Codex, a complete reimplementation of Claude Code. This MVP includes:
+This is the first public release of ClydeCLI, a complete reimplementation of Claude Code. This MVP includes:
 
 - Full multi-provider support
 - Interactive REPL
@@ -143,4 +143,4 @@ The focus was on building a solid foundation with clean architecture, comprehens
 
 ---
 
-[0.1.0]: https://github.com/GPT-AGI/Clawd-Code/releases/tag/v0.1.0
+[0.1.0]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.1.0

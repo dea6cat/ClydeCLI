@@ -1,6 +1,6 @@
-# Contributing to Clawd Code
+# Contributing to ClydeCLI
 
-Thank you for your interest in contributing to Clawd Code! This document provides guidelines and instructions for contributing.
+Thank you for your interest in contributing to ClydeCLI! This document provides guidelines and instructions for contributing.
 
 ## Table of Contents
 
@@ -31,8 +31,8 @@ This project follows the [Contributor Covenant Code of Conduct](https://www.cont
 
 ```bash
 # Fork the repo on GitHub, then:
-git clone https://github.com/YOUR_USERNAME/Clawd-Code.git
-cd Clawd-Code
+git clone https://github.com/YOUR_USERNAME/ClydeCLI.git
+cd ClydeCLI
 ```
 
 2. **Create a virtual environment**
@@ -71,7 +71,7 @@ python -m pytest tests/ -q
 ## Project Structure
 
 ```
-Clawd-Code/
+ClydeCLI/
 ├── src/                    # Source code
 │   ├── providers/         # LLM provider implementations
 │   ├── repl/              # Interactive REPL
@@ -356,4 +356,4 @@ If you have questions, feel free to:
 - Start a discussion in the Discussions tab
 - Reach out to maintainers
 
-Thank you for contributing to Clawd Code!
+Thank you for contributing to ClydeCLI!
