@@ -11,7 +11,7 @@
 
 [![GitHub stars](https://img.shields.io/github/stars/dea6cat/ClydeCLI?style=for-the-badge&logo=github&color=yellow)](https://github.com/dea6cat/ClydeCLI/stargazers)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/downloads/)
+[![Python 3.14+](https://img.shields.io/badge/python-3.14+-blue.svg?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/downloads/)
 
 </div>
 
@@ -163,7 +163,7 @@ git clone https://github.com/dea6cat/ClydeCLI.git
 cd ClydeCLI
 
 # Create venv (uv recommended)
-uv venv --python 3.11
+uv venv --python 3.14
 source .venv/bin/activate
 
 # Install

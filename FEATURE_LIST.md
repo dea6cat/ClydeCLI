@@ -142,7 +142,7 @@ Goal: make the project smooth for new users and contributors first.
 
 - [x] Decouple the CLI startup path; `--help`, `--version`, and `config` should not depend on provider SDKs
 - [x] Lazy-import providers so local features remain browsable when an SDK is missing
-- [x] Pin and verify a Python 3.11+ development environment
+- [x] Pin and verify a Python 3.14+ development environment
 - [x] Improve installation instructions and a minimal runnable example
 - [x] Clean up statements in the README that do not match the current implementation
 

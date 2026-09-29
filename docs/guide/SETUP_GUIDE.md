@@ -10,7 +10,7 @@ cd /root/ClydeCLI
 source .venv/bin/activate
 
 # Confirm the Python version
-python --version  # Should show Python 3.11.x
+python --version  # Should show Python 3.14.x
 ```
 
 ## 2. Configure the GLM API Key
