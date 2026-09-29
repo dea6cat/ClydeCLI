@@ -42,7 +42,7 @@ class TeamCreateTool:
             raise ToolInputError("agent_type must be a string when provided")
 
         lead_agent_id = uuid.uuid4().hex[:12]
-        team_file = context.workspace_root / ".clawd" / "team.json"
+        team_file = context.workspace_root / ".clyde" / "team.json"
         team_file.parent.mkdir(parents=True, exist_ok=True)
         team = {"team_name": team_name, "description": description, "agent_type": agent_type, "lead_agent_id": lead_agent_id}
         team_file.write_text(json.dumps(team, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -69,7 +69,7 @@ class TeamDeleteTool:
             return ToolResult(name="TeamDelete", output={"success": False, "message": "No active team"})
         team_name = context.team.get("team_name")
         context.team = None
-        team_file = context.workspace_root / ".clawd" / "team.json"
+        team_file = context.workspace_root / ".clyde" / "team.json"
         if team_file.exists():
             try:
                 team_file.unlink()

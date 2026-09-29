@@ -69,7 +69,7 @@ class WebFetchTool:
         if hostname in {"localhost"} or hostname.endswith(".localhost") or _is_private_host(hostname):
             raise ToolPermissionError("refusing to fetch localhost/private network URLs")
 
-        req = urllib.request.Request(url, headers={"User-Agent": "clawd-codex/0.1"})
+        req = urllib.request.Request(url, headers={"User-Agent": "clyde-cli/0.1"})
         with urllib.request.urlopen(req, timeout=15) as resp:
             raw_bytes = resp.read(1_000_000)
             content_type = resp.headers.get("Content-Type", "")

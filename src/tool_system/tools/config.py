@@ -12,7 +12,7 @@ class ConfigTool:
     def spec(self) -> ToolSpec:
         return ToolSpec(
             name="Config",
-            description='Get or set Clawd configuration values (e.g. "default_provider", "providers.openai.base_url").',
+            description='Get or set Clyde configuration values (e.g. "default_provider", "providers.openai.base_url").',
             input_schema={
                 "type": "object",
                 "additionalProperties": False,

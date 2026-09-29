@@ -101,7 +101,7 @@ def build_default_registry(*, include_user_tools: bool = True) -> ToolRegistry:
     registry.register(ToolSearchTool(registry))
 
     if include_user_tools:
-        user_dir = Path.home() / ".clawd" / "tools"
+        user_dir = Path.home() / ".clyde" / "tools"
         for tool in load_tools_from_dir(user_dir):
             registry.register(tool)
 

@@ -1,5 +1,5 @@
 """
-Command type system for Clawd Code.
+Command type system for ClydeCLI.
 
 Implements the core command types inspired by Claude Code's command system:
 - PromptCommand: Expands to text/prompt content sent to the model

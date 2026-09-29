@@ -32,14 +32,14 @@ class TestConfigPath(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             with patch('src.config.Path.home', return_value=Path(temp_dir)):
                 path = get_config_path()
-                expected = Path(temp_dir) / ".clawd" / "config.json"
+                expected = Path(temp_dir) / ".clyde" / "config.json"
                 self.assertEqual(path, expected)
 
     def test_config_dir_created(self):
         """Test that config directory is created."""
         with tempfile.TemporaryDirectory() as temp_dir:
             home = Path(temp_dir)
-            config_dir = home / ".clawd"
+            config_dir = home / ".clyde"
             self.assertFalse(config_dir.exists())
 
             with patch('src.config.Path.home', return_value=home):
@@ -112,7 +112,7 @@ class TestLoadSaveConfig(unittest.TestCase):
     def test_save_and_load_config(self):
         """Test save and load roundtrip."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            config_path = Path(temp_dir) / ".clawd" / "config.json"
+            config_path = Path(temp_dir) / ".clyde" / "config.json"
 
             with patch('src.config.get_config_path', return_value=config_path):
                 config = {
@@ -138,7 +138,7 @@ class TestLoadSaveConfig(unittest.TestCase):
     def test_load_config_creates_default(self):
         """Test that loading non-existent config creates default."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            config_path = Path(temp_dir) / ".clawd" / "config.json"
+            config_path = Path(temp_dir) / ".clyde" / "config.json"
 
             with patch('src.config.get_config_path', return_value=config_path):
                 config = load_config()
@@ -150,7 +150,7 @@ class TestLoadSaveConfig(unittest.TestCase):
     def test_api_keys_encoded_on_save(self):
         """Test that API keys are encoded when saving."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            config_path = Path(temp_dir) / ".clawd" / "config.json"
+            config_path = Path(temp_dir) / ".clyde" / "config.json"
 
             with patch('src.config.get_config_path', return_value=config_path):
                 config = {
@@ -180,7 +180,7 @@ class TestLoadSaveConfig(unittest.TestCase):
     def test_api_keys_decoded_on_load(self):
         """Test that API keys are decoded when loading."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            config_path = Path(temp_dir) / ".clawd" / "config.json"
+            config_path = Path(temp_dir) / ".clyde" / "config.json"
 
             # Create config with encoded key
             encoded_key = _encode_api_key("secret_key")
@@ -212,7 +212,7 @@ class TestLoadSaveConfig(unittest.TestCase):
     def test_config_file_permissions_restricted_on_save(self):
         """Test that saved config uses owner-only permissions on POSIX systems."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            config_path = Path(temp_dir) / ".clawd" / "config.json"
+            config_path = Path(temp_dir) / ".clyde" / "config.json"
 
             with patch('src.config.get_config_path', return_value=config_path):
                 save_config(get_default_config())
@@ -226,7 +226,7 @@ class TestProviderConfig(unittest.TestCase):
     def test_get_provider_config(self):
         """Test getting provider config."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            config_path = Path(temp_dir) / ".clawd" / "config.json"
+            config_path = Path(temp_dir) / ".clyde" / "config.json"
 
             with patch('src.config.get_config_path', return_value=config_path):
                 glm_config = get_provider_config("glm")
@@ -238,7 +238,7 @@ class TestProviderConfig(unittest.TestCase):
     def test_get_unknown_provider(self):
         """Test getting unknown provider."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            config_path = Path(temp_dir) / ".clawd" / "config.json"
+            config_path = Path(temp_dir) / ".clyde" / "config.json"
 
             with patch('src.config.get_config_path', return_value=config_path):
                 with self.assertRaises(ValueError) as context:
@@ -253,7 +253,7 @@ class TestSetAPIKey(unittest.TestCase):
     def test_set_api_key(self):
         """Test setting API key for provider."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            config_path = Path(temp_dir) / ".clawd" / "config.json"
+            config_path = Path(temp_dir) / ".clyde" / "config.json"
 
             with patch('src.config.get_config_path', return_value=config_path):
                 set_api_key("glm", "new_api_key")
@@ -267,7 +267,7 @@ class TestSetAPIKey(unittest.TestCase):
     def test_set_api_key_with_options(self):
         """Test setting API key with base URL and model."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            config_path = Path(temp_dir) / ".clawd" / "config.json"
+            config_path = Path(temp_dir) / ".clyde" / "config.json"
 
             with patch('src.config.get_config_path', return_value=config_path):
                 set_api_key(
@@ -298,7 +298,7 @@ class TestDefaultProvider(unittest.TestCase):
     def test_set_default_provider(self):
         """Test setting default provider."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            config_path = Path(temp_dir) / ".clawd" / "config.json"
+            config_path = Path(temp_dir) / ".clyde" / "config.json"
 
             with patch('src.config.get_config_path', return_value=config_path):
                 set_default_provider("openai")
@@ -309,7 +309,7 @@ class TestDefaultProvider(unittest.TestCase):
     def test_get_default_provider(self):
         """Test getting default provider."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            config_path = Path(temp_dir) / ".clawd" / "config.json"
+            config_path = Path(temp_dir) / ".clyde" / "config.json"
 
             with patch('src.config.get_config_path', return_value=config_path):
                 provider = get_default_provider()

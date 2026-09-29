@@ -141,7 +141,7 @@ class TestAgentLoop(unittest.TestCase):
         mock_provider = MagicMock()
         mock_provider.chat_stream_response.side_effect = NotImplementedError()
         mock_provider.chat.return_value = ChatResponse(
-            content="Hello from Clawd!",
+            content="Hello from Clyde!",
             model="test-model",
             usage={"input_tokens": 3, "output_tokens": 4},
             finish_reason="stop",
@@ -159,12 +159,12 @@ class TestAgentLoop(unittest.TestCase):
             on_text_chunk=chunks.append,
         )
 
-        self.assertEqual("".join(chunks), "Hello from Clawd!")
-        self.assertEqual(result.response_text, "Hello from Clawd!")
+        self.assertEqual("".join(chunks), "Hello from Clyde!")
+        self.assertEqual(result.response_text, "Hello from Clyde!")
         self.assertEqual(mock_provider.chat.call_count, 1)
         self.assertEqual(len(conversation.messages), 2)
         self.assertEqual(conversation.messages[-1].role, "assistant")
-        self.assertEqual(conversation.messages[-1].content, "Hello from Clawd!")
+        self.assertEqual(conversation.messages[-1].content, "Hello from Clyde!")
 
     def test_agent_loop_stream_only_emits_final_turn_text(self):
         """Streaming mode skips interim tool-planning text and emits the final answer only."""

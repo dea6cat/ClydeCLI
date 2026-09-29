@@ -1,4 +1,4 @@
-"""Interactive REPL for Clawd Codex."""
+"""Interactive REPL for ClydeCLI."""
 
 from __future__ import annotations
 
@@ -97,8 +97,8 @@ from src.cost_tracker import CostTracker
 from src.history import HistoryLog
 
 
-class ClawdREPL:
-    """Interactive REPL for Clawd Codex."""
+class ClydeREPL:
+    """Interactive REPL for ClydeCLI."""
 
     def __init__(self, provider_name: str = "glm", stream: bool = False):
         self.console = Console()
@@ -110,7 +110,7 @@ class ClawdREPL:
         config = get_provider_config(provider_name)
         if not config.get("api_key"):
             self.console.print("[red]Error: API key not configured.[/red]")
-            self.console.print("Run [bold]clawd login[/bold] to configure.")
+            self.console.print("Run [bold]clyde login[/bold] to configure.")
             sys.exit(1)
 
         # Initialize provider
@@ -158,7 +158,7 @@ class ClawdREPL:
         self._init_command_system()
 
         # Prompt toolkit with tab completion
-        history_file = Path.home() / ".clawd" / "history"
+        history_file = Path.home() / ".clyde" / "history"
         history_file.parent.mkdir(parents=True, exist_ok=True)
 
         self.completer = WordCompleter(self._get_slash_command_words(), ignore_case=True)
@@ -583,7 +583,7 @@ class ClawdREPL:
 
         if Panel is None or Group is None or Align is None or Table is None or Text is None or Columns is None:
             print(mascot_ascii)
-            print(f"Clawd Codex v{__version__}")
+            print(f"ClydeCLI v{__version__}")
             print(f"{model_label} · {provider_label}")
             print(f"{display_path}\n")
             return
@@ -593,7 +593,7 @@ class ClawdREPL:
         table = Table.grid(padding=(0, 1))
         table.add_column(style="bright_black", justify="right", no_wrap=True)
         table.add_column(style="white", ratio=1)
-        table.add_row("Version", Text.assemble(("Clawd Codex", "bold white"), ("  ", ""), (f"v{__version__}", "bold cyan")))
+        table.add_row("Version", Text.assemble(("ClydeCLI", "bold white"), ("  ", ""), (f"v{__version__}", "bold cyan")))
         table.add_row("Model", Text(model_label, style="bold magenta"))
         table.add_row("Provider", Text(provider_label, style="bold green"))
         table.add_row("Workspace", Text(self._truncate_middle(display_path, content_width - 12), style="bold blue"))
@@ -608,7 +608,7 @@ class ClawdREPL:
         header = Panel(
             body,
             border_style="bright_black",
-            title="[bold bright_cyan] CLAWD CODE [/bold bright_cyan]",
+            title="[bold bright_cyan] CLYDE CLI [/bold bright_cyan]",
             subtitle="[dim]interactive terminal[/dim]",
             padding=(1, 2),
         )
@@ -977,7 +977,7 @@ class ClawdREPL:
             if not skills:
                 self.console.print("\n[bold]Available Skills:[/bold]")
                 self.console.print("[dim]No skills found.[/dim]")
-                self.console.print("[dim]Create skills in ~/.clawd/skills/ or ~/.claude/skills/ or .clawd/skills/ in your project.[/dim]")
+                self.console.print("[dim]Create skills in ~/.clyde/skills/ or ~/.claude/skills/ or .clyde/skills/ in your project.[/dim]")
                 return
 
             # Group skills by source
@@ -1014,7 +1014,7 @@ class ClawdREPL:
         e = err.lower()
         if name == "read" and e.startswith("file not found:"):
             p = err.split(":", 2)[-1].strip()
-            if "/.clawd/skills/" in p or "\\.clawd\\skills\\" in p or "/.claude/skills/" in p or "\\.claude\\skills\\" in p:
+            if "/.clyde/skills/" in p or "\\.clyde\\skills\\" in p or "/.claude/skills/" in p or "\\.claude\\skills\\" in p:
                 return True
         return False
 
@@ -1056,8 +1056,6 @@ class ClawdREPL:
             "project", "workspace", "folder", "directory", "function",
             "class", "module", "code", "implementation", "readme",
             "pyproject", "package.json", "git", "commit", "diff", "tool",
-            "文件", "代码", "仓库", "项目", "目录", "读取", "写入", "修改",
-            "搜索", "运行", "测试", "修复", "命令", "工具", "函数", "类",
         )
         return not any(marker in text for marker in code_task_markers)
 
@@ -1223,7 +1221,7 @@ class ClawdREPL:
             error_str = str(e)
 
             # Check for authentication errors
-            if "401" in error_str or "authentication" in error_str.lower() or "令牌" in error_str:
+            if "401" in error_str or "authentication" in error_str.lower():
                 self.console.print(f"\n[red]❌ Authentication Error: {e}[/red]")
                 self.console.print("\n[yellow]Your API key appears to be invalid or expired.[/yellow]")
 
@@ -1238,7 +1236,7 @@ class ClawdREPL:
                 if choice == "y":
                     self._handle_relogin()
                 else:
-                    self.console.print("\n[dim]You can run [bold]clawd login[/bold] later to update your API key.[/dim]")
+                    self.console.print("\n[dim]You can run [bold]clyde login[/bold] later to update your API key.[/dim]")
             else:
                 # Generic error handling
                 self.console.print(f"\n[red]Error: {e}[/red]")

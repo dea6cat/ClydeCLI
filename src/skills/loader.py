@@ -13,12 +13,12 @@ from .model import PromptSkill
 def _candidate_user_skills_dirs() -> list[Path]:
     """Return candidate user-skill directories in priority order.
     Priority:
-      1) $CLAWD_SKILLS_DIR (project-specific)
+      1) $CLYDE_SKILLS_DIR (project-specific)
       2) $CLAUDE_SKILLS_DIR (TS-compatible override)
-      3) ~/.clawd/skills (current project default)
+      3) ~/.clyde/skills (current project default)
       4) ~/.claude/skills (TS-compatible default)
     """
-    env_primary = os.environ.get("CLAWD_SKILLS_DIR")
+    env_primary = os.environ.get("CLYDE_SKILLS_DIR")
     env_ts = os.environ.get("CLAUDE_SKILLS_DIR")
     dirs: list[Path] = []
     if env_primary:
@@ -28,7 +28,7 @@ def _candidate_user_skills_dirs() -> list[Path]:
         if p not in dirs:
             dirs.append(p)
     # Defaults
-    for d in (Path.home() / ".clawd" / "skills", Path.home() / ".claude" / "skills"):
+    for d in (Path.home() / ".clyde" / "skills", Path.home() / ".claude" / "skills"):
         p = d.expanduser().resolve()
         if p not in dirs:
             dirs.append(p)
@@ -139,7 +139,7 @@ def get_all_skills(
         for s in load_skills_from_dir(user_dir, loaded_from="user"):
             _REGISTRY.register(s)
 
-    managed_env = os.environ.get("CLAWD_MANAGED_SKILLS_DIR")
+    managed_env = os.environ.get("CLYDE_MANAGED_SKILLS_DIR")
     if managed_env:
         managed_dir = Path(managed_env).expanduser().resolve()
         for s in load_skills_from_dir(managed_dir, loaded_from="managed"):
@@ -148,7 +148,7 @@ def get_all_skills(
     if project_root is not None:
         pr = Path(project_root).expanduser().resolve()
         proj_dirs = []
-        main_path = pr / ".clawd" / "skills"
+        main_path = pr / ".clyde" / "skills"
         compat_path = pr / ".claude" / "skills"
         proj_dirs.append(main_path)
         if compat_path != main_path:

@@ -1,5 +1,5 @@
 """
-Clawd Codex - Interactive CLI
+ClydeCLI - Interactive CLI
 
 A complete reimplementation of Claude Code with interactive terminal interface.
 """
@@ -38,8 +38,8 @@ from .command_graph import build_command_graph
 from .tool_pool import assemble_tool_pool
 
 
-class ClawdCodexCLI:
-    """Interactive CLI for Clawd Codex."""
+class ClydeLegacyCLI:
+    """Interactive CLI for ClydeCLI."""
 
     def __init__(self):
         self.manifest = build_port_manifest()
@@ -67,7 +67,7 @@ class ClawdCodexCLI:
         """Print welcome banner."""
         if HAS_RICH:
             self.console.print(Panel.fit(
-                "[bold cyan]Clawd Codex[/bold cyan]\n"
+                "[bold cyan]ClydeCLI[/bold cyan]\n"
                 "[dim]A complete reimplementation of Claude Code[/dim]",
                 subtitle="Interactive Mode • Type 'help' for commands",
                 border_style="round",
@@ -75,7 +75,7 @@ class ClawdCodexCLI:
         else:
             banner = f"""
 {self._colorize('╔═══════════════════════════════════════════════════════════╔', 'cyan')}
-{self._colorize('║', 'cyan')}   {self._colorize('Clawd Codex', 'bold')} - Claude Code Reimplementation   {self._colorize('║', 'cyan')}
+{self._colorize('║', 'cyan')}   {self._colorize('ClydeCLI', 'bold')} - Claude Code Reimplementation   {self._colorize('║', 'cyan')}
 {self._colorize('║', 'cyan')}   Type "help" for commands • Interactive Mode                  {self._colorize('║', 'cyan')}
 {self._colorize('╚═══════════════════════════════════════════════════════════╛', 'cyan')}
 """
@@ -243,7 +243,7 @@ class ClawdCodexCLI:
 
         while self.running:
             try:
-                user_input = input(f"{self._colorize('clawd>', 'cyan')} ").strip()
+                user_input = input(f"{self._colorize('clyde>', 'cyan')} ").strip()
                 if user_input:
                     self.running = self.handle_command(user_input)
             except (KeyboardInterrupt, EOFError):
@@ -253,7 +253,7 @@ class ClawdCodexCLI:
 
 def main():
     """Main entry point."""
-    cli = ClawdCodexCLI()
+    cli = ClydeLegacyCLI()
     cli.run()
 
 

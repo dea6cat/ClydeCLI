@@ -41,7 +41,7 @@ class EnterWorktreeTool:
         else:
             slug = "worktree"
 
-        root = context.workspace_root / ".clawd" / "worktrees" / slug
+        root = context.workspace_root / ".clyde" / "worktrees" / slug
         root.mkdir(parents=True, exist_ok=True)
         context.worktree_root = root
         context.cwd = root

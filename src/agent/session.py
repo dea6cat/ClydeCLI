@@ -23,7 +23,7 @@ class Session:
 
     def save(self):
         """Save session to disk."""
-        session_dir = Path.home() / ".clawd" / "sessions"
+        session_dir = Path.home() / ".clyde" / "sessions"
         session_dir.mkdir(parents=True, exist_ok=True)
 
         session_file = session_dir / f"{self.session_id}.json"
@@ -45,7 +45,7 @@ class Session:
     @classmethod
     def load(cls, session_id: str) -> Optional['Session']:
         """Load session from disk."""
-        session_file = Path.home() / ".clawd" / "sessions" / f"{session_id}.json"
+        session_file = Path.home() / ".clyde" / "sessions" / f"{session_id}.json"
 
         if not session_file.exists():
             return None

@@ -1,5 +1,5 @@
 """
-Built-in commands for Clawd Code.
+Built-in commands for ClydeCLI.
 
 Implements core commands like /help, /clear, /exit, /skills, etc.
 """
@@ -207,7 +207,7 @@ def skills_command_call(args: str, context: CommandContext) -> LocalCommandResul
     if not skills:
         return LocalCommandResult(
             type="text",
-            value="No skills available. Add skills to ~/.clawd/skills/ or ./.clawd/skills/.",
+            value="No skills available. Add skills to ~/.clyde/skills/ or ./.clyde/skills/.",
         )
 
     lines = ["Available skills:", ""]

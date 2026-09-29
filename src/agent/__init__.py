@@ -1,4 +1,4 @@
-"""Agent module for Clawd Codex."""
+"""Agent module for ClydeCLI."""
 
 from .conversation import Conversation, Message
 from .session import Session

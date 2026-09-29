@@ -1,4 +1,4 @@
-"""Configuration management for Clawd Codex."""
+"""Configuration management for ClydeCLI."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from typing import Any, Optional
 
 def get_config_path() -> Path:
     """Get the path to the configuration file."""
-    config_dir = Path.home() / ".clawd"
+    config_dir = Path.home() / ".clyde"
     config_dir.mkdir(parents=True, exist_ok=True)
     return config_dir / "config.json"
 

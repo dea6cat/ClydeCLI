@@ -255,7 +255,7 @@ class TestBuiltinCommands(unittest.TestCase):
         from src.skills.create import create_skill
 
         # Create a skill in the temp directory
-        project_skills_dir = Path(self.tmpdir.name) / ".clawd" / "skills"
+        project_skills_dir = Path(self.tmpdir.name) / ".clyde" / "skills"
         project_skills_dir.mkdir(parents=True)
 
         create_skill(

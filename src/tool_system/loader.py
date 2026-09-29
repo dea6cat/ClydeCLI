@@ -23,7 +23,7 @@ def load_tools_from_dir(directory: str | Path) -> list[Tool]:
 
 
 def _load_tool_from_file(file_path: Path) -> Tool | None:
-    module_name = f"clawd_user_tool_{file_path.stem}"
+    module_name = f"clyde_user_tool_{file_path.stem}"
     spec = importlib.util.spec_from_file_location(module_name, file_path)
     if spec is None or spec.loader is None:
         return None

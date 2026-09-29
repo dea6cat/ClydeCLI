@@ -1,4 +1,4 @@
-"""CLI entry point for Clawd Codex."""
+"""CLI entry point for ClydeCLI."""
 
 from __future__ import annotations
 
@@ -16,19 +16,19 @@ def main():
     # Quick path for --version
     if len(sys.argv) == 2 and sys.argv[1] in ['--version', '-v', '-V']:
         from src import __version__
-        print(f"clawd-codex version {__version__} (Python)")
+        print(f"clyde-cli version {__version__} (Python)")
         return 0
 
     parser = argparse.ArgumentParser(
-        description="Clawd Codex - Claude Code Python Implementation",
+        description="ClydeCLI - Python AI coding agent CLI",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  clawd --version          Show version
-  clawd login              Configure API keys
-  clawd config             Show current configuration
-  clawd --stream           Start REPL with live response rendering
-  clawd                    Start interactive REPL
+  clyde --version          Show version
+  clyde login              Configure API keys
+  clyde config             Show current configuration
+  clyde --stream           Start REPL with live response rendering
+  clyde                    Start interactive REPL
 """
     )
 
@@ -61,7 +61,7 @@ Examples:
     # Handle --version
     if args.version:
         from src import __version__
-        print(f"clawd-codex version {__version__} (Python)")
+        print(f"clyde-cli version {__version__} (Python)")
         return 0
 
     # Handle --config
@@ -102,7 +102,7 @@ def _show_provider_defaults_table() -> None:
 def handle_login():
     """Interactive API configuration."""
     console = Console()
-    console.print("\n[bold blue]Clawd Codex - API Configuration[/bold blue]\n")
+    console.print("\n[bold blue]ClydeCLI - API Configuration[/bold blue]\n")
 
     # Show available providers and their defaults
     _show_provider_defaults_table()
@@ -194,10 +194,10 @@ def show_config():
 def start_repl(stream: bool = False):
     """Start interactive REPL."""
     from src.config import get_default_provider
-    from src.repl import ClawdREPL
+    from src.repl import ClydeREPL
 
     provider = get_default_provider()
-    repl = ClawdREPL(provider_name=provider, stream=stream)
+    repl = ClydeREPL(provider_name=provider, stream=stream)
     repl.run()
     return 0
 

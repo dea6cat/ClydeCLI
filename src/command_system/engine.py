@@ -1,5 +1,5 @@
 """
-Command execution engine for Clawd Code.
+Command execution engine for ClydeCLI.
 
 Handles execution of commands and integration with the REPL.
 """

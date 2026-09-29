@@ -79,7 +79,7 @@ class ExitPlanModeTool:
                     target = (context.cwd or context.workspace_root) / target
                 target = context.ensure_allowed_path(target)
             else:
-                target = context.workspace_root / ".clawd" / "plan.md"
+                target = context.workspace_root / ".clyde" / "plan.md"
                 target.parent.mkdir(parents=True, exist_ok=True)
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(plan, encoding="utf-8")

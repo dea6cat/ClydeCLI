@@ -61,7 +61,7 @@ class TestSkillRegister(SkillSystemTests):
             description="say hello",
             body="Hello",
         )
-        with patch.dict(os.environ, {"CLAWD_SKILLS_DIR": str(skills_dir)}):
+        with patch.dict(os.environ, {"CLYDE_SKILLS_DIR": str(skills_dir)}):
             skills = get_all_skills(project_root=self.root)
             by_name = {s.name: s for s in skills}
             self.assertIn("hello", by_name)
@@ -80,7 +80,7 @@ class TestSkillUse(SkillSystemTests):
             body="Hello $name ($0) / $ARGUMENTS",
         )
         ctx = ToolContext(workspace_root=self.root)
-        with patch.dict(os.environ, {"CLAWD_SKILLS_DIR": str(skills_dir)}):
+        with patch.dict(os.environ, {"CLYDE_SKILLS_DIR": str(skills_dir)}):
             out = SkillTool().run({"skill": "hello", "args": 'bob "the builder"'}, ctx).output
             self.assertTrue(out["success"])
             self.assertIn("Hello bob (bob)", out["prompt"])

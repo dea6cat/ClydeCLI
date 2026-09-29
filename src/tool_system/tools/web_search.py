@@ -50,7 +50,7 @@ class WebSearchTool:
             raise ToolInputError("num must be an integer between 1 and 10")
 
         url = "https://duckduckgo.com/html/?" + urllib.parse.urlencode({"q": query})
-        req = urllib.request.Request(url, headers={"User-Agent": "clawd-codex/0.1"})
+        req = urllib.request.Request(url, headers={"User-Agent": "clyde-cli/0.1"})
         with urllib.request.urlopen(req, timeout=15) as resp:
             raw = resp.read(1_000_000).decode("utf-8", errors="replace")
 

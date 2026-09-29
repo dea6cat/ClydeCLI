@@ -323,7 +323,7 @@ class TestSkillTool(ToolSystemTests):
             body="Hello $ARGUMENTS[0]!",
             arguments=["name"],
         )
-        with patch.dict(os.environ, {"CLAWD_SKILLS_DIR": str(skills_dir)}):
+        with patch.dict(os.environ, {"CLYDE_SKILLS_DIR": str(skills_dir)}):
             out = SkillTool().run({"skill": "hello", "args": "bob"}, self.ctx).output
             self.assertTrue(out["success"])
             self.assertIn("Hello bob!", out["prompt"])
@@ -336,7 +336,7 @@ class TestSkillTool(ToolSystemTests):
             "def run(input, context):\n    return 'hi ' + input.get('name','world')\n",
             encoding="utf-8",
         )
-        with patch.dict(os.environ, {"CLAWD_SKILLS_DIR": str(skills_dir)}):
+        with patch.dict(os.environ, {"CLYDE_SKILLS_DIR": str(skills_dir)}):
             out = SkillTool().run({"name": "legacy", "input": {"name": "bob"}}, self.ctx).output
             self.assertEqual(out["output"], "hi bob")
 
@@ -463,7 +463,7 @@ class TestTeamTools(ToolSystemTests):
         self.assertEqual(self.ctx.team["team_name"], "test-team")
 
         # Verify team file was created
-        team_file = self.root / ".clawd" / "team.json"
+        team_file = self.root / ".clyde" / "team.json"
         self.assertTrue(team_file.exists())
 
         # Delete team
@@ -499,7 +499,7 @@ class TestWorktreeTools(ToolSystemTests):
         self.assertEqual(self.ctx.cwd, self.ctx.worktree_root)
 
         # Verify worktree directory exists
-        worktree_dir = self.root / ".clawd" / "worktrees" / "test-tree"
+        worktree_dir = self.root / ".clyde" / "worktrees" / "test-tree"
         self.assertTrue(worktree_dir.exists())
 
         # Exit worktree
@@ -565,7 +565,7 @@ class TestPlanModeTools(ToolSystemTests):
         self.assertIsNotNone(exit_out["filePath"])
 
         # Verify plan file was created
-        plan_file = self.root / ".clawd" / "plan.md"
+        plan_file = self.root / ".clyde" / "plan.md"
         self.assertTrue(plan_file.exists())
         self.assertEqual(plan_file.read_text(encoding="utf-8"), plan_content)
 

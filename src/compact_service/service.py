@@ -81,7 +81,7 @@ async def compact_conversation(
     - Forked agent with cache sharing (no subprocess isolation in Python REPL)
     - Session memory (no disk-backed session memory extraction)
     - Reactive compact (no background compaction agent)
-    - Hook system (no pre/post compact hooks in Clawd-Code)
+    - Hook system (no pre/post compact hooks in ClydeCLI)
 
     Args:
         conversation: The live Conversation object (mutated in place)

@@ -1,4 +1,4 @@
-"""LLM Providers for Clawd Codex."""
+"""LLM Providers for ClydeCLI."""
 
 from __future__ import annotations
 
