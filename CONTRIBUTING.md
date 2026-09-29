@@ -20,7 +20,7 @@ This project follows the [Contributor Covenant Code of Conduct](https://www.cont
 
 ### Prerequisites
 
-- Python 3.10 or higher (3.11 recommended for local development)
+- Python 3.14 or higher
 - `uv` (recommended) or `pip`
 - git
 - A valid API key from at least one provider (Anthropic, OpenAI, or GLM)
@@ -38,7 +38,7 @@ cd ClydeCLI
 2. **Create a virtual environment**
 
 ```bash
-uv venv --python 3.11
+uv venv --python 3.14
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 ```
 
