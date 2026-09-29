@@ -38,7 +38,7 @@ from .command_graph import build_command_graph
 from .tool_pool import assemble_tool_pool
 
 
-class ClydeCLI:
+class ClydeLegacyCLI:
     """Interactive CLI for ClydeCLI."""
 
     def __init__(self):
@@ -253,7 +253,7 @@ class ClydeCLI:
 
 def main():
     """Main entry point."""
-    cli = ClydeCLI()
+    cli = ClydeLegacyCLI()
     cli.run()
 
 

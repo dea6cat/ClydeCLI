@@ -608,7 +608,7 @@ class ClydeREPL:
         header = Panel(
             body,
             border_style="bright_black",
-            title="[bold bright_cyan] CLYDE CODE [/bold bright_cyan]",
+            title="[bold bright_cyan] CLYDE CLI [/bold bright_cyan]",
             subtitle="[dim]interactive terminal[/dim]",
             padding=(1, 2),
         )
@@ -1056,8 +1056,6 @@ class ClydeREPL:
             "project", "workspace", "folder", "directory", "function",
             "class", "module", "code", "implementation", "readme",
             "pyproject", "package.json", "git", "commit", "diff", "tool",
-            "文件", "代码", "仓库", "项目", "目录", "读取", "写入", "修改",
-            "搜索", "运行", "测试", "修复", "命令", "工具", "函数", "类",
         )
         return not any(marker in text for marker in code_task_markers)
 
@@ -1223,7 +1221,7 @@ class ClydeREPL:
             error_str = str(e)
 
             # Check for authentication errors
-            if "401" in error_str or "authentication" in error_str.lower() or "令牌" in error_str:
+            if "401" in error_str or "authentication" in error_str.lower():
                 self.console.print(f"\n[red]❌ Authentication Error: {e}[/red]")
                 self.console.print("\n[yellow]Your API key appears to be invalid or expired.[/yellow]")
 

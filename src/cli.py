@@ -20,7 +20,7 @@ def main():
         return 0
 
     parser = argparse.ArgumentParser(
-        description="ClydeCLI - Claude Code Python Implementation",
+        description="ClydeCLI - Python AI coding agent CLI",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:

@@ -227,14 +227,14 @@ class TestREPL(unittest.TestCase):
                 with patch('src.repl.core.get_provider_class') as mock_provider_class:
                     mock_provider = Mock()
                     mock_provider.model = "glm-4.5"
-                    mock_provider.chat_stream.return_value = iter(["你", "好"])
+                    mock_provider.chat_stream.return_value = iter(["Hel", "lo"])
                     mock_provider_class.return_value = Mock(return_value=mock_provider)
 
                     repl = ClydeREPL(provider_name="glm", stream=True)
                     repl.console.print = Mock()
 
                     with patch('src.repl.core.run_agent_loop') as mock_agent_loop:
-                        repl.chat("你是谁")
+                        repl.chat("who are you")
 
                     mock_provider.chat_stream.assert_called_once()
                     mock_agent_loop.assert_not_called()
@@ -244,7 +244,7 @@ class TestREPL(unittest.TestCase):
                     ))
                     self.assertEqual(len(mock_session.conversation.messages), 2)
                     self.assertEqual(mock_session.conversation.messages[1].role, "assistant")
-                    self.assertEqual(mock_session.conversation.messages[1].content, "你好")
+                    self.assertEqual(mock_session.conversation.messages[1].content, "Hello")
 
     def test_chat_stream_falls_back_to_agent_loop_for_code_task(self):
         """Code-like prompts keep the existing agent loop path for safety."""
@@ -268,7 +268,7 @@ class TestREPL(unittest.TestCase):
 
                     with patch('src.repl.core.run_agent_loop') as mock_agent_loop:
                         mock_agent_loop.side_effect = run_agent_loop_side_effect
-                        repl.chat("请读取 README.md 并总结")
+                        repl.chat("Please read README.md and summarize it")
 
                     mock_provider.chat_stream.assert_not_called()
                     mock_agent_loop.assert_called_once()
@@ -296,7 +296,7 @@ class TestREPL(unittest.TestCase):
 
                     with patch('src.repl.core.run_agent_loop') as mock_agent_loop:
                         mock_agent_loop.return_value = Mock(response_text="fallback", usage=None, num_turns=1)
-                        repl.chat("你好呀")
+                        repl.chat("hi there")
 
                     mock_provider.chat_stream.assert_called_once()
                     mock_agent_loop.assert_called_once()
