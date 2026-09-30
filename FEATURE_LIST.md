@@ -93,14 +93,14 @@
 | Plan mode | PlanModeTool | `plan_mode.py` | ✅ Implemented |
 | Scheduled tasks | CronTool | `cron.py` | 🟡 Stores jobs; nothing runs them |
 | MCP tools | MCPTool | `mcp.py` | ⏳ No MCP client connected |
-| MCP tools | MCPResourcesTool | `mcp_resources.py` | ✅ Implemented |
+| MCP tools | MCPResourcesTool | `mcp_resources.py` | ⏳ No MCP client connected |
 | Skill system | SkillTool | `skill.py` | ✅ Implemented |
 | Tool search | ToolSearchTool | `tool_search.py` | ✅ Implemented |
 | LSP integration | LSPTool | `lsp.py` | ⏳ No LSP client connected |
 | Worktree | WorktreeTool | `worktree.py` | 🟡 Empty folder, not a git worktree |
 | Miscellaneous | SleepTool | `sleep.py` | ✅ Implemented |
 | Miscellaneous | StructuredOutputTool | `structured_output.py` | ✅ Implemented |
-| Miscellaneous | MiscTools | `misc.py` | ✅ Implemented |
+| Miscellaneous | MiscTools | `misc.py` | 🟡 SendMessage, PowerShell work; RemoteTrigger, NotebookEdit, REPL are stubs |
 
 ---
 
