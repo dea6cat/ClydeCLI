@@ -73,9 +73,12 @@ import json
 from typing import Any
 
 from src.agent import Session
+from src.compact_service.service import auto_compact_threshold, compact_conversation, needs_auto_compact
+from src.context_system.context_analyzer import get_context_window_for_model
 from src.config import get_default_model, set_default_model
 from src.outputStyles import resolve_output_style
 from src.providers import build_registry, keys, model_ref, pick_default_model, resolve, usable
+from src.providers import catalog
 from src.providers.base import ProviderError, is_auth_error
 from src.providers.convert import append_response, to_canonical
 from src.tool_system.context import ToolContext
@@ -854,6 +857,8 @@ class ClydeREPL:
                 for spec in self.tool_registry.list_specs()
             ]
             self.command_context.config["system_prompt"] = ""
+            self.command_context.config["auto_compact_threshold"] = auto_compact_threshold(self._context_window())
+            self.command_context.config["is_auto_compact_enabled"] = True
             # Try new command system
             try:
                 handled, result_text = self._try_execute_new_command('context', '')
@@ -1112,6 +1117,25 @@ class ClydeREPL:
         self.console.print()
         return True
 
+    def _context_window(self) -> int:
+        """The model's input window: the provider's own sizing, then the catalog, then a name heuristic."""
+        provider_window = getattr(self.provider, "context_window", None)
+        if callable(provider_window):
+            return provider_window(self.model)
+        return catalog.context_window(self.model) or get_context_window_for_model(self.model)
+
+    def _maybe_auto_compact(self) -> None:
+        """Compact the conversation before a turn when it nears the context window."""
+        if not needs_auto_compact(self.session.conversation, self._context_window()):
+            return
+        self.console.print("[dim]Context is nearly full; compacting the conversation...[/dim]")
+        try:
+            result = asyncio.run(compact_conversation(self.session.conversation, self.provider, self.model, trigger="auto"))
+        except Exception as e:
+            self.console.print(f"[yellow]Auto-compact failed: {e}[/yellow]")
+            return
+        self.console.print(f"[green]{result.user_display_message}[/green]")
+
     def chat(self, user_input: str, max_turns: int = 20):
         """Send message to LLM and display response.
 
@@ -1119,6 +1143,7 @@ class ClydeREPL:
             user_input: The user message to send.
             max_turns: Maximum number of tool call turns (default 20, higher for complex commands).
         """
+        self._maybe_auto_compact()
         # Add user message
         self.session.conversation.add_user_message(user_input)
 
