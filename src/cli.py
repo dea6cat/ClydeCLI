@@ -35,6 +35,8 @@ Examples:
   clyde login                         Connect a provider and pick a default model
   clyde logout openai                 Remove a saved API key
   clyde config                        Show current configuration
+  clyde setup                         First-run onboarding: provider, other agents' hooks and skills, PATH
+  clyde hooks import                  Bring over hooks set up for Claude Code, Gemini CLI, Cursor or Copilot CLI
 """
     )
 
@@ -53,6 +55,10 @@ Examples:
     logout_parser = subparsers.add_parser('logout', help='Remove a saved API key')
     logout_parser.add_argument('provider', help='Provider name, e.g. openai')
     subparsers.add_parser('config', help='Show current configuration')
+    setup_parser = subparsers.add_parser('setup', help='First-run onboarding (run by install.sh)')
+    setup_parser.add_argument('-y', '--yes', action='store_true', help='No prompts: skip anything that needs an answer')
+    hooks_parser = subparsers.add_parser('hooks', help='Manage tool hooks')
+    hooks_parser.add_argument('action', choices=['import'], help="'import': copy other agents' hooks into ~/.clyde/settings.json")
 
     args = parser.parse_args()
 
@@ -68,6 +74,10 @@ Examples:
         return handle_login()
     if args.command == 'logout':
         return handle_logout(args.provider)
+    if args.command == 'setup':
+        return handle_setup(Console(), assume_yes=args.yes)
+    if args.command == 'hooks':
+        return handle_hooks_import(Console())
 
     return start_repl(model=args.model, stream=args.stream, resume=args.resume, continue_last=args.continue_last)
 
@@ -187,6 +197,85 @@ def handle_login():
     registry = build_registry()
     _print_provider_table(console, registry)
     return 0 if run_login_flow(console, registry) else 1
+
+
+def _clyde_bin_on_path() -> bool:
+    """Whether `clyde` resolves on the PATH future terminals get (install.sh passes the original)."""
+    import shutil
+    return shutil.which("clyde", path=os.environ.get("_CLYDE_ORIG_PATH") or os.environ.get("PATH")) is not None
+
+
+def handle_setup(console: Console, assume_yes: bool = False) -> int:
+    """First-run onboarding, as 2B's `2b setup`: provider, other agents' hooks and skills, PATH."""
+    import shutil
+    import subprocess
+    from rich.prompt import Confirm
+    from src.config import get_default_model
+    from src.providers import build_registry, keys, usable
+    from src.skills.loader import get_all_skills
+
+    console.print("\n[bold blue]ClydeCLI setup[/bold blue]")
+
+    # 1) provider and default model
+    keys.load_into_env()
+    registry = build_registry()
+    connected = usable(registry)
+    if connected and get_default_model():
+        console.print(f"✓ Connected: {', '.join(connected)}; default model {get_default_model()}")
+    elif assume_yes:
+        console.print("• No default model yet: run [bold]clyde login[/bold] (or export a provider key).")
+    else:
+        _print_provider_table(console, registry)
+        if not run_login_flow(console, registry):
+            console.print("[yellow]Skipped connecting a provider; run clyde login later.[/yellow]")
+
+    # 2) other agents' hooks: they run commands, so never imported without an explicit yes
+    if assume_yes:
+        console.print("• Hooks from other agents are not imported with --yes: run [bold]clyde hooks import[/bold].")
+    else:
+        handle_hooks_import(console, quiet=True)
+
+    # 3) other agents' skills are read in place
+    user_skills = [s for s in get_all_skills() if s.loaded_from == "user"]
+    console.print(f"✓ {len(user_skills)} user skill(s) available, including ~/.claude, ~/.agents, ~/.codex, "
+                  "~/.copilot and ~/.gemini skill folders.")
+
+    # 4) PATH
+    if not _clyde_bin_on_path() and shutil.which("uv"):
+        if not assume_yes and Confirm.ask("clyde isn't on your PATH yet. Add uv's tool folder to it (uv tool update-shell)?", default=True):
+            subprocess.run(["uv", "tool", "update-shell"], check=False)
+        else:
+            console.print("• Add clyde to your PATH later with [bold]uv tool update-shell[/bold].")
+
+    console.print("\nClydeCLI is ready. Start it from any project directory with [bold]clyde[/bold].")
+    return 0
+
+
+def handle_hooks_import(console: Console, quiet: bool = False) -> int:
+    """Offer each other agent's hooks for import; nothing is copied without a yes."""
+    from rich.prompt import Confirm
+    from src.tool_system.hooks import find_foreign_hooks, import_hooks, settings_paths
+
+    found = find_foreign_hooks()
+    if not found:
+        if not quiet:
+            console.print("No hooks found for Claude Code, Gemini CLI, Cursor or Copilot CLI.")
+        return 0
+    total = 0
+    for agent, path, hooks in found:
+        console.print(f"\n[bold]{agent}[/bold] hooks in {path}:")
+        for event, groups in hooks.items():
+            for group in groups:
+                for hook in group["hooks"]:
+                    console.print(f"  {event} [{group['matcher'] or '*'}]  {hook['command']}", markup=False)
+        if Confirm.ask("ClydeCLI will run these commands around its tool calls. Import them?", default=False):
+            try:
+                total += import_hooks(hooks)
+            except ValueError as e:
+                console.print(f"[red]{e}[/red]")
+                return 1
+    console.print(f"Imported {total} hook(s) into {settings_paths()[0]}." if total else "No hooks imported.")
+    return 0
 
 
 def handle_logout(provider: str) -> int:

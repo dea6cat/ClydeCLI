@@ -85,3 +85,23 @@ class TestSkillUse(SkillSystemTests):
             self.assertTrue(out["success"])
             self.assertIn("Hello bob (bob)", out["prompt"])
             self.assertIn('bob "the builder"', out["prompt"])
+
+
+class TestUserSkillPriority(unittest.TestCase):
+    def test_clyde_skills_win_and_other_agents_are_read(self) -> None:
+        import tempfile
+        from unittest import mock
+        from src.skills.loader import get_all_skills
+
+        with tempfile.TemporaryDirectory() as home:
+            for agent, name, text in (("clyde", "shared", "from clyde"), ("claude", "shared", "from claude"),
+                                      ("codex", "codex-only", "from codex")):
+                d = Path(home) / f".{agent}" / "skills" / name
+                d.mkdir(parents=True)
+                (d / "SKILL.md").write_text(f"---\ndescription: {text}\n---\nBody {text}\n")
+            with mock.patch.object(Path, "home", return_value=Path(home)), mock.patch.dict("os.environ", {}, clear=False):
+                os.environ.pop("CLYDE_SKILLS_DIR", None)
+                os.environ.pop("CLAUDE_SKILLS_DIR", None)
+                skills = {s.name: s for s in get_all_skills()}
+        self.assertIn("from clyde", skills["shared"].description)
+        self.assertIn("codex-only", skills)
