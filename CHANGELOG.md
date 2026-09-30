@@ -79,6 +79,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `/models` (from its server, or `lms ls` when the server is off), and the server is started with
   `lms server start` the first time an LM Studio model is used
 
+- Esc cancels the running reply, tool call or command the same way Ctrl+C does; arrow keys and
+  other escape sequences don't, and prompts that need the keyboard pause it
+
 ### Changed
 - API keys moved from base64 entries in `config.json` to `~/.clyde/keys.json` (mode 600), with
   shell env vars taking precedence; old configs migrate automatically on first run
@@ -101,6 +104,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `python -m unittest discover -s tests -t .`
 
 ### Fixed
+- The permission prompt shows its y / a / n keys; they were printed as Rich markup and vanished,
+  leaving only numbers
 - OpenRouter `:batch` variants are no longer listed; they reject chat requests
 - LM Studio models use the context LM Studio actually loaded them with (`lms ps`) for auto-compaction
 - The test suite runs against a temporary home instead of the real `~/.clyde` and `~/.claude`

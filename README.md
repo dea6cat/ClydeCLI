@@ -103,6 +103,7 @@ Assistant: Still here. What's broken?
 >>> /save         # Save session
 >>> /multiline    # Multi-paragraph input
 >>> Tab           # Auto-complete
+>>> Esc           # Stop the current reply or command (Ctrl+C works too)
 >>> /explain-code qsort.py   # Run a skill
 ```
 
