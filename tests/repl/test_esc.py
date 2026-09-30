@@ -86,3 +86,31 @@ class TestPermissionPromptShowsKeys(unittest.TestCase):
         for part in ("y  yes", "a  yes, and don't ask again for Bash(rm:*)", "n  no"):
             self.assertIn(part, shown)
         self.assertIn("[y/a/n]", ask.call_args.args[0])
+
+
+class TestSpinnerResumesAfterPrompt(unittest.TestCase):
+    def test_permission_prompt_pauses_then_restarts_the_spinner(self):
+        import io
+        from pathlib import Path
+        from unittest.mock import patch
+        from rich.console import Console
+        from src.repl.core import ClydeREPL
+        from src.tool_system.context import ToolContext
+
+        calls = []
+
+        class FakeStatus:
+            def stop(self):
+                calls.append("stop")
+
+            def start(self):
+                calls.append("start")
+
+        repl = ClydeREPL.__new__(ClydeREPL)
+        repl.console = Console(file=io.StringIO(), width=100)
+        repl._current_status = FakeStatus()
+        repl.tool_context = ToolContext(workspace_root=Path.cwd())
+        with patch("builtins.input", side_effect=lambda _prompt: calls.append("input") or "y"):
+            allowed, _ = repl._handle_permission_request("Bash", "Run shell command: ls", None)
+        self.assertTrue(allowed)
+        self.assertEqual(calls, ["stop", "input", "start"])

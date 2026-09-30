@@ -69,6 +69,7 @@ except ModuleNotFoundError:  # pragma: no cover
             self.text = text
 from pathlib import Path
 import asyncio
+from contextlib import contextmanager
 import re
 import sys
 import json
@@ -401,17 +402,31 @@ class ClydeREPL:
         """The line above the input, then the chevron."""
         return [("class:rule", "─" * self._rule_width() + "\n"), ("class:prompt", "... " if self.multiline_mode else "❯ ")]
 
+    @contextmanager
+    def _prompting(self):  # type: ignore[no-untyped-def]
+        """Hand the terminal to a prompt mid-turn: pause the spinner and the Esc watcher, then resume
+        both, so the rest of the turn still shows it's working."""
+        status = self._current_status
+        if status is not None:
+            try:
+                status.stop()
+            except Exception:
+                pass
+        try:
+            with self._esc.paused():
+                yield
+        finally:
+            if status is not None and status is self._current_status:
+                try:
+                    status.start()
+                except Exception:
+                    pass
+
     def _ask_user_questions(self, questions: list[dict]) -> dict[str, str]:
-        with self._esc.paused():
+        with self._prompting():
             return self._ask_user_questions_unpaused(questions)
 
     def _ask_user_questions_unpaused(self, questions: list[dict]) -> dict[str, str]:
-        # Stop the Rich status spinner if running, so we can get clean input
-        if self._current_status is not None:
-            try:
-                self._current_status.stop()
-            except Exception:
-                pass
 
         answers: dict[str, str] = {}
         for q in questions:
@@ -484,13 +499,10 @@ class ClydeREPL:
             Tuple of (allowed: bool, continue_without_caching: bool).
             continue_without_caching is always False since we don't cache in REPL.
         """
-        # Stop the Rich status spinner if running, so we can get clean input
-        if self._current_status is not None:
-            try:
-                self._current_status.stop()
-            except Exception:
-                pass
+        with self._prompting():
+            return self._ask_permission(message, suggestion)
 
+    def _ask_permission(self, message: str, suggestion: str | None) -> tuple[bool, bool]:
         self.console.print()
         self.console.print(Text.assemble(("♠ ", _CARD_ACCENT), ("Permission required", f"bold {_CARD_TEXT}")))
         self.console.print(Text(f"  {message}", style=_CARD_TEXT))
@@ -519,8 +531,7 @@ class ClydeREPL:
             self.console.print(Text.assemble(("    ", ""), (key, f"bold {_CARD_ACCENT}"), ("  ", ""), (desc, _CARD_TEXT)))
         keys = "/".join(k for k, _, _ in options)
 
-        with self._esc.paused():
-            choice = input(f"  Allow? [{keys}] (y): ").strip().lower()
+        choice = input(f"  Allow? [{keys}] (y): ").strip().lower()
         if choice in ("", "yes", "no", "enable", "always"):
             choice = {"": "y", "always": "a"}.get(choice, choice[:1])
         key = next((k for i, (k, _, _) in enumerate(options, start=1) if choice in (k, str(i))), None)
@@ -1475,8 +1486,20 @@ class ClydeREPL:
                         pass
                 stream_started = True
 
+            def _resume_status() -> None:
+                # Streamed text stopped the spinner; bring it back while a tool and the next model call run.
+                nonlocal stream_started
+                if stream_started and self._current_status is not None:
+                    self.console.print()
+                    try:
+                        self._current_status.start()
+                    except Exception:
+                        pass
+                    stream_started = False
+
             def on_event(ev: ToolEvent) -> None:
                 if ev.kind == "tool_use":
+                    _resume_status()
                     summary = summarize_tool_use(ev.tool_name, ev.tool_input or {})
                     if isinstance(summary, str) and summary:
                         summary = self._shorten_path_text(summary)
