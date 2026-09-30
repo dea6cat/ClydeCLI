@@ -3,14 +3,13 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 import tempfile
-from unittest.mock import MagicMock
 
 from src.agent.conversation import Conversation
-from src.providers.base import ChatResponse
 from src.tool_system.agent_loop import run_agent_loop
 from src.tool_system.context import ToolContext
 from src.tool_system.defaults import build_default_registry
 from src.tool_system.protocol import ToolCall
+from tests.fakes import FakeProvider, reply
 
 
 class TestClaudeCodeToolParity(unittest.TestCase):
@@ -72,31 +71,15 @@ class TestClaudeCodeToolParity(unittest.TestCase):
         conversation = Conversation()
         conversation.add_user_message("hi")
 
-        mock_provider = MagicMock()
-        mock_tool_use = {
-            "id": "toolu_1",
-            "name": "SendUserMessage",
-            "input": {"message": "hello", "status": "normal"},
-        }
-        mock_response1 = ChatResponse(
-            content="",
-            model="test",
-            usage={"input_tokens": 1, "output_tokens": 1},
-            finish_reason="tool_use",
-            tool_uses=[mock_tool_use],
+        provider = FakeProvider(
+            reply("", tool_calls=[("SendUserMessage", {"message": "hello", "status": "normal"}, "toolu_1")]),
+            reply(""),
         )
-        mock_response2 = ChatResponse(
-            content="",
-            model="test",
-            usage={"input_tokens": 1, "output_tokens": 1},
-            finish_reason="stop",
-            tool_uses=None,
-        )
-        mock_provider.chat.side_effect = [mock_response1, mock_response2]
 
         out = run_agent_loop(
             conversation=conversation,
-            provider=mock_provider,
+            provider=provider,
+            model="fake-model",
             tool_registry=self.registry,
             tool_context=self.ctx,
             verbose=False,

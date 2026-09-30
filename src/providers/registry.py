@@ -1,0 +1,110 @@
+"""Provider registry + model resolution.
+
+Builds every adapter ClydeCLI knows about; `usable()` filters to those actually configured
+(Ollama reachable / API key present). Resolution maps a model string to (provider, model):
+explicit `provider:model`, or a bare name matched across usable providers (ambiguity
+requires the explicit form).
+
+Adding an OpenAI-compatible service is data, not code: append to _OPENAI_COMPAT.
+"""
+from __future__ import annotations
+
+from . import ollama
+from .anthropic import AnthropicProvider
+from .base import Provider
+from .google import GoogleProvider
+from .openai_compat import OpenAICompatProvider
+
+# name, base_url, key_env, dynamic_models, static models (only for dynamic_models=False; a
+# dynamic provider lists live via /models and never falls back to a hardcoded guess), extra
+# headers, options: reasoning_style (openai_compat.py lists each service's reasoning fields),
+# max_tokens (OpenRouter defaults to a model's full output cap and pre-checks credits against
+# it, rejecting low-balance accounts), stream_usage (services known to accept stream_options).
+_OPENAI_COMPAT = [
+    ("openai", "https://api.openai.com/v1", "OPENAI_API_KEY", True, [], {},
+     {"reasoning_style": "openai", "stream_usage": True}),
+    ("openrouter", "https://openrouter.ai/api/v1", "OPENROUTER_API_KEY", True, [],
+     {"HTTP-Referer": "https://github.com/dea6cat/ClydeCLI", "X-Title": "ClydeCLI"},
+     {"reasoning_style": "openrouter", "max_tokens": 16384, "stream_usage": True}),
+    ("mistral", "https://api.mistral.ai/v1", "MISTRAL_API_KEY", True, [], {}, {}),
+    ("nvidia", "https://integrate.api.nvidia.com/v1", "NVIDIA_API_KEY", True, [], {}, {}),
+    ("deepseek", "https://api.deepseek.com/v1", "DEEPSEEK_API_KEY", True, [], {},
+     {"reasoning_style": "deepseek", "stream_usage": True}),
+    ("cerebras", "https://api.cerebras.ai/v1", "CEREBRAS_API_KEY", True, [], {}, {"reasoning_style": "cerebras"}),
+    ("glm", "https://open.bigmodel.cn/api/paas/v4", "GLM_API_KEY", False,
+     ["glm-5", "glm-5-turbo", "glm-4.7", "glm-4.6", "glm-4.5", "glm-4-plus", "glm-4-air", "glm-4-flash"], {}, {}),
+]
+
+_MINIMAX_MODELS = ["MiniMax-M2.7", "MiniMax-M2.7-highspeed", "MiniMax-M2.5", "MiniMax-M2.5-highspeed",
+                   "MiniMax-M2.1", "MiniMax-M2.1-highspeed", "MiniMax-M2"]
+
+# Preselected in `clyde login` when the provider lists it; purely a convenience default.
+SUGGESTED_MODELS = {
+    "anthropic": "claude-sonnet-4-6",
+    "openai": "gpt-5.4",
+    "glm": "glm-5",
+    "minimax": "MiniMax-M2.7",
+}
+
+
+def build_registry() -> dict[str, Provider]:
+    reg: dict[str, Provider] = {"ollama": ollama.local()}
+    cloud = ollama.cloud()
+    if cloud is not None:
+        reg[cloud.name] = cloud
+    for name, base, key_env, dyn, models, hdrs, opts in _OPENAI_COMPAT:
+        reg[name] = OpenAICompatProvider(name, base, key_env, models=models,
+                                         dynamic_models=dyn, extra_headers=hdrs, **opts)
+    reg["anthropic"] = AnthropicProvider()
+    reg["minimax"] = AnthropicProvider(name="minimax", base_url="https://api.minimaxi.com/anthropic",
+                                       key_env="MINIMAX_API_KEY", models=_MINIMAX_MODELS)
+    reg["google"] = GoogleProvider()
+    return reg
+
+
+def usable(reg: dict[str, Provider]) -> dict[str, Provider]:
+    return {name: p for name, p in reg.items() if p.is_available()}
+
+
+def is_local(provider: Provider) -> bool:
+    """True for the local Ollama provider (no API key)."""
+    return getattr(provider, "name", "") == "ollama" and getattr(provider, "api_key", None) is None
+
+
+def resolve(reg: dict[str, Provider], model: str) -> tuple[Provider, str] | None:
+    """(provider, model) or None. Explicit 'provider:model' wins; else a bare name is matched
+    across *usable* providers (ambiguity -> None). The prefix must be a known provider, so
+    Ollama tags like 'qwen3:8b' still resolve as bare names."""
+    if ":" in model:
+        prefix, rest = model.split(":", 1)
+        if prefix in reg:
+            p = reg[prefix]
+            return (p, rest) if p.is_available() else None
+    matches = []
+    for p in usable(reg).values():
+        try:
+            if model in p.list_models():
+                matches.append(p)
+        except Exception:
+            continue
+    if len(matches) == 1:
+        return matches[0], model
+    return None
+
+
+def model_ref(provider: Provider, model: str) -> str:
+    """The canonical `provider:model` string for a resolved pair."""
+    return f"{provider.name}:{model}"
+
+
+def pick_default_model(reg: dict[str, Provider]) -> str | None:
+    """A model to use when none is configured: the first local Ollama model, if any. Cloud
+    providers are never auto-selected; the user chooses those with `clyde login` or /model."""
+    local = reg.get("ollama")
+    if local is None:
+        return None
+    try:
+        models = local.list_models()
+    except Exception:
+        return None
+    return f"ollama:{models[0]}" if models else None

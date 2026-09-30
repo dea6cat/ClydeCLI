@@ -10,7 +10,7 @@ import unittest
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional, Union
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 from src.agent.conversation import (
     Conversation,
@@ -19,7 +19,8 @@ from src.agent.conversation import (
     ToolResultContentBlock,
     ToolUseContentBlock,
 )
-from src.providers.base import ChatResponse
+from src.providers.base import ProviderError
+from tests.fakes import FakeProvider, reply
 
 
 class MockConversation:
@@ -122,17 +123,14 @@ class TestCompactConversation(unittest.TestCase):
             Message(role="user", content="Hello"),
         ])
 
-        mock_provider = MagicMock()
-        mock_provider.chat_async = AsyncMock(
-            return_value=ChatResponse(content="Summary", model="test", usage={}, finish_reason="stop")
-        )
+        provider = FakeProvider(reply("Summary"))
 
         with self.assertRaises(ValueError) as ctx:
-            asyncio.run(compact_conversation(conv, mock_provider, "claude-sonnet-4-6"))
+            asyncio.run(compact_conversation(conv, provider, "fake-model"))
         self.assertIn("Not enough messages", str(ctx.exception))
 
-    def test_sync_fallback_on_llm_failure(self):
-        """Falls back to sync extraction on LLM failure."""
+    def test_text_fallback_on_llm_failure(self):
+        """Falls back to text extraction when the summary call fails."""
         from src.compact_service.service import compact_conversation
         conv = self._make_conversation([
             Message(role="user", content="Hello world " * 50),
@@ -140,11 +138,9 @@ class TestCompactConversation(unittest.TestCase):
             Message(role="user", content="What about the code? " * 50),
         ])
 
-        mock_provider = MagicMock()
-        mock_provider.chat_async = AsyncMock(side_effect=Exception("LLM failed"))
-        mock_provider.chat = MagicMock(side_effect=Exception("Sync LLM failed"))
+        provider = FakeProvider(ProviderError("fake", "LLM failed"))
 
-        result = asyncio.run(compact_conversation(conv, mock_provider, "claude-sonnet-4-6"))
+        result = asyncio.run(compact_conversation(conv, provider, "fake-model"))
         self.assertEqual(result.trigger, "manual")
         self.assertIn("Conversation had", result.summary_text)
 
@@ -159,17 +155,9 @@ class TestCompactConversation(unittest.TestCase):
         ])
         original_count = len(conv.messages)
 
-        mock_provider = MagicMock()
-        mock_provider.chat_async = AsyncMock(
-            return_value=ChatResponse(
-                content="User worked on Python code. Assistant helped with implementation.",
-                model="test",
-                usage={},
-                finish_reason="stop"
-            )
-        )
+        provider = FakeProvider(reply("User worked on Python code. Assistant helped with implementation."))
 
-        result = asyncio.run(compact_conversation(conv, mock_provider, "claude-sonnet-4-6"))
+        result = asyncio.run(compact_conversation(conv, provider, "fake-model"))
 
         # Boundary and summary are added (2 new messages)
         self.assertEqual(len(conv.messages), result.post_compact_count)
@@ -190,24 +178,37 @@ class TestCompactConversation(unittest.TestCase):
             Message(role="assistant", content="Hi " * 20),
         ])
 
-        captured_messages = []
-
-        def capture_messages(*args, **kwargs):
-            captured_messages.append(kwargs.get("messages", args[1] if len(args) > 1 else []))
-            return ChatResponse(content="Summary", model="test", usage={}, finish_reason="stop")
-
-        mock_provider = MagicMock()
-        mock_provider.chat_async = AsyncMock(side_effect=capture_messages)
+        provider = FakeProvider(reply("Summary"))
 
         asyncio.run(compact_conversation(
-            conv, mock_provider, "claude-sonnet-4-6",
+            conv, provider, "fake-model",
             custom_instructions="Focus on the Python code"
         ))
 
-        # Custom instruction should appear in the last message
-        self.assertGreater(len(captured_messages), 0)
-        last_msg = captured_messages[0][-1] if captured_messages else {}
-        self.assertIn("Focus on the Python code", last_msg.get("content", ""))
+        request = provider.requests[0]
+        self.assertIn("Focus on the Python code", request["conversation"].messages[-1].text)
+        self.assertEqual(request["tools"], ())
+        self.assertEqual(request["reasoning"], "off")
+
+    def test_summary_context_never_starts_mid_tool_pair(self):
+        """The recent-message slice drops a leading tool result whose call was cut off."""
+        from src.agent.conversation import TextContentBlock, ToolResultContentBlock, ToolUseContentBlock
+        from src.compact_service.service import compact_conversation
+        messages = []
+        for i in range(12):
+            messages.append(Message(role="user", content=f"step {i}"))
+            messages.append(Message(role="assistant", content=[
+                TextContentBlock(text="running"),
+                ToolUseContentBlock(id=f"t{i}", name="Read", input={"file_path": "x"})]))
+            messages.append(Message(role="user", content=[ToolResultContentBlock(tool_use_id=f"t{i}", content="ok")]))
+        conv = self._make_conversation(messages)
+        provider = FakeProvider(reply("Summary"))
+
+        asyncio.run(compact_conversation(conv, provider, "fake-model"))
+
+        first = provider.requests[0]["conversation"].messages[0]
+        self.assertFalse(first.tool_results)
+        self.assertEqual(first.role.value, "user")
 
 
 class TestCompactIntegration(unittest.TestCase):

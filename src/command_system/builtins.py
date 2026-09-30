@@ -20,7 +20,6 @@ from ..context_system.context_analyzer import (
 from ..context_system.microcompact import microcompact_messages, strip_images_from_messages
 from ..cost_tracker import CostTracker
 from ..history import HistoryLog
-from ..providers.base import BaseProvider
 from ..setup import run_setup
 from .engine import CommandContext, CommandResult, LocalCommandResult
 from .registry import CommandRegistry, get_command_registry, list_commands
@@ -391,7 +390,9 @@ async def _compact_async(args: str, context: CommandContext) -> LocalCommandResu
             value="Compact requires an LLM provider (not available in this context).",
         )
 
-    model = context.config.get("model", "claude-sonnet-4-6")
+    model = context.config.get("model")
+    if not model:
+        return LocalCommandResult(type="text", value="Compact requires a model (none selected).")
     custom_instructions = args.strip() or None
 
     try:

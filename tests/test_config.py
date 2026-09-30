@@ -1,320 +1,188 @@
-"""Tests for configuration management."""
+"""Tests for config.json handling, the legacy migration, and the API-key store."""
 
 from __future__ import annotations
 
-import unittest
-from unittest.mock import patch, Mock
-from pathlib import Path
-import tempfile
-import json
 import base64
+import json
 import os
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
 
 from src.config import (
     get_config_path,
     get_default_config,
+    get_default_model,
     load_config,
     save_config,
-    get_provider_config,
-    set_api_key,
-    set_default_provider,
-    get_default_provider,
-    _encode_api_key,
-    _decode_api_key
+    set_default_model,
 )
+from src.providers import keys
+
+_KEY_VARS = {env: "" for env in keys.PROVIDER_KEY_ENV.values()}
 
 
-class TestConfigPath(unittest.TestCase):
-    """Test configuration path functions."""
+class _TempHome(unittest.TestCase):
+    """Runs each test with a throwaway HOME and no provider keys in the environment."""
 
-    def test_get_config_path(self):
-        """Test getting config path."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            with patch('src.config.Path.home', return_value=Path(temp_dir)):
-                path = get_config_path()
-                expected = Path(temp_dir) / ".clyde" / "config.json"
-                self.assertEqual(path, expected)
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.home = Path(self._tmp.name)
+        self._patches = [patch.object(Path, "home", return_value=self.home), patch.dict(os.environ, _KEY_VARS)]
+        for p in self._patches:
+            p.start()
+        for env in _KEY_VARS:
+            os.environ.pop(env, None)
 
-    def test_config_dir_created(self):
-        """Test that config directory is created."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            home = Path(temp_dir)
-            config_dir = home / ".clyde"
-            self.assertFalse(config_dir.exists())
+    def tearDown(self):
+        for p in reversed(self._patches):
+            p.stop()
+        self._tmp.cleanup()
 
-            with patch('src.config.Path.home', return_value=home):
-                path = get_config_path()
-                self.assertTrue(config_dir.exists())
+    def write_config(self, data: dict) -> None:
+        get_config_path().write_text(json.dumps(data))
 
 
-class TestDefaultConfig(unittest.TestCase):
-    """Test default configuration."""
+class TestConfigFile(_TempHome):
+    def test_config_path_under_home(self):
+        self.assertEqual(get_config_path(), self.home / ".clyde" / "config.json")
+        self.assertTrue((self.home / ".clyde").is_dir())
 
-    def test_get_default_config(self):
-        """Test getting default config."""
+    def test_default_config(self):
         config = get_default_config()
+        self.assertIsNone(config["model"])
+        self.assertTrue(config["session"]["auto_save"])
+        self.assertNotIn("providers", config)
 
-        self.assertIn("default_provider", config)
-        self.assertIn("providers", config)
-        self.assertIn("anthropic", config["providers"])
-        self.assertIn("openai", config["providers"])
-        self.assertIn("glm", config["providers"])
+    def test_load_creates_default(self):
+        self.assertEqual(load_config(), get_default_config())
+        self.assertTrue(get_config_path().exists())
 
-    def test_default_provider_is_anthropic(self):
-        """Test that default provider is Anthropic."""
-        config = get_default_config()
-        self.assertEqual(config["default_provider"], "anthropic")
+    def test_save_load_roundtrip_and_permissions(self):
+        save_config({"model": "openai:gpt-5.4", "session": {"auto_save": False}})
+        self.assertEqual(load_config()["model"], "openai:gpt-5.4")
+        if os.name != "nt":
+            self.assertEqual(get_config_path().stat().st_mode & 0o777, 0o600)
 
-    def test_default_models(self):
-        """Test default models for providers."""
-        config = get_default_config()
-        self.assertEqual(
-            config["providers"]["anthropic"]["default_model"],
-            "claude-sonnet-4-6"
-        )
-        self.assertEqual(
-            config["providers"]["openai"]["default_model"],
-            "gpt-5.4"
-        )
-        self.assertEqual(
-            config["providers"]["glm"]["default_model"],
-            "zai/glm-5"
-        )
+    def test_default_model_get_set(self):
+        self.assertIsNone(get_default_model())
+        set_default_model("anthropic:claude-sonnet-4-6")
+        self.assertEqual(get_default_model(), "anthropic:claude-sonnet-4-6")
+        set_default_model(None)
+        self.assertIsNone(get_default_model())
 
 
-class TestAPIKeyEncoding(unittest.TestCase):
-    """Test API key encoding/decoding."""
+class TestLegacyMigration(_TempHome):
+    def _legacy(self, **overrides):
+        data = {
+            "default_provider": "openai",
+            "providers": {
+                "openai": {"api_key": base64.b64encode(b"sk-openai").decode(), "default_model": "gpt-5.4",
+                           "base_url": "https://api.openai.com/v1"},
+                "glm": {"api_key": base64.b64encode(b"glm-key").decode(), "default_model": "zai/glm-5"},
+                "anthropic": {"api_key": "", "default_model": "claude-sonnet-4-6"},
+            },
+            "session": {"auto_save": True, "max_history": 50},
+        }
+        data.update(overrides)
+        return data
 
-    def test_encode_api_key(self):
-        """Test API key encoding."""
-        api_key = "test_api_key_123"
-        encoded = _encode_api_key(api_key)
-        expected = base64.b64encode(api_key.encode()).decode()
-        self.assertEqual(encoded, expected)
+    def test_keys_move_to_keys_file_decoded(self):
+        self.write_config(self._legacy())
+        load_config()
+        saved = json.loads(keys.keys_file().read_text())
+        self.assertEqual(saved, {"openai": "sk-openai", "glm": "glm-key"})
+        if os.name != "nt":
+            self.assertEqual(keys.keys_file().stat().st_mode & 0o777, 0o600)
 
-    def test_decode_api_key(self):
-        """Test API key decoding."""
-        api_key = "test_api_key_123"
-        encoded = base64.b64encode(api_key.encode()).decode()
-        decoded = _decode_api_key(encoded)
-        self.assertEqual(decoded, api_key)
+    def test_default_model_and_layout_migrated(self):
+        self.write_config(self._legacy())
+        config = load_config()
+        self.assertEqual(config["model"], "openai:gpt-5.4")
+        self.assertNotIn("providers", config)
+        self.assertNotIn("default_provider", config)
+        self.assertEqual(config["session"]["max_history"], 50)
+        self.assertNotIn("providers", json.loads(get_config_path().read_text()))
 
-    def test_decode_plain_text(self):
-        """Test decoding plain text (not encoded)."""
-        plain_key = "plain_api_key"
-        decoded = _decode_api_key(plain_key)
-        self.assertEqual(decoded, plain_key)
+    def test_litellm_prefix_stripped(self):
+        self.write_config(self._legacy(default_provider="glm"))
+        self.assertEqual(load_config()["model"], "glm:glm-5")
 
+    def test_existing_saved_key_is_not_overwritten(self):
+        keys.connect("openai", "sk-newer")
+        self.write_config(self._legacy())
+        load_config()
+        self.assertEqual(json.loads(keys.keys_file().read_text())["openai"], "sk-newer")
 
-class TestLoadSaveConfig(unittest.TestCase):
-    """Test loading and saving configuration."""
-
-    def test_save_and_load_config(self):
-        """Test save and load roundtrip."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            config_path = Path(temp_dir) / ".clyde" / "config.json"
-
-            with patch('src.config.get_config_path', return_value=config_path):
-                config = {
-                    "default_provider": "glm",
-                    "providers": {
-                        "glm": {
-                            "api_key": "test_key",
-                            "base_url": "https://example.com",
-                            "default_model": "glm-4"
-                        }
-                    }
-                }
-
-                save_config(config)
-                loaded = load_config()
-
-                self.assertEqual(loaded["default_provider"], "glm")
-                self.assertEqual(
-                    loaded["providers"]["glm"]["api_key"],
-                    "test_key"
-                )
-
-    def test_load_config_creates_default(self):
-        """Test that loading non-existent config creates default."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            config_path = Path(temp_dir) / ".clyde" / "config.json"
-
-            with patch('src.config.get_config_path', return_value=config_path):
-                config = load_config()
-
-                self.assertIn("default_provider", config)
-                self.assertIn("providers", config)
-                self.assertTrue(config_path.exists())
-
-    def test_api_keys_encoded_on_save(self):
-        """Test that API keys are encoded when saving."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            config_path = Path(temp_dir) / ".clyde" / "config.json"
-
-            with patch('src.config.get_config_path', return_value=config_path):
-                config = {
-                    "default_provider": "glm",
-                    "providers": {
-                        "glm": {
-                            "api_key": "plain_text_key",
-                            "base_url": "https://example.com",
-                            "default_model": "glm-4"
-                        }
-                    }
-                }
-
-                save_config(config)
-
-                # Read raw file to check encoding
-                with open(config_path, 'r') as f:
-                    raw_data = json.load(f)
-
-                encoded_key = raw_data["providers"]["glm"]["api_key"]
-                self.assertNotEqual(encoded_key, "plain_text_key")
-
-                # Verify it can be decoded
-                decoded_key = _decode_api_key(encoded_key)
-                self.assertEqual(decoded_key, "plain_text_key")
-
-    def test_api_keys_decoded_on_load(self):
-        """Test that API keys are decoded when loading."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            config_path = Path(temp_dir) / ".clyde" / "config.json"
-
-            # Create config with encoded key
-            encoded_key = _encode_api_key("secret_key")
-            raw_config = {
-                "default_provider": "glm",
-                "providers": {
-                    "glm": {
-                        "api_key": encoded_key,
-                        "base_url": "https://example.com",
-                        "default_model": "glm-4"
-                    }
-                }
-            }
-
-            config_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(config_path, 'w') as f:
-                json.dump(raw_config, f)
-
-            with patch('src.config.get_config_path', return_value=config_path):
-                config = load_config()
-
-                # API key should be decoded
-                self.assertEqual(
-                    config["providers"]["glm"]["api_key"],
-                    "secret_key"
-                )
-
-    @unittest.skipIf(os.name == "nt", "POSIX file permission semantics differ on Windows")
-    def test_config_file_permissions_restricted_on_save(self):
-        """Test that saved config uses owner-only permissions on POSIX systems."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            config_path = Path(temp_dir) / ".clyde" / "config.json"
-
-            with patch('src.config.get_config_path', return_value=config_path):
-                save_config(get_default_config())
-                mode = config_path.stat().st_mode & 0o777
-                self.assertEqual(mode, 0o600)
+    def test_plain_text_legacy_key_kept(self):
+        self.write_config(self._legacy(providers={"openai": {"api_key": "sk-plain!", "default_model": "gpt-5.4"}}))
+        load_config()
+        self.assertEqual(json.loads(keys.keys_file().read_text())["openai"], "sk-plain!")
 
 
-class TestProviderConfig(unittest.TestCase):
-    """Test provider-specific configuration."""
+class TestMigrationSafety(TestLegacyMigration):
+    def test_original_config_is_backed_up(self):
+        self.write_config(self._legacy())
+        original = get_config_path().read_text()
+        load_config()
+        backup = get_config_path().with_name("config.json.bak")
+        self.assertEqual(backup.read_text(), original)
+        if os.name != "nt":
+            self.assertEqual(backup.stat().st_mode & 0o777, 0o600)
 
-    def test_get_provider_config(self):
-        """Test getting provider config."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            config_path = Path(temp_dir) / ".clyde" / "config.json"
-
-            with patch('src.config.get_config_path', return_value=config_path):
-                glm_config = get_provider_config("glm")
-
-                self.assertIn("api_key", glm_config)
-                self.assertIn("base_url", glm_config)
-                self.assertIn("default_model", glm_config)
-
-    def test_get_unknown_provider(self):
-        """Test getting unknown provider."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            config_path = Path(temp_dir) / ".clyde" / "config.json"
-
-            with patch('src.config.get_config_path', return_value=config_path):
-                with self.assertRaises(ValueError) as context:
-                    get_provider_config("unknown")
-
-                self.assertIn("Unknown provider", str(context.exception))
+    def test_corrupt_keys_file_blocks_migration_without_loss(self):
+        keys.keys_file().parent.mkdir(parents=True, exist_ok=True)
+        keys.keys_file().write_text("{not json")
+        self.write_config(self._legacy())
+        config = load_config()
+        self.assertIn("providers", config)                       # left untouched
+        self.assertEqual(keys.keys_file().read_text(), "{not json")
 
 
-class TestSetAPIKey(unittest.TestCase):
-    """Test setting API keys."""
+class TestKeyStore(_TempHome):
+    def test_corrupt_keys_file_is_never_overwritten(self):
+        keys.keys_file().parent.mkdir(parents=True, exist_ok=True)
+        keys.keys_file().write_text("{half written")
+        with self.assertRaises(keys.KeysFileError):
+            keys.connect("openai", "sk-x")
+        self.assertEqual(keys.keys_file().read_text(), "{half written")
+        keys.load_into_env()   # warns, doesn't raise
 
-    def test_set_api_key(self):
-        """Test setting API key for provider."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            config_path = Path(temp_dir) / ".clyde" / "config.json"
+    def test_new_keys_file_is_private(self):
+        keys.connect("openai", "sk-x")
+        if os.name != "nt":
+            self.assertEqual(keys.keys_file().stat().st_mode & 0o777, 0o600)
+            self.assertEqual(keys.keys_file().parent.stat().st_mode & 0o777, 0o700)
 
-            with patch('src.config.get_config_path', return_value=config_path):
-                set_api_key("glm", "new_api_key")
+    def test_connect_sets_env_and_persists(self):
+        keys.connect("deepseek", "ds-key")
+        self.assertEqual(os.environ["DEEPSEEK_API_KEY"], "ds-key")
+        self.assertEqual(json.loads(keys.keys_file().read_text()), {"deepseek": "ds-key"})
+        self.assertTrue(keys.is_connected("deepseek"))
 
-                config = load_config()
-                self.assertEqual(
-                    config["providers"]["glm"]["api_key"],
-                    "new_api_key"
-                )
+    def test_shell_key_wins_over_saved(self):
+        keys.connect("openai", "saved")
+        os.environ["OPENAI_API_KEY"] = "from-shell"
+        keys.load_into_env()
+        self.assertEqual(os.environ["OPENAI_API_KEY"], "from-shell")
 
-    def test_set_api_key_with_options(self):
-        """Test setting API key with base URL and model."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            config_path = Path(temp_dir) / ".clyde" / "config.json"
+    def test_load_into_env_fills_missing(self):
+        keys.connect("mistral", "m-key")
+        os.environ.pop("MISTRAL_API_KEY")
+        keys.load_into_env()
+        self.assertEqual(os.environ["MISTRAL_API_KEY"], "m-key")
 
-            with patch('src.config.get_config_path', return_value=config_path):
-                set_api_key(
-                    "glm",
-                    "new_api_key",
-                    base_url="https://custom.url",
-                    default_model="custom-model"
-                )
+    def test_disconnect(self):
+        keys.connect("cerebras", "c-key")
+        self.assertTrue(keys.disconnect("cerebras"))
+        self.assertNotIn("CEREBRAS_API_KEY", os.environ)
+        self.assertFalse(keys.disconnect("cerebras"))
 
-                config = load_config()
-                self.assertEqual(
-                    config["providers"]["glm"]["api_key"],
-                    "new_api_key"
-                )
-                self.assertEqual(
-                    config["providers"]["glm"]["base_url"],
-                    "https://custom.url"
-                )
-                self.assertEqual(
-                    config["providers"]["glm"]["default_model"],
-                    "custom-model"
-                )
-
-
-class TestDefaultProvider(unittest.TestCase):
-    """Test default provider management."""
-
-    def test_set_default_provider(self):
-        """Test setting default provider."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            config_path = Path(temp_dir) / ".clyde" / "config.json"
-
-            with patch('src.config.get_config_path', return_value=config_path):
-                set_default_provider("openai")
-
-                provider = get_default_provider()
-                self.assertEqual(provider, "openai")
-
-    def test_get_default_provider(self):
-        """Test getting default provider."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            config_path = Path(temp_dir) / ".clyde" / "config.json"
-
-            with patch('src.config.get_config_path', return_value=config_path):
-                provider = get_default_provider()
-                self.assertEqual(provider, "anthropic")
+    def test_mask(self):
+        self.assertEqual(keys.mask("sk-1234567890"), "sk-1…7890")
+        self.assertEqual(keys.mask("short"), "•••••")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

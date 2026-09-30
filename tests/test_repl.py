@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import unittest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 from pathlib import Path
 import tempfile
 import json
@@ -11,7 +11,19 @@ from rich.markdown import Markdown
 
 from src.repl import ClydeREPL
 from src.agent import Session, Conversation
-from src.providers.base import ChatMessage, ChatResponse
+from contextlib import contextmanager
+
+from tests.fakes import FakeProvider, reply
+
+
+@contextmanager
+def _fake_provider_env(*responses, chunk_size: int = 0):
+    """Patch the REPL's provider registry with a scripted `glm` provider (no network, and no
+    saved keys from the real home directory)."""
+    provider = FakeProvider(*responses, name="glm", models=("glm-4.5",), chunk_size=chunk_size)
+    with patch("src.repl.core.build_registry", return_value={"glm": provider}), \
+            patch("src.repl.core.keys.load_into_env"):
+        yield provider
 
 
 class TestREPL(unittest.TestCase):
@@ -25,16 +37,7 @@ class TestREPL(unittest.TestCase):
         self.config_dir.mkdir(parents=True, exist_ok=True)
 
         # Create a test config
-        test_config = {
-            "default_provider": "glm",
-            "providers": {
-                "glm": {
-                    "api_key": "test_api_key_12345678",
-                    "base_url": "https://open.bigmodel.cn/api/paas/v4",
-                    "default_model": "glm-4.5"
-                }
-            }
-        }
+        test_config = {"model": "glm:glm-4.5"}
 
         config_file = self.config_dir / "config.json"
         with open(config_file, 'w') as f:
@@ -46,12 +49,9 @@ class TestREPL(unittest.TestCase):
             with patch('src.repl.core.Session.create') as mock_session:
                 mock_session.return_value = Mock()
 
-                with patch('src.repl.core.get_provider_class') as mock_provider_class:
-                    mock_provider = Mock()
-                    mock_provider.model = "glm-4.5"
-                    mock_provider_class.return_value = mock_provider
+                with _fake_provider_env() as mock_provider:
 
-                    repl = ClydeREPL(provider_name="glm")
+                    repl = ClydeREPL(model="glm:glm-4.5")
                     self.assertIsNotNone(repl)
                     self.assertEqual(repl.provider_name, "glm")
                     self.assertFalse(repl.stream)
@@ -63,23 +63,17 @@ class TestREPL(unittest.TestCase):
             with patch('src.repl.core.Session.create') as mock_session:
                 mock_session.return_value = Mock()
 
-                with patch('src.repl.core.get_provider_class') as mock_provider_class:
-                    mock_provider = Mock()
-                    mock_provider.model = "glm-4.5"
-                    mock_provider_class.return_value = mock_provider
+                with _fake_provider_env() as mock_provider:
 
-                    repl = ClydeREPL(provider_name="glm", stream=True)
+                    repl = ClydeREPL(model="glm:glm-4.5", stream=True)
                     self.assertTrue(repl.stream)
 
     def test_startup_header_contains_logo_and_metadata(self):
         with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
             with patch('src.repl.core.Session.create'):
-                with patch('src.repl.core.get_provider_class') as mock_provider_class:
-                    mock_provider = Mock()
-                    mock_provider.model = "glm-4.5"
-                    mock_provider_class.return_value = Mock(return_value=mock_provider)
+                with _fake_provider_env() as mock_provider:
 
-                    repl = ClydeREPL(provider_name="glm")
+                    repl = ClydeREPL(model="glm:glm-4.5")
 
                     with patch('src.repl.core.Path.cwd', return_value=Path(self.temp_dir)):
                         # Capture stdout to verify fallback path output
@@ -93,7 +87,7 @@ class TestREPL(unittest.TestCase):
                         rendered = f.getvalue()
                         self.assertIn("ClydeCLI", rendered)
                         self.assertIn("glm-4.5", rendered)
-                        self.assertIn("GLM Provider", rendered)
+                        self.assertIn("glm", rendered)
                         # Path may be truncated, just check start and end parts
                         self.assertTrue(
                             self.temp_dir[:20] in rendered or self.temp_dir[-20:] in rendered
@@ -103,12 +97,9 @@ class TestREPL(unittest.TestCase):
         """Test /exit command."""
         with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
             with patch('src.repl.core.Session.create'):
-                with patch('src.repl.core.get_provider_class') as mock_provider_class:
-                    mock_provider = Mock()
-                    mock_provider.model = "glm-4.5"
-                    mock_provider_class.return_value = mock_provider
+                with _fake_provider_env() as mock_provider:
 
-                    repl = ClydeREPL(provider_name="glm")
+                    repl = ClydeREPL(model="glm:glm-4.5")
 
                     with self.assertRaises(SystemExit):
                         repl.handle_command("/exit")
@@ -121,12 +112,9 @@ class TestREPL(unittest.TestCase):
                 mock_session_instance.conversation = Mock()
                 mock_session.return_value = mock_session_instance
 
-                with patch('src.repl.core.get_provider_class') as mock_provider_class:
-                    mock_provider = Mock()
-                    mock_provider.model = "glm-4.5"
-                    mock_provider_class.return_value = mock_provider
+                with _fake_provider_env() as mock_provider:
 
-                    repl = ClydeREPL(provider_name="glm")
+                    repl = ClydeREPL(model="glm:glm-4.5")
                     repl.handle_command("/clear")
 
                     mock_session_instance.conversation.clear.assert_called_once()
@@ -135,12 +123,9 @@ class TestREPL(unittest.TestCase):
         """Test /multiline command."""
         with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
             with patch('src.repl.core.Session.create'):
-                with patch('src.repl.core.get_provider_class') as mock_provider_class:
-                    mock_provider = Mock()
-                    mock_provider.model = "glm-4.5"
-                    mock_provider_class.return_value = mock_provider
+                with _fake_provider_env() as mock_provider:
 
-                    repl = ClydeREPL(provider_name="glm")
+                    repl = ClydeREPL(model="glm:glm-4.5")
 
                     # Initially False
                     self.assertFalse(repl.multiline_mode)
@@ -157,12 +142,9 @@ class TestREPL(unittest.TestCase):
         """Test /stream command toggles stream mode safely."""
         with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
             with patch('src.repl.core.Session.create'):
-                with patch('src.repl.core.get_provider_class') as mock_provider_class:
-                    mock_provider = Mock()
-                    mock_provider.model = "glm-4.5"
-                    mock_provider_class.return_value = mock_provider
+                with _fake_provider_env() as mock_provider:
 
-                    repl = ClydeREPL(provider_name="glm")
+                    repl = ClydeREPL(model="glm:glm-4.5")
                     self.assertFalse(repl.stream)
 
                     repl.handle_command("/stream on")
@@ -180,12 +162,9 @@ class TestREPL(unittest.TestCase):
                 mock_session.conversation.add_assistant_message("## Hello\n\n- item")
                 mock_session_factory.return_value = mock_session
 
-                with patch('src.repl.core.get_provider_class') as mock_provider_class:
-                    mock_provider = Mock()
-                    mock_provider.model = "glm-4.5"
-                    mock_provider_class.return_value = mock_provider
+                with _fake_provider_env() as mock_provider:
 
-                    repl = ClydeREPL(provider_name="glm")
+                    repl = ClydeREPL(model="glm:glm-4.5")
                     repl.console.print = Mock()
                     repl.handle_command("/render-last")
 
@@ -202,12 +181,9 @@ class TestREPL(unittest.TestCase):
                 mock_session.conversation = Conversation()
                 mock_session_factory.return_value = mock_session
 
-                with patch('src.repl.core.get_provider_class') as mock_provider_class:
-                    mock_provider = Mock()
-                    mock_provider.model = "glm-4.5"
-                    mock_provider_class.return_value = mock_provider
+                with _fake_provider_env() as mock_provider:
 
-                    repl = ClydeREPL(provider_name="glm")
+                    repl = ClydeREPL(model="glm:glm-4.5")
                     repl.console.print = Mock()
                     repl.handle_command("/render-last")
 
@@ -217,26 +193,23 @@ class TestREPL(unittest.TestCase):
                     ))
 
     def test_chat_uses_true_api_stream_for_simple_prompt(self):
-        """Simple prompts should use provider.chat_stream when stream mode is enabled."""
+        """Simple prompts stream a tool-free reply directly when stream mode is enabled."""
         with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
             with patch('src.repl.core.Session.create') as mock_session_factory:
                 mock_session = Mock()
                 mock_session.conversation = Conversation()
                 mock_session_factory.return_value = mock_session
 
-                with patch('src.repl.core.get_provider_class') as mock_provider_class:
-                    mock_provider = Mock()
-                    mock_provider.model = "glm-4.5"
-                    mock_provider.chat_stream.return_value = iter(["Hel", "lo"])
-                    mock_provider_class.return_value = Mock(return_value=mock_provider)
+                with _fake_provider_env(reply("Hello"), chunk_size=3) as mock_provider:
 
-                    repl = ClydeREPL(provider_name="glm", stream=True)
+                    repl = ClydeREPL(model="glm:glm-4.5", stream=True)
                     repl.console.print = Mock()
 
                     with patch('src.repl.core.run_agent_loop') as mock_agent_loop:
                         repl.chat("who are you")
 
-                    mock_provider.chat_stream.assert_called_once()
+                    self.assertEqual(len(mock_provider.requests), 1)
+                    self.assertEqual(mock_provider.requests[0]["tools"], ())
                     mock_agent_loop.assert_not_called()
                     self.assertFalse(any(
                         args and isinstance(args[0], Markdown)
@@ -254,12 +227,9 @@ class TestREPL(unittest.TestCase):
                 mock_session.conversation = Conversation()
                 mock_session_factory.return_value = mock_session
 
-                with patch('src.repl.core.get_provider_class') as mock_provider_class:
-                    mock_provider = Mock()
-                    mock_provider.model = "glm-4.5"
-                    mock_provider_class.return_value = Mock(return_value=mock_provider)
+                with _fake_provider_env() as mock_provider:
 
-                    repl = ClydeREPL(provider_name="glm", stream=True)
+                    repl = ClydeREPL(model="glm:glm-4.5", stream=True)
                     repl.console.print = Mock()
 
                     def run_agent_loop_side_effect(*args, **kwargs):
@@ -270,8 +240,9 @@ class TestREPL(unittest.TestCase):
                         mock_agent_loop.side_effect = run_agent_loop_side_effect
                         repl.chat("Please read README.md and summarize it")
 
-                    mock_provider.chat_stream.assert_not_called()
+                    self.assertEqual(mock_provider.requests, [])
                     mock_agent_loop.assert_called_once()
+                    self.assertEqual(mock_agent_loop.call_args.kwargs["model"], "glm-4.5")
                     self.assertFalse(any(
                         args and isinstance(args[0], Markdown)
                         for args, _kwargs in repl.console.print.call_args_list
@@ -285,21 +256,93 @@ class TestREPL(unittest.TestCase):
                 mock_session.conversation = Conversation()
                 mock_session_factory.return_value = mock_session
 
-                with patch('src.repl.core.get_provider_class') as mock_provider_class:
-                    mock_provider = Mock()
-                    mock_provider.model = "glm-4.5"
-                    mock_provider.chat_stream.side_effect = RuntimeError("stream unavailable")
-                    mock_provider_class.return_value = Mock(return_value=mock_provider)
+                with _fake_provider_env(RuntimeError("stream unavailable")) as mock_provider:
 
-                    repl = ClydeREPL(provider_name="glm", stream=True)
+                    repl = ClydeREPL(model="glm:glm-4.5", stream=True)
                     repl.console.print = Mock()
 
                     with patch('src.repl.core.run_agent_loop') as mock_agent_loop:
                         mock_agent_loop.return_value = Mock(response_text="fallback", usage=None, num_turns=1)
                         repl.chat("hi there")
 
-                    mock_provider.chat_stream.assert_called_once()
+                    self.assertEqual(len(mock_provider.requests), 1)
                     mock_agent_loop.assert_called_once()
+
+    def test_direct_stream_auth_error_is_not_retried_through_agent_loop(self):
+        """A 401 during direct streaming surfaces (offering re-login) instead of a silent retry."""
+        from src.providers.base import ProviderError
+        with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
+            with patch('src.repl.core.Session.create') as mock_session_factory:
+                mock_session_factory.return_value = Mock(conversation=Conversation())
+                auth = ProviderError("glm", "HTTP 401 — authentication failed", status=401)
+                with _fake_provider_env(auth):
+                    repl = ClydeREPL(model="glm:glm-4.5", stream=True)
+                    repl.console.print = Mock()
+                    with patch('src.repl.core.run_agent_loop') as mock_agent_loop, \
+                            patch('rich.prompt.Prompt.ask', return_value="n"):
+                        repl.chat("hi there")
+                    mock_agent_loop.assert_not_called()
+
+    def test_provider_error_prints_one_line_without_traceback(self):
+        from src.providers.base import ProviderError
+        with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
+            with patch('src.repl.core.Session.create') as mock_session_factory:
+                mock_session_factory.return_value = Mock(conversation=Conversation())
+                with _fake_provider_env():
+                    repl = ClydeREPL(model="glm:glm-4.5")
+                    repl.console.print = Mock()
+                    with patch('src.repl.core.run_agent_loop',
+                               side_effect=ProviderError("glm", "HTTP 429 — rate limited: slow down")), \
+                            patch('traceback.print_exc') as print_exc:
+                        repl.chat("Please fix the bug in src/app.py")
+                    print_exc.assert_not_called()
+                    self.assertTrue(any("rate limited" in str(a[0]) for a, _k in repl.console.print.call_args_list if a))
+
+    def test_model_command_shows_and_switches(self):
+        with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
+            with patch('src.repl.core.Session.create'):
+                with _fake_provider_env():
+                    repl = ClydeREPL(model="glm:glm-4.5")
+                    repl.console.print = Mock()
+                    repl.handle_command("/model")
+                    self.assertTrue(any("glm:glm-4.5" in str(a[0]) for a, _k in repl.console.print.call_args_list if a))
+
+                    with patch('src.repl.core.set_default_model') as save:
+                        repl.handle_command("/model glm:glm-4.5-air")
+                    save.assert_called_once_with("glm:glm-4.5-air")
+                    self.assertEqual(repl.model, "glm-4.5-air")
+
+    def test_model_command_rejects_unknown_provider(self):
+        with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
+            with patch('src.repl.core.Session.create'):
+                with _fake_provider_env():
+                    repl = ClydeREPL(model="glm:glm-4.5")
+                    repl.console.print = Mock()
+                    with patch('src.repl.core.set_default_model') as save:
+                        repl.handle_command("/model nope-model")
+                    save.assert_not_called()
+                    self.assertEqual(repl.model, "glm-4.5")
+
+    def test_think_command_sets_reasoning(self):
+        with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
+            with patch('src.repl.core.Session.create'):
+                with _fake_provider_env():
+                    repl = ClydeREPL(model="glm:glm-4.5")
+                    repl.console.print = Mock()
+                    repl.handle_command("/think high")
+                    self.assertEqual(repl.reasoning, "high")
+                    repl.handle_command("/think default")
+                    self.assertIsNone(repl.reasoning)
+                    repl.handle_command("/think bogus")
+                    self.assertIsNone(repl.reasoning)
+
+    def test_unconfigured_model_exits_with_hint(self):
+        with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
+            with patch('src.repl.core.build_registry', return_value={}), \
+                    patch('src.repl.core.keys.load_into_env'), \
+                    patch('src.repl.core.get_default_model', return_value=None):
+                with self.assertRaises(SystemExit):
+                    ClydeREPL()
 
     def test_handle_command_slash_shows_commands_and_skills(self):
         skills_dir = Path(self.temp_dir) / "skills"
@@ -314,12 +357,9 @@ class TestREPL(unittest.TestCase):
         with patch.dict("os.environ", {"CLYDE_SKILLS_DIR": str(skills_dir)}):
             with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
                 with patch('src.repl.core.Session.create'):
-                    with patch('src.providers.get_provider_class') as mock_provider_class:
-                        mock_provider = Mock()
-                        mock_provider.model = "glm-4.5"
-                        mock_provider_class.return_value = mock_provider
+                    with _fake_provider_env() as mock_provider:
 
-                        repl = ClydeREPL(provider_name="glm")
+                        repl = ClydeREPL(model="glm:glm-4.5")
                         repl.console.print = Mock()
                         repl.handle_command("/")
                         rendered = "\n".join(
@@ -341,12 +381,9 @@ class TestREPL(unittest.TestCase):
         with patch.dict("os.environ", {"CLYDE_SKILLS_DIR": str(skills_dir)}):
             with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
                 with patch('src.repl.core.Session.create'):
-                    with patch('src.providers.get_provider_class') as mock_provider_class:
-                        mock_provider = Mock()
-                        mock_provider.model = "glm-4.5"
-                        mock_provider_class.return_value = mock_provider
+                    with _fake_provider_env() as mock_provider:
 
-                        repl = ClydeREPL(provider_name="glm")
+                        repl = ClydeREPL(model="glm:glm-4.5")
                         repl.console.print = Mock()
                         repl.handle_command("/he")
                         rendered = "\n".join(
@@ -369,12 +406,9 @@ class TestREPL(unittest.TestCase):
         with patch.dict("os.environ", {"CLYDE_SKILLS_DIR": str(skills_dir)}):
             with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
                 with patch('src.repl.core.Session.create'):
-                    with patch('src.providers.get_provider_class') as mock_provider_class:
-                        mock_provider = Mock()
-                        mock_provider.model = "glm-4.5"
-                        mock_provider_class.return_value = mock_provider
+                    with _fake_provider_env() as mock_provider:
 
-                        repl = ClydeREPL(provider_name="glm")
+                        repl = ClydeREPL(model="glm:glm-4.5")
                         repl.chat = Mock()
                         repl.handle_command("/hello bob")
                         args, _kwargs = repl.chat.call_args
@@ -388,12 +422,9 @@ class TestREPL(unittest.TestCase):
                 mock_session_instance.session_id = "test_session_123"
                 mock_session.return_value = mock_session_instance
 
-                with patch('src.providers.get_provider_class') as mock_provider_class:
-                    mock_provider = Mock()
-                    mock_provider.model = "glm-4.5"
-                    mock_provider_class.return_value = mock_provider
+                with _fake_provider_env() as mock_provider:
 
-                    repl = ClydeREPL(provider_name="glm")
+                    repl = ClydeREPL(model="glm:glm-4.5")
                     repl.save_session()
 
                     mock_session_instance.save.assert_called_once()
@@ -406,10 +437,7 @@ class TestREPL(unittest.TestCase):
                 mock_session_instance.session_id = "current_session"
                 mock_session.return_value = mock_session_instance
 
-                with patch('src.providers.get_provider_class') as mock_provider_class:
-                    mock_provider = Mock()
-                    mock_provider.model = "glm-4.5"
-                    mock_provider_class.return_value = mock_provider
+                with _fake_provider_env() as mock_provider:
 
                     with patch('src.repl.core.Session.load') as mock_load:
                         loaded_session = Mock()
@@ -420,7 +448,7 @@ class TestREPL(unittest.TestCase):
                         loaded_session.conversation.messages = []
                         mock_load.return_value = loaded_session
 
-                        repl = ClydeREPL(provider_name="glm")
+                        repl = ClydeREPL(model="glm:glm-4.5")
                         repl.load_session("loaded_session_123")
 
                         self.assertEqual(repl.session.session_id, "loaded_session_123")
@@ -433,13 +461,10 @@ class TestREPL(unittest.TestCase):
                 mock_session_instance.session_id = "current_session"
                 mock_session.return_value = mock_session_instance
 
-                with patch('src.providers.get_provider_class') as mock_provider_class:
-                    mock_provider = Mock()
-                    mock_provider.model = "glm-4.5"
-                    mock_provider_class.return_value = mock_provider
+                with _fake_provider_env() as mock_provider:
 
                     with patch('src.repl.core.Session.load', return_value=None):
-                        repl = ClydeREPL(provider_name="glm")
+                        repl = ClydeREPL(model="glm:glm-4.5")
                         original_session = repl.session
 
                         repl.load_session("nonexistent")

@@ -3,14 +3,13 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock
 
 from src.agent.conversation import Conversation
 from src.outputStyles import BUILTIN_OUTPUT_STYLES, load_output_styles_dir, resolve_output_style
-from src.providers.base import ChatResponse
 from src.tool_system.agent_loop import run_agent_loop
 from src.tool_system.context import ToolContext
 from src.tool_system.defaults import build_default_registry
+from tests.fakes import FakeProvider, reply
 
 
 class TestOutputStyles(unittest.TestCase):
@@ -28,7 +27,7 @@ class TestOutputStyles(unittest.TestCase):
         self.assertEqual(style.name, "default")
         self.assertEqual(style.prompt, BUILTIN_OUTPUT_STYLES["default"].prompt)
 
-    def test_agent_loop_injects_style_prompt_for_non_anthropic(self) -> None:
+    def test_agent_loop_injects_style_prompt(self) -> None:
         registry = build_default_registry(include_user_tools=False)
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -43,20 +42,11 @@ class TestOutputStyles(unittest.TestCase):
             conversation = Conversation()
             conversation.add_user_message("hello")
 
-            provider = MagicMock()
-            provider.chat.return_value = ChatResponse(
-                content="ok",
-                model="test",
-                usage={"input_tokens": 1, "output_tokens": 1},
-                finish_reason="stop",
-                tool_uses=None,
-            )
+            provider = FakeProvider(reply("ok"))
 
-            out = run_agent_loop(conversation, provider, registry, ctx, verbose=False)
+            out = run_agent_loop(conversation, provider, "fake-model", registry, ctx, verbose=False)
             self.assertEqual(out.response_text, "ok")
-            messages = provider.chat.call_args.args[0]
-            self.assertEqual(messages[0]["role"], "system")
-            self.assertIn("Be extra terse.", messages[0]["content"])
+            self.assertIn("Be extra terse.", provider.requests[0]["conversation"].system_prompt)
 
 
 if __name__ == "__main__":

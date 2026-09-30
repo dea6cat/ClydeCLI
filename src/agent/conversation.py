@@ -21,6 +21,15 @@ class ToolUseContentBlock:
     id: str = ""
     name: str = ""
     input: dict[str, Any] = field(default_factory=dict)
+    # Opaque token some providers require echoed back with the call (Gemini 3's thoughtSignature).
+    signature: Optional[str] = None
+
+
+@dataclass
+class ThinkingContentBlock:
+    """Assistant reasoning, kept so providers that need it replayed (DeepSeek) get it back."""
+    type: str = "thinking"
+    thinking: str = ""
 
 
 @dataclass
@@ -32,7 +41,7 @@ class ToolResultContentBlock:
     is_error: bool = False
 
 
-ContentBlock = Union[TextContentBlock, ToolUseContentBlock, ToolResultContentBlock]
+ContentBlock = Union[TextContentBlock, ThinkingContentBlock, ToolUseContentBlock, ToolResultContentBlock]
 
 
 @dataclass
@@ -122,13 +131,13 @@ class Conversation:
                 for block in msg.content:
                     if isinstance(block, TextContentBlock):
                         content_data.append({"type": "text", "text": block.text})
+                    elif isinstance(block, ThinkingContentBlock):
+                        content_data.append({"type": "thinking", "thinking": block.thinking})
                     elif isinstance(block, ToolUseContentBlock):
-                        content_data.append({
-                            "type": "tool_use",
-                            "id": block.id,
-                            "name": block.name,
-                            "input": block.input
-                        })
+                        tool_use = {"type": "tool_use", "id": block.id, "name": block.name, "input": block.input}
+                        if block.signature:
+                            tool_use["signature"] = block.signature
+                        content_data.append(tool_use)
                     elif isinstance(block, ToolResultContentBlock):
                         content_data.append({
                             "type": "tool_result",
@@ -161,12 +170,15 @@ class Conversation:
                     block_type = block_data.get("type")
                     if block_type == "text":
                         msg_content.append(TextContentBlock(type="text", text=block_data.get("text", "")))
+                    elif block_type == "thinking":
+                        msg_content.append(ThinkingContentBlock(thinking=block_data.get("thinking", "")))
                     elif block_type == "tool_use":
                         msg_content.append(ToolUseContentBlock(
                             type="tool_use",
                             id=block_data.get("id", ""),
                             name=block_data.get("name", ""),
-                            input=block_data.get("input", {})
+                            input=block_data.get("input", {}),
+                            signature=block_data.get("signature"),
                         ))
                     elif block_type == "tool_result":
                         msg_content.append(ToolResultContentBlock(

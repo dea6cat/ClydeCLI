@@ -73,12 +73,11 @@ import json
 from typing import Any
 
 from src.agent import Session
-from src.config import get_provider_config
+from src.config import get_default_model, set_default_model
 from src.outputStyles import resolve_output_style
-from src.providers import get_provider_class
-from src.providers.anthropic_provider import AnthropicProvider
-from src.providers.base import ChatMessage
-from src.providers.minimax_provider import MinimaxProvider
+from src.providers import build_registry, keys, model_ref, pick_default_model, resolve, usable
+from src.providers.base import ProviderError, is_auth_error
+from src.providers.convert import append_response, to_canonical
 from src.tool_system.context import ToolContext
 from src.tool_system.defaults import build_default_registry
 from src.tool_system.protocol import ToolCall
@@ -100,32 +99,27 @@ from src.history import HistoryLog
 class ClydeREPL:
     """Interactive REPL for ClydeCLI."""
 
-    def __init__(self, provider_name: str = "glm", stream: bool = False):
+    def __init__(self, model: str | None = None, stream: bool = False):
         self.console = Console()
-        self.provider_name = provider_name
         self.stream = stream
         self.multiline_mode = False
+        self.reasoning: str | None = None   # /think level; None keeps each model's default
 
-        # Load configuration
-        config = get_provider_config(provider_name)
-        if not config.get("api_key"):
-            self.console.print("[red]Error: API key not configured.[/red]")
-            self.console.print("Run [bold]clyde login[/bold] to configure.")
+        keys.load_into_env()
+        self.registry = build_registry()
+        requested = model or get_default_model() or pick_default_model(self.registry)
+        if not requested:
+            self.console.print("[red]No model configured.[/red]")
+            self.console.print("Run [bold]clyde login[/bold], or pass [bold]--model provider:model[/bold].")
             sys.exit(1)
-
-        # Initialize provider
-        provider_class = get_provider_class(provider_name)
-        self.provider = provider_class(
-            api_key=config["api_key"],
-            base_url=config.get("base_url"),
-            model=config.get("default_model")
-        )
+        resolved = self._resolve_model(requested)
+        if resolved is None:
+            sys.exit(1)
+        self.provider, self.model = resolved
+        self.provider_name = self.provider.name
 
         # Create session
-        self.session = Session.create(
-            provider_name,
-            self.provider.model
-        )
+        self.session = Session.create(self.provider_name, self.model)
 
         self.tool_registry = build_default_registry()
         self.tool_context = ToolContext(workspace_root=Path.cwd())
@@ -147,6 +141,9 @@ class ClydeREPL:
             "/multiline",
             "/stream",
             "/render-last",
+            "/model",
+            "/models",
+            "/think",
             "/tools",
             "/tool",
             "/skills",
@@ -571,8 +568,8 @@ class ClydeREPL:
         from src import __version__
 
         display_path = self._display_cwd()
-        provider_label = f"{self.provider_name.upper()} Provider"
-        model_label = self.provider.model or "Unknown model"
+        provider_label = self.provider_name
+        model_label = self.model or "Unknown model"
 
         mascot_ascii = "\n".join([
             "  /\\__/\\",
@@ -598,7 +595,7 @@ class ClydeREPL:
         table.add_row("Provider", Text(provider_label, style="bold green"))
         table.add_row("Workspace", Text(self._truncate_middle(display_path, content_width - 12), style="bold blue"))
 
-        footer = Text("/help  •  /tools  •  /stream  •  /render-last  •  /exit", style="dim")
+        footer = Text("/help  •  /model  •  /think  •  /stream  •  /exit", style="dim")
         mascot_block = Text(mascot_ascii, style="bold orange3", no_wrap=True)
         body = Group(
             Columns([mascot_block, table], align="center", expand=False),
@@ -677,6 +674,7 @@ class ClydeREPL:
                 'exit', 'quit', 'q',
                 'help', 'tools', 'tool',
                 'save', 'load', 'multiline', 'stream', 'render-last',
+                'model', 'models', 'think',
                 'skill',
                 'context', 'compact',  # These need special handling
                 ''
@@ -818,6 +816,20 @@ class ClydeREPL:
             status = "enabled" if self.stream else "disabled"
             self.console.print(f"[green]Stream mode {status}.[/green]")
 
+        elif cmd == '/model' or cmd.startswith('/model '):
+            parts = raw.split(maxsplit=1)
+            if len(parts) == 1:
+                self.console.print(f"[green]Model: {model_ref(self.provider, self.model)}[/green]")
+                self.console.print("[dim]Switch with /model provider:model · list with /models[/dim]")
+            else:
+                self._switch_model(parts[1].strip())
+
+        elif cmd == '/models':
+            self._show_models()
+
+        elif cmd == '/think' or cmd.startswith('/think '):
+            self._handle_think(raw.split(maxsplit=1)[1].strip().lower() if " " in raw else "")
+
         elif cmd == '/render-last':
             rendered = self._render_last_assistant_message()
             if not rendered:
@@ -837,7 +849,7 @@ class ClydeREPL:
         elif cmd == '/context':
             # Populate command context config for context analysis
             self.command_context.config["provider"] = self.provider
-            self.command_context.config["model"] = self.provider.model
+            self.command_context.config["model"] = self.model
             self.command_context.config["tool_schemas"] = [
                 spec.to_dict() if hasattr(spec, "to_dict") else {
                     "name": spec.name,
@@ -860,7 +872,7 @@ class ClydeREPL:
         elif cmd == '/compact':
             # Populate command context config for compact
             self.command_context.config["provider"] = self.provider
-            self.command_context.config["model"] = self.provider.model
+            self.command_context.config["model"] = self.model
             self.command_context.config["system_prompt"] = ""
             # Try new command system
             try:
@@ -949,6 +961,9 @@ class ClydeREPL:
 - `/multiline` - Toggle multiline input mode
 - `/stream [on|off|toggle]` - Toggle live response rendering
 - `/render-last` - Re-render the last assistant reply as Markdown
+- `/model [provider:model]` - Show or switch the model (saved as default)
+- `/models` - List models from every connected provider
+- `/think [off|low|medium|high|on|default]` - Set the reasoning level
 - `/tools` - List available built-in tools
 - `/tool <name> <json>` - Run a tool directly
 - `/skills` - List all available skills
@@ -1018,27 +1033,6 @@ class ClydeREPL:
                 return True
         return False
 
-    def _provider_uses_system_kwarg(self) -> bool:
-        return isinstance(self.provider, (AnthropicProvider, MinimaxProvider))
-
-    def _build_direct_stream_payload(self) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-        style_name = getattr(self.tool_context, "output_style_name", None)
-        style_dir = getattr(self.tool_context, "output_style_dir", None)
-        style_prompt = resolve_output_style(style_name, style_dir).prompt
-
-        if self._provider_uses_system_kwarg():
-            return self.session.conversation.get_messages(), (
-                {"system": style_prompt} if style_prompt.strip() else {}
-            )
-
-        messages: list[dict[str, Any]] = []
-        for msg in self.session.conversation.messages:
-            if isinstance(msg.content, str):
-                messages.append({"role": msg.role, "content": msg.content})
-        if style_prompt.strip():
-            messages = [{"role": "system", "content": style_prompt}, *messages]
-        return messages, {}
-
     def _should_try_direct_stream(self, user_input: str) -> bool:
         if not self.stream:
             return False
@@ -1059,30 +1053,40 @@ class ClydeREPL:
         )
         return not any(marker in text for marker in code_task_markers)
 
-    def _stream_direct_response(self, on_text_chunk=None) -> str | None:
+    def _stream_direct_response(self, on_text_chunk=None, on_thinking=None) -> str | None:
+        """Stream a tool-free reply for a conversational prompt. Returns None (so the caller falls
+        back to the agent loop) when streaming fails before any text arrives, unless the failure
+        is an auth error, which is raised so the user can fix the key."""
+        style_name = getattr(self.tool_context, "output_style_name", None)
+        style_dir = getattr(self.tool_context, "output_style_dir", None)
+        style_prompt = resolve_output_style(style_name, style_dir).prompt
         streamed_chunks: list[str] = []
 
+        def emit(chunk: str) -> None:
+            if not chunk:
+                return
+            streamed_chunks.append(chunk)
+            if on_text_chunk is not None:
+                on_text_chunk(chunk)
+
         try:
-            api_messages, call_kwargs = self._build_direct_stream_payload()
-            stream_iter = self.provider.chat_stream(api_messages, tools=None, **call_kwargs)
-            for chunk in stream_iter:
-                if not chunk:
-                    continue
-                streamed_chunks.append(chunk)
-                if on_text_chunk is not None:
-                    on_text_chunk(chunk)
-        except Exception:
-            # Safe fallback: only fall back when nothing has been emitted yet.
-            if not streamed_chunks:
-                return None
-            raise
+            response = self.provider.stream(
+                to_canonical(self.session.conversation, style_prompt, flatten_tools=True),
+                self.model,
+                (),
+                emit,
+                reasoning=self.reasoning,
+                on_thinking=on_thinking,
+            )
+        except Exception as e:
+            if streamed_chunks or is_auth_error(e):
+                raise
+            return None
 
         if not streamed_chunks:
             return None
-
-        full_response = "".join(streamed_chunks)
-        self.session.conversation.add_assistant_message(full_response)
-        return full_response
+        append_response(self.session.conversation, response.message)
+        return response.message.text or "".join(streamed_chunks)
 
     def _get_last_assistant_text(self) -> str | None:
         for message in reversed(self.session.conversation.messages):
@@ -1166,16 +1170,31 @@ class ClydeREPL:
                     msg = ev.error or "Error"
                     self.console.print(f"[red]  ↳ {msg}[/red]")
 
-            def on_text_chunk(chunk: str) -> None:
+            thinking_open = False
+
+            def on_thinking(chunk: str) -> None:
+                nonlocal thinking_open
                 if not chunk:
                     return
                 _stop_status_once()
+                thinking_open = True
+                self.console.print(chunk, end="", style="dim italic", markup=False, highlight=False, soft_wrap=True)
+
+            def on_text_chunk(chunk: str) -> None:
+                nonlocal thinking_open
+                if not chunk:
+                    return
+                _stop_status_once()
+                if thinking_open:
+                    self.console.print("\n")
+                    thinking_open = False
                 self.console.print(chunk, end="", markup=False, highlight=False, soft_wrap=True)
 
             if self._should_try_direct_stream(user_input):
                 self._current_status = self.console.status("[dim]Thinking...[/dim]", spinner="dots")
                 with self._current_status:
-                    direct_response = self._stream_direct_response(on_text_chunk=on_text_chunk)
+                    direct_response = self._stream_direct_response(on_text_chunk=on_text_chunk,
+                                                                   on_thinking=on_thinking)
                 self._current_status = None
                 if direct_response is not None:
                     self.console.print("\n")
@@ -1187,6 +1206,7 @@ class ClydeREPL:
                 result = run_agent_loop(
                     conversation=self.session.conversation,
                     provider=self.provider,
+                    model=self.model,
                     tool_registry=self.tool_registry,
                     tool_context=self.tool_context,
                     max_turns=max_turns,
@@ -1194,6 +1214,8 @@ class ClydeREPL:
                     verbose=False,
                     on_event=on_event,
                     on_text_chunk=on_text_chunk if self.stream else None,
+                    reasoning=self.reasoning,
+                    on_thinking=on_thinking,
                 )
             self._current_status = None
 
@@ -1218,70 +1240,107 @@ class ClydeREPL:
                 self.console.print("\n")
 
         except Exception as e:
-            error_str = str(e)
-
-            # Check for authentication errors
-            if "401" in error_str or "authentication" in error_str.lower():
-                self.console.print(f"\n[red]❌ Authentication Error: {e}[/red]")
-                self.console.print("\n[yellow]Your API key appears to be invalid or expired.[/yellow]")
-
-                # Ask if user wants to reconfigure
+            self._current_status = None
+            if is_auth_error(e):
+                self.console.print(f"\n[red]❌ {e}[/red]")
                 from rich.prompt import Prompt
                 choice = Prompt.ask(
                     "\nWould you like to reconfigure your API key now?",
                     choices=["y", "n"],
                     default="y"
                 )
-
                 if choice == "y":
                     self._handle_relogin()
                 else:
                     self.console.print("\n[dim]You can run [bold]clyde login[/bold] later to update your API key.[/dim]")
+            elif isinstance(e, ProviderError):
+                self.console.print(f"\n[red]❌ {e}[/red]")
             else:
-                # Generic error handling
                 self.console.print(f"\n[red]Error: {e}[/red]")
                 import traceback
                 traceback.print_exc()
 
-    def _handle_relogin(self):
-        """Handle re-authentication when API key fails."""
-        from src.cli import prompt_provider_credentials
-        from src.config import set_api_key, set_default_provider
-        from src.providers import PROVIDER_INFO
+    def _resolve_model(self, requested: str):
+        """(provider, model) for a model string, or None after explaining why it didn't resolve."""
+        resolved = resolve(self.registry, requested)
+        if resolved is not None:
+            return resolved
+        prefix = requested.split(":", 1)[0] if ":" in requested else ""
+        provider = self.registry.get(prefix)
+        if provider is not None:
+            if provider.name == "ollama":
+                self.console.print(f"[red]Ollama isn't reachable at {getattr(provider, 'host', '')}.[/red]")
+            else:
+                self.console.print(f"[red]No API key for {provider.name}.[/red] "
+                                   f"Run [bold]clyde login[/bold] or set {keys.PROVIDER_KEY_ENV.get(provider.name, '')}.")
+        else:
+            self.console.print(f"[red]Can't resolve model '{requested}'.[/red] "
+                               "Use provider:model (e.g. openai:gpt-5.4); /models lists what's available.")
+        return None
 
-        self.console.print("\n[bold blue]🔑 Reconfigure API Key[/bold blue]\n")
+    def _switch_model(self, requested: str) -> bool:
+        resolved = self._resolve_model(requested)
+        if resolved is None:
+            return False
+        self.provider, self.model = resolved
+        self.provider_name = self.provider.name
+        self.session.provider, self.session.model = self.provider_name, self.model
+        ref = model_ref(self.provider, self.model)
+        set_default_model(ref)
+        self.console.print(f"[green]Model: {ref}[/green] [dim](saved as default)[/dim]")
+        return True
 
-        self.console.print("[bold]Available providers:[/bold]")
-        for name, info in PROVIDER_INFO.items():
-            self.console.print(f"  [cyan]{name}[/cyan] - {info['label']} (default model: {info['default_model']})")
+    def _show_models(self) -> None:
+        live = usable(self.registry)
+        if not live:
+            self.console.print("[yellow]No providers connected.[/yellow] Run [bold]clyde login[/bold], "
+                               "or start Ollama for local models.")
+            return
+        current = model_ref(self.provider, self.model)
+        with self.console.status("[dim]Fetching model lists...[/dim]", spinner="dots"):
+            listings = {name: p.list_models() for name, p in live.items()}
+        for name, models in listings.items():
+            self.console.print(f"\n[bold cyan]{name}[/bold cyan]")
+            if not models:
+                self.console.print("  [dim](couldn't list models; check the key or connection)[/dim]")
+                continue
+            for m in models:
+                ref = f"{name}:{m}"
+                marker = "[green]●[/green]" if ref == current else " "
+                self.console.print(f"  {marker} {ref}")
         self.console.print()
 
-        credentials = prompt_provider_credentials(self.console, default_provider=self.provider_name)
-        if credentials is None:
+    _THINK_LEVELS = ("off", "low", "medium", "high", "on")
+
+    def _handle_think(self, arg: str) -> None:
+        if not arg:
+            level = self.reasoning or "default"
+            self.console.print(f"[green]Reasoning: {level}[/green]")
+            self.console.print("[dim]Set with /think off|low|medium|high|on|default[/dim]")
             return
-        provider, api_key, base_url, default_model = credentials
+        if arg == "default":
+            self.reasoning = None
+        elif arg in self._THINK_LEVELS:
+            self.reasoning = arg
+        else:
+            self.console.print("[red]Usage: /think off|low|medium|high|on|default[/red]")
+            return
+        self.console.print(f"[green]Reasoning: {self.reasoning or 'default'}[/green]")
+        supports = getattr(self.provider, "supports_reasoning", None)
+        if self.reasoning and callable(supports) and not supports(self.model):
+            self.console.print(f"[dim]{self.model} doesn't expose a reasoning control; the setting is ignored.[/dim]")
 
-        # Save configuration
-        set_api_key(provider, api_key=api_key, base_url=base_url, default_model=default_model)
-        set_default_provider(provider)
+    def _handle_relogin(self):
+        """Handle re-authentication when an API key fails."""
+        from src.cli import run_login_flow
 
-        self.console.print(f"\n[green]✓ {provider.upper()} API Key updated successfully![/green]\n")
-
-        # Reinitialize provider
-        from src.config import get_provider_config
-        from src.providers import get_provider_class
-
-        config = get_provider_config(provider)
-        provider_class = get_provider_class(provider)
-
-        self.provider = provider_class(
-            api_key=config["api_key"],
-            base_url=config.get("base_url"),
-            model=config.get("default_model")
-        )
-        self.provider_name = provider
-
-        self.console.print("[green]✓ Provider reinitialized. You can continue chatting![/green]\n")
+        self.console.print("\n[bold blue]🔑 Reconfigure API Key[/bold blue]\n")
+        ref = run_login_flow(self.console, self.registry, default_provider=self.provider_name)
+        if ref is None:
+            return
+        self.registry = build_registry()   # a new key can add providers (e.g. Ollama Cloud)
+        if self._switch_model(ref):
+            self.console.print("[green]✓ You can continue chatting![/green]\n")
 
     def save_session(self):
         """Save current session."""
