@@ -8,7 +8,7 @@ from unittest.mock import patch
 from src.agent.conversation import Conversation, ThinkingContentBlock
 from src.providers.base import ProviderError
 from src.providers.types import Role
-from src.tool_system.agent_loop import AgentLoopResult, run_agent_loop
+from src.agent.agent_loop import AgentLoopResult, run_agent_loop
 from src.tool_system.context import ToolContext
 from src.tool_system.defaults import build_default_registry
 from tests.fakes import FakeProvider, reply

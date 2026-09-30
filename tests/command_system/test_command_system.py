@@ -53,8 +53,8 @@ from src.command_system import (
     register_command,
     substitute_arguments,
 )
-from src.cost_tracker import CostTracker
-from src.history import HistoryLog
+from src.agent.cost_tracker import CostTracker
+from src.agent.history import HistoryLog
 
 
 @dataclass

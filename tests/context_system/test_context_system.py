@@ -7,7 +7,7 @@ from pathlib import Path
 from src.agent.conversation import Conversation
 from src.context_system import build_context_prompt
 from src.context_system.git_context import collect_git_context
-from src.tool_system.agent_loop import run_agent_loop
+from src.agent.agent_loop import run_agent_loop
 from src.tool_system.context import ToolContext
 from src.tool_system.defaults import build_default_registry
 from tests.fakes import FakeProvider, reply

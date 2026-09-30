@@ -34,7 +34,7 @@ def count_tool_result_tokens(block: dict[str, Any]) -> int:
     """Count estimated tokens in a tool_result block."""
     content = block.get("content", "")
     if isinstance(content, str):
-        from ..token_estimation import rough_token_count
+        from .token_estimation import rough_token_count
         return rough_token_count(content)
     if isinstance(content, list):
         total = 0
@@ -43,7 +43,7 @@ def count_tool_result_tokens(block: dict[str, Any]) -> int:
                 if item.get("type") in ("image", "document"):
                     total += IMAGE_TOKEN_SIZE
                 elif item.get("type") == "text":
-                    from ..token_estimation import rough_token_count
+                    from .token_estimation import rough_token_count
                     total += rough_token_count(item.get("text", ""))
         return total
     return 0

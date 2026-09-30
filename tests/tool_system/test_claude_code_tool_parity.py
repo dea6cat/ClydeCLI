@@ -5,7 +5,7 @@ from pathlib import Path
 import tempfile
 
 from src.agent.conversation import Conversation
-from src.tool_system.agent_loop import run_agent_loop
+from src.agent.agent_loop import run_agent_loop
 from src.tool_system.context import ToolContext
 from src.tool_system.defaults import build_default_registry
 from src.tool_system.protocol import ToolCall

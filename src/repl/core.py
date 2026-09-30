@@ -74,14 +74,14 @@ from typing import Any
 
 from src.agent import Session
 from src.config import get_default_model, set_default_model
-from src.outputStyles import resolve_output_style
+from src.output_styles import resolve_output_style
 from src.providers import build_registry, keys, model_ref, pick_default_model, resolve, usable
 from src.providers.base import ProviderError, is_auth_error
 from src.providers.convert import append_response, to_canonical
 from src.tool_system.context import ToolContext
 from src.tool_system.defaults import build_default_registry
 from src.tool_system.protocol import ToolCall
-from src.tool_system.agent_loop import ToolEvent, run_agent_loop, summarize_tool_result, summarize_tool_use
+from src.agent.agent_loop import ToolEvent, run_agent_loop, summarize_tool_result, summarize_tool_use
 
 # New command system imports
 from src.command_system import (
@@ -92,8 +92,8 @@ from src.command_system import (
     execute_command_sync,
     register_builtin_commands,
 )
-from src.cost_tracker import CostTracker
-from src.history import HistoryLog
+from src.agent.cost_tracker import CostTracker
+from src.agent.history import HistoryLog
 
 
 class ClydeREPL:

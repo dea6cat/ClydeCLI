@@ -9,7 +9,7 @@ from unittest import mock
 
 from src.providers import discover  # noqa: E402
 
-_FIXTURE = os.path.join(os.path.dirname(__file__), "fixtures", "ollama_search_tools.html")
+_FIXTURE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "fixtures", "ollama_search_tools.html")
 
 
 def _html():

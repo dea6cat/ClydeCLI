@@ -7,11 +7,11 @@ import threading
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from .registry import ToolRegistry
-from .context import ToolContext
-from ..agent.conversation import Conversation
+from ..tool_system.registry import ToolRegistry
+from ..tool_system.context import ToolContext
+from .conversation import Conversation
 from ..context_system import build_context_prompt
-from ..outputStyles import resolve_output_style
+from ..output_styles import resolve_output_style
 from ..providers.base import Provider, stream_with_retry
 from ..providers.convert import append_response, to_canonical
 from ..providers.toolcall_repair import coerce_tool_args
