@@ -38,6 +38,8 @@ Examples:
   clyde setup                         First-run onboarding: provider, other agents' hooks and skills, PATH
   clyde hooks import                  Bring over hooks set up for Claude Code, Gemini CLI, Cursor or Copilot CLI
   clyde mcp import                    Bring over MCP servers set up for Claude Code, Cursor, Gemini CLI, Codex or Copilot CLI
+  clyde plugin install <path|git-url> Install a plugin (skills, hooks, MCP servers, tools); asks before enabling it
+  clyde plugin list                   List installed plugins; also: plugin remove|enable|disable <name>
 """
     )
 
@@ -62,6 +64,10 @@ Examples:
     hooks_parser.add_argument('action', choices=['import'], help="'import': copy other agents' hooks into ~/.clyde/settings.json")
     mcp_parser = subparsers.add_parser('mcp', help='Manage MCP servers')
     mcp_parser.add_argument('action', choices=['import'], help="'import': copy other agents' MCP servers into ~/.clyde/settings.json")
+    plugin_parser = subparsers.add_parser('plugin', help='Manage plugins in ~/.clyde/plugins')
+    plugin_parser.add_argument('action', choices=['install', 'list', 'remove', 'enable', 'disable'])
+    plugin_parser.add_argument('target', nargs='?', help='install: a folder or git URL; remove/enable/disable: a plugin name')
+    plugin_parser.add_argument('-y', '--yes', action='store_true', help='install without prompting; the plugin stays disabled')
 
     args = parser.parse_args()
 
@@ -83,6 +89,10 @@ Examples:
         return handle_hooks_import(Console())
     if args.command == 'mcp':
         return handle_mcp_import(Console())
+    if args.command == 'plugin':
+        if args.action != 'list' and not args.target:
+            parser.error(f"plugin {args.action} needs a {'folder or git URL' if args.action == 'install' else 'plugin name'}")
+        return handle_plugin(Console(), args.action, args.target, assume_yes=args.yes)
 
     return start_repl(model=args.model, stream=args.stream, resume=args.resume, continue_last=args.continue_last)
 
@@ -323,6 +333,50 @@ def handle_hooks_import(console: Console, quiet: bool = False) -> int:
                 return 1
     console.print(f"Imported {total} hook(s) into {settings_paths()[0]}." if total else "No hooks imported.")
     return 0
+
+
+def handle_plugin(console: Console, action: str, target: str | None, assume_yes: bool = False) -> int:
+    """`clyde plugin install|list|remove|enable|disable`. Plugins run code, so enabling needs an explicit yes."""
+    from rich.prompt import Confirm
+    from src import plugins
+
+    try:
+        if action == 'list':
+            found, errors = plugins.installed()
+            if not found and not errors:
+                console.print(f"No plugins installed in {plugins.plugins_dir()}.")
+            for p in found:
+                state = "[green]enabled[/green]" if plugins.is_enabled(p.name) else "[dim]disabled[/dim]"
+                console.print(f"{p.name} {p.version}  {state}")
+                for line in ([p.description] if p.description else []) + plugins.describe(p):
+                    console.print(f"    {line}", markup=False)
+            for error in errors:
+                console.print(f"✗ {error}", style="red", markup=False)
+            return 0
+        if action == 'install':
+            plugin = plugins.install(target or "")
+            console.print(f"Installed [bold]{plugin.name}[/bold] {plugin.version} into {plugin.root}")
+            for line in plugins.describe(plugin) or ["(nothing ClydeCLI can load)"]:
+                console.print(f"  {line}", markup=False)
+            if not assume_yes and Confirm.ask(
+                    "Plugins run code: their tools, hooks and MCP servers run on this machine. Enable it?", default=False):
+                plugins.set_enabled(plugin.name, True)
+                console.print(f"[green]✓ Enabled {plugin.name}[/green]; it loads the next time ClydeCLI starts.")
+            else:
+                console.print(f"Left disabled. Enable it with [bold]clyde plugin enable {plugin.name}[/bold].")
+            return 0
+        if action == 'remove':
+            plugins.remove(target or "")
+            console.print(f"Removed {target}.")
+            return 0
+        if target not in {p.name for p in plugins.installed()[0]}:
+            raise ValueError(f"no plugin named '{target}' is installed")
+        plugins.set_enabled(target, action == 'enable')
+        console.print(f"{'Enabled' if action == 'enable' else 'Disabled'} {target}; this applies the next time ClydeCLI starts.")
+        return 0
+    except (OSError, ValueError) as e:
+        console.print(str(e), style="red", markup=False)
+        return 1
 
 
 def handle_logout(provider: str) -> int:
