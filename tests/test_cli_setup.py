@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 from rich.console import Console
 
-from src.cli import handle_hooks_import, handle_setup
+from src.cli import handle_hooks_import, handle_mcp_import, handle_setup
 from src.providers import keys
 
 _KEY_VARS = {env: "" for env in keys.PROVIDER_KEY_ENV.values()}
@@ -57,7 +57,19 @@ class TestSetup(unittest.TestCase):
             self.assertEqual(handle_setup(self.console, assume_yes=True), 0)
         self.assertFalse(self.settings.exists())
         self.assertIn("clyde hooks import", self.out.getvalue())
+        self.assertIn("clyde mcp import", self.out.getvalue())
         self.assertIn("ClydeCLI is ready", self.out.getvalue())
+
+
+    def test_mcp_import_hides_env_values(self):
+        (self.home / ".claude.json").write_text(json.dumps(
+            {"mcpServers": {"gh": {"command": "npx", "args": ["-y", "gh"], "env": {"GITHUB_TOKEN": "s3cret"}}}}))
+        with patch("rich.prompt.Confirm.ask", return_value=True):
+            self.assertEqual(handle_mcp_import(self.console), 0)
+        shown = self.out.getvalue()
+        self.assertIn("GITHUB_TOKEN", shown)
+        self.assertNotIn("s3cret", shown)
+        self.assertEqual(json.loads(self.settings.read_text())["mcpServers"]["gh"]["env"]["GITHUB_TOKEN"], "s3cret")
 
 
 if __name__ == "__main__":

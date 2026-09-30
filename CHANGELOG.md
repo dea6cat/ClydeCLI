@@ -48,6 +48,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   connect a provider, import other agents' hooks after a yes, and put `clyde` on PATH
 - `clyde hooks import` copies hooks from Claude Code, Gemini CLI, Cursor and Copilot CLI settings
 - Skills in `~/.agents`, `~/.codex`, `~/.copilot` and `~/.gemini` skill folders are loaded in place
+- MCP client (stdlib, stdio): servers from `mcpServers` in `~/.clyde/settings.json` start with the
+  REPL, their tools are registered as `mcp__<server>__<tool>`, resources work through
+  ListMcpResources / ReadMcpResource, and `/mcp` shows status
+- `clyde mcp import` (and `clyde setup`) brings over stdio MCP servers from Claude Code, Cursor,
+  Gemini CLI, Codex and Copilot CLI after a yes
 
 ### Changed
 - API keys moved from base64 entries in `config.json` to `~/.clyde/keys.json` (mode 600), with

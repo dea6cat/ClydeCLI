@@ -115,6 +115,7 @@ clyde --resume [id]            # Pick a recent session, or resume one by id
 clyde setup                    # First-run onboarding (provider, other agents' hooks, PATH)
 clyde login                    # Connect a provider, pick a default model
 clyde hooks import             # Bring over hooks from Claude Code, Gemini CLI, Cursor, Copilot CLI
+clyde mcp import               # Bring over MCP servers from Claude Code, Cursor, Gemini CLI, Codex, Copilot CLI
 clyde logout openai            # Forget a saved key
 clyde --list-models            # Every model you can use right now
 clyde config                   # View settings
@@ -157,7 +158,7 @@ clyde --version                # Check version
 | Scheduling | CronCreate/List/Delete | ✅ Session-scoped; due jobs run as a turn while the REPL is idle at the prompt |
 | Team | TeamCreate/Delete | 🟡 Writes a team file; no multi-agent execution |
 | Worktree | EnterWorktree/ExitWorktree | ✅ Creates a git worktree on a new branch; exit keeps or removes it |
-| MCP | MCP, ListMcpResources, ReadMcpResource | ⏳ Tools exist, but no MCP client is connected yet |
+| MCP | MCP, ListMcpResources, ReadMcpResource, `mcp__<server>__<tool>` | ✅ Stdio servers from `~/.clyde/settings.json`; no HTTP/SSE servers yet |
 | LSP | LSP | ✅ Definition, references, hover, symbols and call hierarchy via a language server on PATH |
 | Not implemented | RemoteTrigger, REPL | ⏳ Stubs that return an error |
 
@@ -167,7 +168,7 @@ clyde --version                # Check version
 - ✅ **Phase 1**: Core agent experience (REPL, sessions, slash commands)
 - ✅ **Phase 2**: Real tool-calling loop, multi-provider
 - 🟡 **Phase 3**: Context, permissions, recovery (`/resume`, `/doctor`, auto-compaction and README context and pre/post tool hooks are in; saved permission rules are not)
-- ⏳ **Phase 4**: MCP client and plugins (only custom tools from `~/.clyde/tools/` so far)
+- 🟡 **Phase 4**: MCP client (stdio) is in; plugins are not (only custom tools from `~/.clyde/tools/` so far)
 - ⏳ **Phase 5**: Python-native differentiators (not started)
 
 **See [FEATURE_LIST.md](FEATURE_LIST.md) for detailed feature status and PR guidelines.**
@@ -186,9 +187,10 @@ One line (installs uv if needed, then `clyde`, then runs `clyde setup`):
 curl -fsSL https://raw.githubusercontent.com/dea6cat/ClydeCLI/main/install.sh | sh
 ```
 
-`clyde setup` connects a provider and picks a default model, lists hooks you already set up for
-Claude Code, Gemini CLI, Cursor or Copilot CLI and imports them only if you say yes, and offers to
-put `clyde` on your PATH. Pass `--yes` for no prompts (hooks are never imported that way). Run it
+`clyde setup` connects a provider and picks a default model, lists the hooks and MCP servers you
+already set up for other agents (Claude Code, Cursor, Gemini CLI, Codex, Copilot CLI) and imports
+them only if you say yes, and offers to
+put `clyde` on your PATH. Pass `--yes` for no prompts (hooks and MCP servers are never imported that way). Run it
 again any time.
 
 Or from source:
@@ -273,6 +275,7 @@ That's all it takes: clone, configure, run.
 | `/models`    | List models from every connected provider |
 | `/think [level]` | Reasoning: off, low, medium, high, on, default |
 | `/doctor`    | Diagnose environment, config, keys and permissions |
+| `/mcp`       | Connected MCP servers and their tools |
 | `/cost`      | Tokens and estimated cost per model |
 | `/context`   | Context window usage and auto-compact threshold |
 | `/compact`   | Summarize the conversation to free context |
@@ -365,6 +368,28 @@ or `~/.clyde/settings.toml` (both are read and merged), in Claude Code's format:
   `~/.copilot/hooks.json`, shows every command, and copies them only after you say yes
 - Only your user settings are read; project `.clyde/settings.json` hooks are ignored, since a cloned
   repo could otherwise run commands on your machine
+
+### MCP Servers
+
+Add stdio MCP servers under `mcpServers` in `~/.clyde/settings.json` (Claude Code's format):
+
+```json
+{
+  "mcpServers": {
+    "dart": {"command": "dart", "args": ["mcp-server"]},
+    "github": {"command": "npx", "args": ["-y", "@modelcontextprotocol/server-github"],
+               "env": {"GITHUB_TOKEN": "..."}}
+  }
+}
+```
+
+- They start with the REPL; each tool shows up as `mcp__<server>__<tool>`, and `/mcp` lists them
+- Resources are available through ListMcpResources / ReadMcpResource
+- `clyde mcp import` (also offered by `clyde setup`) copies stdio servers from Claude Code
+  (`~/.claude.json`), Cursor, Gemini CLI, Codex (`config.toml`) and Copilot CLI after you say yes;
+  env values are never printed and the settings file is kept at mode 600
+- Only stdio servers from your user settings for now: HTTP/SSE servers and project `.mcp.json`
+  files are skipped
 
 ***
 
