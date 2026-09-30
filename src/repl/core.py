@@ -144,7 +144,7 @@ _ACE_OF_SPADES = (
 
 
 # Playing-card palette, as exact colours so every terminal theme shows the same card.
-_CARD_FACE, _CARD_INK, _CARD_RED, _CARD_DIM, _CARD_TEXT = "#f5f1e8", "#111111", "#d0202f", "#8a8a8a", "#e8e4dc"
+_CARD_FACE, _CARD_INK, _CARD_ACCENT, _CARD_DIM, _CARD_TEXT = "#f5f1e8", "#111111", "#4eba65", "#8a8a8a", "#e8e4dc"
 
 
 def _ace_of_spades_card() -> Text:
@@ -663,9 +663,9 @@ class ClydeREPL:
         header = _ace_of_spades_card()
         header.append("  ")
         header.append(Text.assemble(
-            ("ClydeCLI ", f"bold {_CARD_TEXT}"), (f"v{__version__}", f"bold {_CARD_RED}"),
+            ("ClydeCLI ", f"bold {_CARD_TEXT}"), (f"v{__version__}", f"bold {_CARD_ACCENT}"),
             ("  ·  ", _CARD_DIM), (model_label, f"bold {_CARD_TEXT}"),
-            ("  ·  ", _CARD_DIM), (provider_label, _CARD_RED),
+            ("  ·  ", _CARD_DIM), (provider_label, _CARD_ACCENT),
             ("  ·  ", _CARD_DIM), (self._truncate_middle(display_path, path_room), _CARD_DIM),
         ))
         self.console.print(header)
