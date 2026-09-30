@@ -132,6 +132,39 @@ def _first_prompt(session) -> str:
 _CRON_WAKE = object()
 
 
+# Ace of spades by ejm98 (artist signature left off the card).
+_ACE_OF_SPADES = (
+    " ____________ ",
+    "|A           |",
+    "|     /\\     |",
+    "|    /**\\    |",
+    "|  ,*(%%)*.  |",
+    "| (***\\/***) |",
+    "|  `-')(`-'  |",
+    "|    /__\\    |",
+    "|___________V|",
+)
+
+
+# Playing-card palette, as exact colours so every terminal theme shows the same card.
+_CARD_FACE, _CARD_INK, _CARD_RED, _CARD_DIM, _CARD_TEXT = "#f5f1e8", "#111111", "#d0202f", "#8a8a8a", "#e8e4dc"
+
+
+def _ace_of_spades_card() -> Text:
+    """The card as an ivory face with black ink, framed like a card edge."""
+    card = Text(no_wrap=True)
+    for i, line in enumerate(_ACE_OF_SPADES):
+        if i:
+            card.append("\n")
+        if i == 0:
+            card.append(line, style=_CARD_FACE)
+            continue
+        card.append(line[0], style=_CARD_FACE)
+        card.append(line[1:-1], style=f"bold {_CARD_INK} on {_CARD_FACE}")
+        card.append(line[-1], style=_CARD_FACE)
+    return card
+
+
 class ClydeREPL:
     """Interactive REPL for ClydeCLI."""
 
@@ -623,15 +656,8 @@ class ClydeREPL:
         provider_label = self.provider_name
         model_label = self.model or "Unknown model"
 
-        mascot_ascii = "\n".join([
-            "  /\\__/\\",
-            " / o  o \\",
-            "(  __  )",
-            " \\/__/  ",
-        ])
-
         if Panel is None or Group is None or Align is None or Table is None or Text is None or Columns is None:
-            print(mascot_ascii)
+            print("\n".join(_ACE_OF_SPADES))
             print(f"ClydeCLI v{__version__}")
             print(f"{model_label} · {provider_label}")
             print(f"{display_path}\n")
@@ -640,26 +666,19 @@ class ClydeREPL:
         width = getattr(self.console, "width", 80)
         content_width = max(28, min(width - 12, 72))
         table = Table.grid(padding=(0, 1))
-        table.add_column(style="bright_black", justify="right", no_wrap=True)
-        table.add_column(style="white", ratio=1)
-        table.add_row("Version", Text.assemble(("ClydeCLI", "bold white"), ("  ", ""), (f"v{__version__}", "bold cyan")))
-        table.add_row("Model", Text(model_label, style="bold magenta"))
-        table.add_row("Provider", Text(provider_label, style="bold green"))
-        table.add_row("Workspace", Text(self._truncate_middle(display_path, content_width - 12), style="bold blue"))
+        table.add_column(style=_CARD_DIM, justify="right", no_wrap=True)
+        table.add_column(style=_CARD_TEXT, ratio=1)
+        table.add_row("Version", Text.assemble(("ClydeCLI", f"bold {_CARD_TEXT}"), ("  ", ""), (f"v{__version__}", f"bold {_CARD_RED}")))
+        table.add_row("Model", Text(model_label, style=f"bold {_CARD_TEXT}"))
+        table.add_row("Provider", Text(provider_label, style=_CARD_RED))
+        table.add_row("Workspace", Text(self._truncate_middle(display_path, content_width - 12), style=_CARD_DIM))
 
-        footer = Text("/help  •  /model  •  /think  •  /stream  •  /exit", style="dim")
-        mascot_block = Text(mascot_ascii, style="bold orange3", no_wrap=True)
-        body = Group(
-            Columns([mascot_block, table], align="center", expand=False),
+        footer = Text.assemble(*[part for cmd in ("/help", "/model", "/think", "/stream", "/exit")
+                                 for part in ((cmd, _CARD_DIM), ("  ♠  ", _CARD_RED))][:-1])
+        header = Group(
+            Columns([_ace_of_spades_card(), table], align="center", expand=False),
             Text(""),
-            Align.center(footer),
-        )
-        header = Panel(
-            body,
-            border_style="bright_black",
-            title="[bold bright_cyan] CLYDE CLI [/bold bright_cyan]",
-            subtitle="[dim]still here.[/dim]",
-            padding=(1, 2),
+            footer,
         )
         self.console.print(header)
         self.console.print()
