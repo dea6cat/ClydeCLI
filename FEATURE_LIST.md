@@ -45,7 +45,7 @@
 | Claude Code Agent Loop | ✅ | agent_loop.py implemented, supports the tool-call loop |
 | `/resume` session recovery experience | 🚫 | No dedicated recovery flow or UI yet |
 | `/compact` conversation compaction | 🟡 | Manual `/compact` summarizes older history; no automatic compaction |
-| `/doctor` diagnostics | 🚫 | No environment, config, permission, or dependency diagnostic command yet |
+| `/doctor` diagnostics | ✅ | Checks Python vs requires-python, dependencies, config and key store (mode 600, no secrets shown), providers with keys, current model, git, workspace and permission settings |
 | Hook system | 🚫 | No pre/post tool use hooks yet |
 | Permission system | 🟡 | Approval prompts wired into tool dispatch; only Write/Edit ask, Bash blocks dangerous patterns |
 
@@ -182,7 +182,7 @@ Goal: fill in Claude Code's engineering capabilities.
 - [ ] Full permission system integration
 - [ ] `/resume`
 - [ ] `/compact`
-- [ ] `/doctor`
+- [x] `/doctor`
 - [ ] pre/post tool use hooks
 
 ## Phase 4: MCP, plugins, extension ecosystem
