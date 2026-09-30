@@ -34,9 +34,9 @@ def build_context_prompt(
     if summary_lines:
         sections.append("\n".join(summary_lines))
 
-    graph_lines = _render_code_graph_section(root)
-    if graph_lines:
-        sections.append("\n".join(graph_lines))
+    map_lines = _render_code_map_section(root)
+    if map_lines:
+        sections.append("\n".join(map_lines))
 
     md_lines = _render_claude_md_section(claude_md, root)
     if md_lines:
@@ -45,15 +45,15 @@ def build_context_prompt(
     return "\n\n".join(section for section in sections if section.strip())
 
 
-def _render_code_graph_section(root: Path, hubs: int = 8) -> list[str]:
-    """Point the model at the CodeGraph tool when graphify has mapped this repo."""
+def _render_code_map_section(root: Path, hubs: int = 8) -> list[str]:
+    """Point the model at the Map tool once the repo has a code map."""
     out = root / "graphify-out"
     if not (out / "graph.json").is_file():
         return []
     lines = [
-        "## Code Graph",
-        "This repository has a code knowledge graph (graphify-out/graph.json: symbols, calls, imports).",
-        "Use the CodeGraph tool first for structural questions - `query` for what relates to a topic,",
+        "## Code Map",
+        "This repository has a code map (graphify-out/graph.json: symbols, calls, imports).",
+        "Use the Map tool first for structural questions - `query` for what relates to a topic,",
         "`explain` for a symbol, `path` for how two symbols connect, `affected` before changing a symbol -",
         "then read the cited files. Fall back to Grep/Glob for exact text.",
     ]
