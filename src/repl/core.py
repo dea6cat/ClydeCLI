@@ -179,6 +179,7 @@ _HELP_TEXT = """
 - `/render-last` - Re-render the last assistant reply as Markdown
 - `/model [provider:model]` - Show or switch the model (saved as default)
 - `/models` - List models from every connected provider
+- `/eval [filter]` - Test the listed models (or those matching filter) on a tool call and a round trip
 - `/think [off|low|medium|high|on|default]` - Set the reasoning level
 - `/tools` - List available built-in tools
 - `/tool <name> <json>` - Run a tool directly
@@ -305,6 +306,7 @@ class ClydeREPL:
             "/render-last",
             "/model",
             "/models",
+            "/eval",
             "/think",
             "/tools",
             "/tool",
@@ -867,7 +869,7 @@ class ClydeREPL:
                 self.multiline_mode = False
                 continue
             except EOFError:
-                self.console.print("\n[blue]Goodbye![/blue]")
+                self.console.print(); self._say_goodbye()
                 break
 
     def _queue_due_cron_jobs(self, now: datetime | None = None) -> bool:
@@ -923,7 +925,7 @@ class ClydeREPL:
                 'exit', 'quit', 'q',
                 'help', 'tools', 'tool',
                 'save', 'load', 'resume', 'multiline', 'stream', 'render-last',
-                'model', 'models', 'think',
+                'model', 'models', 'think', 'eval',
                 'skill', 'mcp', 'debug',
                 'context', 'compact',  # These need special handling
                 ''
@@ -989,7 +991,7 @@ class ClydeREPL:
         cmd = raw.lower()
 
         if cmd in ['/exit', '/quit', '/q']:
-            self.console.print("[blue]Goodbye![/blue]")
+            self._say_goodbye()
             sys.exit(0)
 
         elif cmd == '/help':
@@ -1079,6 +1081,9 @@ class ClydeREPL:
 
         elif cmd == '/models':
             self._show_models()
+
+        elif cmd == '/eval' or cmd.startswith('/eval '):
+            self._eval_models(raw.split(maxsplit=1)[1].strip() if " " in raw.strip() else "")
 
         elif cmd == '/think' or cmd.startswith('/think '):
             self._handle_think(raw.split(maxsplit=1)[1].strip().lower() if " " in raw else "")
@@ -1645,6 +1650,55 @@ class ClydeREPL:
         set_default_model(ref)
         self.console.print(f"[green]Model: {ref}[/green] [dim](saved as default)[/dim]")
         return True
+
+    def _say_goodbye(self) -> None:
+        self.console.print(Text.assemble(("♠ ", _CARD_ACCENT), ("Goodbye!", f"bold {_CARD_TEXT}")))
+
+    def _eval_models(self, query: str = "") -> None:
+        """Grade every listed model (or those matching `query`) on a tool call and a round trip."""
+        from rich.prompt import Confirm
+        from src.providers.model_eval import evaluate_all
+
+        live = usable(self.registry)
+        if not live:
+            self.console.print("[yellow]No providers connected.[/yellow] Run [bold]clyde login[/bold], or start Ollama.")
+            return
+        with self.console.status(f"[{_CARD_DIM}]Fetching model lists…[/{_CARD_DIM}]", spinner="dots", spinner_style=_CARD_ACCENT):
+            listings = {name: p.list_models() for name, p in live.items()}
+        q = query.lower()
+        targets = [(live[name], m, f"{name}:{m}") for name, models in listings.items() for m in models
+                   if not q or q in f"{name}:{m}".lower()]
+        if not targets:
+            self.console.print(f"No models match '{query}'." if query else "No models listed.")
+            return
+        self.console.print(f"{len(targets)} model(s) to test, two short requests each on your own keys"
+                           + ("" if query else " (narrow it with /eval <provider or name>)") + ".")
+        if not Confirm.ask("Run the evaluation?", default=len(targets) <= 20, console=self.console):
+            return
+        done = [0]
+        with self.console.status("", spinner="dots", spinner_style=_CARD_ACCENT) as status:
+            def progress(score) -> None:  # type: ignore[no-untyped-def]
+                done[0] += 1
+                status.update(f"[{_CARD_DIM}]Tested {done[0]}/{len(targets)} · {score.ref}[/{_CARD_DIM}]")
+            scores = evaluate_all(targets, on_done=progress)
+        table = Table(box=None, pad_edge=False, header_style=_CARD_DIM)
+        for col in ("", "model", "tool call", "round trip", "latency", "tok/s", "note"):
+            table.add_column(col, no_wrap=col == "model")
+        current = model_ref(self.provider, self.model)
+        mark = lambda ok: Text("✓", style=_CARD_ACCENT) if ok else Text("✗", style="#d0202f")  # noqa: E731
+        for sc in scores:
+            table.add_row(
+                Text("●", style=_CARD_ACCENT) if sc.ref == current else "",
+                Text(sc.ref, style=f"bold {_CARD_TEXT}" if sc.passed else _CARD_DIM),
+                mark(sc.tool_call), mark(sc.round_trip),
+                f"{sc.latency_s:.1f}s" if sc.latency_s is not None else "-",
+                f"{sc.tokens_per_s:.0f}" if sc.tokens_per_s else "-",
+                Text(sc.error, style=_CARD_DIM),
+            )
+        self.console.print(table)
+        passed = sum(sc.passed for sc in scores)
+        self.console.print(Text.assemble((f"{passed}/{len(scores)} passed", f"bold {_CARD_ACCENT}"),
+                                         ("  ·  switch with /model provider:model", _CARD_DIM)))
 
     def _show_models(self) -> None:
         live = usable(self.registry)

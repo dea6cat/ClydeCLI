@@ -70,6 +70,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `clyde mcp import` (and `clyde setup`) brings over stdio MCP servers from Claude Code, Cursor,
   Gemini CLI, Codex and Copilot CLI after a yes
 
+- `/eval [filter]` tests every listed model (or the ones matching the filter) with a real tool call
+  and a round trip, and ranks them with latency and tokens per second
+
 ### Changed
 - API keys moved from base64 entries in `config.json` to `~/.clyde/keys.json` (mode 600), with
   shell env vars taking precedence; old configs migrate automatically on first run
