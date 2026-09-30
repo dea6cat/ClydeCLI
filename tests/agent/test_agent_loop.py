@@ -159,3 +159,12 @@ class TestAgentLoop(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestBashSummary(unittest.TestCase):
+    def test_bash_summary_shows_the_last_output_line(self):
+        from src.agent.agent_loop import summarize_tool_result
+        self.assertEqual(summarize_tool_result("Bash", {"exit_code": 0, "stdout": "a\nDetected 12 files\n\n", "stderr": ""}),
+                         "Bash · exit=0 · Detected 12 files")
+        self.assertEqual(summarize_tool_result("Bash", {"exit_code": 2, "stdout": "ok", "stderr": "boom\n"}), "Bash · exit=2 · boom")
+        self.assertEqual(summarize_tool_result("Bash", {"exit_code": 0, "stdout": "", "stderr": ""}), "Bash · exit=0")
