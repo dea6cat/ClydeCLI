@@ -157,6 +157,42 @@ class TestEditTool(ToolSystemTests):
         self.assertEqual(out["replaceAll"], False)
         self.assertEqual(p.read_text(encoding="utf-8"), "hello you")
 
+    def _edit(self, content: str, old: str, new: str) -> str:
+        p = self.root / "t.py"
+        p.write_text(content, encoding="utf-8")
+        FileReadTool().run({"file_path": str(p)}, self.ctx)
+        FileEditTool().run({"file_path": str(p), "old_string": old, "new_string": new}, self.ctx)
+        return p.read_text(encoding="utf-8")
+
+    def test_edit_tolerates_trailing_whitespace(self) -> None:
+        out = self._edit("def f():   \n    return 1\n", "def f():\n    return 1\n", "def f():\n    return 2\n")
+        self.assertEqual(out, "def f():\n    return 2\n")
+
+    def test_edit_reindents_to_file_indentation(self) -> None:
+        content = "class A:\n    def f(self):\n        return 1\n"
+        out = self._edit(content, "def f(self):\n    return 1", "def f(self):\n    return 2")
+        self.assertEqual(out, "class A:\n    def f(self):\n        return 2\n")
+
+    def test_edit_ignores_stray_trailing_blank_line(self) -> None:
+        out = self._edit("a\nb\nc\n", "b\n\n", "B\n")
+        self.assertEqual(out, "a\nB\nc\n")
+
+    def test_edit_keeps_line_break_when_new_drops_it(self) -> None:
+        out = self._edit("a\nb\nc\n", "b\n", "B")
+        self.assertEqual(out, "a\nB\nc\n")
+
+    def test_edit_tolerant_match_must_be_unique(self) -> None:
+        from src.tool_system.errors import ToolInputError
+
+        with self.assertRaisesRegex(ToolInputError, "matches 2 times"):
+            self._edit("  x = 1\n    x = 1\n", "x = 1", "x = 2")
+
+    def test_edit_not_found_points_at_closest_line(self) -> None:
+        from src.tool_system.errors import ToolInputError
+
+        with self.assertRaisesRegex(ToolInputError, "closest match is around line 2"):
+            self._edit("a = 1\nresult = compute(x)\nb = 2\n", "result = compute(y)", "z")
+
     def test_edit_requires_replace_all_for_non_unique(self) -> None:
         p = self.root / "f.txt"
         p.write_text("a a a", encoding="utf-8")
