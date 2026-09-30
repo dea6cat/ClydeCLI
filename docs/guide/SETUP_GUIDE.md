@@ -17,7 +17,11 @@ Or install it as a tool that's on your PATH everywhere: `uv tool install --edita
 
 ## 2. Connect a provider
 
-### Option 1: `clyde login` (recommended)
+No login is required: if any provider key below is exported, just run `clyde` and it picks a
+connected model (change it with `/model`). `clyde login` is for saving a key and choosing a
+default.
+
+### Option 1: `clyde login`
 
 ```bash
 clyde login

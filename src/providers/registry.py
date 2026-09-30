@@ -38,13 +38,22 @@ _OPENAI_COMPAT = [
 _MINIMAX_MODELS = ["MiniMax-M2.7", "MiniMax-M2.7-highspeed", "MiniMax-M2.5", "MiniMax-M2.5-highspeed",
                    "MiniMax-M2.1", "MiniMax-M2.1-highspeed", "MiniMax-M2"]
 
-# Preselected in `clyde login` when the provider lists it; purely a convenience default.
+# Preferred model per provider, used by `clyde login` and automatic selection when the
+# provider actually lists it (otherwise the provider's first listed model is used).
 SUGGESTED_MODELS = {
     "anthropic": "claude-sonnet-4-6",
     "openai": "gpt-5.4",
+    "google": "gemini-flash-latest",
+    "openrouter": "~anthropic/claude-sonnet-latest",
+    "deepseek": "deepseek-v4-pro",
+    "mistral": "mistral-medium-latest",
     "glm": "glm-5",
     "minimax": "MiniMax-M2.7",
 }
+
+# Order automatic selection tries connected cloud providers in, after local Ollama.
+_AUTO_ORDER = ("anthropic", "openai", "google", "openrouter", "deepseek", "mistral", "glm",
+               "minimax", "cerebras", "nvidia", "ollama-cloud")
 
 
 def build_registry() -> dict[str, Provider]:
@@ -98,13 +107,20 @@ def model_ref(provider: Provider, model: str) -> str:
 
 
 def pick_default_model(reg: dict[str, Provider]) -> str | None:
-    """A model to use when none is configured: the first local Ollama model, if any. Cloud
-    providers are never auto-selected; the user chooses those with `clyde login` or /model."""
-    local = reg.get("ollama")
-    if local is None:
-        return None
-    try:
-        models = local.list_models()
-    except Exception:
-        return None
-    return f"ollama:{models[0]}" if models else None
+    """A model to use when none is configured, so a key in the environment is enough to start:
+    the first local Ollama model, else the first connected cloud provider (in _AUTO_ORDER) with
+    its suggested model, or its first listed one. None when nothing is usable."""
+    for name in ("ollama", *_AUTO_ORDER):
+        provider = reg.get(name)
+        if provider is None:
+            continue
+        try:
+            if not provider.is_available():
+                continue
+            models = provider.list_models()
+        except Exception:
+            continue
+        if models:
+            suggested = SUGGESTED_MODELS.get(name)
+            return f"{name}:{suggested if suggested in models else models[0]}"
+    return None

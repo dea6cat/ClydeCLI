@@ -152,6 +152,16 @@ class TestRegistry(unittest.TestCase):
                          "ollama:m1")
         self.assertIsNone(registry.pick_default_model({"ollama": FakeProvider(name="ollama", models=())}))
 
+    def test_pick_default_falls_back_to_connected_cloud_provider(self):
+        reg = {"ollama": FakeProvider(name="ollama", models=()),
+               "mistral": FakeProvider(name="mistral", models=("codestral-latest", "mistral-medium-latest")),
+               "nvidia": FakeProvider(name="nvidia", models=("some/model",))}
+        self.assertEqual(registry.pick_default_model(reg), "mistral:mistral-medium-latest")
+
+    def test_pick_default_uses_first_listed_without_suggestion(self):
+        self.assertEqual(registry.pick_default_model({"nvidia": FakeProvider(name="nvidia", models=("a/b", "c/d"))}),
+                         "nvidia:a/b")
+
 
 class TestWireDetails(unittest.TestCase):
     def test_openai_compat_omits_empty_tools_and_parses_usage(self):

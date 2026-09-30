@@ -336,6 +336,27 @@ class TestREPL(unittest.TestCase):
                     repl.handle_command("/think bogus")
                     self.assertIsNone(repl.reasoning)
 
+    def test_no_saved_model_picks_a_connected_provider(self):
+        with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
+            with patch('src.repl.core.Session.create'):
+                with _fake_provider_env(), patch('src.repl.core.get_default_model', return_value=None):
+                    repl = ClydeREPL()
+                    self.assertEqual((repl.provider_name, repl.model), ("glm", "glm-4.5"))
+
+    def test_unavailable_saved_model_falls_back_instead_of_exiting(self):
+        with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
+            with patch('src.repl.core.Session.create'):
+                with _fake_provider_env(), patch('src.repl.core.get_default_model', return_value="openai:gpt-5.4"):
+                    repl = ClydeREPL()
+                    self.assertEqual(repl.provider_name, "glm")
+
+    def test_explicit_model_must_resolve(self):
+        with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
+            with patch('src.repl.core.Session.create'):
+                with _fake_provider_env():
+                    with self.assertRaises(SystemExit):
+                        ClydeREPL(model="openai:gpt-5.4")
+
     def test_unconfigured_model_exits_with_hint(self):
         with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
             with patch('src.repl.core.build_registry', return_value={}), \

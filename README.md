@@ -190,7 +190,13 @@ uv pip install -r requirements.txt
 
 ### Configure
 
-#### Option 1: Interactive (Recommended)
+#### Option 1: Just export a key (no login needed)
+
+If a provider key is already in your environment (see the table above), run `clyde`. With no
+default model saved, it picks one from whatever is connected (local Ollama first), tells you
+which, and `/model` switches it.
+
+#### Option 2: Interactive login
 
 ```bash
 python -m src.cli login
@@ -206,11 +212,10 @@ This flow will:
 For Ollama there's no key: it checks the server is up, and if you have no models yet it
 suggests tool-capable ones that fit your RAM.
 
-#### Option 2: Environment variables
+#### Option 3: Pick the model per session
 
-Export the key for your provider (see the table above), e.g. `export OPENAI_API_KEY=...`, then
-start with `clyde --model openai:gpt-5.4`. A key exported in your shell always wins over a
-saved one.
+`clyde --model openai:gpt-5.4` overrides the default for one session. A key exported in your
+shell always wins over a saved one.
 
 The config file only holds the default model and session settings:
 
