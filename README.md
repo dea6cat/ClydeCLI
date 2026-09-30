@@ -135,7 +135,7 @@ clyde --version                # Check version
 | Context Building | 🟡 | Workspace snapshot, git status and CLAUDE.md go into the prompt; no deeper project indexing |
 | Permissions | 🟡 | Interactive approval is wired into tool dispatch, but only Write and Edit ask; Bash only blocks a short list of dangerous patterns |
 | Sessions | 🟡 | Manual `/save` and `/load`; no session picker, no auto-save |
-| Compaction | 🟡 | Manual `/compact` summarizes older history; no automatic compaction |
+| Compaction | ✅ | `/compact` on demand; runs automatically once history reaches 80% of the context window |
 
 ### Tools
 
