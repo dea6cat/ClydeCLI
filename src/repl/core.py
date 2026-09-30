@@ -84,6 +84,7 @@ from src.providers.base import ProviderError, is_auth_error
 from src.providers.convert import append_response, to_canonical
 from src.tool_system.context import ToolContext
 from src.tool_system.hooks import load_hooks
+from src.tool_system.mcp_client import McpServerTool, connect_servers, load_servers
 from src.tool_system.defaults import build_default_registry
 from src.tool_system.protocol import ToolCall
 from src.tool_system.tools.cron import pop_due_jobs
@@ -154,6 +155,7 @@ class ClydeREPL:
 
         self.tool_registry = build_default_registry()
         self.tool_context = ToolContext(workspace_root=Path.cwd(), hooks=load_hooks())
+        self._connect_mcp_servers()
         self.tool_context.ask_user = self._ask_user_questions
         # Session-scoped cron: due jobs are queued here and run only between turns.
         self._cron_checked_at = datetime.now()
@@ -173,6 +175,7 @@ class ClydeREPL:
             "/save",
             "/load",
             "/resume",
+            "/mcp",
             "/multiline",
             "/stream",
             "/render-last",
@@ -748,7 +751,7 @@ class ClydeREPL:
                 'help', 'tools', 'tool',
                 'save', 'load', 'resume', 'multiline', 'stream', 'render-last',
                 'model', 'models', 'think',
-                'skill',
+                'skill', 'mcp',
                 'context', 'compact',  # These need special handling
                 ''
             }
@@ -924,6 +927,9 @@ class ClydeREPL:
                 session_id = parts[1]
                 self.load_session(session_id)
 
+        elif cmd == '/mcp':
+            self._print_mcp_status()
+
         elif cmd == '/skill':
             self._handle_skill_command()
 
@@ -1055,6 +1061,7 @@ class ClydeREPL:
 - `/cost` - Show session cost and usage
 - `/compact` - Compact conversation to save context space
 - `/doctor` - Diagnose environment, config, keys and permissions
+- `/mcp` - Show connected MCP servers and their tools
 
 **Usage:**
 - Type your message and press Enter to chat
@@ -1201,6 +1208,34 @@ class ClydeREPL:
         self.console.print(Markdown(text))
         self.console.print()
         return True
+
+    def _connect_mcp_servers(self) -> None:
+        """Start the MCP servers from settings and register their tools as mcp__<server>__<tool>."""
+        servers = load_servers()
+        if not servers:
+            return
+        clients, self._mcp_errors = connect_servers(servers, Path.cwd())
+        self.tool_context.mcp_clients = clients
+        for client in clients.values():
+            for tool in client.tools:
+                try:
+                    self.tool_registry.register(McpServerTool(client, tool))
+                except ValueError:  # two tools that sanitize to the same name: keep the first
+                    pass
+        for name, error in self._mcp_errors.items():
+            self.console.print(f"[yellow]MCP server '{name}' not connected: {error}[/yellow]", markup=True)
+
+    def _print_mcp_status(self) -> None:
+        clients, errors = self.tool_context.mcp_clients, getattr(self, "_mcp_errors", {})
+        if not clients and not errors:
+            self.console.print("No MCP servers configured. Add them under `mcpServers` in ~/.clyde/settings.json.")
+            return
+        for name, client in clients.items():
+            self.console.print(f"[green]✓[/green] {name}: {len(client.tools)} tool(s)")
+            for tool in client.tools:
+                self.console.print(f"    mcp__{name}__{tool['name']}", markup=False)
+        for name, error in errors.items():
+            self.console.print(f"[red]✗[/red] {name}: {error}")
 
     def _context_window(self) -> int:
         """The model's input window: the provider's own sizing, then the catalog, then a name heuristic."""
