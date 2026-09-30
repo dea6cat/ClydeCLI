@@ -73,6 +73,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `/eval [filter]` tests every listed model (or the ones matching the filter) with a real tool call
   and a round trip, and ranks them with latency and tokens per second
 
+- LM Studio as a local provider: when LM Studio is installed, its downloaded models show up in
+  `/models` (from its server, or `lms ls` when the server is off), and the server is started with
+  `lms server start` the first time an LM Studio model is used
+
 ### Changed
 - API keys moved from base64 entries in `config.json` to `~/.clyde/keys.json` (mode 600), with
   shell env vars taking precedence; old configs migrate automatically on first run
