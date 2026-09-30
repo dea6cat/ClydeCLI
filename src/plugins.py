@@ -25,7 +25,9 @@ from typing import Any
 
 from src.tool_system.hooks import normalize_hooks, settings_paths
 
-MANIFESTS = (Path(".clyde-plugin") / "plugin.json", Path(".claude-plugin") / "plugin.json")
+# The last entry is the older layout with plugin.json at the plugin root.
+MANIFESTS = (*(Path(d) / "plugin.json" for d in (".clyde-plugin", ".claude-plugin", ".codex-plugin", ".cursor-plugin")),
+             Path("plugin.json"))
 _NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 _ROOT_VARS = ("${CLYDE_PLUGIN_ROOT}", "${CLAUDE_PLUGIN_ROOT}")
 
@@ -57,7 +59,7 @@ def read_manifest(root: Path) -> Plugin:
     """The plugin in `root`; ValueError when its manifest is missing or invalid."""
     path = next((root / m for m in MANIFESTS if (root / m).is_file()), None)
     if path is None:
-        raise ValueError(f"no {MANIFESTS[0]} or {MANIFESTS[1]} in {root}")
+        raise ValueError(f"no plugin manifest ({', '.join(str(m) for m in MANIFESTS)}) in {root}")
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as e:
@@ -252,6 +254,61 @@ def apply_plugins(registry: Any, hooks: dict[str, list[dict[str, Any]]], servers
             loaded.warnings.append(f"plugin '{plugin.name}': MCP servers not loaded: {e}")
         result.append(loaded)
     return result
+
+
+# --- other agents' plugins ----------------------------------------------------------------
+
+@dataclass
+class Foreign:
+    """A plugin another agent has installed, as offered by `clyde plugin import`."""
+    agent: str
+    source: Path
+    plugin: Plugin | None       # None when it has no manifest ClydeCLI can read
+    enabled_there: bool
+    reason: str = ""            # why it cannot be imported
+
+
+def _claude_code_plugins() -> list[tuple[Path, bool]]:
+    """(install path, enabled in Claude Code) from ~/.claude/plugins/installed_plugins.json."""
+    home = Path.home() / ".claude"
+    try:
+        index = json.loads((home / "plugins" / "installed_plugins.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    try:
+        enabled = json.loads((home / "settings.json").read_text(encoding="utf-8")).get("enabledPlugins") or {}
+    except (OSError, ValueError, AttributeError):
+        enabled = {}
+    found = []
+    for key, entries in (index.get("plugins") or {}).items() if isinstance(index, dict) else []:
+        entry = entries[0] if isinstance(entries, list) and entries else entries
+        path = entry.get("installPath") if isinstance(entry, dict) else None
+        if path:
+            found.append((Path(path), bool(enabled.get(key, True))))
+    return found
+
+
+def find_foreign() -> list[Foreign]:
+    """Plugins installed for Claude Code, Codex or Cursor, excluding names ClydeCLI already has."""
+    have = {p.name for p in installed()[0]}
+    candidates = [("Claude Code", path, on) for path, on in _claude_code_plugins()]
+    for agent, base in (("Codex", Path.home() / ".codex" / "plugins"), ("Cursor", Path.home() / ".cursor" / "plugins")):
+        for root in sorted(base.glob("*")) + sorted(base.glob("*/*")) if base.is_dir() else []:
+            if root.is_dir() and any((root / m).is_file() for m in MANIFESTS):
+                candidates.append((agent, root, True))
+    found = []
+    for agent, root, on in candidates:
+        try:
+            plugin = read_manifest(root)
+        except ValueError:
+            found.append(Foreign(agent, root, None, on, "no plugin manifest"))
+            continue
+        if plugin.name in have:
+            continue
+        loadable = [line for line in describe(plugin) if not line.startswith("commands/")]
+        reason = "" if loadable else "nothing ClydeCLI can load (no skills, hooks, MCP servers or tools)"
+        found.append(Foreign(agent, root, plugin, on, reason))
+    return found
 
 
 # --- install / remove ------------------------------------------------------------------------
