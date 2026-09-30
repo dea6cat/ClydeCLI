@@ -74,7 +74,7 @@
 |---------|---------|------|------|
 | File operations | FileReadTool | `read.py` | ✅ Implemented |
 | File operations | FileWriteTool | `write.py` | ✅ Implemented |
-| File operations | FileEditTool | `edit.py` | ✅ Implemented |
+| File operations | FileEditTool | `edit.py` | ✅ Exact match, then whitespace- and indent-tolerant unique match; misses point at the closest lines |
 | File operations | GlobTool | `glob.py` | ✅ Implemented |
 | File operations | GrepTool | `grep.py` | ✅ Implemented |
 | System operations | BashTool | `bash.py` | ✅ Implemented |
