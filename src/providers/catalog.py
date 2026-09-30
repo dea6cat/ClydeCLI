@@ -3,7 +3,9 @@
 A small bundled JSON (`catalog.json`) maps well-known cloud model ids to their real
 context window and output-token cap. Keys match by longest prefix, so
 dated/suffixed variants (e.g. `gpt-4o-2024-08-06`) resolve to their base entry. Local
-Ollama models are absent by design: their window is sized from num_ctx.
+Ollama models are absent by design: their window is sized from num_ctx. Entries may also
+carry optional USD-per-million-token list prices (input/output/cache read/cache write) used
+for /cost estimates; a missing price means "unknown", never zero.
 
 A missing or corrupt catalog degrades to "unknown" (callers use their own defaults); it
 never crashes startup.
@@ -21,7 +23,13 @@ _CATALOG_PATH = Path(__file__).with_name("catalog.json")
 class ModelInfo:
     context_window: int
     default_max_tokens: int
+    input_per_mtok: float | None = None
+    output_per_mtok: float | None = None
+    cache_read_per_mtok: float | None = None
+    cache_write_per_mtok: float | None = None
 
+
+_PRICE_FIELDS = ("input_per_mtok", "output_per_mtok", "cache_read_per_mtok", "cache_write_per_mtok")
 
 _cache: dict[str, ModelInfo] | None = None
 
@@ -37,6 +45,7 @@ def _load() -> dict[str, ModelInfo]:
             table[key.lower()] = ModelInfo(
                 context_window=int(v["context_window"]),
                 default_max_tokens=int(v["default_max_tokens"]),
+                **{f: float(v[f]) for f in _PRICE_FIELDS if v.get(f) is not None},
             )
     except Exception:
         table = {}

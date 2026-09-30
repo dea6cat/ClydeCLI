@@ -46,7 +46,8 @@ def _usage(raw: dict | None) -> dict | None:
         return None
     usage = {"input_tokens": raw.get("prompt_tokens") or 0, "output_tokens": raw.get("completion_tokens") or 0}
     cached = (raw.get("prompt_tokens_details") or {}).get("cached_tokens")
-    if cached:
+    if cached:  # prompt_tokens includes the cached share; split it out the way Anthropic reports it
+        usage["input_tokens"] = max(usage["input_tokens"] - cached, 0)
         usage["cache_read_input_tokens"] = cached
     return usage
 
@@ -216,6 +217,6 @@ class OpenAICompatProvider:
             message=Message.assistant(text=text or None, thinking=think or None, tool_calls=calls),
             raw={},
             done_reason=done_reason,
-            prompt_tokens=(usage or {}).get("input_tokens"),
+            prompt_tokens=usage and usage["input_tokens"] + usage.get("cache_read_input_tokens", 0),
             usage=usage,
         )

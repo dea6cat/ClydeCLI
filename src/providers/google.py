@@ -29,7 +29,8 @@ def _usage(meta: dict | None) -> dict | None:
         return None
     usage = {"input_tokens": meta.get("promptTokenCount") or 0,
              "output_tokens": (meta.get("candidatesTokenCount") or 0) + (meta.get("thoughtsTokenCount") or 0)}
-    if meta.get("cachedContentTokenCount"):
+    if meta.get("cachedContentTokenCount"):  # promptTokenCount includes the cached share
+        usage["input_tokens"] = max(usage["input_tokens"] - meta["cachedContentTokenCount"], 0)
         usage["cache_read_input_tokens"] = meta["cachedContentTokenCount"]
     return usage
 
@@ -186,4 +187,5 @@ class GoogleProvider:
         think = "".join(thought_parts).strip()
         return ProviderResponse(message=Message.assistant(text=text or None, thinking=think or None, tool_calls=calls),
                                 raw=last, done_reason=done_reason,
-                                prompt_tokens=(usage or {}).get("input_tokens"), usage=usage)
+                                prompt_tokens=usage and usage["input_tokens"] + usage.get("cache_read_input_tokens", 0),
+                                usage=usage)
