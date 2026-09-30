@@ -8,10 +8,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Stdlib-only provider layer (no vendor SDKs): Anthropic, OpenAI, Google Gemini, OpenRouter,
+  DeepSeek, Mistral, NVIDIA, Cerebras, GLM, MiniMax, Ollama (local, native `/api/chat`) and
+  Ollama Cloud
+- `provider:model` selection: `clyde --model`, `/model`, `/models`, `clyde --list-models`
+- Live model lists from each provider's API, cached for 60s
+- `/think off|low|medium|high|on|default` reasoning control, with streamed reasoning shown dimmed
+- Retries with backoff on 429/5xx/connection errors, and one-line readable provider errors
+- `clyde logout <provider>`; Ollama login suggests tool-capable models that fit your RAM
 - Initial context injection pipeline for workspace snapshot, git status, and `CLAUDE.md`
 - Tests covering the new context system integration
 
 ### Changed
+- API keys moved from base64 entries in `config.json` to `~/.clyde/keys.json` (mode 600), with
+  shell env vars taking precedence; old configs migrate automatically on first run
+- The agent loop uses one code path for every provider; conversation history (including
+  reasoning and tool-call signatures) is re-expressed per provider on each request
+- Compaction no longer calls a nonexistent `chat_async`, and its summary context never starts on
+  an orphaned tool result
+- Requires Python 3.14
 - Skill frontmatter parsing now supports inline list syntax such as `arguments: [path]`
 - README and contributor docs now prefer `uv`-based setup instructions
 - Documentation now distinguishes provider-level streaming interfaces from the current turn-based CLI output

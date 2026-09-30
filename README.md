@@ -72,9 +72,24 @@ Explain the code in $path. Start with an analogy, then draw a diagram.
 
 *I'm not picky about who's on the other end of the wire.*
 
-```python
-providers = ["Anthropic Claude", "OpenAI GPT", "Zhipu GLM"]  # + easy to extend
-```
+| Provider | Key | Notes |
+|----------|-----|-------|
+| Anthropic | `ANTHROPIC_API_KEY` | prompt caching, adaptive thinking |
+| OpenAI | `OPENAI_API_KEY` | reasoning effort on o-series / GPT-5 |
+| Google Gemini | `GEMINI_API_KEY` | thinking budgets / levels |
+| OpenRouter | `OPENROUTER_API_KEY` | hundreds of models behind one key |
+| DeepSeek | `DEEPSEEK_API_KEY` | reasoning replayed across tool turns |
+| Mistral | `MISTRAL_API_KEY` | |
+| NVIDIA | `NVIDIA_API_KEY` | |
+| Cerebras | `CEREBRAS_API_KEY` | |
+| GLM (Zhipu) | `GLM_API_KEY` | |
+| MiniMax | `MINIMAX_API_KEY` | via its Anthropic-compatible endpoint |
+| Ollama (local) | none | native `/api/chat`, context sized to your RAM |
+| Ollama Cloud | `OLLAMA_API_KEY` | |
+
+No vendor SDKs. Every provider is plain HTTP from the standard library. Model lists come live
+from each provider, not a hardcoded guess. Pick one with `provider:model`, switch mid-session
+with `/model`, and the conversation carries over.
 
 ### Interactive REPL
 
@@ -93,10 +108,13 @@ Assistant: Still here. What's broken?
 ### CLI
 
 ```bash
-clyde              # Start REPL
-clyde login        # Configure API
-clyde --version    # Check version
-clyde config       # View settings
+clyde                          # Start REPL
+clyde --model openai:gpt-5.4   # Start with a specific model
+clyde login                    # Connect a provider, pick a default model
+clyde logout openai            # Forget a saved key
+clyde --list-models            # Every model you can use right now
+clyde config                   # View settings
+clyde --version                # Check version
 ```
 
 ***
@@ -118,7 +136,7 @@ clyde config       # View settings
 |--------|--------|-------------|
 | CLI Entry | ✅ | `clyde`, `login`, `config`, `--version` |
 | Interactive REPL | ✅ | Rich interactive output, history, tab completion, multiline |
-| Multi-Provider | ✅ | Anthropic, OpenAI, GLM support |
+| Multi-Provider | ✅ | 12 providers, stdlib HTTP, live model lists, `provider:model` switching |
 | Session Persistence | ✅ | Save/load sessions locally |
 | Agent Loop | ✅ | Tool calling loop implementation |
 | Skill System | ✅ | SKILL.md-based slash-command skills with args + tool limits |
@@ -180,36 +198,31 @@ python -m src.cli login
 
 This flow will:
 
-1. ask you to choose a provider: anthropic / openai / glm
-2. ask for that provider's API key
-3. optionally save a custom base URL
-4. optionally save a default model
-5. set the selected provider as default
+1. ask you to choose a provider
+2. ask for that provider's API key (shown as `*` while you type or paste)
+3. fetch the provider's live model list and ask for a default model
+4. save the key to `~/.clyde/keys.json` and the model to `~/.clyde/config.json`
 
-The configuration is saved to `~/.clyde/config.json`. Example structure:
+For Ollama there's no key: it checks the server is up, and if you have no models yet it
+suggests tool-capable ones that fit your RAM.
+
+#### Option 2: Environment variables
+
+Export the key for your provider (see the table above), e.g. `export OPENAI_API_KEY=...`, then
+start with `clyde --model openai:gpt-5.4`. A key exported in your shell always wins over a
+saved one.
+
+The config file only holds the default model and session settings:
 
 ```json
 {
-  "default_provider": "glm",
-  "providers": {
-    "anthropic": {
-      "api_key": "base64-encoded-key",
-      "base_url": "https://api.anthropic.com",
-      "default_model": "claude-sonnet-4-20250514"
-    },
-    "openai": {
-      "api_key": "base64-encoded-key",
-      "base_url": "https://api.openai.com/v1",
-      "default_model": "gpt-4"
-    },
-    "glm": {
-      "api_key": "base64-encoded-key",
-      "base_url": "https://open.bigmodel.cn/api/paas/v4",
-      "default_model": "glm-4.5"
-    }
-  }
+  "model": "anthropic:claude-sonnet-4-6",
+  "session": {"auto_save": true, "max_history": 100}
 }
 ```
+
+Upgrading from an older config with per-provider `api_key` entries? The first run moves the
+keys to `keys.json` and keeps your default provider's model.
 
 ### Run
 
@@ -233,6 +246,9 @@ That's all it takes: clone, configure, run.
 | `/save`      | Save session          |
 | `/load <id>` | Load session          |
 | `/multiline` | Toggle multiline mode |
+| `/model [provider:model]` | Show or switch the model |
+| `/models`    | List models from every connected provider |
+| `/think [level]` | Reasoning: off, low, medium, high, on, default |
 | `/clear`     | Clear history         |
 | `/exit`      | Exit REPL             |
 
@@ -332,7 +348,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 *Keep your keys where you keep your lighter. Close, and out of the repo.*
 
 - Keep sensitive data out of Git
-- API keys are stored in the config encoded, not encrypted
+- Saved API keys live in `~/.clyde/keys.json`, plain text, readable only by you (mode 600)
 - `.env` files are git-ignored
 - Intended for local development
 
