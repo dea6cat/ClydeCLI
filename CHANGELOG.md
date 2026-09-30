@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `clyde logout <provider>`; Ollama login suggests tool-capable models that fit your RAM
 - Initial context injection pipeline for workspace snapshot, git status, and `CLAUDE.md`
 - Tests covering the new context system integration
+- `Edit` accepts an `old_string` that differs from the file only in trailing whitespace or
+  indentation (re-indenting `new_string`) when the match is unique, and a miss shows the closest
+  lines to re-copy (ported from 2B)
 
 ### Changed
 - API keys moved from base64 entries in `config.json` to `~/.clyde/keys.json` (mode 600), with
