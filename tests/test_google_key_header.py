@@ -14,20 +14,20 @@ from src.providers import google as g  # noqa: E402
 
 class GoogleKeyHeader(unittest.TestCase):
     def setUp(self):
-        self._orig_post = g.post_json
+        self._orig_post = g.post_stream
         self._orig_key = os.environ.get("GEMINI_API_KEY")
         self.captured = {}
 
-        def fake_post_json(url, payload, headers=None, provider="http", **kw):
+        def fake_post_stream(url, payload, headers=None, provider="http", **kw):
             self.captured["url"] = url
             self.captured["headers"] = headers or {}
-            return {"candidates": [{"content": {"parts": [{"text": "ok"}]}}]}
+            return iter(['data: {"candidates": [{"content": {"parts": [{"text": "ok"}]}}]}\n'])
 
-        g.post_json = fake_post_json
+        g.post_stream = fake_post_stream
         os.environ["GEMINI_API_KEY"] = "AIza-super-secret"
 
     def tearDown(self):
-        g.post_json = self._orig_post
+        g.post_stream = self._orig_post
         if self._orig_key is None:
             os.environ.pop("GEMINI_API_KEY", None)
         else:
@@ -36,7 +36,7 @@ class GoogleKeyHeader(unittest.TestCase):
     def _send(self):
         conv = Conversation(system_prompt="sys")
         conv.append(Message.user("hi"))
-        g.GoogleProvider().send(conv, "gemini-2.5-flash", ())
+        g.GoogleProvider().stream(conv, "gemini-2.5-flash", (), lambda c: None)
 
     def test_key_is_in_header(self):
         self._send()

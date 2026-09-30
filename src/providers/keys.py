@@ -113,15 +113,6 @@ def disconnect(provider: str) -> bool:
     return existed
 
 
-def is_connected(provider: str) -> bool:
-    env = PROVIDER_KEY_ENV.get(provider)
-    if not env:
-        return False
-    if os.environ.get(env):
-        return True
-    return provider == "google" and bool(os.environ.get("GOOGLE_API_KEY"))
-
-
 def saved_providers() -> set:
     try:
         return set(_load().keys())

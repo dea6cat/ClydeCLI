@@ -93,7 +93,6 @@ class OllamaProvider:
                      or os.environ.get("OLLAMA_HOST") or LOCAL_DEFAULT).rstrip("/")
         self.api_key = api_key
         self._ctx_cache: dict[str, int] = {}
-        self._ctx_override: dict[str, int] = {}
         self._show_cache: dict[str, dict] = {}
 
     def _headers(self) -> dict:
@@ -163,20 +162,11 @@ class OllamaProvider:
         if pm and pm.isdigit():
             self._ctx_cache[model] = int(pm)
             return self._ctx_cache[model]
-        if override := self._ctx_override.get(model):
-            return override
         if self.api_key is not None:
             return CLOUD_CTX
         if model not in self._ctx_cache:
             self._ctx_cache[model] = self._compute_ctx(model)
         return self._ctx_cache[model]
-
-    def set_context_window(self, model: str, tokens: int | None) -> None:
-        """Override the context window for this model for this session; None/0 clears it."""
-        if tokens is None or tokens <= 0:
-            self._ctx_override.pop(model, None)
-        else:
-            self._ctx_override[model] = tokens
 
     def _options(self, model: str) -> dict:
         """Conservative sampling (low temperature + mild repeat penalty) steadies small-model tool
@@ -237,26 +227,6 @@ class OllamaProvider:
             payload["tools"] = to_openai(tools)
         return payload
 
-    def send(self, conversation: Conversation, model: str, tools: tuple[ToolSpec, ...]) -> ProviderResponse:
-        raw = post_json(f"{self.host}/api/chat", self._payload(conversation, model, tools, False),
-                        headers=self._headers(), provider=self.name)
-        msg = raw.get("message", {})
-        calls = []
-        for c in msg.get("tool_calls") or []:
-            fn = c["function"]
-            calls.append(ToolCall.new(name=fn["name"], arguments=_parse_args(fn["arguments"])))
-        text = (msg.get("content") or "").strip()
-        if not calls and text:
-            calls = [ToolCall.new(name=n, arguments=a) for n, a in recover_toolcalls(text, [t.name for t in tools])]
-        thinking = (msg.get("thinking") or "").strip()
-        return ProviderResponse(
-            message=Message.assistant(text=text or None, thinking=thinking or None, tool_calls=calls),
-            raw=raw,
-            done_reason=raw.get("done_reason"),
-            prompt_tokens=raw.get("prompt_eval_count"),
-            usage=_usage(raw),
-        )
-
     def stream(self, conversation: Conversation, model: str, tools: tuple[ToolSpec, ...],
                on_text: Callable[[str], None], *, cancel=None, reasoning=None, on_thinking=None) -> ProviderResponse:
         payload = self._payload(conversation, model, tools, True)
@@ -303,30 +273,6 @@ class OllamaProvider:
             prompt_tokens=prompt_tokens,
             usage=usage,
         )
-
-    def perf(self, model: str) -> str:
-        """Live footprint of a loaded local model via /api/ps: total RAM and the GPU/CPU split.
-        '' if the model isn't loaded yet or ps is unavailable."""
-        try:
-            data = get_json(f"{self.host}/api/ps", headers=self._headers(), provider=self.name)
-        except Exception:
-            return ""
-        for m in data.get("models", []):
-            if model in (m.get("name"), m.get("model")):
-                total = m.get("size", 0) or 0
-                vram = m.get("size_vram", 0) or 0
-                if total <= 0:
-                    return ""
-                if vram >= total:
-                    proc = "100% GPU"
-                elif vram <= 0:
-                    proc = "100% CPU"
-                else:
-                    gpu = round(vram / total * 100)
-                    proc = f"{gpu}% GPU / {100 - gpu}% CPU"
-                return f"{total / 1e9:.1f}GB · {proc}"
-        return ""
-
 
 def local() -> OllamaProvider:
     return OllamaProvider(name="ollama")

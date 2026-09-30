@@ -102,19 +102,3 @@ class REPLTool:
 
     def run(self, tool_input: dict[str, Any], context: ToolContext) -> ToolResult:
         return ToolResult(name="REPL", output={"error": "REPL tool is not implemented"}, is_error=True)
-
-
-class TestingPermissionTool:
-    def spec(self) -> ToolSpec:
-        return ToolSpec(
-            name="TestingPermission",
-            description="Test-only tool (always succeeds).",
-            input_schema={"type": "object", "additionalProperties": False, "properties": {}},
-            is_read_only=True,
-            max_result_size_chars=100_000,
-            strict=True,
-        )
-
-    def run(self, tool_input: dict[str, Any], context: ToolContext) -> ToolResult:
-        return ToolResult(name="TestingPermission", output="TestingPermission executed successfully", content_type="text")
-

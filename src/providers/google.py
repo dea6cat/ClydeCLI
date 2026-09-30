@@ -11,7 +11,7 @@ import json
 import os
 from typing import Callable
 
-from .base import ProviderResponse, cached_model_list, get_json, post_json, post_stream
+from .base import ProviderResponse, cached_model_list, get_json, post_stream
 from .toolspec import ToolSpec, to_gemini
 from .types import Conversation, Message, Role, ToolCall
 
@@ -144,19 +144,6 @@ class GoogleProvider:
         if joined:
             text_parts.append(joined)
         return joined
-
-    def send(self, conversation: Conversation, model: str, tools: tuple[ToolSpec, ...]) -> ProviderResponse:
-        url = f"{BASE}/models/{model}:generateContent"
-        raw = post_json(url, self._payload(conversation, tools), headers=self._headers(), provider=self.name)
-        text_parts: list = []
-        calls: list = []
-        cand = (raw.get("candidates") or [{}])[0]
-        self._read_parts(cand, text_parts, calls)
-        text = "".join(text_parts).strip()
-        usage = _usage(raw.get("usageMetadata"))
-        return ProviderResponse(message=Message.assistant(text=text or None, tool_calls=calls), raw=raw,
-                                done_reason=cand.get("finishReason"),
-                                prompt_tokens=(usage or {}).get("input_tokens"), usage=usage)
 
     def stream(self, conversation: Conversation, model: str, tools: tuple[ToolSpec, ...],
                on_text: Callable[[str], None], *, cancel=None, reasoning=None, on_thinking=None) -> ProviderResponse:

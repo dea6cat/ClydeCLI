@@ -22,7 +22,6 @@ classifiers = [
 ]
 
 dependencies = [
-    "python-dotenv",
     "rich",
     "prompt-toolkit",
     "tiktoken>=0.7.0",

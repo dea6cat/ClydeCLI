@@ -91,9 +91,6 @@ class Provider(Protocol):
     def list_models(self) -> list[str]:
         ...
 
-    def send(self, conversation: Conversation, model: str, tools: tuple[ToolSpec, ...]) -> ProviderResponse:
-        ...
-
     def stream(self, conversation: Conversation, model: str, tools: tuple[ToolSpec, ...],
                on_text: Callable[[str], None], *, cancel=None, reasoning=None,
                on_thinking: Callable[[str], None] | None = None) -> ProviderResponse:

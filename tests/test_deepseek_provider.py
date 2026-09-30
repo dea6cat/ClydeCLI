@@ -16,7 +16,6 @@ class DeepSeekProvider(unittest.TestCase):
         p = registry.build_registry()["deepseek"]
         self.assertEqual(p.base_url, "https://api.deepseek.com/v1")
         self.assertEqual(p.key_env, "DEEPSEEK_API_KEY")
-        self.assertFalse(registry.is_local(p))          # cloud, not local Ollama
 
     def test_key_env_mapping(self):
         self.assertEqual(config.PROVIDER_KEY_ENV["deepseek"], "DEEPSEEK_API_KEY")

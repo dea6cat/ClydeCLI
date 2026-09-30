@@ -75,11 +75,6 @@ def usable(reg: dict[str, Provider]) -> dict[str, Provider]:
     return {name: p for name, p in reg.items() if p.is_available()}
 
 
-def is_local(provider: Provider) -> bool:
-    """True for the local Ollama provider (no API key)."""
-    return getattr(provider, "name", "") == "ollama" and getattr(provider, "api_key", None) is None
-
-
 def resolve(reg: dict[str, Provider], model: str) -> tuple[Provider, str] | None:
     """(provider, model) or None. Explicit 'provider:model' wins; else a bare name is matched
     across *usable* providers (ambiguity -> None). The prefix must be a known provider, so

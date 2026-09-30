@@ -36,10 +36,6 @@ class FakeProvider:
             raise item
         return item
 
-    def send(self, conversation, model, tools):
-        self.requests.append({"conversation": conversation, "model": model, "tools": tools, "reasoning": None})
-        return self._next()
-
     def stream(self, conversation, model, tools, on_text, *, cancel=None, reasoning=None, on_thinking=None):
         self.requests.append({"conversation": conversation, "model": model, "tools": tools, "reasoning": reasoning})
         resp = self._next()

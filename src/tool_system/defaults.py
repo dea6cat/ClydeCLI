@@ -42,7 +42,6 @@ from .tools import (
     TaskOutputTool,
     TaskStopTool,
     TaskUpdateTool,
-    TestingPermissionTool,
     TodoWriteTool,
     WebFetchTool,
     WebSearchTool,
@@ -94,7 +93,6 @@ def build_default_registry(*, include_user_tools: bool = True) -> ToolRegistry:
             PowerShellTool(),
             NotebookEditTool(),
             REPLTool(),
-            TestingPermissionTool(),
         ]
     )
     registry.register(AgentTool(registry))

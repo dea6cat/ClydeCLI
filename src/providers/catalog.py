@@ -1,7 +1,7 @@
 """Per-model capability catalog for cloud models.
 
 A small bundled JSON (`catalog.json`) maps well-known cloud model ids to their real
-context window, output-token cap, and image support. Keys match by longest prefix, so
+context window and output-token cap. Keys match by longest prefix, so
 dated/suffixed variants (e.g. `gpt-4o-2024-08-06`) resolve to their base entry. Local
 Ollama models are absent by design: their window is sized from num_ctx.
 
@@ -21,7 +21,6 @@ _CATALOG_PATH = Path(__file__).with_name("catalog.json")
 class ModelInfo:
     context_window: int
     default_max_tokens: int
-    supports_images: bool
 
 
 _cache: dict[str, ModelInfo] | None = None
@@ -38,7 +37,6 @@ def _load() -> dict[str, ModelInfo]:
             table[key.lower()] = ModelInfo(
                 context_window=int(v["context_window"]),
                 default_max_tokens=int(v["default_max_tokens"]),
-                supports_images=bool(v.get("supports_images", False)),
             )
     except Exception:
         table = {}
@@ -72,6 +70,3 @@ def max_tokens(model: str, default: int) -> int:
     return info.default_max_tokens if info else default
 
 
-def supports_images(model: str) -> bool:
-    info = lookup(model)
-    return bool(info and info.supports_images)
