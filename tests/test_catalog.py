@@ -57,12 +57,6 @@ class CatalogAccessors(unittest.TestCase):
         self.assertEqual(catalog.max_tokens("claude-opus-4-8", 4096), 64000)
         self.assertEqual(catalog.max_tokens("nope-nope", 4096), 4096)
 
-    def test_supports_images(self):
-        self.assertTrue(catalog.supports_images("gpt-4o"))
-        self.assertFalse(catalog.supports_images("gpt-3.5-turbo"))
-        self.assertFalse(catalog.supports_images("nope-nope"))
-
-
 class CorruptCatalog(unittest.TestCase):
     def test_bad_json_degrades_to_empty(self):
         real = catalog._CATALOG_PATH

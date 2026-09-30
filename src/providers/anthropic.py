@@ -13,7 +13,7 @@ import re
 from typing import Callable
 
 from . import catalog
-from .base import ProviderError, ProviderResponse, cached_model_list, get_json, post_json, post_stream
+from .base import ProviderError, ProviderResponse, cached_model_list, get_json, post_stream
 from .toolspec import ToolSpec, to_anthropic
 from .types import Conversation, Message, Role, ToolCall
 
@@ -128,27 +128,6 @@ class AnthropicProvider:
             else:
                 out.append({"role": "user", "content": m.text or ""})
         return out
-
-    def send(self, conversation: Conversation, model: str, tools: tuple[ToolSpec, ...]) -> ProviderResponse:
-        payload = self._payload(conversation, model, tools)
-        payload["max_tokens"] = min(payload["max_tokens"], 16000)   # non-streaming: stay under HTTP timeouts
-        raw = post_json(f"{self.base_url}/v1/messages", payload, headers=self._headers(), provider=self.name)
-        text_parts, calls = [], []
-        for block in raw.get("content", []):
-            if block.get("type") == "text":
-                text_parts.append(block.get("text", ""))
-            elif block.get("type") == "tool_use":
-                calls.append(ToolCall.new(name=block.get("name", ""),
-                                          arguments=block.get("input", {}), id=block.get("id")))
-        text = "".join(text_parts).strip()
-        usage = _usage(raw.get("usage") or {})
-        return ProviderResponse(
-            message=Message.assistant(text=text or None, tool_calls=calls),
-            raw=raw,
-            done_reason=raw.get("stop_reason"),
-            prompt_tokens=usage.get("input_tokens"),
-            usage=usage,
-        )
 
     def stream(self, conversation: Conversation, model: str, tools: tuple[ToolSpec, ...],
                on_text: Callable[[str], None], *, cancel=None, reasoning=None, on_thinking=None) -> ProviderResponse:

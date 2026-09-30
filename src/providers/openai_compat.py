@@ -11,7 +11,7 @@ import os
 import re
 from typing import Callable
 
-from .base import ProviderError, ProviderResponse, cached_model_list, get_json, post_json, post_stream
+from .base import ProviderError, ProviderResponse, cached_model_list, get_json, post_stream
 from .toolspec import ToolSpec, to_openai
 from .types import Conversation, Message, Role, ToolCall
 
@@ -146,29 +146,6 @@ class OpenAICompatProvider:
         if tools:   # OpenAI rejects an empty tools array
             payload["tools"] = to_openai(tools)
         return payload
-
-    def send(self, conversation: Conversation, model: str, tools: tuple[ToolSpec, ...]) -> ProviderResponse:
-        raw = post_json(f"{self.base_url}/chat/completions", self._payload(conversation, model, tools, False),
-                        headers=self._headers(), provider=self.name)
-        choice = (raw.get("choices") or [{}])[0]
-        msg = choice.get("message", {})
-        calls = []
-        for c in msg.get("tool_calls") or []:
-            fn = c.get("function", {})
-            args = fn.get("arguments") or "{}"
-            if isinstance(args, str):
-                try:
-                    args = json.loads(args)
-                except json.JSONDecodeError:
-                    args = {}
-            calls.append(ToolCall.new(name=fn.get("name", ""), arguments=args, id=c.get("id")))
-        text = (msg.get("content") or "").strip()
-        return ProviderResponse(
-            message=Message.assistant(text=text or None, tool_calls=calls),
-            raw=raw,
-            done_reason=choice.get("finish_reason"),
-            usage=_usage(raw.get("usage")),
-        )
 
     def stream(self, conversation: Conversation, model: str, tools: tuple[ToolSpec, ...],
                on_text: Callable[[str], None], *, cancel=None, reasoning=None, on_thinking=None) -> ProviderResponse:

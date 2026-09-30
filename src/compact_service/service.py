@@ -38,8 +38,6 @@ def _has_tool_result(api_message: dict[str, Any]) -> bool:
     )
 
 
-# Maximum output tokens for the summary model
-COMPACT_MAX_OUTPUT_TOKENS = 4096
 
 # No-tools preamble prepended to the summary prompt
 NO_TOOLS_PREAMBLE = """CRITICAL: Respond with TEXT ONLY. Do NOT call any tools.

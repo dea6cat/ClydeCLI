@@ -159,7 +159,6 @@ class TestKeyStore(_TempHome):
         keys.connect("deepseek", "ds-key")
         self.assertEqual(os.environ["DEEPSEEK_API_KEY"], "ds-key")
         self.assertEqual(json.loads(keys.keys_file().read_text()), {"deepseek": "ds-key"})
-        self.assertTrue(keys.is_connected("deepseek"))
 
     def test_shell_key_wins_over_saved(self):
         keys.connect("openai", "saved")

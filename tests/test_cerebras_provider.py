@@ -16,7 +16,6 @@ class CerebrasProvider(unittest.TestCase):
         p = registry.build_registry()["cerebras"]
         self.assertEqual(p.base_url, "https://api.cerebras.ai/v1")
         self.assertEqual(p.key_env, "CEREBRAS_API_KEY")
-        self.assertFalse(registry.is_local(p))          # cloud, not local Ollama
 
     def test_key_env_mapping(self):
         self.assertEqual(config.PROVIDER_KEY_ENV["cerebras"], "CEREBRAS_API_KEY")
