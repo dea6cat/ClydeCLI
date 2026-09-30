@@ -53,8 +53,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ListMcpResources / ReadMcpResource, and `/mcp` shows status
 - Code map and the Map tool: a map of the repo's symbols, calls and imports (built from the syntax
   tree with no LLM, via graphify) that any model can query for related symbols, paths between
-  symbols, explanations and change impact. The map refreshes in the background when `clyde` starts in
-  a git repo, the context prompt points the model at it, and `clyde setup` offers to install the builder
+  symbols, explanations and change impact. The map refreshes in the background into
+  `.clyde/code-map/map.json` when `clyde` starts in a git repo, the context prompt points the model at it, and `clyde setup` offers to install the builder
 - `clyde mcp import` (and `clyde setup`) brings over stdio MCP servers from Claude Code, Cursor,
   Gemini CLI, Codex and Copilot CLI after a yes
 

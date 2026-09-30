@@ -19,10 +19,10 @@ from src.tool_system.tools.code_map import MapTool, start_background_refresh
 FAKE_GRAPHIFY = """#!/bin/sh
 echo "$@" >> "$GRAPHIFY_LOG"
 if [ "$1" = update ]; then
-  mkdir -p graphify-out
-  echo '{"nodes": []}' > graphify-out/graph.json
-  printf '## God Nodes (most connected)\\n1. `Engine` - 40 edges\\n2. `run()` - 12 edges\\n\\n## Communities\\n' > graphify-out/GRAPH_REPORT.md
-  echo "[graphify watch] Rebuilt: 2 nodes"; echo "Code graph updated."
+  mkdir -p "$GRAPHIFY_OUT"
+  echo '{"nodes": []}' > "$GRAPHIFY_OUT/graph.json"
+  printf '## God Nodes (most connected)\\n1. `Engine` - 40 edges\\n2. `run()` - 12 edges\\n\\n## Communities\\n' > "$GRAPHIFY_OUT/GRAPH_REPORT.md"
+  echo "[graphify watch] Rebuilt: 2 nodes, 3 edges, 1 communities"; echo "Code graph updated."
   exit 0
 fi
 echo "NODE result for $1 $2"
@@ -59,11 +59,11 @@ class TestMap(unittest.TestCase):
         self.assertEqual(out.output, "NODE result for query how does auth work")
         calls = self._calls()
         self.assertEqual(calls[0], "update .")
-        self.assertIn(f"--graph {self.repo / 'graphify-out' / 'graph.json'}", calls[1])
+        self.assertIn(f"--graph {self.repo / '.clyde' / 'code-map' / 'map.json'}", calls[1])
 
     def test_actions_map_to_graphify_commands(self) -> None:
         tool = MapTool()
-        tool.run({"action": "update"}, self.ctx)
+        self.assertEqual(tool.run({"action": "update"}, self.ctx).output, "Map updated: 2 symbols, 3 links, 1 clusters.")
         tool.run({"action": "path", "source": "A", "target": "B"}, self.ctx)
         tool.run({"action": "affected", "target": "X", "depth": 3}, self.ctx)
         tool.run({"action": "god_nodes"}, self.ctx)
@@ -91,10 +91,11 @@ class TestMap(unittest.TestCase):
         thread = start_background_refresh(self.repo)
         self.assertIsNotNone(thread)
         thread.join(10)
-        self.assertTrue((self.repo / "graphify-out" / "graph.json").exists())
-        self.assertIn("graphify-out/", (self.repo / ".git" / "info" / "exclude").read_text().splitlines())
+        self.assertTrue((self.repo / ".clyde" / "code-map" / "map.json").exists())
+        self.assertFalse((self.repo / "graphify-out").exists())
+        self.assertIn(".clyde/code-map/", (self.repo / ".git" / "info" / "exclude").read_text().splitlines())
         status = subprocess.run(["git", "status", "--porcelain"], cwd=self.repo, capture_output=True, text=True).stdout
-        self.assertNotIn("graphify-out", status)
+        self.assertNotIn("code-map", status)
 
     def test_refresh_can_be_switched_off(self) -> None:
         subprocess.run(["git", "init", "-q"], cwd=self.repo, check=True)
