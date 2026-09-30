@@ -110,6 +110,8 @@ Assistant: Still here. What's broken?
 ```bash
 clyde                          # Start REPL
 clyde --model openai:gpt-5.4   # Start with a specific model
+clyde -c                       # Continue the latest session in this directory
+clyde --resume [id]            # Pick a recent session, or resume one by id
 clyde login                    # Connect a provider, pick a default model
 clyde logout openai            # Forget a saved key
 clyde --list-models            # Every model you can use right now
@@ -134,7 +136,7 @@ clyde --version                # Check version
 | Skill System | ✅ | SKILL.md slash-command skills with args + tool limits |
 | Context Building | 🟡 | Workspace snapshot, git status, a README excerpt, entry points (`[project.scripts]`, package.json `main`/`bin`) and memory files go into the prompt: `~/.clyde/CLAUDE.md` (user), `CLAUDE.md` (project, shared) and `CLAUDE.local.md` (project, personal, keep it gitignored); no deeper project indexing |
 | Permissions | 🟡 | Interactive approval is wired into tool dispatch, but only Write and Edit ask; Bash only blocks a short list of dangerous patterns |
-| Sessions | 🟡 | Manual `/save` and `/load`; no session picker, no auto-save |
+| Sessions | ✅ | Auto-saved after each turn; `/resume` picker per workspace, `clyde -c` / `clyde --resume [id]` |
 | Compaction | ✅ | `/compact` on demand; runs automatically once history reaches 80% of the context window |
 
 ### Tools
@@ -249,6 +251,7 @@ That's all it takes: clone, configure, run.
 | `/help`      | Show all commands     |
 | `/save`      | Save session          |
 | `/load <id>` | Load session          |
+| `/resume [id]` | Pick a recent session of this workspace to continue |
 | `/multiline` | Toggle multiline mode |
 | `/model [provider:model]` | Show or switch the model |
 | `/models`    | List models from every connected provider |

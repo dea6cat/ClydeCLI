@@ -76,7 +76,7 @@ from typing import Any
 from src.agent import Session
 from src.compact_service.service import auto_compact_threshold, compact_conversation, needs_auto_compact
 from src.context_system.context_analyzer import get_context_window_for_model
-from src.config import get_default_model, set_default_model
+from src.config import get_default_model, load_config, set_default_model
 from src.outputStyles import resolve_output_style
 from src.providers import build_registry, keys, model_ref, pick_default_model, resolve, usable
 from src.providers import catalog
@@ -100,6 +100,28 @@ from src.command_system import (
 from src.cost_tracker import CostTracker
 from src.history import HistoryLog
 
+_RESUME_SHOWN = 20   # sessions listed by the /resume picker
+_PREVIEW_CHARS = 80
+
+
+def _message_text(message) -> str:
+    """The plain text of a stored message; tool calls and results contribute nothing."""
+    if isinstance(message.content, str):
+        return message.content.strip()
+    return " ".join(b.text for b in message.content if getattr(b, "type", None) == "text").strip()
+
+
+def _preview(text: str) -> str:
+    line = " ".join(text.split())
+    return line if len(line) <= _PREVIEW_CHARS else line[:_PREVIEW_CHARS - 1] + "…"
+
+
+def _first_prompt(session) -> str:
+    for message in session.conversation.messages:
+        if message.role == "user" and (text := _message_text(message)):
+            return _preview(text)
+    return "(no prompt)"
+
 
 # Returned by the prompt when the cron watcher interrupts an idle prompt to run a due job.
 _CRON_WAKE = object()
@@ -108,9 +130,13 @@ _CRON_WAKE = object()
 class ClydeREPL:
     """Interactive REPL for ClydeCLI."""
 
-    def __init__(self, model: str | None = None, stream: bool = False):
+    def __init__(self, model: str | None = None, stream: bool = False,
+                 resume: str | None = None, continue_last: bool = False):
         self.console = Console()
         self.stream = stream
+        self._startup_resume = resume   # "" opens the picker, an id loads that session
+        self._continue_last = continue_last
+        self.auto_save = load_config().get("session", {}).get("auto_save", True)
         self.multiline_mode = False
         self.reasoning: str | None = None   # /think level; None keeps each model's default
 
@@ -145,6 +171,7 @@ class ClydeREPL:
             "/clear",
             "/save",
             "/load",
+            "/resume",
             "/multiline",
             "/stream",
             "/render-last",
@@ -622,6 +649,10 @@ class ClydeREPL:
     def run(self):
         """Run the REPL."""
         self._print_startup_header()
+        if self._continue_last:
+            self.resume_session(latest=True)
+        elif self._startup_resume is not None:
+            self.resume_session(self._startup_resume)
 
         while True:
             try:
@@ -714,7 +745,7 @@ class ClydeREPL:
             special_commands = {
                 'exit', 'quit', 'q',
                 'help', 'tools', 'tool',
-                'save', 'load', 'multiline', 'stream', 'render-last',
+                'save', 'load', 'resume', 'multiline', 'stream', 'render-last',
                 'model', 'models', 'think',
                 'skill',
                 'context', 'compact',  # These need special handling
@@ -880,6 +911,10 @@ class ClydeREPL:
             if not rendered:
                 self.console.print("[yellow]No assistant response available to render.[/yellow]")
 
+        elif cmd == '/resume' or cmd.startswith('/resume '):
+            parts = raw.split(maxsplit=1)
+            self.resume_session(parts[1].strip() if len(parts) > 1 else "")
+
         elif cmd.startswith('/load'):
             parts = command.strip().split(maxsplit=1)
             if len(parts) < 2:
@@ -1005,6 +1040,7 @@ class ClydeREPL:
 - `/clear`, `/reset`, `/new` - Clear conversation history
 - `/save` - Save current session
 - `/load <session-id>` - Load a previous session
+- `/resume [session-id]` - Pick a recent session of this workspace to continue, or load one by id
 - `/multiline` - Toggle multiline input mode
 - `/stream [on|off|toggle]` - Toggle live response rendering
 - `/render-last` - Re-render the last assistant reply as Markdown
@@ -1327,6 +1363,17 @@ class ClydeREPL:
                 self.console.print(f"\n[red]Error: {e}[/red]")
                 import traceback
                 traceback.print_exc()
+        finally:
+            self._autosave_session()
+
+    def _autosave_session(self) -> None:
+        """Persist the session after each turn so /resume and --continue have something to load."""
+        if not self.auto_save or not self.session.conversation.messages:
+            return
+        try:
+            self.session.save()
+        except OSError as e:
+            self.console.print(f"[yellow]Couldn't auto-save the session: {e}[/yellow]")
 
     def _startup_model(self, requested: str | None):
         """(provider, model) to start with. An explicit --model must resolve. Otherwise the saved
@@ -1443,22 +1490,64 @@ class ClydeREPL:
         Args:
             session_id: Session ID to load
         """
-        from src.agent import Session
-
-        loaded_session = Session.load(session_id)
+        try:
+            loaded_session = Session.load(session_id)
+        except (OSError, ValueError, KeyError) as e:
+            self.console.print(f"[red]Couldn't read session {session_id}: {e}[/red]")
+            return
         if loaded_session is None:
             self.console.print(f"[red]Session not found: {session_id}[/red]")
             return
+        self._switch_session(loaded_session)
 
-        # Replace current session
+    def resume_session(self, session_id: str = "", latest: bool = False) -> None:
+        """Load a session by id, continue the latest one (`latest`), or pick from this workspace's recent sessions."""
+        if session_id:
+            self.load_session(session_id)
+            return
+        sessions = [s for s in Session.list_recent(str(self.tool_context.workspace_root))
+                    if s.session_id != self.session.session_id]
+        if not sessions:
+            self.console.print("[yellow]No saved sessions for this workspace.[/yellow]")
+            return
+        if latest:
+            self._switch_session(sessions[0])
+            return
+
+        shown = sessions[:_RESUME_SHOWN]
+        self.console.print("\n[bold]Recent sessions:[/bold]")
+        for i, s in enumerate(shown, start=1):
+            when = s.updated_at[:16].replace("T", " ")
+            self.console.print(f"  {i:>2}. {when}  {len(s.conversation.messages):>3} msgs  ", end="")
+            self.console.print(_first_prompt(s), markup=False, highlight=False)
+        try:
+            raw = input("Resume which session? (number, Enter to cancel) > ").strip()
+        except EOFError:
+            raw = ""
+        if not raw:
+            return
+        if not raw.isdigit() or not 1 <= int(raw) <= len(shown):
+            self.console.print(f"[red]No session numbered {raw}.[/red]")
+            return
+        self._switch_session(shown[int(raw) - 1])
+
+    def _switch_session(self, loaded_session) -> None:
+        saved_model = f"{loaded_session.provider}:{loaded_session.model}"
         self.session = loaded_session
-        self.console.print(f"[green]Session loaded: {session_id}[/green]")
-        self.console.print(f"[dim]Provider: {loaded_session.provider}, Model: {loaded_session.model}[/dim]")
-        self.console.print(f"[dim]Messages: {len(loaded_session.conversation.messages)}[/dim]")
+        self.command_context.conversation = loaded_session.conversation   # /clear, /compact act on it
+        # Keep the model in use: the saved one may not be connected any more.
+        loaded_session.provider, loaded_session.model = self.provider_name, self.model
+        self._print_resume_recap(saved_model)
 
-        # Show conversation history
-        if loaded_session.conversation.messages:
-            self.console.print("\n[bold]Conversation History:[/bold]")
-            for msg in loaded_session.conversation.messages[-5:]:  # Show last 5 messages
-                role_color = "blue" if msg.role == "user" else "green"
-                self.console.print(f"[{role_color}]{msg.role}[/{role_color}]: {msg.content[:100]}...")
+    def _print_resume_recap(self, saved_model: str) -> None:
+        messages = self.session.conversation.messages
+        tool_calls = sum(1 for m in messages if isinstance(m.content, list)
+                         for b in m.content if getattr(b, "type", None) == "tool_use")
+        self.console.print(f"[green]Resumed session {self.session.session_id}[/green] "
+                           f"[dim]· {len(messages)} messages · {tool_calls} tool calls · was {saved_model}[/dim]")
+        exchanges = [(m.role, text) for m in messages
+                     if m.role in ("user", "assistant") and (text := _message_text(m))]
+        for role, text in exchanges[-4:]:
+            label = "You" if role == "user" else "Clyde"
+            self.console.print(f"  {label}: {_preview(text)}", style="dim", markup=False, highlight=False)
+        self.console.print()
