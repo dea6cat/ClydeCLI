@@ -30,6 +30,8 @@ class ToolContext:
     # Set by run_agent_loop so the Agent tool can run a sub-agent on the same model.
     provider: Any | None = None
     model: str | None = None
+    # PreToolUse / PostToolUse hook table (see hooks.py); the REPL loads it from settings.
+    hooks: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
 
     # Permission handler callback: called when a tool needs user consent.
     # Signature: (tool_name: str, message: str, suggestion: str | None)
