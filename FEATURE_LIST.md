@@ -41,13 +41,16 @@
 | Session message management | ✅ | Supports session history maintenance and serialization |
 | Error recovery / re-login | 🟡 | Basic authentication error handling and reconfiguration flow exist |
 | Token / Cost tracking | ✅ | `/cost` shows input/output/cache tokens per model and an estimated USD total from list prices in `catalog.json` ("price unknown" for unpriced models, $0 for local Ollama); `/context` reports token usage |
-| Context building | 🟡 | `context_system` injects workspace / git / README excerpt + entry points / `CLAUDE.md` memory (user `~/.clyde/CLAUDE.md`, project `CLAUDE.md`, personal `CLAUDE.local.md`); still missing compact |
+| Context building | ✅ | `context_system` injects workspace / git / README excerpt + entry points / the code map / `CLAUDE.md` memory (user `~/.clyde/CLAUDE.md`, project `CLAUDE.md`, personal `CLAUDE.local.md`) |
 | Claude Code Agent Loop | ✅ | agent_loop.py implemented, supports the tool-call loop |
 | `/resume` session recovery experience | ✅ | Sessions auto-save after each turn; `/resume` picks from this workspace's recent sessions (or takes an id) and shows a recap; `clyde -c` / `clyde --resume [id]` on the CLI |
 | `/compact` conversation compaction | ✅ | Manual `/compact`, plus automatic compaction before a turn once history reaches 80% of the context window |
 | `/doctor` diagnostics | ✅ | Checks Python vs requires-python, dependencies, config and key store (mode 600, no secrets shown), providers with keys, current model, git, workspace and permission settings |
 | Hook system | ✅ | PreToolUse / PostToolUse shell hooks from `~/.clyde/settings.json` or `.toml` (Claude Code, shorthand, Gemini CLI, Cursor or Copilot CLI format); no project-level hooks until there is a workspace trust prompt |
-| Permission system | 🟡 | Approval prompts wired into tool dispatch; Bash asks unless the command is read-only (dangerous patterns still blocked), Write/Edit ask for docs, Config asks before setting; no "always allow" rules yet |
+| Permission system | ✅ | Bash asks unless read-only (dangerous patterns refused), Write/Edit ask for docs, Config asks before setting, WebFetch asks per domain; saved `permissions.allow` / `deny` rules in Claude Code syntax and a "don't ask again" answer |
+| Plugin system | ✅ | `clyde plugin install/list/enable/disable/remove`; plugins bundle tools, skills, hooks and MCP servers (Claude Code layout) and are enabled only after a yes |
+| Self-checks | ✅ | ruff / mypy on edited Python files with only new problems fed back to the model; `/check` runs ruff, mypy and pytest (uv-aware) |
+| Tracing / `/debug` | ✅ | Per-session JSONL traces with redaction, `/debug` for the last turn, `clyde --debug` live |
 
 ---
 
@@ -64,7 +67,7 @@
 | Schema Validation | ✅ | Parameter validation system implemented |
 | Agent Loop | ✅ | Complete tool-call loop implemented |
 | Tool Context | ✅ | Tool context management implemented |
-| Permission Framework | 🟡 | Integrated into dispatch; per-tool coverage is still thin |
+| Permission Framework | ✅ | Integrated into dispatch with saved allow/deny rules |
 | Error Handling | ✅ | Tool error types and handling defined |
 | Task Manager | ✅ | Task manager implemented |
 
@@ -115,8 +118,8 @@
 | Tool Execution Engine | ✅ | Full loop of tool loading, execution, and result feedback implemented |
 | Output Styles | ✅ | Output style loading system implemented |
 | Session Persistence | ✅ | Session save/load available |
-| Context Engine | 🟡 | Context-building pipeline connected, supporting workspace, git, README excerpt / entry points, and `CLAUDE.md` / `CLAUDE.local.md` memory injection |
-| Permission Engine | 🟡 | Integrated for Bash, Write/Edit and Config set; no persistent allow rules or WebFetch domain checks yet |
+| Context Engine | ✅ | Context-building pipeline: workspace, git, README excerpt / entry points, code map, and `CLAUDE.md` / `CLAUDE.local.md` memory |
+| Permission Engine | ✅ | Bash, Write/Edit, Config set and WebFetch ask; allow/deny rules from `~/.clyde/settings.json`; no project-level rules yet |
 | Compaction Engine | ✅ | Manual `/compact` and automatic at 80% of the context window |
 | Hook Runtime | ✅ | Matching hooks run around every tool dispatch; exit 2 blocks (pre) or feeds stderr back (post) |
 | MCP Runtime | 🟡 | Stdlib stdio JSON-RPC client, started with the REPL; no HTTP/SSE servers or project `.mcp.json` yet |
@@ -172,39 +175,40 @@ Goal: move from a "mirrored tool list" to a "truly executable Python agent".
 - [x] Tool schemas, parameter validation, exception handling, call logging
 - [x] Tool execution result feedback loop
 
-## Phase 3: Context, permissions, recovery (in progress)
+## Phase 3: Context, permissions, recovery (done)
 
 Goal: fill in Claude Code's engineering capabilities.
 
-- [ ] Complete workspace context building
+- [x] Complete workspace context building
 - [x] Basic git status / file tree / `CLAUDE.md` injection
 - [x] README / entry file summary injection
-- [ ] Memory and history context management
-- [ ] Full permission system integration
+- [x] Memory and history context management
+- [x] Full permission system integration
 - [x] `/resume`
-- [ ] `/compact`
+- [x] `/compact`
 - [x] `/doctor`
 - [x] pre/post tool use hooks
 
-## Phase 4: MCP, plugins, extension ecosystem
+## Phase 4: MCP, plugins, extension ecosystem (done)
 
 Goal: upgrade the project from a monolithic CLI to an extensible platform.
 
 - [x] MCP client/runtime (stdio)
-- [ ] Python plugin system
-- [ ] Custom commands / tools / hooks
+- [x] Python plugin system
+- [x] Custom commands / tools / hooks
 - [x] Local model (Ollama) and third-party provider support
-- [ ] Better observability and debugging tools
+- [x] Better observability and debugging tools
 
-## Phase 5: Distinctive strengths of the Python version
+## Phase 5: Distinctive strengths of the Python version (in progress)
 
 Goal: build features unique to the Python rewrite.
 
-- [ ] Notebook-friendly toolchain
+- [x] Notebook-friendly toolchain
 - [ ] Enhancements for data engineering / ETL scenarios
 - [x] Support for Chinese model providers (GLM, DeepSeek, MiniMax)
-- [ ] pytest / ruff / mypy / uv integration experience
-- [ ] Extension interfaces for in-house enterprise automation and workflows
+- [x] pytest / ruff / mypy / uv integration experience
+- [x] Extension interfaces for in-house enterprise automation and workflows (plugins, hooks, MCP)
+- [x] Code Map: a structural map of the repo any model can query
 
 ---
 
@@ -220,7 +224,7 @@ Goal: build features unique to the Python rewrite.
 ### P1: High-value foundational capabilities
 
 - Deeper project indexing for context building
-- Saved permission rules ("always allow") and WebFetch domain checks
+- Project-level permission rules, hooks and plugins behind the workspace trust prompt
 - Workspace trust prompt, so project-level hooks can be enabled
 
 ### P2: Filling in key Claude Code experiences

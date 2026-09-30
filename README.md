@@ -116,6 +116,8 @@ clyde setup                    # First-run onboarding (provider, other agents' h
 clyde login                    # Connect a provider, pick a default model
 clyde hooks import             # Bring over hooks from Claude Code, Gemini CLI, Cursor, Copilot CLI
 clyde mcp import               # Bring over MCP servers from Claude Code, Cursor, Gemini CLI, Codex, Copilot CLI
+clyde plugin install <dir|url> # Install a plugin (then list / enable / disable / remove)
+clyde --debug                  # Print trace events live while you work
 clyde logout openai            # Forget a saved key
 clyde --list-models            # Every model you can use right now
 clyde config                   # View settings
@@ -137,11 +139,14 @@ clyde --version                # Check version
 | Multi-Provider | ✅ | 12 providers, stdlib HTTP, live model lists, `provider:model` switching |
 | Agent Loop | ✅ | Tool-calling loop with retries, reasoning control, history repair |
 | Skill System | ✅ | SKILL.md slash-command skills with args + tool limits |
-| Context Building | 🟡 | Workspace snapshot, git status, a README excerpt, entry points (`[project.scripts]`, package.json `main`/`bin`) and memory files go into the prompt: `~/.clyde/CLAUDE.md` (user), `CLAUDE.md` (project, shared) and `CLAUDE.local.md` (project, personal, keep it gitignored); no deeper project indexing |
-| Permissions | 🟡 | Interactive approval is wired into tool dispatch: Bash asks for any command that is not clearly read-only (and still blocks dangerous patterns), Write/Edit ask for docs files, Config asks before changing a setting; approvals are one-shot, there are no saved allow rules |
+| Context Building | ✅ | Workspace snapshot, git status, a README excerpt, entry points, the code map and memory files go into the prompt: `~/.clyde/CLAUDE.md` (user), `CLAUDE.md` (project, shared) and `CLAUDE.local.md` (project, personal, keep it gitignored) |
+| Permissions | ✅ | Bash asks for any command that is not read-only (dangerous patterns are refused), Write/Edit ask for docs files, Config asks before a change, WebFetch asks per domain. Answer "don't ask again" or add `permissions.allow` / `deny` rules (Claude Code syntax) to `~/.clyde/settings.json` |
 | Sessions | ✅ | Auto-saved after each turn; `/resume` picker per workspace, `clyde -c` / `clyde --resume [id]` |
 | Cost Tracking | ✅ | `/cost` shows input, output and cache tokens per model with an estimated $ total from catalog prices |
 | Hooks | ✅ | PreToolUse / PostToolUse shell commands from `~/.clyde/settings.json` or `.toml`; also reads Gemini CLI, Cursor and Copilot CLI hook tables |
+| Plugins | ✅ | `clyde plugin install` bundles of tools, skills, hooks and MCP servers (Claude Code layout) into `~/.clyde/plugins/`, enabled only after a yes |
+| Self-checks | ✅ | After a Python edit, ruff (and mypy if configured) run on the file and new problems go back to the model; `/check` runs ruff, mypy and pytest |
+| Tracing | ✅ | Every session writes `~/.clyde/traces/<session>.jsonl` (model and tool calls, timings, tokens, secrets redacted); `/debug` shows the last turn, `clyde --debug` streams it live |
 | Compaction | ✅ | `/compact` on demand; runs automatically once history reaches 80% of the context window |
 
 ### Tools
@@ -168,9 +173,9 @@ clyde --version                # Check version
 - ✅ **Phase 0**: Installable, runnable CLI
 - ✅ **Phase 1**: Core agent experience (REPL, sessions, slash commands)
 - ✅ **Phase 2**: Real tool-calling loop, multi-provider
-- 🟡 **Phase 3**: Context, permissions, recovery (`/resume`, `/doctor`, auto-compaction and README context and pre/post tool hooks are in; saved permission rules are not)
-- 🟡 **Phase 4**: MCP client (stdio) is in; plugins are not (only custom tools from `~/.clyde/tools/` so far)
-- ⏳ **Phase 5**: Python-native differentiators (not started)
+- ✅ **Phase 3**: Context, permissions, recovery (context building, saved permission rules, `/resume`, `/doctor`, compaction, hooks)
+- ✅ **Phase 4**: MCP client (stdio), plugins, custom tools/skills/hooks, tracing and `/debug`
+- 🟡 **Phase 5**: Python-native differentiators: the Code Map, check-after-edit with ruff/mypy/pytest/uv and notebook tools are in; data-engineering/ETL tooling is not
 
 **See [FEATURE_LIST.md](FEATURE_LIST.md) for detailed feature status and PR guidelines.**
 
@@ -277,6 +282,9 @@ That's all it takes: clone, configure, run.
 | `/think [level]` | Reasoning: off, low, medium, high, on, default |
 | `/doctor`    | Diagnose environment, config, keys and permissions |
 | `/mcp`       | Connected MCP servers and their tools |
+| `/plugins`   | Loaded plugins and what each added |
+| `/check`     | Run the project's ruff, mypy and pytest |
+| `/debug [path]` | The last turn's model and tool calls, or the trace file path |
 | `/cost`      | Tokens and estimated cost per model |
 | `/context`   | Context window usage and auto-compact threshold |
 | `/compact`   | Summarize the conversation to free context |
@@ -414,6 +422,56 @@ Add stdio MCP servers under `mcpServers` in `~/.clyde/settings.json` (Claude Cod
 - Only stdio servers from your user settings for now: HTTP/SSE servers and project `.mcp.json`
   files are skipped
 
+### Permission Rules
+
+Stop answering the same prompt. Add rules to `~/.clyde/settings.json` (Claude Code's syntax), or
+pick **"Yes, and don't ask again"** at a prompt to save one:
+
+```json
+{"permissions": {"allow": ["Bash(npm test)", "Bash(git commit:*)", "Edit(docs/**)", "WebFetch(domain:docs.python.org)"],
+                 "deny": ["Bash(rm -rf:*)"]}}
+```
+
+- `Bash(cmd)` is exact, `Bash(prefix:*)` matches whole leading words, bare `Bash` matches everything
+- A compound command (`&&`, `;`, `|`) is allowed only if every part is; read-only parts like `cd` count
+- `Edit(...)` / `Write(...)` take globs relative to the workspace; deny rules win and block without asking
+
+### Plugins
+
+A plugin is a folder that bundles extensions; Claude Code plugins mostly work as-is:
+
+```text
+<plugin>/.clyde-plugin/plugin.json   {"name", "version", "description"}  (.claude-plugin/ also works)
+<plugin>/skills/<name>/SKILL.md      skills
+<plugin>/hooks/hooks.json            PreToolUse / PostToolUse hooks
+<plugin>/.mcp.json                   {"mcpServers": {...}} stdio servers
+<plugin>/tools/*.py                  Python tools, same format as ~/.clyde/tools
+```
+
+- `clyde plugin install <folder-or-git-url>` shows what it contains and asks before enabling it
+  (`--yes` installs it disabled); `clyde plugin list | enable | disable | remove` manage it
+- `${CLYDE_PLUGIN_ROOT}` (or `${CLAUDE_PLUGIN_ROOT}`) in hook and MCP commands is the plugin's folder
+- Plugin tools and MCP servers never replace existing ones; clashes are skipped with a warning.
+  Markdown `commands/` are not supported yet
+
+### Self-Checks
+
+- After ClydeCLI writes or edits a Python file, it runs ruff (and mypy, if the project configures it)
+  on that file and hands only the problems the edit introduced back to the model in the same turn
+- `/check` runs the project's ruff, mypy and pytest and prints a short summary
+- Tools are found from `pyproject.toml`, config files and `uv.lock` (run with `uv run --no-sync`, the
+  project's `.venv`, or PATH); ClydeCLI never installs them. Off: `CLYDE_CHECKS=off` or
+  `{"checks": {"enabled": false}}` in `~/.clyde/settings.json`
+
+### Tracing and /debug
+
+- Each session writes `~/.clyde/traces/<session_id>.jsonl`: model requests (duration, tokens, stop
+  reason or error), tool calls, hook blocks, permission prompts, compactions and MCP errors. API keys
+  and key-shaped values are redacted and long values cut to 500 characters
+- `/debug` shows the last turn, `/debug path` the trace file, and `clyde --debug` prints events live
+- Off: `CLYDE_TRACE=off` or `"session": {"trace": false}` in `~/.clyde/config.json`; the newest 50
+  traces are kept
+
 ***
 
 ## 📦 Project Structure
@@ -431,6 +489,7 @@ ClydeCLI/
 │   ├── compact_service/    # /compact and auto-compaction
 │   ├── output_styles/      # reply style prompts
 │   ├── skills/             # SKILL.md loading and creation
+│   ├── plugins.py          # plugin install and loading
 │   ├── startup/            # setup report
 │   └── tool_system/        # tool registry, permissions, validation, tools/
 ├── tests/                  # mirrors src/
