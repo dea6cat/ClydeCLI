@@ -12,7 +12,10 @@ import urllib.request
 from pathlib import Path
 from unittest.mock import patch
 
+from src.agent.conversation import Conversation
+from src.tool_system.agent_loop import run_agent_loop
 from src.tool_system.context import ToolContext
+from src.tool_system.errors import ToolInputError
 from src.tool_system.defaults import build_default_registry
 from src.tool_system.protocol import ToolCall
 from src.tool_system.registry import ToolRegistry
@@ -54,6 +57,7 @@ from src.tool_system.tools import (
     EnterPlanModeTool,
     ExitPlanModeTool,
 )
+from tests.fakes import FakeProvider, reply
 
 
 class ToolSystemTests(unittest.TestCase):
@@ -548,14 +552,45 @@ class TestBriefAndAgentTools(ToolSystemTests):
         out = BriefTool().run({"text": "abc", "max_chars": 2}, self.ctx).output
         self.assertEqual(out["preview"], "ab…")
 
-    def test_agent_tool_sequences_calls(self) -> None:
+    def test_agent_tool_runs_a_sub_agent(self) -> None:
         reg = build_default_registry(include_user_tools=False)
-        ctx = ToolContext(workspace_root=self.root)
         p = self.root / "x.txt"
         p.write_text("hi", encoding="utf-8")
-        call = {"name": "Read", "input": {"file_path": str(p), "limit": 10}}
-        out = reg.get("Agent").run({"calls": [call]}, ctx).output  # type: ignore[union-attr]
-        self.assertEqual(out["results"][0]["name"], "Read")
+        provider = FakeProvider(
+            reply(tool_calls=[("Agent", {"description": "read x", "prompt": "What is in x.txt?"})]),
+            reply(tool_calls=[("Read", {"file_path": str(p)})], usage={"input_tokens": 5, "output_tokens": 2}),
+            reply("x.txt says hi", usage={"input_tokens": 7, "output_tokens": 3}),
+            reply("done"),
+        )
+        conversation = Conversation()
+        conversation.add_user_message("delegate")
+
+        result = run_agent_loop(conversation, provider, "fake-model", reg, self.ctx)
+
+        self.assertEqual(result.response_text, "done")
+        sub_first = provider.requests[1]
+        self.assertEqual([m.text for m in sub_first["conversation"].messages], ["What is in x.txt?"])
+        self.assertNotIn("Agent", [t.name for t in sub_first["tools"]])
+        self.assertIn("Read", [t.name for t in sub_first["tools"]])
+        agent_result = provider.requests[3]["conversation"].messages[-1].tool_results[0]
+        self.assertFalse(agent_result.is_error)
+        out = json.loads(agent_result.content)
+        self.assertEqual(out["content"], "x.txt says hi")
+        self.assertEqual(out["usage"], {"input_tokens": 12, "output_tokens": 5})
+        # The sub-agent's Read must not let the parent Edit x.txt without reading it itself.
+        self.assertFalse(self.ctx.was_file_read_and_unchanged(p))
+
+    def test_agent_tool_without_provider_is_an_error(self) -> None:
+        reg = build_default_registry(include_user_tools=False)
+        result = reg.dispatch(ToolCall(name="Agent", input={"description": "d", "prompt": "p"}), self.ctx)
+        self.assertTrue(result.is_error)
+        self.assertIn("no provider", result.output["error"])
+
+    def test_agent_tool_rejects_unknown_subagent_type(self) -> None:
+        reg = build_default_registry(include_user_tools=False)
+        self.ctx.provider, self.ctx.model = FakeProvider(), "fake-model"
+        with self.assertRaises(ToolInputError):
+            reg.get("Agent").run({"description": "d", "prompt": "p", "subagent_type": "Explore"}, self.ctx)  # type: ignore[union-attr]
 
 
 class TestTeamTools(ToolSystemTests):
