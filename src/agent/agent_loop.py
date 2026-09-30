@@ -8,6 +8,7 @@ import time
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from ..tool_system.checks import edit_check_for
 from . import trace
 from ..tool_system.registry import ToolRegistry
 from ..tool_system.context import ToolContext
@@ -300,9 +301,15 @@ def run_agent_loop(
                     ToolEvent(kind="tool_use", tool_name=tool_name, tool_input=tool_input, tool_use_id=tool_id),
                 )
                 from ..tool_system.protocol import ToolCall
+                edit_check = edit_check_for(tool_name, tool_input, tool_context.workspace_root)
                 result = tool_registry.dispatch(ToolCall(name=tool_name, input=tool_input, tool_use_id=tool_id),
                                                 tool_context)
                 result_output = result.output
+                # New lint/type problems ride on the edit's own result (like hook feedback), so the
+                # model sees them on its next turn without breaking tool_use/tool_result pairing.
+                problems = edit_check.report() if edit_check and not result.is_error else None
+                if problems and isinstance(result_output, dict):
+                    result_output = {**result_output, "newProblems": problems}
                 _trace_tool(tool_name, tool_input, started, result.is_error, result_output)
                 if tool_name.lower() == "sendusermessage" and isinstance(result_output, dict):
                     msg = result_output.get("message")

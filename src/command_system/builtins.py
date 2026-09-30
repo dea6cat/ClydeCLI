@@ -666,6 +666,13 @@ def doctor_command_call(args: str, context: CommandContext) -> LocalCommandResul
     return LocalCommandResult(type="text", value="\n".join(lines))
 
 
+def check_command_call(args: str, context: CommandContext) -> LocalCommandResult:
+    """Handle /check - run the project's ruff, mypy and pytest and summarize."""
+    from ..tool_system.checks import run_suite
+
+    return LocalCommandResult(type="text", value=run_suite(Path(context.workspace_root)))
+
+
 # Command definitions
 HELP_COMMAND = LocalCommand(
     name="help",
@@ -724,6 +731,13 @@ DOCTOR_COMMAND = LocalCommand(
     supports_non_interactive=True,
 )
 
+CHECK_COMMAND = LocalCommand(
+    name="check",
+    description="Run the project's ruff, mypy and pytest and show a summary",
+    argument_hint="",
+    supports_non_interactive=True,
+)
+
 INIT_COMMAND = PromptCommand(
     name="init",
     description="Initialize new CLAUDE.md file(s) and optional skills/hooks with codebase documentation",
@@ -770,6 +784,8 @@ def execute_command_sync(cmd_name: str, args: str, context: CommandContext) -> t
             result = compact_command_call(args, context)
         elif cmd is DOCTOR_COMMAND:
             result = doctor_command_call(args, context)
+        elif cmd is CHECK_COMMAND:
+            result = check_command_call(args, context)
         else:
             return False, None, f"Command not implemented for sync execution: {cmd_name}"
 
@@ -787,6 +803,7 @@ COST_COMMAND.set_call(cost_command_call)
 CONTEXT_COMMAND.set_call(context_command_call)
 COMPACT_COMMAND.set_call(compact_command_call)
 DOCTOR_COMMAND.set_call(doctor_command_call)
+CHECK_COMMAND.set_call(check_command_call)
 
 
 def get_builtin_commands() -> list[Command]:
@@ -800,6 +817,7 @@ def get_builtin_commands() -> list[Command]:
         CONTEXT_COMMAND,
         COMPACT_COMMAND,
         DOCTOR_COMMAND,
+        CHECK_COMMAND,
         INIT_COMMAND,
     ]
 

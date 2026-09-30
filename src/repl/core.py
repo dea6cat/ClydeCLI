@@ -1084,6 +1084,7 @@ class ClydeREPL:
 - `/mcp` - Show connected MCP servers and their tools
 - `/plugins` - Show loaded plugins and what each added
 - `/debug [path]` - Show the last turn's model and tool calls from the trace, or the trace file path
+- `/check` - Run the project's ruff, mypy and pytest and show a summary
 
 **Usage:**
 - Type your message and press Enter to chat
@@ -1360,6 +1361,9 @@ class ClydeREPL:
                             msg = msg[len(prefix):]
                         msg = self._shorten_path_text(msg)
                     self.console.print(f"[dim]  ↳ {msg}[/dim]")
+                    problems = ev.tool_output.get("newProblems") if isinstance(ev.tool_output, dict) else None
+                    if isinstance(problems, str):
+                        self.console.print("  ↳ " + problems.replace("\n", "\n    "), style="yellow", markup=False)
                     return
                 if ev.kind == "tool_error":
                     msg = ev.error or "Error"
