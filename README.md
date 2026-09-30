@@ -123,48 +123,46 @@ clyde --version                # Check version
 
 *What works, what doesn't. Straight answer.*
 
-| Component     | Status     | Count     |
-| ------------- | ---------- | --------- |
-| REPL Commands | ✅ Complete | 6+ built-ins |
-| Tool System   | ✅ Complete | 30+ tools |
-| Automated Tests | ✅ Present | Core suites for skills, providers, REPL, tools, context |
-| Documentation | ✅ Complete | 10+ docs  |
-
 ### Core Systems
 
 | System | Status | Description |
 |--------|--------|-------------|
-| CLI Entry | ✅ | `clyde`, `login`, `config`, `--version` |
-| Interactive REPL | ✅ | Rich interactive output, history, tab completion, multiline |
+| CLI Entry | ✅ | `clyde`, `login`, `logout`, `config`, `--model`, `--list-models` |
+| Interactive REPL | ✅ | Rich output, history, tab completion, multiline, streaming |
 | Multi-Provider | ✅ | 12 providers, stdlib HTTP, live model lists, `provider:model` switching |
-| Session Persistence | ✅ | Save/load sessions locally |
-| Agent Loop | ✅ | Tool calling loop implementation |
-| Skill System | ✅ | SKILL.md-based slash-command skills with args + tool limits |
-| Context Building | 🟡 | Initial prompt injection for workspace, git, and CLAUDE.md; deeper project understanding still needed |
-| Permission System | 🟡 | Framework exists, needs integration |
+| Agent Loop | ✅ | Tool-calling loop with retries, reasoning control, history repair |
+| Skill System | ✅ | SKILL.md slash-command skills with args + tool limits |
+| Context Building | 🟡 | Workspace snapshot, git status and CLAUDE.md go into the prompt; no deeper project indexing |
+| Permissions | 🟡 | Interactive approval is wired into tool dispatch, but only Write and Edit ask; Bash only blocks a short list of dangerous patterns |
+| Sessions | 🟡 | Manual `/save` and `/load`; no session picker, no auto-save |
+| Compaction | 🟡 | Manual `/compact` summarizes older history; no automatic compaction |
 
-### Tools (30+)
+### Tools
 
 | Category | Tools | Status |
 |----------|-------|--------|
-| File Operations | Read, Write, Edit, Glob, Grep | ✅ Complete |
-| System | Bash execution | ✅ Complete |
-| Web | WebFetch, WebSearch | ✅ Complete |
-| Interaction | AskUserQuestion, SendMessage | ✅ Complete |
-| Task Management | TodoWrite, TaskManager, TaskStop | ✅ Complete |
-| Agent Tools | Agent, Brief, Team | ✅ Complete |
-| Configuration | Config, PlanMode, Cron | ✅ Complete |
-| MCP | MCP tools and resources | ✅ Complete |
-| Others | LSP, Worktree, Skill, ToolSearch | ✅ Complete |
+| Files | Read, Write, Edit, Glob, Grep | ✅ Working |
+| System | Bash | ✅ Working |
+| Web | WebFetch, WebSearch | ✅ Working |
+| Interaction | AskUserQuestion, SendUserMessage | ✅ Working |
+| Tasks | TodoWrite, TaskCreate/Get/List/Update/Output/Stop | ✅ Working |
+| Planning & config | EnterPlanMode, ExitPlanMode, Config, Skill, ToolSearch, Sleep | ✅ Working |
+| Agent | Agent | 🟡 Runs a batch of tool calls; not a separate sub-agent |
+| Scheduling | CronCreate/List/Delete | 🟡 Stores jobs for the session; nothing runs them |
+| Team | TeamCreate/Delete | 🟡 Writes a team file; no multi-agent execution |
+| Worktree | EnterWorktree/ExitWorktree | 🟡 Switches into an empty folder; not a git worktree |
+| MCP | MCP, ListMcpResources, ReadMcpResource | ⏳ Tools exist, but no MCP client is connected yet |
+| LSP | LSP | ⏳ Tool exists, but no language-server client is connected yet |
+| Not implemented | RemoteTrigger, NotebookEdit, REPL | ⏳ Stubs that return an error |
 
 ### Roadmap
 
 - ✅ **Phase 0**: Installable, runnable CLI
-- ✅ **Phase 1**: Core agent MVP experience
-- ✅ **Phase 2**: Real tool calling loop
-- 🟡 **Phase 3**: Context, permissions, recovery (in progress)
-- ⏳ **Phase 4**: MCP, plugins, extensibility
-- ⏳ **Phase 5**: Python-native differentiators
+- ✅ **Phase 1**: Core agent experience (REPL, sessions, slash commands)
+- ✅ **Phase 2**: Real tool-calling loop, multi-provider
+- 🟡 **Phase 3**: Context, permissions, recovery (partly done: see the table above)
+- ⏳ **Phase 4**: MCP client, plugins, hooks (only custom tools from `~/.clyde/tools/` so far)
+- ⏳ **Phase 5**: Python-native differentiators (not started)
 
 **See [FEATURE_LIST.md](FEATURE_LIST.md) for detailed feature status and PR guidelines.**
 

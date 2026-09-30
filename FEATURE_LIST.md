@@ -40,14 +40,14 @@
 | Session persistence | ✅ | Supports saving/loading local sessions |
 | Session message management | ✅ | Supports session history maintenance and serialization |
 | Error recovery / re-login | 🟡 | Basic authentication error handling and reconfiguration flow exist |
-| Token / Cost tracking | 🚫 | The chat CLI does not yet have a complete statistics view |
+| Token / Cost tracking | 🟡 | `/cost` and `/context` report token usage; no per-model pricing |
 | Context building | 🟡 | A basic `context_system` exists, supporting workspace / git / `CLAUDE.md` injection; still missing README summaries, memory, compact |
 | Claude Code Agent Loop | ✅ | agent_loop.py implemented, supports the tool-call loop |
 | `/resume` session recovery experience | 🚫 | No dedicated recovery flow or UI yet |
-| `/compact` conversation compaction | 🚫 | No automatic/manual compaction yet |
+| `/compact` conversation compaction | 🟡 | Manual `/compact` summarizes older history; no automatic compaction |
 | `/doctor` diagnostics | 🚫 | No environment, config, permission, or dependency diagnostic command yet |
 | Hook system | 🚫 | No pre/post tool use hooks yet |
-| Permission system | 🟡 | A permissions.py framework exists but is not fully integrated |
+| Permission system | 🟡 | Approval prompts wired into tool dispatch; only Write/Edit ask, Bash blocks dangerous patterns |
 
 ---
 
@@ -64,7 +64,7 @@
 | Schema Validation | ✅ | Parameter validation system implemented |
 | Agent Loop | ✅ | Complete tool-call loop implemented |
 | Tool Context | ✅ | Tool context management implemented |
-| Permission Framework | 🟡 | Permission check framework exists; integration pending |
+| Permission Framework | 🟡 | Integrated into dispatch; per-tool coverage is still thin |
 | Error Handling | ✅ | Tool error types and handling defined |
 | Task Manager | ✅ | Task manager implemented |
 
@@ -86,18 +86,18 @@
 | Task management | TaskStopTool | `task_stop.py` | ✅ Implemented |
 | Task management | TasksV2Tool | `tasks_v2.py` | ✅ Implemented |
 | Task management | TaskManager | `task_manager.py` | ✅ Implemented |
-| Agent tools | AgentTool | `agent.py` | ✅ Implemented |
+| Agent tools | AgentTool | `agent.py` | 🟡 Batches tool calls; no sub-agent |
 | Agent tools | BriefTool | `brief.py` | ✅ Implemented |
-| Agent tools | TeamTool | `team.py` | ✅ Implemented |
+| Agent tools | TeamTool | `team.py` | 🟡 Writes a team file only |
 | Config tools | ConfigTool | `config.py` | ✅ Implemented |
 | Plan mode | PlanModeTool | `plan_mode.py` | ✅ Implemented |
-| Scheduled tasks | CronTool | `cron.py` | ✅ Implemented |
-| MCP tools | MCPTool | `mcp.py` | ✅ Implemented |
+| Scheduled tasks | CronTool | `cron.py` | 🟡 Stores jobs; nothing runs them |
+| MCP tools | MCPTool | `mcp.py` | ⏳ No MCP client connected |
 | MCP tools | MCPResourcesTool | `mcp_resources.py` | ✅ Implemented |
 | Skill system | SkillTool | `skill.py` | ✅ Implemented |
 | Tool search | ToolSearchTool | `tool_search.py` | ✅ Implemented |
-| LSP integration | LSPTool | `lsp.py` | ✅ Implemented |
-| Worktree | WorktreeTool | `worktree.py` | ✅ Implemented |
+| LSP integration | LSPTool | `lsp.py` | ⏳ No LSP client connected |
+| Worktree | WorktreeTool | `worktree.py` | 🟡 Empty folder, not a git worktree |
 | Miscellaneous | SleepTool | `sleep.py` | ✅ Implemented |
 | Miscellaneous | StructuredOutputTool | `structured_output.py` | ✅ Implemented |
 | Miscellaneous | MiscTools | `misc.py` | ✅ Implemented |
@@ -115,10 +115,10 @@
 | Output Styles | ✅ | Output style loading system implemented |
 | Session Persistence | ✅ | Session save/load available |
 | Context Engine | 🟡 | Basic context-building pipeline connected, supporting workspace, git, and `CLAUDE.md` prompt injection |
-| Permission Engine | 🟡 | Framework exists, not fully integrated into the tool execution flow |
-| Compaction Engine | 🚫 | No conversation compaction or token management yet |
+| Permission Engine | 🟡 | Integrated for Write/Edit; other tools don't ask yet |
+| Compaction Engine | 🟡 | Manual `/compact`; no automatic trigger |
 | Hook Runtime | 🚫 | No settings-driven hook execution yet |
-| MCP Runtime | 🟡 | MCP tools exist, but no complete MCP protocol layer yet |
+| MCP Runtime | 🚫 | MCP tools exist but no client is ever connected |
 
 ---
 
