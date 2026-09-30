@@ -13,6 +13,7 @@ from . import ollama
 from .anthropic import AnthropicProvider
 from .base import Provider
 from .google import GoogleProvider
+from .lmstudio import LMStudioProvider
 from .openai_compat import OpenAICompatProvider
 
 # name, base_url, key_env, dynamic_models, static models (only for dynamic_models=False; a
@@ -57,7 +58,7 @@ _AUTO_ORDER = ("anthropic", "openai", "google", "openrouter", "deepseek", "mistr
 
 
 def build_registry() -> dict[str, Provider]:
-    reg: dict[str, Provider] = {"ollama": ollama.local()}
+    reg: dict[str, Provider] = {"ollama": ollama.local(), "lmstudio": LMStudioProvider()}
     cloud = ollama.cloud()
     if cloud is not None:
         reg[cloud.name] = cloud
@@ -103,9 +104,9 @@ def model_ref(provider: Provider, model: str) -> str:
 
 def pick_default_model(reg: dict[str, Provider]) -> str | None:
     """A model to use when none is configured, so a key in the environment is enough to start:
-    the first local Ollama model, else the first connected cloud provider (in _AUTO_ORDER) with
+    the first local Ollama or LM Studio model, else the first connected cloud provider (in _AUTO_ORDER) with
     its suggested model, or its first listed one. None when nothing is usable."""
-    for name in ("ollama", *_AUTO_ORDER):
+    for name in ("ollama", "lmstudio", *_AUTO_ORDER):
         provider = reg.get(name)
         if provider is None:
             continue
