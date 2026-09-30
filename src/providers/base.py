@@ -33,6 +33,7 @@ class ProviderResponse:
     # Prompt (input) tokens the provider counted for this request, when reported.
     prompt_tokens: int | None = None
     # Token usage when reported: {"input_tokens", "output_tokens", and cache fields if any}.
+    # input_tokens excludes cache_read/cache_creation_input_tokens (Anthropic's split, all providers).
     usage: dict | None = None
 
 

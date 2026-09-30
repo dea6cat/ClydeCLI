@@ -18,7 +18,7 @@ from ..context_system.context_analyzer import (
     get_context_window_for_model,
 )
 from ..context_system.microcompact import microcompact_messages, strip_images_from_messages
-from ..cost_tracker import CostTracker
+from ..cost_tracker import CostTracker, estimate_usd
 from ..history import HistoryLog
 from ..setup import run_setup
 from .engine import CommandContext, CommandResult, LocalCommandResult
@@ -260,6 +260,23 @@ def cost_command_call(args: str, context: CommandContext) -> LocalCommandResult:
 
     lines = ["Session Cost:", ""]
     lines.append(f"  Total units: {tracker.total_units}")
+
+    models = getattr(tracker, "models", {})
+    if models:
+        total, unpriced = 0.0, False
+        lines.append("")
+        lines.append("  By model:")
+        for ref, usage in models.items():
+            usd = estimate_usd(ref, usage)
+            counts = f"{usage.get('input_tokens', 0):,} in, {usage.get('output_tokens', 0):,} out"
+            if usage.get("cache_read_input_tokens") or usage.get("cache_creation_input_tokens"):
+                counts += (f", {usage.get('cache_read_input_tokens', 0):,} cache read"
+                           f", {usage.get('cache_creation_input_tokens', 0):,} cache write")
+            lines.append(f"    - {ref}: {counts} — " + ("price unknown" if usd is None else f"${usd:.4f}"))
+            total += usd or 0.0
+            unpriced = unpriced or usd is None
+        suffix = " (excludes models with unknown prices)" if unpriced else ""
+        lines.append(f"  Estimated total: ${total:.4f}{suffix}")
 
     if tracker.events:
         lines.append("")

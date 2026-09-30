@@ -1219,9 +1219,9 @@ class ClydeREPL:
                 input_tokens = result.usage.get("input_tokens", 0)
                 output_tokens = result.usage.get("output_tokens", 0)
                 if input_tokens > 0 or output_tokens > 0:
-                    self.cost_tracker.record(
-                        f"turn_{result.num_turns}_tokens",
-                        input_tokens + output_tokens
+                    self.cost_tracker.record_usage(
+                        self.provider_name, self.model, result.usage,
+                        label=f"turn_{result.num_turns}_tokens",
                     )
                     # Also update command context for new commands
                     if hasattr(self, 'command_context') and self.command_context:
