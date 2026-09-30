@@ -88,10 +88,8 @@ class TestREPL(unittest.TestCase):
                         self.assertIn("ClydeCLI", rendered)
                         self.assertIn("glm-4.5", rendered)
                         self.assertIn("glm", rendered)
-                        # Path may be truncated, just check start and end parts
-                        self.assertTrue(
-                            self.temp_dir[:20] in rendered or self.temp_dir[-20:] in rendered
-                        )
+                        # The path is shortened in the middle to fit one line; its folder name stays
+                        self.assertIn(Path(self.temp_dir).name, rendered)
 
     def test_handle_command_exit(self):
         """Test /exit command."""
