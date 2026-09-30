@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Iterable, Mapping, Protocol
 
+from ..agent import trace
 from .context import ToolContext
 from .hooks import run_hooks
 from .permission_handler import PermissionResult
@@ -85,6 +86,7 @@ class ToolRegistry:
 
         blocked = run_hooks(context.hooks, "PreToolUse", {"tool_name": spec.name, "tool_input": call.input}, context.cwd)
         if blocked is not None:
+            trace.record("hook_block", hook="PreToolUse", tool=spec.name, reason=blocked)
             return ToolResult(name=spec.name, output={"error": blocked}, is_error=True, tool_use_id=call.tool_use_id)
 
         # Saved deny rules block without asking; the tool's own deny wins over saved allow rules.
@@ -117,11 +119,10 @@ class ToolRegistry:
                     tool_use_id=call.tool_use_id,
                 )
             # Call the permission handler
-            allowed, _ = context.permission_handler(
-                spec.name,
-                permission_result.message or f"Tool '{spec.name}' requires permission",
-                suggest_rule(spec.name, call.input, context),
-            )
+            prompt = permission_result.message or f"Tool '{spec.name}' requires permission"
+            trace.record("permission_ask", tool=spec.name, message=prompt)
+            allowed, _ = context.permission_handler(spec.name, prompt, suggest_rule(spec.name, call.input, context))
+            trace.record("permission_answer", tool=spec.name, allowed=allowed)
             if not allowed:
                 return ToolResult(
                     name=spec.name,
