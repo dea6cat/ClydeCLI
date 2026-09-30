@@ -91,7 +91,7 @@
 | Agent tools | TeamTool | `team.py` | 🟡 Writes a team file only |
 | Config tools | ConfigTool | `config.py` | ✅ Implemented |
 | Plan mode | PlanModeTool | `plan_mode.py` | ✅ Implemented |
-| Scheduled tasks | CronTool | `cron.py` | 🟡 Stores jobs; nothing runs them |
+| Scheduled tasks | CronTool | `cron.py` | ✅ Session-scoped; due jobs run as a turn while the REPL is idle |
 | MCP tools | MCPTool | `mcp.py` | ⏳ No MCP client connected |
 | MCP tools | MCPResourcesTool | `mcp_resources.py` | ⏳ No MCP client connected |
 | Skill system | SkillTool | `skill.py` | ✅ Implemented |

@@ -70,6 +70,7 @@ from pathlib import Path
 import asyncio
 import sys
 import json
+from datetime import datetime
 from typing import Any
 
 from src.agent import Session
@@ -84,6 +85,7 @@ from src.providers.convert import append_response, to_canonical
 from src.tool_system.context import ToolContext
 from src.tool_system.defaults import build_default_registry
 from src.tool_system.protocol import ToolCall
+from src.tool_system.tools.cron import pop_due_jobs
 from src.tool_system.agent_loop import ToolEvent, run_agent_loop, summarize_tool_result, summarize_tool_use
 
 # New command system imports
@@ -97,6 +99,10 @@ from src.command_system import (
 )
 from src.cost_tracker import CostTracker
 from src.history import HistoryLog
+
+
+# Returned by the prompt when the cron watcher interrupts an idle prompt to run a due job.
+_CRON_WAKE = object()
 
 
 class ClydeREPL:
@@ -122,6 +128,9 @@ class ClydeREPL:
         self.tool_registry = build_default_registry()
         self.tool_context = ToolContext(workspace_root=Path.cwd())
         self.tool_context.ask_user = self._ask_user_questions
+        # Session-scoped cron: due jobs are queued here and run only between turns.
+        self._cron_checked_at = datetime.now()
+        self._cron_queue: list[dict[str, Any]] = []
         # Permission handler with status control for proper input handling
         self._current_status = None
         self.tool_context.permission_handler = self._handle_permission_request
@@ -616,14 +625,21 @@ class ClydeREPL:
 
         while True:
             try:
+                if self._queue_due_cron_jobs():
+                    self._run_cron_job(self._cron_queue.pop(0))
+                    continue
+
                 self._refresh_completer()
                 # Dynamic prompt based on multiline mode
                 # Using '❯' for a modern feel
                 prompt_text = '... ' if self.multiline_mode else '❯ '
                 user_input = self.prompt_session.prompt(
                     prompt_text,
-                    multiline=self.multiline_mode
+                    multiline=self.multiline_mode,
+                    pre_run=self._start_cron_watch,
                 )
+                if user_input is _CRON_WAKE:
+                    continue
 
                 if not user_input.strip():
                     self.multiline_mode = False
@@ -645,6 +661,33 @@ class ClydeREPL:
             except EOFError:
                 self.console.print("\n[blue]Goodbye![/blue]")
                 break
+
+    def _queue_due_cron_jobs(self, now: datetime | None = None) -> bool:
+        """Queue the scheduled jobs that came due since the last check; True if any are waiting."""
+        if not self._cron_queue:
+            now = now or datetime.now()
+            self._cron_queue.extend(pop_due_jobs(self.tool_context.crons, self._cron_checked_at, now))
+            self._cron_checked_at = now
+        return bool(self._cron_queue)
+
+    def _start_cron_watch(self) -> None:
+        """While the prompt is idle and empty, wake it up when a scheduled job comes due."""
+        app = self.prompt_session.app
+
+        async def watch() -> None:
+            while True:
+                await asyncio.sleep(1)
+                # Never clobber what the user is typing; due jobs wait until the line is empty.
+                if not app.current_buffer.text and self._queue_due_cron_jobs():
+                    app.exit(result=_CRON_WAKE)
+                    return
+
+        app.create_background_task(watch())
+
+    def _run_cron_job(self, job: dict[str, Any]) -> None:
+        kind = "recurring" if job.get("recurring", True) else "one-shot"
+        self.console.print(f"\n⏰ Scheduled run {job['id']} ({job['cron']}, {kind}): {job['prompt']}", style="bold magenta", markup=False)
+        self.chat(job["prompt"])
 
     def handle_command(self, command: str):
         """Handle slash commands."""
