@@ -37,6 +37,7 @@ Examples:
   clyde config                        Show current configuration
   clyde setup                         First-run onboarding: provider, other agents' hooks and skills, PATH
   clyde hooks import                  Bring over hooks set up for Claude Code, Gemini CLI, Cursor or Copilot CLI
+  clyde mcp import                    Bring over MCP servers set up for Claude Code, Cursor, Gemini CLI, Codex or Copilot CLI
 """
     )
 
@@ -59,6 +60,8 @@ Examples:
     setup_parser.add_argument('-y', '--yes', action='store_true', help='No prompts: skip anything that needs an answer')
     hooks_parser = subparsers.add_parser('hooks', help='Manage tool hooks')
     hooks_parser.add_argument('action', choices=['import'], help="'import': copy other agents' hooks into ~/.clyde/settings.json")
+    mcp_parser = subparsers.add_parser('mcp', help='Manage MCP servers')
+    mcp_parser.add_argument('action', choices=['import'], help="'import': copy other agents' MCP servers into ~/.clyde/settings.json")
 
     args = parser.parse_args()
 
@@ -78,6 +81,8 @@ Examples:
         return handle_setup(Console(), assume_yes=args.yes)
     if args.command == 'hooks':
         return handle_hooks_import(Console())
+    if args.command == 'mcp':
+        return handle_mcp_import(Console())
 
     return start_repl(model=args.model, stream=args.stream, resume=args.resume, continue_last=args.continue_last)
 
@@ -235,12 +240,18 @@ def handle_setup(console: Console, assume_yes: bool = False) -> int:
     else:
         handle_hooks_import(console, quiet=True)
 
-    # 3) other agents' skills are read in place
+    # 3) other agents' MCP servers: they start programs, so also only after a yes
+    if assume_yes:
+        console.print("• MCP servers from other agents are not imported with --yes: run [bold]clyde mcp import[/bold].")
+    else:
+        handle_mcp_import(console, quiet=True)
+
+    # 4) other agents' skills are read in place
     user_skills = [s for s in get_all_skills() if s.loaded_from == "user"]
     console.print(f"✓ {len(user_skills)} user skill(s) available, including ~/.claude, ~/.agents, ~/.codex, "
                   "~/.copilot and ~/.gemini skill folders.")
 
-    # 4) PATH
+    # 5) PATH
     if not _clyde_bin_on_path() and shutil.which("uv"):
         if not assume_yes and Confirm.ask("clyde isn't on your PATH yet. Add uv's tool folder to it (uv tool update-shell)?", default=True):
             subprocess.run(["uv", "tool", "update-shell"], check=False)
@@ -248,6 +259,32 @@ def handle_setup(console: Console, assume_yes: bool = False) -> int:
             console.print("• Add clyde to your PATH later with [bold]uv tool update-shell[/bold].")
 
     console.print("\nClydeCLI is ready. Start it from any project directory with [bold]clyde[/bold].")
+    return 0
+
+
+def handle_mcp_import(console: Console, quiet: bool = False) -> int:
+    """Offer each other agent's stdio MCP servers for import; env values are never printed."""
+    from rich.prompt import Confirm
+    from src.tool_system.mcp_client import find_foreign_servers, import_servers
+
+    found = find_foreign_servers()
+    if not found:
+        if not quiet:
+            console.print("No MCP servers found for Claude Code, Cursor, Gemini CLI, Codex or Copilot CLI.")
+        return 0
+    added: list[str] = []
+    for agent, path, servers in found:
+        console.print(f"\n[bold]{agent}[/bold] MCP servers in {path}:")
+        for name, cfg in servers.items():
+            env = f"  (env: {', '.join(cfg['env'])})" if cfg.get("env") else ""
+            console.print(f"  {name}: {' '.join([cfg['command'], *map(str, cfg.get('args', []))])}{env}", markup=False)
+        if Confirm.ask("ClydeCLI will start these programs when it launches. Import them?", default=False):
+            try:
+                added += import_servers(servers)
+            except ValueError as e:
+                console.print(f"[red]{e}[/red]")
+                return 1
+    console.print(f"Imported MCP server(s): {', '.join(added)}." if added else "No MCP servers imported.")
     return 0
 
 

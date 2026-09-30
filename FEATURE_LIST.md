@@ -92,8 +92,8 @@
 | Config tools | ConfigTool | `config.py` | ✅ Implemented |
 | Plan mode | PlanModeTool | `plan_mode.py` | ✅ Implemented |
 | Scheduled tasks | CronTool | `cron.py` | ✅ Session-scoped; due jobs run as a turn while the REPL is idle |
-| MCP tools | MCPTool | `mcp.py` | ⏳ No MCP client connected |
-| MCP tools | MCPResourcesTool | `mcp_resources.py` | ⏳ No MCP client connected |
+| MCP tools | MCPTool | `mcp.py`, `mcp_client.py` | ✅ Stdio servers from `~/.clyde/settings.json`; each tool is registered as `mcp__<server>__<tool>` |
+| MCP tools | MCPResourcesTool | `mcp_resources.py` | ✅ Lists and reads resources from connected servers |
 | Skill system | SkillTool | `skill.py` | ✅ Implemented |
 | Tool search | ToolSearchTool | `tool_search.py` | ✅ Implemented |
 | LSP integration | LSPTool | `lsp.py` | ✅ Starts the language server on PATH for the file type (pyright/pylsp, typescript-language-server, gopls, rust-analyzer, dart, clangd) |
@@ -118,7 +118,7 @@
 | Permission Engine | 🟡 | Integrated for Bash, Write/Edit and Config set; no persistent allow rules or WebFetch domain checks yet |
 | Compaction Engine | ✅ | Manual `/compact` and automatic at 80% of the context window |
 | Hook Runtime | ✅ | Matching hooks run around every tool dispatch; exit 2 blocks (pre) or feeds stderr back (post) |
-| MCP Runtime | 🚫 | MCP tools exist but no client is ever connected |
+| MCP Runtime | 🟡 | Stdlib stdio JSON-RPC client, started with the REPL; no HTTP/SSE servers or project `.mcp.json` yet |
 
 ---
 
@@ -189,7 +189,7 @@ Goal: fill in Claude Code's engineering capabilities.
 
 Goal: upgrade the project from a monolithic CLI to an extensible platform.
 
-- [ ] Complete MCP client/runtime
+- [x] MCP client/runtime (stdio)
 - [ ] Python plugin system
 - [ ] Custom commands / tools / hooks
 - [x] Local model (Ollama) and third-party provider support
@@ -224,7 +224,7 @@ Goal: build features unique to the Python rewrite.
 
 ### P2: Filling in key Claude Code experiences
 
-- Full MCP support
+- MCP over HTTP/SSE, and project `.mcp.json` behind a trust prompt
 - Performance monitoring and tuning
 
 ### P3: Python version highlights
