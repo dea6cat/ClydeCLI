@@ -151,7 +151,7 @@ def run_login_flow(console: Console, registry: dict, default_provider: str = "an
         default=default_provider if default_provider in choices else "anthropic",
     )
 
-    if provider_name != "ollama":
+    if provider_name not in ("ollama", "lmstudio"):  # local servers need no key
         key = prompt_secret(f"Enter {provider_name} API key")
         if not key:
             console.print("\n[red]Error: API key cannot be empty[/red]")
@@ -165,7 +165,8 @@ def run_login_flow(console: Console, registry: dict, default_provider: str = "an
             console.print(f"[red]Ollama isn't reachable at {getattr(provider, 'host', 'localhost:11434')}.[/red] "
                           "Start it with `ollama serve`.")
         else:
-            console.print(f"[red]{provider_name} isn't available.[/red]")
+            console.print(f"[red]{provider_name} isn't available.[/red]"
+                          + (" Install LM Studio, or start its server." if provider_name == "lmstudio" else ""))
         return None
 
     with console.status(f"[dim]Fetching {provider_name} models...[/dim]", spinner="dots"):
