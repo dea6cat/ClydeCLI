@@ -148,7 +148,7 @@ clyde --version                # Check version
 | Tasks | TodoWrite, TaskCreate/Get/List/Update/Output/Stop | ✅ Working |
 | Planning & config | EnterPlanMode, ExitPlanMode, Config, Skill, ToolSearch, Sleep | ✅ Working |
 | Agent | Agent | 🟡 Runs a batch of tool calls; not a separate sub-agent |
-| Scheduling | CronCreate/List/Delete | 🟡 Stores jobs for the session; nothing runs them |
+| Scheduling | CronCreate/List/Delete | ✅ Session-scoped; due jobs run as a turn while the REPL is idle at the prompt |
 | Team | TeamCreate/Delete | 🟡 Writes a team file; no multi-agent execution |
 | Worktree | EnterWorktree/ExitWorktree | ✅ Creates a git worktree on a new branch; exit keeps or removes it |
 | MCP | MCP, ListMcpResources, ReadMcpResource | ⏳ Tools exist, but no MCP client is connected yet |
