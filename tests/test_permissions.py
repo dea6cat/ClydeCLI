@@ -14,6 +14,8 @@ from src.tool_system.protocol import ToolCall
 from src.tool_system.registry import ToolRegistry
 from src.tool_system.tools.write import FileWriteTool
 from src.tool_system.tools.edit import FileEditTool
+from src.tool_system.tools.bash import BashTool
+from src.tool_system.tools.config import ConfigTool
 
 
 class TestPermissionResult(unittest.TestCase):
@@ -220,6 +222,97 @@ class TestToolRegistryDispatchPermissions(unittest.TestCase):
 
         self.assertFalse(result.is_error)
         self.assertEqual(result.output.get("type"), "create")
+
+
+class TestBashToolPermissions(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name).resolve()
+        self.ctx = ToolContext(workspace_root=self.root)
+        self.registry = ToolRegistry([BashTool()])
+
+    def tearDown(self) -> None:
+        self.tmp.cleanup()
+
+    def _behavior(self, command: str) -> PermissionBehavior:
+        return BashTool().check_permissions({"command": command}, self.ctx).behavior
+
+    def test_read_only_commands_are_allowed(self) -> None:
+        for command in (
+            "ls -la",
+            "cat README.md | grep foo | wc -l",
+            "git status && git log --oneline -5; git diff HEAD",
+            "git -C sub --no-pager show HEAD",
+            "find . -name '*.py'",
+            "rg 'a && rm x' src",
+            "pwd\necho hi",
+            "ls missing 2>/dev/null || echo none",
+            "grep -r x . 2>&1 | head",
+            "cd src && ls",
+        ):
+            self.assertEqual(self._behavior(command), PermissionBehavior.ALLOW, command)
+
+    def test_mutating_commands_ask(self) -> None:
+        for command in (
+            "rm file.txt",
+            "ls && rm file.txt",
+            "cat a | tee b",
+            "echo hi > out.txt",
+            "echo hi >> out.txt",
+            "find . -name '*.pyc' -delete",
+            "find . -exec rm {} ;",
+            "git commit -m x",
+            "git -c core.pager=evil log",
+            "git diff --output=patch.txt",
+            "rg --pre ./script x",
+            "echo $(rm x)",
+            "echo `rm x`",
+            "ls\nrm x",
+            "(rm x)",
+            "python script.py",
+            "FOO=1 ls",
+        ):
+            self.assertEqual(self._behavior(command), PermissionBehavior.ASK, command)
+
+    def test_dangerous_command_is_denied_not_asked(self) -> None:
+        self.assertEqual(self._behavior("sudo ls"), PermissionBehavior.DENY)
+
+    def test_dispatch_runs_read_only_command_without_handler(self) -> None:
+        result = self.registry.dispatch(ToolCall(name="Bash", input={"command": "echo hello"}), self.ctx)
+        self.assertFalse(result.is_error)
+        self.assertIn("hello", result.output["stdout"])
+
+    def test_dispatch_asks_handler_before_mutating_command(self) -> None:
+        target = self.root / "made.txt"
+        asked: list[str] = []
+
+        def handler(tool_name: str, message: str, suggestion: str | None):
+            asked.append(message)
+            return False, False
+
+        self.ctx.permission_handler = handler
+        result = self.registry.dispatch(ToolCall(name="Bash", input={"command": f"touch {target}"}), self.ctx)
+
+        self.assertEqual(len(asked), 1)
+        self.assertIn("touch", asked[0])
+        self.assertTrue(result.is_error)
+        self.assertFalse(target.exists())
+
+        self.ctx.permission_handler = lambda *_: (True, False)
+        result = self.registry.dispatch(ToolCall(name="Bash", input={"command": f"touch {target}"}), self.ctx)
+        self.assertFalse(result.is_error)
+        self.assertTrue(target.exists())
+
+
+class TestConfigToolPermissions(unittest.TestCase):
+    def test_get_is_allowed_and_set_asks(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx = ToolContext(workspace_root=Path(tmp))
+            tool = ConfigTool()
+            self.assertEqual(tool.check_permissions({"setting": "model"}, ctx).behavior, PermissionBehavior.ALLOW)
+            result = tool.check_permissions({"setting": "model", "value": "openai:gpt-5.4"}, ctx)
+            self.assertEqual(result.behavior, PermissionBehavior.ASK)
+            self.assertIn("model", result.message)
 
 
 class TestPermissionContext(unittest.TestCase):

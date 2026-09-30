@@ -47,7 +47,7 @@
 | `/compact` conversation compaction | 🟡 | Manual `/compact` summarizes older history; no automatic compaction |
 | `/doctor` diagnostics | 🚫 | No environment, config, permission, or dependency diagnostic command yet |
 | Hook system | 🚫 | No pre/post tool use hooks yet |
-| Permission system | 🟡 | Approval prompts wired into tool dispatch; only Write/Edit ask, Bash blocks dangerous patterns |
+| Permission system | 🟡 | Approval prompts wired into tool dispatch; Bash asks unless the command is read-only (dangerous patterns still blocked), Write/Edit ask for docs, Config asks before setting; no "always allow" rules yet |
 
 ---
 
@@ -115,7 +115,7 @@
 | Output Styles | ✅ | Output style loading system implemented |
 | Session Persistence | ✅ | Session save/load available |
 | Context Engine | 🟡 | Basic context-building pipeline connected, supporting workspace, git, and `CLAUDE.md` prompt injection |
-| Permission Engine | 🟡 | Integrated for Write/Edit; other tools don't ask yet |
+| Permission Engine | 🟡 | Integrated for Bash, Write/Edit and Config set; no persistent allow rules or WebFetch domain checks yet |
 | Compaction Engine | 🟡 | Manual `/compact`; no automatic trigger |
 | Hook Runtime | 🚫 | No settings-driven hook execution yet |
 | MCP Runtime | 🚫 | MCP tools exist but no client is ever connected |

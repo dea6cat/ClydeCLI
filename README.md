@@ -133,7 +133,7 @@ clyde --version                # Check version
 | Agent Loop | ✅ | Tool-calling loop with retries, reasoning control, history repair |
 | Skill System | ✅ | SKILL.md slash-command skills with args + tool limits |
 | Context Building | 🟡 | Workspace snapshot, git status and CLAUDE.md go into the prompt; no deeper project indexing |
-| Permissions | 🟡 | Interactive approval is wired into tool dispatch, but only Write and Edit ask; Bash only blocks a short list of dangerous patterns |
+| Permissions | 🟡 | Interactive approval is wired into tool dispatch: Bash asks for any command that is not clearly read-only (and still blocks dangerous patterns), Write/Edit ask for docs files, Config asks before changing a setting; approvals are one-shot, there are no saved allow rules |
 | Sessions | 🟡 | Manual `/save` and `/load`; no session picker, no auto-save |
 | Compaction | 🟡 | Manual `/compact` summarizes older history; no automatic compaction |
 
