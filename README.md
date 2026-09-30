@@ -141,7 +141,7 @@ clyde --version                # Check version
 
 | Category | Tools | Status |
 |----------|-------|--------|
-| Files | Read, Write, Edit, Glob, Grep | ✅ Working |
+| Files | Read, Write, Edit, NotebookEdit, Glob, Grep | ✅ Working |
 | System | Bash | ✅ Working |
 | Web | WebFetch, WebSearch | ✅ Working |
 | Interaction | AskUserQuestion, SendUserMessage | ✅ Working |
@@ -153,7 +153,7 @@ clyde --version                # Check version
 | Worktree | EnterWorktree/ExitWorktree | 🟡 Switches into an empty folder; not a git worktree |
 | MCP | MCP, ListMcpResources, ReadMcpResource | ⏳ Tools exist, but no MCP client is connected yet |
 | LSP | LSP | ⏳ Tool exists, but no language-server client is connected yet |
-| Not implemented | RemoteTrigger, NotebookEdit, REPL | ⏳ Stubs that return an error |
+| Not implemented | RemoteTrigger, REPL | ⏳ Stubs that return an error |
 
 ### Roadmap
 
