@@ -18,8 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `clyde logout <provider>`; Ollama login suggests tool-capable models that fit your RAM
 - Initial context injection pipeline for workspace snapshot, git status, and `CLAUDE.md`
 - Tests covering the new context system integration
-- Automatic compaction: before each turn, history at 80% or more of the model's context window is
-  summarized the same way as `/compact`; `/context` shows the threshold
+- `EnterWorktree` creates a real git worktree on a `worktree-<name>` branch under `.clyde/worktrees`;
+  `ExitWorktree` takes `action: remove` to delete it (git refuses if it has uncommitted changes)
 
 ### Changed
 - API keys moved from base64 entries in `config.json` to `~/.clyde/keys.json` (mode 600), with

@@ -4,6 +4,7 @@ import io
 import json
 import os
 import socket
+import subprocess
 import tempfile
 import time
 import unittest
@@ -490,26 +491,63 @@ class TestTeamTools(ToolSystemTests):
 
 
 class TestWorktreeTools(ToolSystemTests):
+    def setUp(self) -> None:
+        super().setUp()
+        git = ["git", "-c", "user.name=t", "-c", "user.email=t@t"]
+        subprocess.run([*git, "init", "-q"], cwd=self.root, check=True)
+        (self.root / "a.txt").write_text("a\n", encoding="utf-8")
+        subprocess.run([*git, "add", "."], cwd=self.root, check=True)
+        subprocess.run([*git, "commit", "-qm", "init"], cwd=self.root, check=True)
+
+    def _branches(self) -> str:
+        return subprocess.run(["git", "branch"], cwd=self.root, capture_output=True, text=True).stdout
+
     def test_worktree_roundtrip(self) -> None:
-        """Test entering and exiting a worktree."""
-        # Enter worktree
         enter_out = EnterWorktreeTool().run({"name": "test-tree"}, self.ctx).output
-        self.assertIn("test-tree", enter_out["worktreePath"])
-        self.assertIsNotNone(self.ctx.worktree_root)
-        self.assertEqual(self.ctx.cwd, self.ctx.worktree_root)
-
-        # Verify worktree directory exists
         worktree_dir = self.root / ".clyde" / "worktrees" / "test-tree"
-        self.assertTrue(worktree_dir.exists())
+        self.assertEqual(enter_out["worktreePath"], str(worktree_dir))
+        self.assertEqual(enter_out["worktreeBranch"], "worktree-test-tree")
+        self.assertEqual(self.ctx.cwd, worktree_dir)
+        self.assertTrue((worktree_dir / "a.txt").exists())
+        self.assertIn("worktree-test-tree", self._branches())
 
-        # Exit worktree
         exit_out = ExitWorktreeTool().run({}, self.ctx).output
         self.assertIn("Exited worktree", exit_out["message"])
         self.assertIsNone(self.ctx.worktree_root)
         self.assertEqual(self.ctx.cwd, self.root)
+        self.assertTrue(worktree_dir.exists())
+
+    def test_worktree_reenter_existing(self) -> None:
+        EnterWorktreeTool().run({"name": "again"}, self.ctx)
+        ExitWorktreeTool().run({}, self.ctx)
+        out = EnterWorktreeTool().run({"name": "again"}, self.ctx).output
+        self.assertEqual(out["worktreeBranch"], "worktree-again")
+
+    def test_worktree_remove(self) -> None:
+        EnterWorktreeTool().run({"name": "gone"}, self.ctx)
+        worktree_dir = self.ctx.worktree_root
+        out = ExitWorktreeTool().run({"action": "remove"}, self.ctx).output
+        self.assertIn("Removed worktree", out["message"])
+        self.assertFalse(worktree_dir.exists())
+        self.assertIn("worktree-gone", self._branches())
+
+    def test_worktree_remove_refuses_uncommitted_changes(self) -> None:
+        from src.tool_system.errors import ToolInputError
+
+        EnterWorktreeTool().run({"name": "dirty"}, self.ctx)
+        (self.ctx.worktree_root / "a.txt").write_text("changed\n", encoding="utf-8")
+        with self.assertRaises(ToolInputError):
+            ExitWorktreeTool().run({"action": "remove"}, self.ctx)
+        self.assertTrue(self.ctx.worktree_root.exists())
+
+    def test_worktree_requires_git_repo(self) -> None:
+        from src.tool_system.errors import ToolInputError
+
+        with tempfile.TemporaryDirectory() as plain:
+            with self.assertRaises(ToolInputError):
+                EnterWorktreeTool().run({"name": "x"}, ToolContext(workspace_root=Path(plain)))
 
     def test_worktree_enter_already_in(self) -> None:
-        """Test entering worktree when already in one."""
         from src.tool_system.errors import ToolPermissionError
 
         EnterWorktreeTool().run({"name": "first"}, self.ctx)
@@ -517,25 +555,18 @@ class TestWorktreeTools(ToolSystemTests):
             EnterWorktreeTool().run({"name": "second"}, self.ctx)
 
     def test_worktree_exit_not_in(self) -> None:
-        """Test exiting worktree when not in one."""
         from src.tool_system.errors import ToolPermissionError
 
         with self.assertRaises(ToolPermissionError):
             ExitWorktreeTool().run({}, self.ctx)
 
     def test_worktree_name_validation(self) -> None:
-        """Test worktree name validation."""
         from src.tool_system.errors import ToolInputError
 
-        # Invalid empty name
         with self.assertRaises(ToolInputError):
             EnterWorktreeTool().run({"name": ""}, self.ctx)
-
-        # Invalid characters
         with self.assertRaises(ToolInputError):
             EnterWorktreeTool().run({"name": "invalid name!"}, self.ctx)
-
-        # Too long
         with self.assertRaises(ToolInputError):
             EnterWorktreeTool().run({"name": "a" * 65}, self.ctx)
 

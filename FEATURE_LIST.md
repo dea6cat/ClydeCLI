@@ -97,7 +97,7 @@
 | Skill system | SkillTool | `skill.py` | ✅ Implemented |
 | Tool search | ToolSearchTool | `tool_search.py` | ✅ Implemented |
 | LSP integration | LSPTool | `lsp.py` | ⏳ No LSP client connected |
-| Worktree | WorktreeTool | `worktree.py` | 🟡 Empty folder, not a git worktree |
+| Worktree | WorktreeTool | `worktree.py` | ✅ Real git worktree on a `worktree-<name>` branch; exit can keep or remove it |
 | Miscellaneous | SleepTool | `sleep.py` | ✅ Implemented |
 | Miscellaneous | StructuredOutputTool | `structured_output.py` | ✅ Implemented |
 | Miscellaneous | MiscTools | `misc.py` | 🟡 SendMessage, PowerShell work; RemoteTrigger, NotebookEdit, REPL are stubs |
