@@ -73,7 +73,7 @@ import json
 from datetime import datetime
 from typing import Any
 
-from src.agent import Session
+from src.agent import Session, trace
 from src.compact_service.service import auto_compact_threshold, compact_conversation, needs_auto_compact
 from src.context_system.context_analyzer import get_context_window_for_model
 from src.config import get_default_model, load_config, set_default_model
@@ -134,12 +134,14 @@ class ClydeREPL:
     """Interactive REPL for ClydeCLI."""
 
     def __init__(self, model: str | None = None, stream: bool = False,
-                 resume: str | None = None, continue_last: bool = False):
+                 resume: str | None = None, continue_last: bool = False, debug: bool = False):
         self.console = Console()
         self.stream = stream
         self._startup_resume = resume   # "" opens the picker, an id loads that session
         self._continue_last = continue_last
-        self.auto_save = load_config().get("session", {}).get("auto_save", True)
+        session_config = load_config().get("session", {})
+        self.auto_save = session_config.get("auto_save", True)
+        self._trace_options = {"enabled": session_config.get("trace", True) is not False, "live": debug}
         self.multiline_mode = False
         self.reasoning: str | None = None   # /think level; None keeps each model's default
 
@@ -153,6 +155,7 @@ class ClydeREPL:
 
         # Create session
         self.session = Session.create(self.provider_name, self.model)
+        trace.start(self.session.session_id, **self._trace_options)
 
         self.tool_registry = build_default_registry()
         self.tool_context = ToolContext(workspace_root=Path.cwd(), hooks=load_hooks())
@@ -177,6 +180,7 @@ class ClydeREPL:
             "/load",
             "/resume",
             "/mcp",
+            "/debug",
             "/multiline",
             "/stream",
             "/render-last",
@@ -753,7 +757,7 @@ class ClydeREPL:
                 'help', 'tools', 'tool',
                 'save', 'load', 'resume', 'multiline', 'stream', 'render-last',
                 'model', 'models', 'think',
-                'skill', 'mcp',
+                'skill', 'mcp', 'debug',
                 'context', 'compact',  # These need special handling
                 ''
             }
@@ -932,6 +936,9 @@ class ClydeREPL:
         elif cmd == '/mcp':
             self._print_mcp_status()
 
+        elif cmd == '/debug' or cmd.startswith('/debug '):
+            self._show_debug(raw.split(maxsplit=1)[1].strip().lower() if " " in raw else "")
+
         elif cmd == '/skill':
             self._handle_skill_command()
 
@@ -1064,6 +1071,7 @@ class ClydeREPL:
 - `/compact` - Compact conversation to save context space
 - `/doctor` - Diagnose environment, config, keys and permissions
 - `/mcp` - Show connected MCP servers and their tools
+- `/debug [path]` - Show the last turn's model and tool calls from the trace, or the trace file path
 
 **Usage:**
 - Type your message and press Enter to chat
@@ -1164,14 +1172,15 @@ class ClydeREPL:
                 on_text_chunk(chunk)
 
         try:
-            response = self.provider.stream(
-                to_canonical(self.session.conversation, style_prompt, flatten_tools=True),
+            request = to_canonical(self.session.conversation, style_prompt, flatten_tools=True)
+            response = trace.model_call(self.provider, self.model, request, lambda: self.provider.stream(
+                request,
                 self.model,
                 (),
                 emit,
                 reasoning=self.reasoning,
                 on_thinking=on_thinking,
-            )
+            ))
         except Exception as e:
             if streamed_chunks or is_auth_error(e):
                 raise
@@ -1225,7 +1234,22 @@ class ClydeREPL:
                 except ValueError:  # two tools that sanitize to the same name: keep the first
                     pass
         for name, error in self._mcp_errors.items():
+            trace.record("mcp_error", server=name, error=error)
             self.console.print(f"[yellow]MCP server '{name}' not connected: {error}[/yellow]", markup=True)
+
+    def _show_debug(self, arg: str) -> None:
+        path = trace.trace_path()
+        if arg == "path":
+            self.console.print(str(path), markup=False, highlight=False)
+            return
+        if arg:
+            self.console.print("[red]Usage: /debug [path][/red]")
+            return
+        if path is None or not path.exists():
+            self.console.print("[yellow]No trace for this session yet[/yellow] "
+                               "[dim](tracing is off with CLYDE_TRACE=off or session.trace=false)[/dim]")
+            return
+        self.console.print(trace.last_turn_report(), markup=False, highlight=False)
 
     def _print_mcp_status(self) -> None:
         clients, errors = self.tool_context.mcp_clients, getattr(self, "_mcp_errors", {})
@@ -1265,6 +1289,7 @@ class ClydeREPL:
             user_input: The user message to send.
             max_turns: Maximum number of tool call turns (default 20, higher for complex commands).
         """
+        trace.record("turn", provider=self.provider_name, model=self.model, prompt_chars=len(user_input))
         self._maybe_auto_compact()
         # Add user message
         self.session.conversation.add_user_message(user_input)
@@ -1572,6 +1597,7 @@ class ClydeREPL:
     def _switch_session(self, loaded_session) -> None:
         saved_model = f"{loaded_session.provider}:{loaded_session.model}"
         self.session = loaded_session
+        trace.start(loaded_session.session_id, **self._trace_options)
         self.command_context.conversation = loaded_session.conversation   # /clear, /compact act on it
         # Keep the model in use: the saved one may not be connected any more.
         loaded_session.provider, loaded_session.model = self.provider_name, self.model
