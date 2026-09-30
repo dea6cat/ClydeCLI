@@ -1,8 +1,8 @@
-"""CodeGraph: the repo's knowledge graph (graphify) as a tool any model can call.
+"""Map: a structural map of the repo (symbols, calls, imports) as a tool any model can call.
 
-graphify (`uv tool install graphifyy`) builds graphify-out/graph.json from the code's AST with
-no LLM. This tool runs its deterministic queries: what relates to a question, how two symbols
-connect, what a symbol is, and what a change to it would affect.
+The map is built by graphify (`uv tool install graphifyy`) from the code's syntax tree with no LLM,
+into graphify-out/graph.json. This tool runs its deterministic queries: what relates to a question,
+how two symbols connect, what a symbol is, and what a change to it would affect.
 """
 
 from __future__ import annotations
@@ -19,8 +19,8 @@ from ..errors import ToolInputError
 from ..protocol import ToolResult
 from ..registry import ToolSpec
 
-INSTALL_HINT = "graphify is not installed: run `uv tool install graphifyy` (or `pip install graphifyy`)"
-GRAPH_FILE = Path("graphify-out") / "graph.json"
+INSTALL_HINT = "the code map needs graphify: run `uv tool install graphifyy` (or `pip install graphifyy`)"
+MAP_FILE = Path("graphify-out") / "graph.json"
 TIMEOUT = 120
 _MAX_CHARS = 20_000
 
@@ -34,28 +34,28 @@ _ACTIONS = {
 }
 
 
-def graph_path(root: Path) -> Path:
-    return root / GRAPH_FILE
+def map_path(root: Path) -> Path:
+    return root / MAP_FILE
 
 
-def refresh_graph(root: Path, timeout: float = 600) -> str:
-    """Rebuild the code graph from source (AST only, incremental); return graphify's last line."""
+def refresh_map(root: Path, timeout: float = 600) -> str:
+    """Rebuild the code map from source (syntax tree only, incremental); return the builder's summary line."""
     exe = shutil.which("graphify")
     if exe is None:
         raise ToolInputError(INSTALL_HINT)
     done = subprocess.run([exe, "update", "."], cwd=root, capture_output=True, text=True, timeout=timeout)
     lines = (done.stdout + done.stderr).strip().splitlines()
     if done.returncode != 0:
-        raise ToolInputError("graphify update failed: " + (lines[-1] if lines else f"exit {done.returncode}"))
-    return lines[-2] if len(lines) > 1 else (lines[-1] if lines else "graph updated")
+        raise ToolInputError("updating the code map failed: " + (lines[-1] if lines else f"exit {done.returncode}"))
+    return lines[-2] if len(lines) > 1 else (lines[-1] if lines else "map updated")
 
 
-class CodeGraphTool:
+class MapTool:
     def spec(self) -> ToolSpec:
         return ToolSpec(
-            name="CodeGraph",
+            name="Map",
             description=(
-                "Query this repository's code knowledge graph (symbols, calls, imports, communities) instead of "
+                "Query this repository's code map (symbols, calls, imports, clusters) instead of "
                 "grepping blindly. Actions: query (what relates to a question), path (how source reaches target), "
                 "explain (a symbol and its neighbours), affected (what depends on target, for impact before "
                 "an edit), god_nodes (the most connected hubs), update (rebuild after large edits). Results cite "
@@ -83,7 +83,7 @@ class CodeGraphTool:
         action = tool_input["action"]
         root = context.workspace_root
         if action == "update":
-            return ToolResult(name="CodeGraph", output=refresh_graph(root), content_type="text")
+            return ToolResult(name="Map", output=refresh_map(root), content_type="text")
         required, argv = _ACTIONS[action]
         missing = [f for f in required if not str(tool_input.get(f, "")).strip()]
         if missing:
@@ -91,12 +91,12 @@ class CodeGraphTool:
         exe = shutil.which("graphify")
         if exe is None:
             raise ToolInputError(INSTALL_HINT)
-        if not graph_path(root).exists():
-            refresh_graph(root)
-        done = subprocess.run([exe, *argv(tool_input), "--graph", str(graph_path(root))], cwd=root,
+        if not map_path(root).exists():
+            refresh_map(root)
+        done = subprocess.run([exe, *argv(tool_input), "--graph", str(map_path(root))], cwd=root,
                               capture_output=True, text=True, timeout=TIMEOUT)
         out = (done.stdout or done.stderr).strip() or "(no result)"
-        return ToolResult(name="CodeGraph", output=out[:_MAX_CHARS], is_error=done.returncode != 0, content_type="text")
+        return ToolResult(name="Map", output=out[:_MAX_CHARS], is_error=done.returncode != 0, content_type="text")
 
 
 def _exclude_from_git(root: Path, pattern: str) -> None:
@@ -119,9 +119,9 @@ def _exclude_from_git(root: Path, pattern: str) -> None:
 
 
 def start_background_refresh(root: Path) -> threading.Thread | None:
-    """Refresh the repo's code graph off the main thread when graphify is installed (opt out: CLYDE_CODE_GRAPH=off)."""
-    # ponytail: rebuilds the whole-repo graph each session start; incremental in graphify, but huge monorepos may want a size cap
-    if os.environ.get("CLYDE_CODE_GRAPH", "").lower() == "off" or shutil.which("graphify") is None:
+    """Refresh the repo's code map off the main thread when graphify is installed (opt out: CLYDE_MAP=off)."""
+    # ponytail: rebuilds the whole-repo map each session start; incremental in graphify, but huge monorepos may want a size cap
+    if os.environ.get("CLYDE_MAP", "").lower() == "off" or shutil.which("graphify") is None:
         return None
     if subprocess.run(["git", "rev-parse", "--is-inside-work-tree"], cwd=root, capture_output=True).returncode != 0:
         return None
@@ -129,10 +129,10 @@ def start_background_refresh(root: Path) -> threading.Thread | None:
 
     def _refresh() -> None:
         try:
-            refresh_graph(root)
+            refresh_map(root)
         except (ToolInputError, OSError, subprocess.TimeoutExpired):
-            pass  # the CodeGraph tool reports the problem if the model actually asks
+            pass  # the Map tool reports the problem if the model actually asks
 
-    thread = threading.Thread(target=_refresh, daemon=True, name="code-graph-refresh")
+    thread = threading.Thread(target=_refresh, daemon=True, name="code-map-refresh")
     thread.start()
     return thread

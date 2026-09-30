@@ -9,7 +9,7 @@ from .cron import CronCreateTool, CronDeleteTool, CronListTool
 from .edit import FileEditTool
 from .glob import GlobTool
 from .grep import GrepTool
-from .code_graph import CodeGraphTool
+from .code_map import MapTool
 from .lsp import LSPTool
 from .mcp import MCPTool
 from .mcp_resources import ListMcpResourcesTool, ReadMcpResourceTool
@@ -48,7 +48,7 @@ __all__ = [
     "FileWriteTool",
     "GlobTool",
     "GrepTool",
-    "CodeGraphTool",
+    "MapTool",
     "LSPTool",
     "MCPTool",
     "ListMcpResourcesTool",
