@@ -24,8 +24,20 @@ from pathlib import Path
 from typing import Any
 
 # ponytail: user-level settings only; project .clyde/settings.json hooks need a workspace trust prompt first
-SETTINGS_PATHS = (Path.home() / ".clyde" / "settings.json", Path.home() / ".clyde" / "settings.toml")
+def settings_paths() -> tuple[Path, Path]:
+    return (Path.home() / ".clyde" / "settings.json", Path.home() / ".clyde" / "settings.toml")
+
 DEFAULT_TIMEOUT = 60
+
+# User-level hook settings of other agents, offered for import by `clyde hooks import` and setup.
+def foreign_sources() -> tuple[tuple[str, Path], ...]:
+    home = Path.home()
+    return (
+        ("Claude Code", home / ".claude" / "settings.json"),
+        ("Gemini CLI", home / ".gemini" / "settings.json"),
+        ("Cursor", home / ".cursor" / "hooks.json"),
+        ("Copilot CLI", home / ".copilot" / "hooks.json"),
+    )
 
 # Event names from other agents -> (canonical event, implied matcher). Keys are lowercase.
 _EVENTS = {
@@ -101,10 +113,10 @@ def _read(path: Path) -> Any:
     return tomllib.loads(text) if path.suffix == ".toml" else json.loads(text)
 
 
-def load_hooks(paths: tuple[Path, ...] = SETTINGS_PATHS) -> dict[str, list[dict[str, Any]]]:
+def load_hooks(paths: tuple[Path, ...] | None = None) -> dict[str, list[dict[str, Any]]]:
     """Merged, normalized hooks from every settings file that exists and parses."""
     merged: dict[str, list[dict[str, Any]]] = {}
-    for path in paths:
+    for path in paths or settings_paths():
         try:
             data = _read(path)
         except (OSError, ValueError):
@@ -165,3 +177,52 @@ def run_hooks(hooks: dict[str, list[dict[str, Any]]], event: str, payload: dict[
             if done.returncode == 0 and (verdict := _json_verdict(done.stdout.strip())):
                 return verdict
     return None
+
+
+def find_foreign_hooks(sources: tuple[tuple[str, Path], ...] | None = None) -> list[tuple[str, Path, dict[str, list[dict[str, Any]]]]]:
+    """(agent, path, normalized hooks) for every other agent's settings file that defines hooks."""
+    found = []
+    for agent, path in sources or foreign_sources():
+        try:
+            data = _read(path)
+        except (OSError, ValueError):
+            continue
+        hooks = normalize_hooks(data.get("hooks", {}) if isinstance(data, dict) else {})
+        if hooks:
+            found.append((agent, path, hooks))
+    return found
+
+
+def _keys(hooks: dict[str, list[dict[str, Any]]]) -> set[tuple[str, str, str]]:
+    return {(event, g["matcher"], h["command"]) for event, groups in hooks.items() for g in groups for h in g["hooks"]}
+
+
+def import_hooks(hooks: dict[str, list[dict[str, Any]]], dest: Path | None = None) -> int:
+    """Append hooks to the JSON settings file, skipping ones already there; return how many were added."""
+    dest = dest or settings_paths()[0]
+    try:
+        data = json.loads(dest.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        data = {}
+    if not isinstance(data, dict):
+        raise ValueError(f"{dest} is not a JSON object")
+    table = data.setdefault("hooks", {})
+    existing = _keys(normalize_hooks(table))
+    added = 0
+    for event, groups in hooks.items():
+        current = table.get(event)
+        if not isinstance(current, list):  # a shorthand dict: rewrite this event in the full form
+            current = normalize_hooks({event: current}).get(event, []) if current else []
+        for group in groups:
+            new = [h for h in group["hooks"] if (event, group["matcher"], h["command"]) not in existing]
+            if not new:
+                continue
+            current.append({"matcher": group["matcher"], "hooks": [{"type": "command", **h} for h in new]})
+            existing |= {(event, group["matcher"], h["command"]) for h in new}
+            added += len(new)
+        if current:
+            table[event] = current
+    if added:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    return added

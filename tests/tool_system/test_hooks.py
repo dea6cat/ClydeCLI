@@ -7,7 +7,7 @@ from pathlib import Path
 
 from src.tool_system.context import ToolContext
 from src.tool_system.defaults import build_default_registry
-from src.tool_system.hooks import load_hooks, normalize_hooks
+from src.tool_system.hooks import find_foreign_hooks, import_hooks, load_hooks, normalize_hooks
 from src.tool_system.protocol import ToolCall
 
 
@@ -107,6 +107,41 @@ class TestToolHooks(unittest.TestCase):
         result, target = self._write(normalize_hooks({"beforeTool": ["""echo '{"decision": "allow"}'"""]}))
         self.assertFalse(result.is_error)
         self.assertTrue(target.exists())
+
+
+class TestHookImport(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+
+    def tearDown(self) -> None:
+        self.tmp.cleanup()
+
+    def test_finds_only_agents_with_hooks(self) -> None:
+        cursor = self.root / "cursor.json"
+        cursor.write_text(json.dumps({"version": 1, "hooks": {"beforeShellExecution": [{"command": "audit.sh"}]}}))
+        claude = self.root / "claude.json"
+        claude.write_text(json.dumps({"model": "x"}))
+        found = find_foreign_hooks((("Cursor", cursor), ("Claude Code", claude), ("Gemini CLI", self.root / "missing.json")))
+        self.assertEqual([(agent, hooks["PreToolUse"][0]["matcher"]) for agent, _, hooks in found], [("Cursor", "Bash")])
+
+    def test_import_keeps_existing_settings_and_skips_duplicates(self) -> None:
+        dest = self.root / "settings.json"
+        dest.write_text(json.dumps({"other": 1, "hooks": {"PreToolUse": {"Bash": "mine"}}}))
+        incoming = normalize_hooks({"PreToolUse": {"Bash": ["mine", "theirs"]}, "PostToolUse": ["fmt"]})
+        self.assertEqual(import_hooks(incoming, dest), 2)
+        self.assertEqual(import_hooks(incoming, dest), 0)
+        data = json.loads(dest.read_text())
+        self.assertEqual(data["other"], 1)
+        hooks = load_hooks((dest,))
+        self.assertEqual([h["command"] for g in hooks["PreToolUse"] for h in g["hooks"]], ["mine", "theirs"])
+        self.assertEqual(hooks["PostToolUse"][0]["hooks"][0]["command"], "fmt")
+
+    def test_import_creates_the_settings_file(self) -> None:
+        dest = self.root / "new" / "settings.json"
+        self.assertEqual(import_hooks(normalize_hooks({"PreToolUse": ["x"]}), dest), 1)
+        self.assertIn("PreToolUse", load_hooks((dest,)))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -112,7 +112,9 @@ clyde                          # Start REPL
 clyde --model openai:gpt-5.4   # Start with a specific model
 clyde -c                       # Continue the latest session in this directory
 clyde --resume [id]            # Pick a recent session, or resume one by id
+clyde setup                    # First-run onboarding (provider, other agents' hooks, PATH)
 clyde login                    # Connect a provider, pick a default model
+clyde hooks import             # Bring over hooks from Claude Code, Gemini CLI, Cursor, Copilot CLI
 clyde logout openai            # Forget a saved key
 clyde --list-models            # Every model you can use right now
 clyde config                   # View settings
@@ -177,6 +179,19 @@ clyde --version                # Check version
 *Three steps. I'll wait. Might light one while you do it.*
 
 ### Install
+
+One line (installs uv if needed, then `clyde`, then runs `clyde setup`):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/dea6cat/ClydeCLI/main/install.sh | sh
+```
+
+`clyde setup` connects a provider and picks a default model, lists hooks you already set up for
+Claude Code, Gemini CLI, Cursor or Copilot CLI and imports them only if you say yes, and offers to
+put `clyde` on your PATH. Pass `--yes` for no prompts (hooks are never imported that way). Run it
+again any time.
+
+Or from source:
 
 ```bash
 git clone https://github.com/dea6cat/ClydeCLI.git
@@ -308,6 +323,8 @@ Example:
 **Notes**
 
 - User-level skills: `~/.clyde/skills/<skill-name>/SKILL.md`
+- Skills you already have for other agents are read in place: `~/.claude/skills`, `~/.agents/skills`,
+  `~/.codex/skills`, `~/.copilot/skills` and `~/.gemini/skills`. On a name clash `~/.clyde/skills` wins
 - Tool limits: `allowed-tools` controls which tools the skill can use.
 - Arguments: use `$ARGUMENTS`, `$0`, `$1`, or named args like `$path` (from `arguments`).
 - Placeholder syntax: use `$path`, not `${path}`.
@@ -343,6 +360,9 @@ or `~/.clyde/settings.toml` (both are read and merged), in Claude Code's format:
 - Exit 2 blocks the call (PreToolUse) or sends stderr back to the model (PostToolUse). So does a
   JSON reply on stdout that denies or blocks (`{"decision": "block", "reason": ...}`,
   `{"permission": "deny"}`, `{"permissionDecision": "deny"}`); anything else carries on. Each command times out after 60s (`"timeout"` overrides it)
+- Already have hooks for another agent? `clyde hooks import` (also offered by `clyde setup`) finds
+  them in `~/.claude/settings.json`, `~/.gemini/settings.json`, `~/.cursor/hooks.json` and
+  `~/.copilot/hooks.json`, shows every command, and copies them only after you say yes
 - Only your user settings are read; project `.clyde/settings.json` hooks are ignored, since a cloned
   repo could otherwise run commands on your machine
 
