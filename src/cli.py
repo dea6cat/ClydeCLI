@@ -251,7 +251,17 @@ def handle_setup(console: Console, assume_yes: bool = False) -> int:
     console.print(f"✓ {len(user_skills)} user skill(s) available, including ~/.claude, ~/.agents, ~/.codex, "
                   "~/.copilot and ~/.gemini skill folders.")
 
-    # 5) PATH
+    # 5) graphify, which gives every model a code knowledge graph through the CodeGraph tool
+    if shutil.which("graphify"):
+        console.print("✓ graphify installed: the CodeGraph tool maps each repo when ClydeCLI starts in it.")
+    elif shutil.which("uv") and (assume_yes or Confirm.ask(
+            "Install graphify so any model can query a code knowledge graph of your repos (uv tool install graphifyy)?",
+            default=True)):
+        subprocess.run(["uv", "tool", "install", "graphifyy"], check=False)
+    else:
+        console.print("• Install graphify later for the CodeGraph tool: [bold]uv tool install graphifyy[/bold].")
+
+    # 6) PATH
     if not _clyde_bin_on_path() and shutil.which("uv"):
         if not assume_yes and Confirm.ask("clyde isn't on your PATH yet. Add uv's tool folder to it (uv tool update-shell)?", default=True):
             subprocess.run(["uv", "tool", "update-shell"], check=False)

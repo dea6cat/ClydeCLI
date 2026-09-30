@@ -53,9 +53,11 @@ class TestSetup(unittest.TestCase):
     def test_setup_yes_never_imports_hooks_or_prompts(self):
         with patch("rich.prompt.Confirm.ask", side_effect=AssertionError("prompted")), \
              patch("rich.prompt.Prompt.ask", side_effect=AssertionError("prompted")), \
-             patch("src.providers.build_registry", return_value={}):
+             patch("src.providers.build_registry", return_value={}), \
+             patch("subprocess.run") as run:
             self.assertEqual(handle_setup(self.console, assume_yes=True), 0)
         self.assertFalse(self.settings.exists())
+        self.assertTrue(all("hooks" not in str(c) for c in run.call_args_list))
         self.assertIn("clyde hooks import", self.out.getvalue())
         self.assertIn("clyde mcp import", self.out.getvalue())
         self.assertIn("ClydeCLI is ready", self.out.getvalue())

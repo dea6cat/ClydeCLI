@@ -34,11 +34,38 @@ def build_context_prompt(
     if summary_lines:
         sections.append("\n".join(summary_lines))
 
+    graph_lines = _render_code_graph_section(root)
+    if graph_lines:
+        sections.append("\n".join(graph_lines))
+
     md_lines = _render_claude_md_section(claude_md, root)
     if md_lines:
         sections.append("\n".join(md_lines))
 
     return "\n\n".join(section for section in sections if section.strip())
+
+
+def _render_code_graph_section(root: Path, hubs: int = 8) -> list[str]:
+    """Point the model at the CodeGraph tool when graphify has mapped this repo."""
+    out = root / "graphify-out"
+    if not (out / "graph.json").is_file():
+        return []
+    lines = [
+        "## Code Graph",
+        "This repository has a code knowledge graph (graphify-out/graph.json: symbols, calls, imports).",
+        "Use the CodeGraph tool first for structural questions - `query` for what relates to a topic,",
+        "`explain` for a symbol, `path` for how two symbols connect, `affected` before changing a symbol -",
+        "then read the cited files. Fall back to Grep/Glob for exact text.",
+    ]
+    try:
+        report = (out / "GRAPH_REPORT.md").read_text(encoding="utf-8")
+    except OSError:
+        return lines
+    section = report.split("## God Nodes", 1)[-1].split("\n## ", 1)[0] if "## God Nodes" in report else ""
+    top = [line.strip() for line in section.splitlines() if line.strip()[:1].isdigit()][:hubs]
+    if top:
+        lines += ["", "Most connected symbols (architectural hubs):", *(f"- {line.split('. ', 1)[-1]}" for line in top)]
+    return lines
 
 
 def _render_workspace_section(workspace) -> list[str]:
