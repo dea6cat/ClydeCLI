@@ -85,6 +85,7 @@ Explain the code in $path. Start with an analogy, then draw a diagram.
 | GLM (Zhipu) | `GLM_API_KEY` | |
 | MiniMax | `MINIMAX_API_KEY` | via its Anthropic-compatible endpoint |
 | Ollama (local) | none | native `/api/chat`, context sized to your RAM |
+| LM Studio (local) | none | picked up when installed: models from its server or `lms ls`; the server starts on first use |
 | Ollama Cloud | `OLLAMA_API_KEY` | |
 
 No vendor SDKs. Every provider is plain HTTP from the standard library. Model lists come live
@@ -137,7 +138,7 @@ clyde --version                # Check version
 |--------|--------|-------------|
 | CLI Entry | ✅ | `clyde`, `login`, `logout`, `config`, `--model`, `--list-models`, `-c`, `--resume` |
 | Interactive REPL | ✅ | Rich output, history, tab completion, multiline, streaming |
-| Multi-Provider | ✅ | 12 providers, stdlib HTTP, live model lists, `provider:model` switching |
+| Multi-Provider | ✅ | 13 providers (incl. local Ollama and LM Studio), stdlib HTTP, live model lists, `provider:model` switching |
 | Agent Loop | ✅ | Tool-calling loop with retries, reasoning control, history repair |
 | Skill System | ✅ | SKILL.md slash-command skills with args + tool limits |
 | Context Building | ✅ | Workspace snapshot, git status, a README excerpt, entry points, the code map and memory files go into the prompt: `~/.clyde/CLAUDE.md` (user), `CLAUDE.md` (project, shared) and `CLAUDE.local.md` (project, personal, keep it gitignored) |
