@@ -656,30 +656,21 @@ class ClydeREPL:
         provider_label = self.provider_name
         model_label = self.model or "Unknown model"
 
-        if Panel is None or Group is None or Align is None or Table is None or Text is None or Columns is None:
-            print("\n".join(_ACE_OF_SPADES))
-            print(f"ClydeCLI v{__version__}")
-            print(f"{model_label} · {provider_label}")
-            print(f"{display_path}\n")
+        info = f"ClydeCLI v{__version__} · {model_label} · {provider_label} · {display_path}"
+        if Text is None:
+            print("\n".join(_ACE_OF_SPADES[:-1] + (f"{_ACE_OF_SPADES[-1]}  {info}",)) + "\n")
             return
 
         width = getattr(self.console, "width", 80)
-        content_width = max(28, min(width - 12, 72))
-        table = Table.grid(padding=(0, 1))
-        table.add_column(style=_CARD_DIM, justify="right", no_wrap=True)
-        table.add_column(style=_CARD_TEXT, ratio=1)
-        table.add_row("Version", Text.assemble(("ClydeCLI", f"bold {_CARD_TEXT}"), ("  ", ""), (f"v{__version__}", f"bold {_CARD_RED}")))
-        table.add_row("Model", Text(model_label, style=f"bold {_CARD_TEXT}"))
-        table.add_row("Provider", Text(provider_label, style=_CARD_RED))
-        table.add_row("Workspace", Text(self._truncate_middle(display_path, content_width - 12), style=_CARD_DIM))
-
-        footer = Text.assemble(*[part for cmd in ("/help", "/model", "/think", "/stream", "/exit")
-                                 for part in ((cmd, _CARD_DIM), ("  ♠  ", _CARD_RED))][:-1])
-        header = Group(
-            Columns([_ace_of_spades_card(), table], align="center", expand=False),
-            Text(""),
-            footer,
-        )
+        path_room = max(12, width - len(_ACE_OF_SPADES[0]) - len(info) + len(display_path) - 2)
+        header = _ace_of_spades_card()
+        header.append("  ")
+        header.append(Text.assemble(
+            ("ClydeCLI ", f"bold {_CARD_TEXT}"), (f"v{__version__}", f"bold {_CARD_RED}"),
+            ("  ·  ", _CARD_DIM), (model_label, f"bold {_CARD_TEXT}"),
+            ("  ·  ", _CARD_DIM), (provider_label, _CARD_RED),
+            ("  ·  ", _CARD_DIM), (self._truncate_middle(display_path, path_room), _CARD_DIM),
+        ))
         self.console.print(header)
         self.console.print()
 
