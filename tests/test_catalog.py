@@ -3,9 +3,12 @@ the accessor fallbacks, corrupt-catalog degradation, and the context_budget wiri
 (catalog window for known cloud models, per-provider constant otherwise).
 Run: `python -m unittest tests.test_catalog`.
 """
+import json
 import os
 import sys
+import tempfile
 import unittest
+from pathlib import Path
 
 
 from src.providers import catalog  # noqa: E402
@@ -56,6 +59,25 @@ class CatalogAccessors(unittest.TestCase):
     def test_max_tokens_uses_default_when_unknown(self):
         self.assertEqual(catalog.max_tokens("claude-opus-4-8", 4096), 64000)
         self.assertEqual(catalog.max_tokens("nope-nope", 4096), 4096)
+
+    def test_prices_are_optional(self):
+        info = catalog.lookup("gpt-4o-2024-08-06")
+        self.assertEqual((info.input_per_mtok, info.output_per_mtok, info.cache_read_per_mtok), (2.5, 10.0, 1.25))
+        mythos = catalog.lookup("claude-mythos-5-1")
+        self.assertEqual(mythos.context_window, 200000)
+        self.assertIsNone(mythos.input_per_mtok)
+
+    def test_entry_without_price_fields_still_loads(self):
+        real, real_cache = catalog._CATALOG_PATH, catalog._cache
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "catalog.json"
+            path.write_text(json.dumps({"models": {"m": {"context_window": 10, "default_max_tokens": 5}}}))
+            try:
+                catalog._CATALOG_PATH, catalog._cache = path, None
+                self.assertEqual(catalog.lookup("m"), catalog.ModelInfo(10, 5))
+            finally:
+                catalog._CATALOG_PATH, catalog._cache = real, real_cache
+
 
 class CorruptCatalog(unittest.TestCase):
     def test_bad_json_degrades_to_empty(self):

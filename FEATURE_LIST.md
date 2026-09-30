@@ -40,7 +40,7 @@
 | Session persistence | ✅ | Supports saving/loading local sessions |
 | Session message management | ✅ | Supports session history maintenance and serialization |
 | Error recovery / re-login | 🟡 | Basic authentication error handling and reconfiguration flow exist |
-| Token / Cost tracking | 🟡 | `/cost` and `/context` report token usage; no per-model pricing |
+| Token / Cost tracking | ✅ | `/cost` shows input/output/cache tokens per model and an estimated USD total from list prices in `catalog.json` ("price unknown" for unpriced models, $0 for local Ollama); `/context` reports token usage |
 | Context building | 🟡 | A basic `context_system` exists, supporting workspace / git / `CLAUDE.md` injection; still missing README summaries, memory, compact |
 | Claude Code Agent Loop | ✅ | agent_loop.py implemented, supports the tool-call loop |
 | `/resume` session recovery experience | 🚫 | No dedicated recovery flow or UI yet |
