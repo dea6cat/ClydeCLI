@@ -34,3 +34,10 @@ class WorkspaceSnapshot:
     key_files: tuple[str, ...]
     python_file_count: int
     test_file_count: int
+
+
+@dataclass(frozen=True)
+class ProjectSummary:
+    readme_path: Path | None = None
+    readme_excerpt: str = ""
+    entry_points: tuple[str, ...] = ()
