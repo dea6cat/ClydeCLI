@@ -7,7 +7,7 @@ try:
     from prompt_toolkit.history import FileHistory
     from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
     from prompt_toolkit.styles import Style
-    from prompt_toolkit.completion import WordCompleter
+    from prompt_toolkit.completion import Completer, Completion, WordCompleter
     try:
         from prompt_toolkit.completion import FuzzyCompleter
     except Exception:  # pragma: no cover
@@ -31,6 +31,7 @@ except ModuleNotFoundError:  # pragma: no cover
         def __init__(self, *args, **kwargs):
             pass
     FuzzyCompleter = None  # type: ignore
+    Completer = Completion = None  # type: ignore
 
     class KeyBindings:  # type: ignore
         def __init__(self, *args, **kwargs):
@@ -68,6 +69,7 @@ except ModuleNotFoundError:  # pragma: no cover
             self.text = text
 from pathlib import Path
 import asyncio
+import re
 import sys
 import json
 from datetime import datetime
@@ -162,6 +164,85 @@ def _ace_of_spades_card() -> Text:
     return card
 
 
+_HELP_TEXT = """
+**Available Commands:**
+
+- `/` - Show all commands and skills
+- `/help` - Show this help message
+- `/exit`, `/quit`, `/q` - Exit the REPL
+- `/clear`, `/reset`, `/new` - Clear conversation history
+- `/save` - Save current session
+- `/load <session-id>` - Load a previous session
+- `/resume [session-id]` - Pick a recent session of this workspace to continue, or load one by id
+- `/multiline` - Toggle multiline input mode
+- `/stream [on|off|toggle]` - Toggle live response rendering
+- `/render-last` - Re-render the last assistant reply as Markdown
+- `/model [provider:model]` - Show or switch the model (saved as default)
+- `/models` - List models from every connected provider
+- `/think [off|low|medium|high|on|default]` - Set the reasoning level
+- `/tools` - List available built-in tools
+- `/tool <name> <json>` - Run a tool directly
+- `/skills` - List all available skills
+- `/init` - Create CLAUDE.md file for the project
+- `/cost` - Show session cost and usage
+- `/compact` - Compact conversation to save context space
+- `/doctor` - Diagnose environment, config, keys and permissions
+- `/mcp` - Show connected MCP servers and their tools
+- `/plugins` - Show loaded plugins and what each added
+- `/debug [path]` - Show the last turn's model and tool calls from the trace, or the trace file path
+- `/check` - Run the project's ruff, mypy and pytest and show a summary
+
+**Usage:**
+- Type your message and press Enter to chat
+- Use Tab for command completion
+- Press Ctrl+C to interrupt current operation
+- Press Ctrl+D to exit
+- Use `/multiline` for multi-paragraph inputs
+"""
+
+# Rotating spinner words while the model works, in the spirit of Claude Code and Gemini CLI.
+_THINKING_WORDS = (
+    "Thinking", "Pondering", "Shuffling the deck", "Reading the table", "Counting cards",
+    "Dealing", "Calculating odds", "Bluffing", "Cutting the deck", "Stacking the deck",
+    "Tinkering", "Noodling", "Scheming", "Mulling it over", "Connecting dots",
+)
+
+
+def _thinking_label() -> str:
+    import random
+    return f"[{_CARD_DIM}]{random.choice(_THINKING_WORDS)}…[/{_CARD_DIM}]"
+
+
+def _help_descriptions() -> dict[str, str]:
+    """`/cmd` -> description, read from the /help text (every alias gets the same text)."""
+    out: dict[str, str] = {}
+    for line in _HELP_TEXT.splitlines():
+        if not line.startswith("- `/") or " - " not in line:
+            continue
+        names, desc = line[2:].split(" - ", 1)
+        for name in re.findall(r"`(/[\w-]+)", names):
+            out[name] = desc.strip()
+    return out
+
+
+if Completer is not None:
+    class SlashCompleter(Completer):
+        """Offer commands and skills only while the line is a single word that starts with '/'."""
+
+        def __init__(self, entries: list[tuple[str, str]]) -> None:
+            self.entries = entries
+
+        def get_completions(self, document, complete_event):  # type: ignore[no-untyped-def]
+            text = document.text_before_cursor
+            if not text.startswith("/") or any(c.isspace() for c in text):
+                return
+            needle = text.lower()
+            starts = [e for e in self.entries if e[0].lower().startswith(needle)]
+            inside = [e for e in self.entries if needle[1:] and needle[1:] in e[0].lower() and e not in starts]
+            for name, desc in starts + inside:
+                yield Completion(name, start_position=-len(text), display=name, display_meta=desc)
+
+
 class ClydeREPL:
     """Interactive REPL for ClydeCLI."""
 
@@ -239,17 +320,10 @@ class ClydeREPL:
         history_file = Path.home() / ".clyde" / "history"
         history_file.parent.mkdir(parents=True, exist_ok=True)
 
-        self.completer = WordCompleter(self._get_slash_command_words(), ignore_case=True)
+        self.completer = self._make_completer()
 
         # Key bindings for multiline
         self.bindings = KeyBindings()
-        if hasattr(self.bindings, "add"):
-            @self.bindings.add("/")  # type: ignore[attr-defined]
-            def _show_slash_completions(event):  # type: ignore[no-untyped-def]
-                buf = event.current_buffer
-                if buf.text == "":
-                    buf.insert_text("/")
-                    buf.start_completion(select_first=False)
 
         self.prompt_session = PromptSession(
             history=FileHistory(str(history_file)),
@@ -257,10 +331,66 @@ class ClydeREPL:
             completer=self.completer,
             style=Style.from_dict({
                 'prompt': 'bold #ffffff',
+                'rule': '#5a5a5a',
+                # A plain list like Claude Code's: no grey block, green for the selected row.
+                'completion-menu': 'bg:default',
+                'completion-menu.completion': 'bg:default #d8d4cc',
+                'completion-menu.completion.current': f'bg:default bold {_CARD_ACCENT}',
+                'completion-menu.meta.completion': f'bg:default {_CARD_DIM}',
+                'completion-menu.meta.completion.current': f'bg:default {_CARD_ACCENT}',
+                'scrollbar.background': 'bg:default',
+                'scrollbar.button': 'bg:#5a5a5a',
             }),
+            reserve_space_for_menu=0,
             key_bindings=self.bindings,
             complete_while_typing=True,
         )
+        self._add_rule_under_input()
+
+    def _add_rule_under_input(self) -> None:
+        """Draw a line right under the input, hidden while the completion menu is open so the menu
+        sits directly below the prompt. Best effort: it relies on PromptSession's layout shape."""
+        try:
+            from prompt_toolkit.filters import has_completions
+            from prompt_toolkit.layout.containers import ConditionalContainer, FloatContainer, Window
+            from prompt_toolkit.layout.controls import BufferControl, FormattedTextControl
+            from prompt_toolkit.layout.dimension import D
+
+            top = self.prompt_session.layout.container.children[0]
+            main = next((c for c in (getattr(top, "alternative_content", None), getattr(top, "content", None))
+                         if isinstance(c, FloatContainer)), None)
+            if main is None:
+                return
+            rows = main.content.children
+            at = next(i for i, c in enumerate(rows) if isinstance(getattr(c.content, "content", None), BufferControl))
+            from prompt_toolkit.filters import to_filter
+
+            rows[at].content.dont_extend_height = to_filter(True)  # keep the line hugging the input
+            rule = Window(FormattedTextControl(self._prompt_rule), height=1, dont_extend_height=True)
+            buffer = self.prompt_session.default_buffer
+
+            def menu_room():  # type: ignore[no-untyped-def]
+                # Blank rows where the rule was, so the menu opens downward instead of flipping up.
+                state = buffer.complete_state
+                return D.exact(min(16, len(state.completions)) if state else 0)
+
+            rows.insert(at + 1, ConditionalContainer(rule, filter=~has_completions))
+            rows.insert(at + 2, ConditionalContainer(Window(height=menu_room), filter=has_completions))
+        except Exception:
+            return
+
+    @staticmethod
+    def _rule_width() -> int:
+        import shutil
+        return max(10, shutil.get_terminal_size((80, 24)).columns)
+
+    def _prompt_rule(self):  # type: ignore[no-untyped-def]
+        """The line under the input."""
+        return [("class:rule", "─" * self._rule_width())]
+
+    def _prompt_message(self):  # type: ignore[no-untyped-def]
+        """The line above the input, then the chevron."""
+        return [("class:rule", "─" * self._rule_width() + "\n"), ("class:prompt", "... " if self.multiline_mode else "❯ ")]
 
     def _ask_user_questions(self, questions: list[dict]) -> dict[str, str]:
         # Stop the Rich status spinner if running, so we can get clean input
@@ -546,14 +676,32 @@ class ClydeREPL:
             deduped.append(w)
         return deduped
 
+    def _slash_entries(self) -> list[tuple[str, str]]:
+        """(command, description) for the completion menu: built-ins, registered commands, then skills."""
+        descriptions = _help_descriptions()
+        try:
+            for cmd in self.command_registry.list_commands():
+                descriptions.setdefault(f"/{cmd.name}", cmd.description or "")
+        except Exception:
+            pass
+        try:
+            from src.skills.loader import get_all_skills
+
+            cwd = self.tool_context.cwd or self.tool_context.workspace_root
+            for skill in get_all_skills(project_root=cwd):
+                descriptions.setdefault(f"/{skill.name}", " ".join((skill.description or "").split()))
+        except Exception:
+            pass
+        return [(w, descriptions.get(w, "")) for w in self._get_slash_command_words() if w != "/"]
+
+    def _make_completer(self):  # type: ignore[no-untyped-def]
+        if Completer is None:
+            return WordCompleter(self._get_slash_command_words(), ignore_case=True)
+        return SlashCompleter(self._slash_entries())
+
     def _refresh_completer(self) -> None:
         try:
-            words = self._get_slash_command_words()
-            try:
-                base = WordCompleter(words, ignore_case=True, match_middle=True)
-            except TypeError:
-                base = WordCompleter(words, ignore_case=True)
-            self.completer = FuzzyCompleter(base) if FuzzyCompleter is not None else base
+            self.completer = self._make_completer()
             if hasattr(self, "prompt_session") and getattr(self.prompt_session, "completer", None) is not None:
                 self.prompt_session.completer = self.completer
         except Exception:
@@ -689,9 +837,8 @@ class ClydeREPL:
                 self._refresh_completer()
                 # Dynamic prompt based on multiline mode
                 # Using '❯' for a modern feel
-                prompt_text = '... ' if self.multiline_mode else '❯ '
                 user_input = self.prompt_session.prompt(
-                    prompt_text,
+                    self._prompt_message,
                     multiline=self.multiline_mode,
                     pre_run=self._start_cron_watch,
                 )
@@ -1065,41 +1212,7 @@ class ClydeREPL:
 
     def show_help(self):
         """Show help message."""
-        help_text = """
-**Available Commands:**
-
-- `/` - Show all commands and skills
-- `/help` - Show this help message
-- `/exit`, `/quit`, `/q` - Exit the REPL
-- `/clear`, `/reset`, `/new` - Clear conversation history
-- `/save` - Save current session
-- `/load <session-id>` - Load a previous session
-- `/resume [session-id]` - Pick a recent session of this workspace to continue, or load one by id
-- `/multiline` - Toggle multiline input mode
-- `/stream [on|off|toggle]` - Toggle live response rendering
-- `/render-last` - Re-render the last assistant reply as Markdown
-- `/model [provider:model]` - Show or switch the model (saved as default)
-- `/models` - List models from every connected provider
-- `/think [off|low|medium|high|on|default]` - Set the reasoning level
-- `/tools` - List available built-in tools
-- `/tool <name> <json>` - Run a tool directly
-- `/skills` - List all available skills
-- `/init` - Create CLAUDE.md file for the project
-- `/cost` - Show session cost and usage
-- `/compact` - Compact conversation to save context space
-- `/doctor` - Diagnose environment, config, keys and permissions
-- `/mcp` - Show connected MCP servers and their tools
-- `/plugins` - Show loaded plugins and what each added
-- `/debug [path]` - Show the last turn's model and tool calls from the trace, or the trace file path
-- `/check` - Run the project's ruff, mypy and pytest and show a summary
-
-**Usage:**
-- Type your message and press Enter to chat
-- Use Tab for command completion
-- Press Ctrl+C to interrupt current operation
-- Press Ctrl+D to exit
-- Use `/multiline` for multi-paragraph inputs
-"""
+        help_text = _HELP_TEXT
         self.console.print(Markdown(help_text))
 
     def _handle_skill_command(self) -> None:
@@ -1331,7 +1444,7 @@ class ClydeREPL:
         self.session.conversation.add_user_message(user_input)
 
         try:
-            self.console.print("\n[bold]Assistant[/bold]")
+            self.console.print()
 
             stream_started = False
 
@@ -1397,7 +1510,7 @@ class ClydeREPL:
                 self.console.print(chunk, end="", markup=False, highlight=False, soft_wrap=True)
 
             if self._should_try_direct_stream(user_input):
-                self._current_status = self.console.status("[dim]Thinking...[/dim]", spinner="dots")
+                self._current_status = self.console.status(_thinking_label(), spinner="dots", spinner_style=_CARD_ACCENT)
                 with self._current_status:
                     direct_response = self._stream_direct_response(on_text_chunk=on_text_chunk,
                                                                    on_thinking=on_thinking)
@@ -1407,7 +1520,7 @@ class ClydeREPL:
                     return
 
             # Use agent loop with tools for any provider that supports it
-            self._current_status = self.console.status("[dim]Thinking...[/dim]", spinner="dots")
+            self._current_status = self.console.status(_thinking_label(), spinner="dots", spinner_style=_CARD_ACCENT)
             with self._current_status:
                 result = run_agent_loop(
                     conversation=self.session.conversation,
