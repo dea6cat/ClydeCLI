@@ -83,6 +83,7 @@ from src.providers import catalog
 from src.providers.base import ProviderError, is_auth_error
 from src.providers.convert import append_response, to_canonical
 from src.tool_system.context import ToolContext
+from src.plugins import apply_plugins
 from src.tool_system.hooks import load_hooks
 from src.tool_system.permission_rules import load_rules, save_allow_rule
 from src.tool_system.tools.code_map import start_background_refresh
@@ -156,8 +157,13 @@ class ClydeREPL:
         self.session = Session.create(self.provider_name, self.model)
 
         self.tool_registry = build_default_registry()
-        self.tool_context = ToolContext(workspace_root=Path.cwd(), hooks=load_hooks(), permission_rules=load_rules())
-        self._connect_mcp_servers()
+        hooks, servers = load_hooks(), load_servers()
+        self.plugins = apply_plugins(self.tool_registry, hooks, servers)
+        for loaded in self.plugins:
+            for warning in loaded.warnings:
+                self.console.print(warning, style="yellow", markup=False)
+        self.tool_context = ToolContext(workspace_root=Path.cwd(), hooks=hooks, permission_rules=load_rules())
+        self._connect_mcp_servers(servers)
         self.tool_context.ask_user = self._ask_user_questions
         # Session-scoped cron: due jobs are queued here and run only between turns.
         self._cron_checked_at = datetime.now()
@@ -178,6 +184,7 @@ class ClydeREPL:
             "/load",
             "/resume",
             "/mcp",
+            "/plugins",
             "/multiline",
             "/stream",
             "/render-last",
@@ -934,6 +941,9 @@ class ClydeREPL:
         elif cmd == '/mcp':
             self._print_mcp_status()
 
+        elif cmd == '/plugins':
+            self._print_plugins()
+
         elif cmd == '/skill':
             self._handle_skill_command()
 
@@ -1066,6 +1076,7 @@ class ClydeREPL:
 - `/compact` - Compact conversation to save context space
 - `/doctor` - Diagnose environment, config, keys and permissions
 - `/mcp` - Show connected MCP servers and their tools
+- `/plugins` - Show loaded plugins and what each added
 
 **Usage:**
 - Type your message and press Enter to chat
@@ -1213,9 +1224,8 @@ class ClydeREPL:
         self.console.print()
         return True
 
-    def _connect_mcp_servers(self) -> None:
-        """Start the MCP servers from settings and register their tools as mcp__<server>__<tool>."""
-        servers = load_servers()
+    def _connect_mcp_servers(self, servers: dict[str, dict[str, Any]]) -> None:
+        """Start the MCP servers from settings and plugins, registering their tools as mcp__<server>__<tool>."""
         if not servers:
             return
         clients, self._mcp_errors = connect_servers(servers, Path.cwd())
@@ -1240,6 +1250,23 @@ class ClydeREPL:
                 self.console.print(f"    mcp__{name}__{tool['name']}", markup=False)
         for name, error in errors.items():
             self.console.print(f"[red]✗[/red] {name}: {error}")
+
+    def _print_plugins(self) -> None:
+        if not self.plugins:
+            self.console.print("No plugins loaded. Install one with `clyde plugin install <path-or-git-url>`.")
+            return
+        for loaded in self.plugins:
+            p = loaded.plugin
+            self.console.print(f"[green]✓[/green] {p.name} {p.version}", markup=True)
+            if p.description:
+                self.console.print(f"    {p.description}", markup=False)
+            for label, items in (("tools", loaded.tools), ("skills", loaded.skills), ("MCP servers", loaded.mcp_servers)):
+                if items:
+                    self.console.print(f"    {label}: {', '.join(items)}", markup=False)
+            if loaded.hooks:
+                self.console.print(f"    hooks: {loaded.hooks}", markup=False)
+            for warning in loaded.warnings:
+                self.console.print(f"    {warning}", style="yellow", markup=False)
 
     def _context_window(self) -> int:
         """The model's input window: the provider's own sizing, then the catalog, then a name heuristic."""
