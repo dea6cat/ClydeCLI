@@ -44,7 +44,7 @@
 | Context building | 🟡 | A basic `context_system` exists, supporting workspace / git / `CLAUDE.md` injection; still missing README summaries, memory, compact |
 | Claude Code Agent Loop | ✅ | agent_loop.py implemented, supports the tool-call loop |
 | `/resume` session recovery experience | 🚫 | No dedicated recovery flow or UI yet |
-| `/compact` conversation compaction | 🟡 | Manual `/compact` summarizes older history; no automatic compaction |
+| `/compact` conversation compaction | ✅ | Manual `/compact`, plus automatic compaction before a turn once history reaches 80% of the context window |
 | `/doctor` diagnostics | 🚫 | No environment, config, permission, or dependency diagnostic command yet |
 | Hook system | 🚫 | No pre/post tool use hooks yet |
 | Permission system | 🟡 | Approval prompts wired into tool dispatch; only Write/Edit ask, Bash blocks dangerous patterns |
@@ -116,7 +116,7 @@
 | Session Persistence | ✅ | Session save/load available |
 | Context Engine | 🟡 | Basic context-building pipeline connected, supporting workspace, git, and `CLAUDE.md` prompt injection |
 | Permission Engine | 🟡 | Integrated for Write/Edit; other tools don't ask yet |
-| Compaction Engine | 🟡 | Manual `/compact`; no automatic trigger |
+| Compaction Engine | ✅ | Manual `/compact` and automatic at 80% of the context window |
 | Hook Runtime | 🚫 | No settings-driven hook execution yet |
 | MCP Runtime | 🚫 | MCP tools exist but no client is ever connected |
 
