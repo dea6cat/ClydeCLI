@@ -6,6 +6,7 @@ from typing import Any, Iterable, Mapping, Protocol
 from .context import ToolContext
 from .hooks import run_hooks
 from .permission_handler import PermissionResult
+from .permission_rules import check_rules, suggest_rule
 from .protocol import ToolCall, ToolResult
 from .schema_validation import validate_json_schema
 
@@ -86,8 +87,18 @@ class ToolRegistry:
         if blocked is not None:
             return ToolResult(name=spec.name, output={"error": blocked}, is_error=True, tool_use_id=call.tool_use_id)
 
-        # Check permissions before running
+        # Saved deny rules block without asking; the tool's own deny wins over saved allow rules.
+        ruling = check_rules(spec.name, call.input, context)
+        if ruling == "deny":
+            return ToolResult(
+                name=spec.name,
+                output={"error": f"permission denied by a deny rule in settings: {spec.name}"},
+                is_error=True,
+                tool_use_id=call.tool_use_id,
+            )
         permission_result = tool.check_permissions(call.input, context) if hasattr(tool, 'check_permissions') else PermissionResult.allow()
+        if ruling == "allow" and permission_result.behavior.value == "ask":
+            permission_result = PermissionResult.allow(permission_result.updated_input)
         if permission_result.behavior.value == "deny":
             return ToolResult(
                 name=spec.name,
@@ -109,7 +120,7 @@ class ToolRegistry:
             allowed, _ = context.permission_handler(
                 spec.name,
                 permission_result.message or f"Tool '{spec.name}' requires permission",
-                permission_result.suggestion,
+                suggest_rule(spec.name, call.input, context),
             )
             if not allowed:
                 return ToolResult(
