@@ -46,7 +46,7 @@
 | `/resume` session recovery experience | ✅ | Sessions auto-save after each turn; `/resume` picks from this workspace's recent sessions (or takes an id) and shows a recap; `clyde -c` / `clyde --resume [id]` on the CLI |
 | `/compact` conversation compaction | ✅ | Manual `/compact`, plus automatic compaction before a turn once history reaches 80% of the context window |
 | `/doctor` diagnostics | ✅ | Checks Python vs requires-python, dependencies, config and key store (mode 600, no secrets shown), providers with keys, current model, git, workspace and permission settings |
-| Hook system | 🚫 | No pre/post tool use hooks yet |
+| Hook system | ✅ | PreToolUse / PostToolUse shell hooks from `~/.clyde/settings.json` (Claude Code format); no project-level hooks until there is a workspace trust prompt |
 | Permission system | 🟡 | Approval prompts wired into tool dispatch; Bash asks unless the command is read-only (dangerous patterns still blocked), Write/Edit ask for docs, Config asks before setting; no "always allow" rules yet |
 
 ---
@@ -117,7 +117,7 @@
 | Context Engine | 🟡 | Context-building pipeline connected, supporting workspace, git, README excerpt / entry points, and `CLAUDE.md` / `CLAUDE.local.md` memory injection |
 | Permission Engine | 🟡 | Integrated for Bash, Write/Edit and Config set; no persistent allow rules or WebFetch domain checks yet |
 | Compaction Engine | ✅ | Manual `/compact` and automatic at 80% of the context window |
-| Hook Runtime | 🚫 | No settings-driven hook execution yet |
+| Hook Runtime | ✅ | Matching hooks run around every tool dispatch; exit 2 blocks (pre) or feeds stderr back (post) |
 | MCP Runtime | 🚫 | MCP tools exist but no client is ever connected |
 
 ---
@@ -183,7 +183,7 @@ Goal: fill in Claude Code's engineering capabilities.
 - [x] `/resume`
 - [ ] `/compact`
 - [x] `/doctor`
-- [ ] pre/post tool use hooks
+- [x] pre/post tool use hooks
 
 ## Phase 4: MCP, plugins, extension ecosystem
 
@@ -218,16 +218,13 @@ Goal: build features unique to the Python rewrite.
 
 ### P1: High-value foundational capabilities
 
-- Automatic context building
-- Full permission system integration
-- `/compact` implementation
-- `/doctor` implementation
+- Deeper project indexing for context building
+- Saved permission rules ("always allow") and WebFetch domain checks
+- Workspace trust prompt, so project-level hooks can be enabled
 
 ### P2: Filling in key Claude Code experiences
 
-- Hook system
 - Full MCP support
-- Token/Cost statistics
 - Performance monitoring and tuning
 
 ### P3: Python version highlights
