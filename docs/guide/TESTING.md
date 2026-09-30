@@ -138,16 +138,6 @@ def test_handle_command_multiline_toggle(self):
     assert repl.multiline_mode is False
 ```
 
-### 4. Porting Workspace Tests (`test_porting_workspace.py`)
-
-Tests for porting completeness:
-
-- **Manifest**: Test file and module counts
-- **Query Engine**: Test summary generation
-- **CLI Commands**: Test command execution
-- **Parity Audit**: Test coverage verification
-- **Session Tracking**: Test turn state
-
 ## Test Strategy
 
 ### Unit Tests
