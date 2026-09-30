@@ -55,7 +55,12 @@ def summarize_tool_result(name: str, output: Any) -> str:
         return f"{name} · mode={mode} · files={n}"
     if name.lower() == "bash":
         code = output.get("exit_code")
-        return f"{name} · exit={code}"
+        # The last line the command printed (its error output on failure), so the result isn't just a code.
+        text = str(output.get("stderr") if code and output.get("stderr") else output.get("stdout") or "")
+        last = next((ln.strip() for ln in reversed(text.splitlines()) if ln.strip()), "")
+        if len(last) > 80:
+            last = last[:79] + "…"
+        return f"{name} · exit={code}" + (f" · {last}" if last else "")
     if name.lower() == "webfetch":
         url = output.get("url")
         ct = output.get("content_type")
