@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🔧 ClydeCLI
+# ♠ ClydeCLI
 
 **An AI coding agent for your terminal, written in Python.**
 
@@ -508,7 +508,7 @@ ClydeCLI/
 
 ## 🤝 Contributing
 
-*Bring a wrench. Pull requests welcome.*
+*Pull up a chair. Pull requests welcome.*
 
 ```bash
 # Quick dev setup
