@@ -85,3 +85,6 @@ CLAUDE.local.md
 
 # graphify knowledge graph output
 graphify-out/
+
+# ClydeCLI code map (Map tool)
+.clyde/code-map/

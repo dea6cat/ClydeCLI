@@ -1,13 +1,14 @@
 """Map: a structural map of the repo (symbols, calls, imports) as a tool any model can call.
 
 The map is built by graphify (`uv tool install graphifyy`) from the code's syntax tree with no LLM,
-into graphify-out/graph.json. This tool runs its deterministic queries: what relates to a question,
+into .clyde/code-map/ (the tool reads .clyde/code-map/map.json). This tool runs its deterministic queries: what relates to a question,
 how two symbols connect, what a symbol is, and what a change to it would affect.
 """
 
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import threading
@@ -20,7 +21,9 @@ from ..protocol import ToolResult
 from ..registry import ToolSpec
 
 INSTALL_HINT = "the code map needs graphify: run `uv tool install graphifyy` (or `pip install graphifyy`)"
-MAP_FILE = Path("graphify-out") / "graph.json"
+# The builder's own output folder; its name must not collide with source folders, which it skips.
+MAP_DIR = Path(".clyde") / "code-map"
+MAP_FILE = MAP_DIR / "map.json"
 TIMEOUT = 120
 _MAX_CHARS = 20_000
 
@@ -38,16 +41,35 @@ def map_path(root: Path) -> Path:
     return root / MAP_FILE
 
 
+def _env() -> dict[str, str]:
+    return {**os.environ, "GRAPHIFY_OUT": str(MAP_DIR)}
+
+
+def _publish(root: Path) -> None:
+    """Expose the builder's graph.json as map.json (a hard link, so no extra disk)."""
+    built, target = root / MAP_DIR / "graph.json", map_path(root)
+    target.unlink(missing_ok=True)
+    try:
+        os.link(built, target)
+    except OSError:
+        shutil.copyfile(built, target)
+
+
 def refresh_map(root: Path, timeout: float = 600) -> str:
-    """Rebuild the code map from source (syntax tree only, incremental); return the builder's summary line."""
+    """Rebuild the code map from source (syntax tree only, incremental); return a one-line summary."""
     exe = shutil.which("graphify")
     if exe is None:
         raise ToolInputError(INSTALL_HINT)
-    done = subprocess.run([exe, "update", "."], cwd=root, capture_output=True, text=True, timeout=timeout)
-    lines = (done.stdout + done.stderr).strip().splitlines()
+    done = subprocess.run([exe, "update", "."], cwd=root, capture_output=True, text=True, timeout=timeout, env=_env())
+    output = (done.stdout + done.stderr).strip()
     if done.returncode != 0:
-        raise ToolInputError("updating the code map failed: " + (lines[-1] if lines else f"exit {done.returncode}"))
-    return lines[-2] if len(lines) > 1 else (lines[-1] if lines else "map updated")
+        raise ToolInputError("updating the code map failed: " + (output.splitlines()[-1] if output else f"exit {done.returncode}"))
+    _publish(root)
+    counts = re.search(r"(\d+) nodes, (\d+) edges(?:, (\d+) communities)?", output)
+    if not counts:
+        return "Map updated."
+    nodes, edges, clusters = counts.groups()
+    return f"Map updated: {nodes} symbols, {edges} links" + (f", {clusters} clusters." if clusters else ".")
 
 
 class MapTool:
@@ -94,13 +116,13 @@ class MapTool:
         if not map_path(root).exists():
             refresh_map(root)
         done = subprocess.run([exe, *argv(tool_input), "--graph", str(map_path(root))], cwd=root,
-                              capture_output=True, text=True, timeout=TIMEOUT)
+                              capture_output=True, text=True, timeout=TIMEOUT, env=_env())
         out = (done.stdout or done.stderr).strip() or "(no result)"
         return ToolResult(name="Map", output=out[:_MAX_CHARS], is_error=done.returncode != 0, content_type="text")
 
 
 def _exclude_from_git(root: Path, pattern: str) -> None:
-    """Keep graphify-out/ out of `git status` without touching the tracked .gitignore."""
+    """Keep the map folder out of `git status` without touching the tracked .gitignore."""
     try:
         rel = subprocess.run(["git", "rev-parse", "--git-path", "info/exclude"], cwd=root,
                              capture_output=True, text=True, timeout=10).stdout.strip()
@@ -125,7 +147,7 @@ def start_background_refresh(root: Path) -> threading.Thread | None:
         return None
     if subprocess.run(["git", "rev-parse", "--is-inside-work-tree"], cwd=root, capture_output=True).returncode != 0:
         return None
-    _exclude_from_git(root, "graphify-out/")
+    _exclude_from_git(root, f"{MAP_DIR.as_posix()}/")
 
     def _refresh() -> None:
         try:

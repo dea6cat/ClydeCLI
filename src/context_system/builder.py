@@ -47,12 +47,12 @@ def build_context_prompt(
 
 def _render_code_map_section(root: Path, hubs: int = 8) -> list[str]:
     """Point the model at the Map tool once the repo has a code map."""
-    out = root / "graphify-out"
-    if not (out / "graph.json").is_file():
+    out = root / ".clyde" / "code-map"
+    if not (out / "map.json").is_file():
         return []
     lines = [
         "## Code Map",
-        "This repository has a code map (graphify-out/graph.json: symbols, calls, imports).",
+        "This repository has a code map (.clyde/code-map/map.json: symbols, calls, imports).",
         "Use the Map tool first for structural questions - `query` for what relates to a topic,",
         "`explain` for a symbol, `path` for how two symbols connect, `affected` before changing a symbol -",
         "then read the cited files. Fall back to Grep/Glob for exact text.",

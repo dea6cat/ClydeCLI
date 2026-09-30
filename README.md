@@ -343,7 +343,7 @@ from the code's syntax tree with no LLM involved (the map is built by
 
 - `clyde setup` offers to install the map builder (`uv tool install graphifyy`)
 - Starting `clyde` inside a git repo refreshes the map in the background (about 2-3s for this repo)
-  and keeps its `graphify-out/` folder out of `git status` via `.git/info/exclude`. Set
+  into `.clyde/code-map/map.json`, kept out of `git status` via `.git/info/exclude`. Set
   `CLYDE_MAP=off` to skip it
 - The context prompt tells the model the map exists, lists the repo's most connected symbols, and
   points it at the **Map** tool before blind Grep/Glob searches:
