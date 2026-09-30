@@ -14,7 +14,7 @@ class WorkspaceSetup:
     python_version: str
     implementation: str
     platform_name: str
-    test_command: str = 'python3 -m unittest discover -s tests -v'
+    test_command: str = 'python3 -m unittest discover -s tests -t . -v'
 
     def startup_steps(self) -> tuple[str, ...]:
         return (
@@ -62,7 +62,7 @@ def build_workspace_setup() -> WorkspaceSetup:
 
 
 def run_setup(cwd: Path | None = None, trusted: bool = True) -> SetupReport:
-    root = cwd or Path(__file__).resolve().parent.parent
+    root = cwd or Path(__file__).resolve().parents[2]
     prefetches = [
         start_mdm_raw_read(),
         start_keychain_prefetch(),

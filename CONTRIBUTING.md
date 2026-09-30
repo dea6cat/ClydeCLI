@@ -303,7 +303,7 @@ git push origin feature/your-feature-name
 python -m pytest tests/ -q
 
 # Run specific test file
-python -m pytest tests/test_tool_system_tools.py -q
+python -m pytest tests/tool_system/test_tool_system_tools.py -q
 
 # Run with coverage
 python -m pytest tests/ --cov=src --cov-report=html

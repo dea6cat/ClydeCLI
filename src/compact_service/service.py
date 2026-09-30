@@ -109,7 +109,7 @@ async def compact_conversation(
         raise ValueError("Not enough messages to compact.")
 
     # Step 2: Count pre-compact tokens
-    from ..token_estimation import count_messages_tokens
+    from ..context_system.token_estimation import count_messages_tokens
     api_messages = conversation.get_messages()
     pre_compact_tokens = count_messages_tokens(api_messages)
     pre_compact_count = len(conversation.messages)
