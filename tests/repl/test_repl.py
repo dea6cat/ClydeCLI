@@ -589,5 +589,35 @@ class TestSession(unittest.TestCase):
                 self.assertEqual(loaded.conversation.messages[0].content, "Test message")
 
 
+class TestPermissionPrompt(unittest.TestCase):
+    """The REPL's permission prompt, driven without starting a full REPL."""
+
+    def setUp(self):
+        from src.tool_system.context import ToolContext
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.home = Path(self.tmp.name)
+        self.repl = object.__new__(ClydeREPL)
+        self.repl.console = Mock()
+        self.repl._current_status = None
+        self.repl.tool_context = ToolContext(workspace_root=self.home)
+
+    def _answer(self, choice, suggestion="Bash(npm test:*)"):
+        with patch("builtins.input", return_value=choice), patch("pathlib.Path.home", return_value=self.home):
+            return self.repl._handle_permission_request("Bash", "Run shell command: npm test", suggestion)
+
+    def test_dont_ask_again_saves_and_applies_rule(self):
+        self.assertEqual(self._answer("a"), (True, False))
+        self.assertIn("Bash(npm test:*)", self.repl.tool_context.permission_rules["allow"])
+        saved = json.loads((self.home / ".clyde" / "settings.json").read_text())
+        self.assertEqual(saved["permissions"]["allow"], ["Bash(npm test:*)"])
+
+    def test_numbered_choices_follow_menu(self):
+        self.assertEqual(self._answer("1"), (True, False))
+        self.assertEqual(self._answer("3"), (False, False))
+        self.assertEqual(self._answer("2", suggestion=None), (False, False))
+        self.assertEqual(self.repl.tool_context.permission_rules["allow"], [])
+
+
 if __name__ == '__main__':
     unittest.main()
