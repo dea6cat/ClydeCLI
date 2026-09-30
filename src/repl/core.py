@@ -696,6 +696,10 @@ class ClydeREPL:
                     self.console.print(f"[red]Error executing /init: {e}[/red]")
                 return
 
+            if cmd_name == 'doctor':
+                self.command_context.config.update(provider=self.provider, model=self.model,
+                                                   permission_context=self.tool_context.permission_context)
+
             if cmd_name not in special_commands:
                 # Try to execute via new command system
                 # First try sync path for LocalCommand (faster)
@@ -965,6 +969,7 @@ class ClydeREPL:
 - `/init` - Create CLAUDE.md file for the project
 - `/cost` - Show session cost and usage
 - `/compact` - Compact conversation to save context space
+- `/doctor` - Diagnose environment, config, keys and permissions
 
 **Usage:**
 - Type your message and press Enter to chat
