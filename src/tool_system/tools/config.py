@@ -4,6 +4,7 @@ from typing import Any
 
 from ..context import ToolContext
 from ..errors import ToolInputError
+from ..permission_handler import PermissionResult
 from ..protocol import ToolResult
 from ..registry import ToolSpec
 
@@ -25,6 +26,12 @@ class ConfigTool:
             is_destructive=True,
             max_result_size_chars=100_000,
         )
+
+    def check_permissions(self, tool_input: dict[str, Any], context: ToolContext) -> PermissionResult:
+        """Reading a setting is free; changing one asks first."""
+        if "value" not in tool_input:
+            return PermissionResult.allow()
+        return PermissionResult.ask(message=f"Set config {tool_input.get('setting')} to {tool_input['value']!r}")
 
     def run(self, tool_input: dict[str, Any], context: ToolContext) -> ToolResult:
         from src import config as config_mod

@@ -47,7 +47,7 @@
 | `/compact` conversation compaction | ✅ | Manual `/compact`, plus automatic compaction before a turn once history reaches 80% of the context window |
 | `/doctor` diagnostics | ✅ | Checks Python vs requires-python, dependencies, config and key store (mode 600, no secrets shown), providers with keys, current model, git, workspace and permission settings |
 | Hook system | 🚫 | No pre/post tool use hooks yet |
-| Permission system | 🟡 | Approval prompts wired into tool dispatch; only Write/Edit ask, Bash blocks dangerous patterns |
+| Permission system | 🟡 | Approval prompts wired into tool dispatch; Bash asks unless the command is read-only (dangerous patterns still blocked), Write/Edit ask for docs, Config asks before setting; no "always allow" rules yet |
 
 ---
 
