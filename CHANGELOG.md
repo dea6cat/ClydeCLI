@@ -71,7 +71,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Gemini CLI, Codex and Copilot CLI after a yes
 
 - `/eval [filter]` tests every listed model (or the ones matching the filter) with a real tool call
-  and a round trip, and ranks them with latency and tokens per second
+  and a round trip, and ranks them with latency and tokens per second. Results are saved to
+  `~/.clyde/model_evals.json`; `/models` then hides models with no tool calling or no access (credit and
+  rate-limit failures stay listed), `/models all` shows everything and `/models refresh` re-fetches the lists
 
 - LM Studio as a local provider: when LM Studio is installed, its downloaded models show up in
   `/models` (from its server, or `lms ls` when the server is off), and the server is started with
@@ -99,6 +101,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `python -m unittest discover -s tests -t .`
 
 ### Fixed
+- OpenRouter `:batch` variants are no longer listed; they reject chat requests
+- LM Studio models use the context LM Studio actually loaded them with (`lms ps`) for auto-compaction
+- The test suite runs against a temporary home instead of the real `~/.clyde` and `~/.claude`
 - `~/.claude/skills` no longer overrides a same-named skill in `~/.clyde/skills`
 - `/clear` and `/compact` acted on the previous conversation after loading a session
 - Loading a corrupt session file no longer crashes the REPL
