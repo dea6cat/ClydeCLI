@@ -235,7 +235,7 @@ def show_config():
         config = load_config()
         console.print(f"\n[bold]Configuration file:[/bold] {get_config_path()}")
         console.print(f"[bold]Saved keys:[/bold] {keys.keys_file()}\n")
-        console.print(f"[cyan]Default model:[/cyan] {config.get('model') or 'Not set (run clyde login)'}\n")
+        console.print(f"[cyan]Default model:[/cyan] {config.get('model') or 'Not set (picks a connected model at startup)'}\n")
         _print_provider_table(console, build_registry())
     except Exception as e:
         console.print(f"\n[red]Error loading configuration: {e}[/red]\n")
