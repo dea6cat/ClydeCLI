@@ -150,7 +150,7 @@ clyde --version                # Check version
 | Agent | Agent | 🟡 Runs a batch of tool calls; not a separate sub-agent |
 | Scheduling | CronCreate/List/Delete | 🟡 Stores jobs for the session; nothing runs them |
 | Team | TeamCreate/Delete | 🟡 Writes a team file; no multi-agent execution |
-| Worktree | EnterWorktree/ExitWorktree | 🟡 Switches into an empty folder; not a git worktree |
+| Worktree | EnterWorktree/ExitWorktree | ✅ Creates a git worktree on a new branch; exit keeps or removes it |
 | MCP | MCP, ListMcpResources, ReadMcpResource | ⏳ Tools exist, but no MCP client is connected yet |
 | LSP | LSP | ⏳ Tool exists, but no language-server client is connected yet |
 | Not implemented | RemoteTrigger, NotebookEdit, REPL | ⏳ Stubs that return an error |
