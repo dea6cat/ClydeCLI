@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Iterable, Mapping, Protocol
 
 from .context import ToolContext
+from .hooks import run_hooks
 from .permission_handler import PermissionResult
 from .protocol import ToolCall, ToolResult
 from .schema_validation import validate_json_schema
@@ -81,6 +82,10 @@ class ToolRegistry:
         context.ensure_tool_allowed(spec.name)
         validate_json_schema(call.input, spec.input_schema, root_name=spec.name)
 
+        blocked = run_hooks(context.hooks, "PreToolUse", {"tool_name": spec.name, "tool_input": call.input}, context.cwd)
+        if blocked is not None:
+            return ToolResult(name=spec.name, output={"error": blocked}, is_error=True, tool_use_id=call.tool_use_id)
+
         # Check permissions before running
         permission_result = tool.check_permissions(call.input, context) if hasattr(tool, 'check_permissions') else PermissionResult.allow()
         if permission_result.behavior.value == "deny":
@@ -122,6 +127,16 @@ class ToolRegistry:
                 )
 
         result = tool.run(call.input, context)
+        feedback = run_hooks(
+            context.hooks, "PostToolUse",
+            {"tool_name": spec.name, "tool_input": call.input, "tool_response": result.output}, context.cwd,
+        )
+        if feedback is not None:
+            output = result.output if isinstance(result.output, dict) else {"result": result.output}
+            result = ToolResult(
+                name=result.name, output={**output, "hookFeedback": feedback}, is_error=result.is_error,
+                tool_use_id=result.tool_use_id, content_type=result.content_type,
+            )
         if result.tool_use_id is None and call.tool_use_id is not None:
             return ToolResult(
                 name=result.name,
