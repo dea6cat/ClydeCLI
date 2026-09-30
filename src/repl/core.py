@@ -132,17 +132,14 @@ def _first_prompt(session) -> str:
 _CRON_WAKE = object()
 
 
-# Ace of spades by ejm98 (artist signature left off the card).
+# Ace of spades by ejm (artist signature left off the card).
 _ACE_OF_SPADES = (
-    " ____________ ",
-    "|A           |",
-    "|     /\\     |",
-    "|    /**\\    |",
-    "|  ,*(%%)*.  |",
-    "| (***\\/***) |",
-    "|  `-')(`-'  |",
-    "|    /__\\    |",
-    "|___________V|",
+    " ______ ",
+    "|A /\\  |",
+    "| /  \\ |",
+    "|(    )|",
+    "|  )(  |",
+    "|_____V|",
 )
 
 
