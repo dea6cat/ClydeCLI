@@ -138,7 +138,7 @@ clyde --version                # Check version
 | Permissions | 🟡 | Interactive approval is wired into tool dispatch: Bash asks for any command that is not clearly read-only (and still blocks dangerous patterns), Write/Edit ask for docs files, Config asks before changing a setting; approvals are one-shot, there are no saved allow rules |
 | Sessions | ✅ | Auto-saved after each turn; `/resume` picker per workspace, `clyde -c` / `clyde --resume [id]` |
 | Cost Tracking | ✅ | `/cost` shows input, output and cache tokens per model with an estimated $ total from catalog prices |
-| Hooks | ✅ | PreToolUse / PostToolUse shell commands from `~/.clyde/settings.json` |
+| Hooks | ✅ | PreToolUse / PostToolUse shell commands from `~/.clyde/settings.json` or `.toml`; also reads Gemini CLI, Cursor and Copilot CLI hook tables |
 | Compaction | ✅ | `/compact` on demand; runs automatically once history reaches 80% of the context window |
 
 ### Tools
@@ -315,7 +315,7 @@ Example:
 ### Hooks
 
 Run your own shell commands before or after a tool call. Put them in `~/.clyde/settings.json`
-(same format as Claude Code):
+or `~/.clyde/settings.toml` (both are read and merged), in Claude Code's format:
 
 ```json
 {
@@ -331,10 +331,18 @@ Run your own shell commands before or after a tool call. Put them in `~/.clyde/s
 ```
 
 - `matcher` is a regex on the tool name; `""` or `"*"` matches every tool
+- Shorthand works too: `{"PreToolUse": {"Bash": "cmd"}}` (a command or list per matcher), or a list
+  of command strings for every tool. In TOML: `[hooks.PreToolUse]` then `Bash = "cmd"`
+- Hook tables written for other agents are accepted as-is: Gemini CLI (`BeforeTool`/`AfterTool`,
+  Gemini tool names like `run_shell_command` or `write_file` in the matcher), Cursor
+  (`beforeShellExecution`, `beforeReadFile`, `afterFileEdit`) and Copilot CLI
+  (`preToolUse`/`postToolUse` with `bash` and `timeoutSec`). Events ClydeCLI has no equivalent
+  for (e.g. `stop`) are ignored
 - The command gets the event as JSON on stdin: `hook_event_name`, `tool_name`, `tool_input`, `cwd`,
   plus `tool_response` for PostToolUse
-- Exit 2 blocks the call (PreToolUse) or sends stderr back to the model (PostToolUse); any other
-  exit code carries on. Each command times out after 60s (`"timeout"` overrides it)
+- Exit 2 blocks the call (PreToolUse) or sends stderr back to the model (PostToolUse). So does a
+  JSON reply on stdout that denies or blocks (`{"decision": "block", "reason": ...}`,
+  `{"permission": "deny"}`, `{"permissionDecision": "deny"}`); anything else carries on. Each command times out after 60s (`"timeout"` overrides it)
 - Only your user settings are read; project `.clyde/settings.json` hooks are ignored, since a cloned
   repo could otherwise run commands on your machine
 
