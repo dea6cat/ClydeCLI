@@ -5,6 +5,7 @@ Tests for the compact service.
 from __future__ import annotations
 
 import asyncio
+import io
 import tempfile
 import unittest
 from dataclasses import dataclass, field
@@ -261,3 +262,42 @@ class TestCompactIntegration(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestAutoCompact(unittest.TestCase):
+    """Tests for the auto-compact threshold and the REPL hook."""
+
+    def _conversation(self, words: int) -> Conversation:
+        conv = Conversation()
+        conv.add_user_message("word " * words)
+        conv.add_assistant_message("ok")
+        return conv
+
+    def test_below_threshold_does_not_compact(self):
+        from src.compact_service.service import needs_auto_compact
+        self.assertFalse(needs_auto_compact(self._conversation(10), context_window=10_000))
+
+    def test_above_threshold_compacts(self):
+        from src.compact_service.service import needs_auto_compact
+        self.assertTrue(needs_auto_compact(self._conversation(9_000), context_window=10_000))
+
+    def test_single_message_never_compacts(self):
+        from src.compact_service.service import needs_auto_compact
+        conv = Conversation()
+        conv.add_user_message("word " * 9_000)
+        self.assertFalse(needs_auto_compact(conv, context_window=10_000))
+
+    def test_repl_compacts_before_turn_when_full(self):
+        from rich.console import Console
+        from src.repl.core import ClydeREPL
+
+        repl = ClydeREPL.__new__(ClydeREPL)
+        repl.session = type("S", (), {"conversation": self._conversation(9_000)})()
+        repl.provider = FakeProvider(reply("Summary of the work"))
+        repl.model = "fake-model"
+        repl.console = Console(file=io.StringIO())
+        with patch.object(ClydeREPL, "_context_window", return_value=10_000):
+            repl._maybe_auto_compact()
+        messages = repl.session.conversation.messages
+        self.assertEqual(len(messages), 2)
+        self.assertIn("Summary of the work", str(messages[1].content))

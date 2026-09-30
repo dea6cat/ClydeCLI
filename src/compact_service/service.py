@@ -30,6 +30,22 @@ logger = logging.getLogger(__name__)
 
 SUMMARY_SYSTEM_PROMPT = "You summarize coding conversations accurately and concisely."
 
+# ponytail: fixed fraction of the window; make it a config setting if users need to tune it
+AUTO_COMPACT_FRACTION = 0.8
+
+
+def auto_compact_threshold(context_window: int) -> int:
+    """Token count at which the conversation is compacted automatically."""
+    return int(context_window * AUTO_COMPACT_FRACTION)
+
+
+def needs_auto_compact(conversation: Conversation, context_window: int) -> bool:
+    """Whether the conversation has grown past the auto-compact threshold."""
+    if len(get_messages_after_boundary(conversation.messages)) < 2:
+        return False
+    from ..token_estimation import count_messages_tokens
+    return count_messages_tokens(conversation.get_messages()) >= auto_compact_threshold(context_window)
+
 
 def _has_tool_result(api_message: dict[str, Any]) -> bool:
     content = api_message.get("content")
