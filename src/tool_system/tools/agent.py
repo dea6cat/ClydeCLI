@@ -39,7 +39,7 @@ class AgentTool:
 
     def run(self, tool_input: dict[str, Any], context: ToolContext) -> ToolResult:
         from ...agent.conversation import Conversation
-        from ..agent_loop import run_agent_loop
+        from ...agent.agent_loop import run_agent_loop
 
         subagent_type = tool_input.get("subagent_type") or "general-purpose"
         if subagent_type != "general-purpose":
