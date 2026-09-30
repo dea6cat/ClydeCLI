@@ -32,10 +32,14 @@ class ToolContext:
     model: str | None = None
     # PreToolUse / PostToolUse hook table (see hooks.py); the REPL loads it from settings.
     hooks: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    # Saved allow/deny rules (see permission_rules.py); the REPL loads them from settings.
+    # Mutated in place so sub-agents, which get a shallow copy of this context, see new rules.
+    permission_rules: dict[str, list[str]] = field(default_factory=lambda: {"allow": [], "deny": []})
 
     # Permission handler callback: called when a tool needs user consent.
     # Signature: (tool_name: str, message: str, suggestion: str | None)
     #           -> tuple[bool, bool] (allowed: bool, continue_without_caching: bool)
+    # `suggestion` is the allow rule a "don't ask again" choice would save, or None.
     # If not set, permission errors will be raised as exceptions.
     permission_handler: Callable[[str, str, Optional[str]], tuple[bool, bool]] | None = None
 
