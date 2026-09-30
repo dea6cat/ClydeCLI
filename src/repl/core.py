@@ -256,7 +256,7 @@ class ClydeREPL:
             auto_suggest=AutoSuggestFromHistory(),
             completer=self.completer,
             style=Style.from_dict({
-                'prompt': 'bold blue',
+                'prompt': 'bold #ffffff',
             }),
             key_bindings=self.bindings,
             complete_while_typing=True,
