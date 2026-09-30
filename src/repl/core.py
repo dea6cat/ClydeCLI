@@ -84,6 +84,7 @@ from src.providers.base import ProviderError, is_auth_error
 from src.providers.convert import append_response, to_canonical
 from src.tool_system.context import ToolContext
 from src.tool_system.hooks import load_hooks
+from src.tool_system.tools.code_graph import start_background_refresh
 from src.tool_system.mcp_client import McpServerTool, connect_servers, load_servers
 from src.tool_system.defaults import build_default_registry
 from src.tool_system.protocol import ToolCall
@@ -653,6 +654,7 @@ class ClydeREPL:
     def run(self):
         """Run the REPL."""
         self._print_startup_header()
+        start_background_refresh(self.tool_context.workspace_root)
         if self._continue_last:
             self.resume_session(latest=True)
         elif self._startup_resume is not None:

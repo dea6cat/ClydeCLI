@@ -51,6 +51,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MCP client (stdlib, stdio): servers from `mcpServers` in `~/.clyde/settings.json` start with the
   REPL, their tools are registered as `mcp__<server>__<tool>`, resources work through
   ListMcpResources / ReadMcpResource, and `/mcp` shows status
+- CodeGraph tool: a graphify knowledge graph of the repo (built from the syntax tree, no LLM) that any
+  model can query for related symbols, paths between symbols, explanations and change impact. The
+  graph refreshes in the background when `clyde` starts in a git repo, the context prompt points the
+  model at it, and `clyde setup` offers to install graphify
 - `clyde mcp import` (and `clyde setup`) brings over stdio MCP servers from Claude Code, Cursor,
   Gemini CLI, Codex and Copilot CLI after a yes
 
