@@ -152,7 +152,7 @@ clyde --version                # Check version
 | Team | TeamCreate/Delete | 🟡 Writes a team file; no multi-agent execution |
 | Worktree | EnterWorktree/ExitWorktree | ✅ Creates a git worktree on a new branch; exit keeps or removes it |
 | MCP | MCP, ListMcpResources, ReadMcpResource | ⏳ Tools exist, but no MCP client is connected yet |
-| LSP | LSP | ⏳ Tool exists, but no language-server client is connected yet |
+| LSP | LSP | ✅ Definition, references, hover, symbols and call hierarchy via a language server on PATH |
 | Not implemented | RemoteTrigger, NotebookEdit, REPL | ⏳ Stubs that return an error |
 
 ### Roadmap

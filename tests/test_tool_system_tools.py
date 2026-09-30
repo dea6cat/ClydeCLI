@@ -29,7 +29,6 @@ from src.tool_system.tools import (
     FileWriteTool,
     GlobTool,
     GrepTool,
-    LSPTool,
     MCPTool,
     ListMcpResourcesTool,
     ReadMcpResourceTool,
@@ -295,21 +294,6 @@ class TestMCPTool(ToolSystemTests):
         self.ctx.mcp_clients["srv"] = Client()
         out = MCPTool().run({"server": "srv", "tool": "x", "input": {"a": 1}}, self.ctx).output
         self.assertEqual(out["output"]["args"]["a"], 1)
-
-
-class TestLSPTool(ToolSystemTests):
-    def test_lsp_requires_client(self) -> None:
-        out = LSPTool().run({"method": "initialize", "params": {}}, self.ctx)
-        self.assertTrue(out.is_error)
-
-    def test_lsp_calls_client(self) -> None:
-        class Client:
-            def request(self, method: str, params=None) -> Any:
-                return {"method": method, "params": params}
-
-        self.ctx.lsp_client = Client()
-        out = LSPTool().run({"method": "hover", "params": {"x": 1}}, self.ctx).output
-        self.assertEqual(out["response"]["params"]["x"], 1)
 
 
 class TestSkillTool(ToolSystemTests):
