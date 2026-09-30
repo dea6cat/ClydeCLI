@@ -96,6 +96,7 @@
 | MCP tools | MCPResourcesTool | `mcp_resources.py` | ✅ Lists and reads resources from connected servers |
 | Skill system | SkillTool | `skill.py` | ✅ Implemented |
 | Tool search | ToolSearchTool | `tool_search.py` | ✅ Implemented |
+| Code graph | CodeGraphTool | `code_graph.py` | ✅ graphify knowledge graph of the repo (AST, no LLM): query, path, explain, affected, god nodes; refreshed at startup and advertised in the context prompt |
 | LSP integration | LSPTool | `lsp.py` | ✅ Starts the language server on PATH for the file type (pyright/pylsp, typescript-language-server, gopls, rust-analyzer, dart, clangd) |
 | Worktree | WorktreeTool | `worktree.py` | ✅ Real git worktree on a `worktree-<name>` branch; exit can keep or remove it |
 | Miscellaneous | SleepTool | `sleep.py` | ✅ Implemented |

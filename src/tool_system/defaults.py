@@ -8,6 +8,7 @@ from .tools import (
     AskUserQuestionTool,
     BashTool,
     BriefTool,
+    CodeGraphTool,
     ConfigTool,
     CronCreateTool,
     CronDeleteTool,
@@ -93,6 +94,7 @@ def build_default_registry(*, include_user_tools: bool = True) -> ToolRegistry:
             PowerShellTool(),
             NotebookEditTool(),
             REPLTool(),
+            CodeGraphTool(),
         ]
     )
     registry.register(AgentTool(registry))

@@ -159,6 +159,7 @@ clyde --version                # Check version
 | Team | TeamCreate/Delete | 🟡 Writes a team file; no multi-agent execution |
 | Worktree | EnterWorktree/ExitWorktree | ✅ Creates a git worktree on a new branch; exit keeps or removes it |
 | MCP | MCP, ListMcpResources, ReadMcpResource, `mcp__<server>__<tool>` | ✅ Stdio servers from `~/.clyde/settings.json`; no HTTP/SSE servers yet |
+| Code graph | CodeGraph | ✅ query / path / explain / affected / god_nodes over a graphify knowledge graph of the repo, refreshed when ClydeCLI starts |
 | LSP | LSP | ✅ Definition, references, hover, symbols and call hierarchy via a language server on PATH |
 | Not implemented | RemoteTrigger, REPL | ⏳ Stubs that return an error |
 
@@ -331,6 +332,26 @@ Example:
 - Tool limits: `allowed-tools` controls which tools the skill can use.
 - Arguments: use `$ARGUMENTS`, `$0`, `$1`, or named args like `$path` (from `arguments`).
 - Placeholder syntax: use `$path`, not `${path}`.
+
+### Code Graph
+
+*I don't grep a city block by block. I look at the map.*
+
+ClydeCLI gives whatever model you run a knowledge graph of your repo, built by
+[graphify](https://github.com/safishamsi/graphify) from the code's syntax tree, with no LLM involved:
+
+- `clyde setup` offers to install it (`uv tool install graphifyy`)
+- Starting `clyde` inside a git repo refreshes `graphify-out/graph.json` in the background (about 2-3s for
+  this repo) and keeps it out of `git status` via `.git/info/exclude`. Set `CLYDE_CODE_GRAPH=off` to skip it
+- The context prompt tells the model the graph exists, lists the repo's most connected symbols, and
+  points it at the **CodeGraph** tool before blind Grep/Glob searches:
+  - `query` "how does auth work": the symbols and files that relate to a question
+  - `explain` X: a symbol, where it lives, and what it connects to
+  - `path` A B: how one symbol reaches another (`ClydeREPL → .chat() → run_agent_loop() → … → run_hooks()`)
+  - `affected` X: what depends on X, before you change it
+  - `god_nodes`: the architectural hubs; `update`: rebuild after big edits
+- Because it is a plain tool plus prompt context, it works the same with every provider, local
+  Ollama models included
 
 ### Hooks
 
