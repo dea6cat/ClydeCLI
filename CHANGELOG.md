@@ -104,6 +104,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `python -m unittest discover -s tests -t .`
 
 ### Fixed
+- The thinking spinner comes back after a permission or question prompt, and when a tool runs after
+  streamed text; before, the rest of the turn ran with nothing on screen
+- Bash results show the last line the command printed (or its error) after the exit code
 - The permission prompt shows its y / a / n keys; they were printed as Rich markup and vanished,
   leaving only numbers
 - OpenRouter `:batch` variants are no longer listed; they reject chat requests
