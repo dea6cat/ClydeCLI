@@ -5,6 +5,7 @@ from pathlib import Path
 
 from .claude_md import load_claude_md_context
 from .git_context import collect_git_context
+from .project_summary import build_project_summary
 from .workspace_snapshot import build_workspace_snapshot
 
 
@@ -19,6 +20,7 @@ def build_context_prompt(
     workspace = build_workspace_snapshot(root, cwd=current)
     git = collect_git_context(root)
     claude_md = load_claude_md_context(root, cwd=current)
+    summary = build_project_summary(root)
 
     sections: list[str] = []
 
@@ -27,6 +29,10 @@ def build_context_prompt(
     git_lines = _render_git_section(git, root)
     if git_lines:
         sections.append("\n".join(git_lines))
+
+    summary_lines = _render_project_summary_section(summary, root)
+    if summary_lines:
+        sections.append("\n".join(summary_lines))
 
     md_lines = _render_claude_md_section(claude_md, root)
     if md_lines:
@@ -89,4 +95,21 @@ def _render_claude_md_section(claude_md, workspace_root: Path) -> list[str]:
         ])
     if claude_md.truncated:
         lines.append("- Additional instruction files were truncated to stay within prompt budget.")
+    return lines
+
+
+def _render_project_summary_section(summary, workspace_root: Path) -> list[str]:
+    if not summary.readme_excerpt and not summary.entry_points:
+        return []
+    lines = ["## Project Summary"]
+    if summary.entry_points:
+        lines.append(f"- Entry points: {', '.join(summary.entry_points)}")
+    if summary.readme_path is not None:
+        lines.extend([
+            f"### ./{summary.readme_path.relative_to(workspace_root)} (excerpt)",
+            # Four backticks so fenced code inside the README cannot close the block.
+            "````text",
+            summary.readme_excerpt,
+            "````",
+        ])
     return lines

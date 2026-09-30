@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import tempfile
+import json
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from src.agent.conversation import Conversation
 from src.context_system import build_context_prompt
+from src.context_system.claude_md import load_claude_md_context
 from src.context_system.git_context import collect_git_context
+from src.context_system.project_summary import build_project_summary
 from src.tool_system.agent_loop import run_agent_loop
 from src.tool_system.context import ToolContext
 from src.tool_system.defaults import build_default_registry
@@ -32,6 +36,70 @@ class TestContextSystem(unittest.TestCase):
             self.assertIn("Project rule: always add tests.", prompt)
             self.assertIn("README.md", prompt)
             self.assertIn("pyproject.toml", prompt)
+
+    def test_readme_excerpt_keeps_leading_sections_within_budget(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            body = "# Demo\nA demo tool.\n\n## Install\npip install demo\n\n## Details\n" + "x" * 5000
+            (root / "Readme.MD").write_text(body, encoding="utf-8")
+
+            summary = build_project_summary(root, max_readme_tokens=100)
+
+            self.assertEqual(summary.readme_path.name, "Readme.MD")
+            self.assertIn("# Demo", summary.readme_excerpt)
+            self.assertIn("pip install demo", summary.readme_excerpt)
+            self.assertNotIn("## Details", summary.readme_excerpt)
+            self.assertTrue(summary.readme_excerpt.endswith("...[truncated]"))
+
+    def test_readme_excerpt_hard_cuts_oversized_first_section(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "README.rst").write_text("Demo\n====\n" + "y" * 5000, encoding="utf-8")
+
+            summary = build_project_summary(root, max_readme_tokens=50)
+
+            self.assertTrue(summary.readme_excerpt.startswith("Demo"))
+            self.assertLess(len(summary.readme_excerpt), 250)
+
+    def test_entry_points_from_pyproject_and_package_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "pyproject.toml").write_text('[project]\nname = "demo"\n[project.scripts]\ndemo = "demo.cli:main"\n', encoding="utf-8")
+            (root / "package.json").write_text(json.dumps({"main": "index.js", "bin": {"dm": "bin/dm.js"}}), encoding="utf-8")
+
+            entries = build_project_summary(root).entry_points
+
+            self.assertEqual(entries, (
+                "demo -> demo.cli:main (pyproject)",
+                "main -> index.js (package.json)",
+                "dm -> bin/dm.js (package.json)",
+            ))
+
+    def test_context_prompt_includes_project_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(Path, "home", return_value=Path(tmp) / "home"):
+            root = Path(tmp) / "proj"
+            root.mkdir()
+            (root / "README.md").write_text("# Demo\nShips widgets.\n", encoding="utf-8")
+
+            prompt = build_context_prompt(root)
+
+            self.assertIn("## Project Summary", prompt)
+            self.assertIn("Ships widgets.", prompt)
+
+    def test_claude_md_loads_user_memory_and_project_local_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp) / "home"
+            (home / ".clyde").mkdir(parents=True)
+            (home / ".clyde" / "CLAUDE.md").write_text("user memory", encoding="utf-8")
+            root = Path(tmp) / "proj"
+            root.mkdir()
+            (root / "CLAUDE.md").write_text("shared rules", encoding="utf-8")
+            (root / "CLAUDE.local.md").write_text("my local notes", encoding="utf-8")
+
+            with mock.patch.object(Path, "home", return_value=home):
+                ctx = load_claude_md_context(root)
+
+            self.assertEqual([f.content for f in ctx.files], ["user memory", "shared rules", "my local notes"])
 
     def test_collect_git_context_handles_non_repo(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

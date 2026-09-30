@@ -41,7 +41,7 @@
 | Session message management | ✅ | Supports session history maintenance and serialization |
 | Error recovery / re-login | 🟡 | Basic authentication error handling and reconfiguration flow exist |
 | Token / Cost tracking | 🟡 | `/cost` and `/context` report token usage; no per-model pricing |
-| Context building | 🟡 | A basic `context_system` exists, supporting workspace / git / `CLAUDE.md` injection; still missing README summaries, memory, compact |
+| Context building | 🟡 | `context_system` injects workspace / git / README excerpt + entry points / `CLAUDE.md` memory (user `~/.clyde/CLAUDE.md`, project `CLAUDE.md`, personal `CLAUDE.local.md`); still missing compact |
 | Claude Code Agent Loop | ✅ | agent_loop.py implemented, supports the tool-call loop |
 | `/resume` session recovery experience | 🚫 | No dedicated recovery flow or UI yet |
 | `/compact` conversation compaction | ✅ | Manual `/compact`, plus automatic compaction before a turn once history reaches 80% of the context window |
@@ -114,7 +114,7 @@
 | Tool Execution Engine | ✅ | Full loop of tool loading, execution, and result feedback implemented |
 | Output Styles | ✅ | Output style loading system implemented |
 | Session Persistence | ✅ | Session save/load available |
-| Context Engine | 🟡 | Basic context-building pipeline connected, supporting workspace, git, and `CLAUDE.md` prompt injection |
+| Context Engine | 🟡 | Context-building pipeline connected, supporting workspace, git, README excerpt / entry points, and `CLAUDE.md` / `CLAUDE.local.md` memory injection |
 | Permission Engine | 🟡 | Integrated for Write/Edit; other tools don't ask yet |
 | Compaction Engine | ✅ | Manual `/compact` and automatic at 80% of the context window |
 | Hook Runtime | 🚫 | No settings-driven hook execution yet |
@@ -177,7 +177,7 @@ Goal: fill in Claude Code's engineering capabilities.
 
 - [ ] Complete workspace context building
 - [x] Basic git status / file tree / `CLAUDE.md` injection
-- [ ] README / entry file summary injection
+- [x] README / entry file summary injection
 - [ ] Memory and history context management
 - [ ] Full permission system integration
 - [ ] `/resume`
