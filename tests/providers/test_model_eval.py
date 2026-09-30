@@ -49,3 +49,64 @@ class TestModelEval(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestEvalResults(unittest.TestCase):
+    def setUp(self):
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        self._tmp = tempfile.TemporaryDirectory()
+        self._home = patch.object(Path, "home", return_value=Path(self._tmp.name))
+        self._home.start()
+
+    def tearDown(self):
+        self._home.stop()
+        self._tmp.cleanup()
+
+    def test_kinds_separate_broken_models_from_transient_errors(self):
+        from src.providers.model_eval import ModelScore
+        kinds = {e: ModelScore("x", error=e).kind for e in (
+            "[openrouter] HTTP 402 — requires more credits, or fewer max_tokens",
+            "[openrouter] HTTP 429 — rate limited",
+            "[openrouter] HTTP 404 — No endpoints found that support tool use",
+            "answered without calling the tool",
+            "[nvidia] HTTP 404 — Function 'x': Not found for account")}
+        self.assertEqual(list(kinds.values()), ["transient", "transient", "tools", "tools", "unavailable"])
+
+    def test_saved_results_hide_only_models_that_do_not_work(self):
+        from src.providers.model_eval import ModelScore, hidden_refs, load_results, save_results
+        save_results([ModelScore("a:ok", tool_call=True, round_trip=True),
+                      ModelScore("a:notools", error="answered without calling the tool"),
+                      ModelScore("a:broke", error="[x] HTTP 402 — requires more credits")])
+        self.assertEqual(hidden_refs(), {"a:notools"})
+        save_results([ModelScore("a:notools", tool_call=True, round_trip=True)])  # a later pass un-hides it
+        self.assertEqual(hidden_refs(), set())
+        self.assertTrue(load_results()["a:ok"]["passed"])
+
+
+class TestModelsListing(unittest.TestCase):
+    def test_batch_variants_are_not_chat_models(self):
+        from src.providers.openai_compat import _is_chat_model
+        self.assertFalse(_is_chat_model("openai/gpt-5.4:batch"))
+        self.assertTrue(_is_chat_model("openai/gpt-5.4"))
+
+    def test_models_hides_failed_ones_unless_all(self):
+        import io
+        from unittest.mock import patch
+        from rich.console import Console
+        from src.repl.core import ClydeREPL
+
+        repl = ClydeREPL.__new__(ClydeREPL)
+        repl.console = Console(file=io.StringIO(), width=120)
+        provider = FakeProvider(name="p", models=("good", "bad"))
+        repl.registry, repl.provider, repl.model = {"p": provider}, provider, "good"
+        with patch("src.repl.core.hidden_refs", return_value={"p:bad"}):
+            repl._show_models("")
+            out = repl.console.file.getvalue()
+            self.assertIn("p:good", out)
+            self.assertNotIn("p:bad", out)
+            self.assertIn("1 model(s) hidden", out)
+            repl.console.file = io.StringIO()
+            repl._show_models("all")
+            self.assertIn("p:bad", repl.console.file.getvalue())

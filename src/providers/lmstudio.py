@@ -11,12 +11,17 @@ import json
 import os
 import shutil
 import subprocess
+import time
 from pathlib import Path
 
 from .base import ProviderError, get_json
 from .openai_compat import OpenAICompatProvider
 
 DEFAULT_URL = "http://localhost:1234/v1"
+# Context assumed before LM Studio has loaded a model; the real value comes from `lms ps`.
+# ponytail: a guess until first load; LM Studio picks the loaded context from its own settings
+UNLOADED_CONTEXT = 8192
+_CONTEXT_TTL = 30
 
 
 def _lms() -> str | None:
@@ -56,6 +61,24 @@ class LMStudioProvider(OpenAICompatProvider):
         except (OSError, ValueError, subprocess.TimeoutExpired):
             return []
         return sorted(m["modelKey"] for m in downloaded if isinstance(m, dict) and m.get("type") == "llm" and m.get("modelKey"))
+
+    def context_window(self, model: str) -> int:
+        """The context LM Studio actually loaded the model with (`lms ps`), cached briefly."""
+        cached = getattr(self, "_ctx_cache", {}).get(model)
+        if cached and time.monotonic() - cached[0] < _CONTEXT_TTL:
+            return cached[1]
+        window = UNLOADED_CONTEXT
+        exe = _lms()
+        if exe is not None:
+            try:
+                loaded = json.loads(subprocess.run([exe, "ps", "--json"], capture_output=True, text=True, timeout=15).stdout or "[]")
+                match = next((m for m in loaded if isinstance(m, dict) and model in (m.get("modelKey"), m.get("identifier"))), None)
+                if match and match.get("contextLength"):
+                    window = int(match["contextLength"])
+            except (OSError, ValueError, subprocess.TimeoutExpired):
+                pass
+        self._ctx_cache = {**getattr(self, "_ctx_cache", {}), model: (time.monotonic(), window)}
+        return window
 
     def _ensure_server(self) -> None:
         if self._server_up():
