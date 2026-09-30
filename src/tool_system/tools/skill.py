@@ -17,24 +17,17 @@ class SkillTool:
         return ToolSpec(
             name="Skill",
             description="Execute a prompt-based SKILL.md skill or a legacy Python skill module.",
+            # One object schema (strict OpenAI-style servers such as LM Studio reject a top-level anyOf):
+            # `skill` + `args` for SKILL.md skills, or the legacy `name` + `input` for Python skill modules.
             input_schema={
-                "anyOf": [
-                    {
-                        "type": "object",
-                        "additionalProperties": False,
-                        "properties": {
-                            "skill": {"type": "string"},
-                            "args": {"type": "string"},
-                        },
-                        "required": ["skill"],
-                    },
-                    {
-                        "type": "object",
-                        "additionalProperties": False,
-                        "properties": {"name": {"type": "string"}, "input": {"type": "object"}},
-                        "required": ["name"],
-                    },
-                ]
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "skill": {"type": "string", "description": "Skill name, e.g. explain-code"},
+                    "args": {"type": "string", "description": "Arguments for the skill"},
+                    "name": {"type": "string", "description": "Legacy Python skill module name"},
+                    "input": {"type": "object", "description": "Legacy Python skill input"},
+                },
             },
             is_destructive=False,
             max_result_size_chars=100_000,
@@ -43,6 +36,8 @@ class SkillTool:
     def run(self, tool_input: dict[str, Any], context: ToolContext) -> ToolResult:
         if "skill" in tool_input:
             return self._run_markdown_skill(tool_input, context)
+        if "name" not in tool_input:
+            raise ToolInputError("give `skill` (a SKILL.md skill) or `name` (a legacy Python skill)")
         return self._run_legacy_python_skill(tool_input, context)
 
     def _run_markdown_skill(self, tool_input: dict[str, Any], context: ToolContext) -> ToolResult:
