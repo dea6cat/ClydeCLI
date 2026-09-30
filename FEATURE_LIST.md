@@ -43,7 +43,7 @@
 | Token / Cost tracking | 🟡 | `/cost` and `/context` report token usage; no per-model pricing |
 | Context building | 🟡 | A basic `context_system` exists, supporting workspace / git / `CLAUDE.md` injection; still missing README summaries, memory, compact |
 | Claude Code Agent Loop | ✅ | agent_loop.py implemented, supports the tool-call loop |
-| `/resume` session recovery experience | 🚫 | No dedicated recovery flow or UI yet |
+| `/resume` session recovery experience | ✅ | Sessions auto-save after each turn; `/resume` picks from this workspace's recent sessions (or takes an id) and shows a recap; `clyde -c` / `clyde --resume [id]` on the CLI |
 | `/compact` conversation compaction | 🟡 | Manual `/compact` summarizes older history; no automatic compaction |
 | `/doctor` diagnostics | 🚫 | No environment, config, permission, or dependency diagnostic command yet |
 | Hook system | 🚫 | No pre/post tool use hooks yet |
@@ -180,7 +180,7 @@ Goal: fill in Claude Code's engineering capabilities.
 - [ ] README / entry file summary injection
 - [ ] Memory and history context management
 - [ ] Full permission system integration
-- [ ] `/resume`
+- [x] `/resume`
 - [ ] `/compact`
 - [ ] `/doctor`
 - [ ] pre/post tool use hooks
@@ -220,7 +220,6 @@ Goal: build features unique to the Python rewrite.
 
 - Automatic context building
 - Full permission system integration
-- `/resume` implementation
 - `/compact` implementation
 - `/doctor` implementation
 
