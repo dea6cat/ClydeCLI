@@ -342,6 +342,8 @@ class ClydeREPL:
                 'scrollbar.button': 'bg:#5a5a5a',
             }),
             reserve_space_for_menu=0,
+            # The framed prompt is erased on Enter and the input echoed plainly (see run()).
+            erase_when_done=True,
             key_bindings=self.bindings,
             complete_while_typing=True,
         )
@@ -844,6 +846,8 @@ class ClydeREPL:
                 )
                 if user_input is _CRON_WAKE:
                     continue
+                if user_input.strip():
+                    self.console.print(user_input, style=_CARD_DIM, markup=False, highlight=False)
 
                 if not user_input.strip():
                     self.multiline_mode = False
