@@ -60,6 +60,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   at the prompt that saves one. WebFetch now asks per domain
 - Plugins: `clyde plugin install <dir|git-url>` (plus list / enable / disable / remove) for bundles of
   tools, skills, hooks and MCP servers in Claude Code's layout, enabled only after a yes; `/plugins`
+- `clyde plugin import` (and `clyde setup`) brings over plugins installed for Claude Code, Codex and
+  Cursor, one yes per plugin; manifests in `.codex-plugin/`, `.cursor-plugin/` or the plugin root are read
 - Self-checks: after a Python edit, ruff (and mypy when configured) run on the file and only new
   problems go back to the model; `/check` runs ruff, mypy and pytest, via `uv run` when there is a
   `uv.lock`
