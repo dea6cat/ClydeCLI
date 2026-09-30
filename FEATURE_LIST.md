@@ -96,7 +96,7 @@
 | MCP tools | MCPResourcesTool | `mcp_resources.py` | ⏳ No MCP client connected |
 | Skill system | SkillTool | `skill.py` | ✅ Implemented |
 | Tool search | ToolSearchTool | `tool_search.py` | ✅ Implemented |
-| LSP integration | LSPTool | `lsp.py` | ⏳ No LSP client connected |
+| LSP integration | LSPTool | `lsp.py` | ✅ Starts the language server on PATH for the file type (pyright/pylsp, typescript-language-server, gopls, rust-analyzer, dart, clangd) |
 | Worktree | WorktreeTool | `worktree.py` | ✅ Real git worktree on a `worktree-<name>` branch; exit can keep or remove it |
 | Miscellaneous | SleepTool | `sleep.py` | ✅ Implemented |
 | Miscellaneous | StructuredOutputTool | `structured_output.py` | ✅ Implemented |
