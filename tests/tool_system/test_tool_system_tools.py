@@ -1,0 +1,766 @@
+from __future__ import annotations
+
+import io
+import json
+import os
+import socket
+import subprocess
+import tempfile
+import time
+import unittest
+import urllib.request
+from pathlib import Path
+from unittest.mock import patch
+
+from src.agent.conversation import Conversation
+from src.agent.agent_loop import run_agent_loop
+from src.tool_system.context import ToolContext
+from src.tool_system.errors import ToolInputError
+from src.tool_system.defaults import build_default_registry
+from src.tool_system.protocol import ToolCall
+from src.tool_system.registry import ToolRegistry
+from src.tool_system.tools import (
+    AskUserQuestionTool,
+    BashTool,
+    BriefTool,
+    ConfigTool,
+    CronCreateTool,
+    CronDeleteTool,
+    CronListTool,
+    FileEditTool,
+    FileReadTool,
+    FileWriteTool,
+    GlobTool,
+    GrepTool,
+    MCPTool,
+    NotebookEditTool,
+    ListMcpResourcesTool,
+    ReadMcpResourceTool,
+    SkillTool,
+    SleepTool,
+    TodoWriteTool,
+    StructuredOutputTool,
+    TaskStopTool,
+    TaskCreateTool,
+    TaskGetTool,
+    TaskListTool,
+    TaskOutputTool,
+    TaskUpdateTool,
+    ToolSearchTool,
+    WebFetchTool,
+    WebSearchTool,
+    TeamCreateTool,
+    TeamDeleteTool,
+    EnterWorktreeTool,
+    ExitWorktreeTool,
+    EnterPlanModeTool,
+    ExitPlanModeTool,
+)
+from tests.fakes import FakeProvider, reply
+
+
+class ToolSystemTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name).resolve()
+        self.ctx = ToolContext(workspace_root=self.root)
+
+    def tearDown(self) -> None:
+        self.tmp.cleanup()
+
+
+class TestReadTool(ToolSystemTests):
+    def test_read_returns_cat_n_format(self) -> None:
+        p = self.root / "a.txt"
+        p.write_text("line1\nline2\nline3\n", encoding="utf-8")
+        tool = FileReadTool()
+        out = tool.run({"file_path": str(p), "offset": 2, "limit": 2}, self.ctx).output
+        self.assertEqual(out["type"], "text")
+        self.assertEqual(out["file"]["content"], "2\tline2\n3\tline3")
+
+    def test_read_allows_relative_path_under_workspace(self) -> None:
+        p = self.root / "a.txt"
+        p.write_text("x\n", encoding="utf-8")
+        tool = FileReadTool()
+        out = tool.run({"file_path": "a.txt", "limit": 10}, self.ctx).output
+        self.assertEqual(out["type"], "text")
+        self.assertIn("1\tx", out["file"]["content"])
+
+    def test_read_returns_file_unchanged_stub(self) -> None:
+        p = self.root / "same.txt"
+        p.write_text("line\n", encoding="utf-8")
+        tool = FileReadTool()
+        first = tool.run({"file_path": str(p), "limit": 10}, self.ctx).output
+        self.assertEqual(first["type"], "text")
+        second = tool.run({"file_path": str(p)}, self.ctx).output
+        self.assertEqual(second["type"], "file_unchanged")
+
+    def test_read_notebook(self) -> None:
+        p = self.root / "nb.ipynb"
+        p.write_text('{"cells":[{"cell_type":"markdown","source":["hi"]}]}', encoding="utf-8")
+        out = FileReadTool().run({"file_path": str(p)}, self.ctx).output
+        self.assertEqual(out["type"], "notebook")
+        self.assertEqual(len(out["file"]["cells"]), 1)
+
+    def test_read_pdf(self) -> None:
+        p = self.root / "x.pdf"
+        p.write_bytes(b"%PDF-1.4\n1 0 obj\n")
+        out = FileReadTool().run({"file_path": str(p)}, self.ctx).output
+        self.assertEqual(out["type"], "pdf")
+
+    def test_read_blocks_device_paths(self) -> None:
+        with self.assertRaises(Exception):
+            FileReadTool().run({"file_path": "/dev/zero"}, self.ctx)
+
+
+class TestWriteTool(ToolSystemTests):
+    def test_write_creates_file(self) -> None:
+        tool = FileWriteTool()
+        p = self.root / "b.txt"
+        out = tool.run({"file_path": str(p), "content": "hello"}, self.ctx).output
+        self.assertTrue(p.exists())
+        self.assertEqual(out["type"], "create")
+        self.assertEqual(out["filePath"], str(p))
+
+    def test_write_requires_read_before_overwrite(self) -> None:
+        p = self.root / "c.txt"
+        p.write_text("old", encoding="utf-8")
+        tool = FileWriteTool()
+        with self.assertRaises(Exception):
+            tool.run({"file_path": str(p), "content": "new"}, self.ctx)
+
+        FileReadTool().run({"file_path": str(p), "limit": 10}, self.ctx)
+        tool.run({"file_path": str(p), "content": "new"}, self.ctx)
+        self.assertEqual(p.read_text(encoding="utf-8"), "new")
+
+    def test_write_blocks_docs_by_default(self) -> None:
+        """Writing .md files should require permission when allow_docs is False."""
+        tool = FileWriteTool()
+        p = self.root / "README.md"
+        # Permission check should return 'ask' behavior
+        result = tool.check_permissions({"file_path": str(p), "content": "x"}, self.ctx)
+        self.assertEqual(result.behavior.value, "ask")
+        # But run() itself should NOT raise - it just proceeds (permission is checked elsewhere)
+        # Note: run() will still succeed because permission checking moved to check_permissions()
+
+
+class TestEditTool(ToolSystemTests):
+    def test_edit_requires_read(self) -> None:
+        p = self.root / "d.txt"
+        p.write_text("hello world", encoding="utf-8")
+        tool = FileEditTool()
+        with self.assertRaises(Exception):
+            tool.run({"file_path": str(p), "old_string": "world", "new_string": "you"}, self.ctx)
+
+    def test_edit_replaces_unique(self) -> None:
+        p = self.root / "e.txt"
+        p.write_text("hello world", encoding="utf-8")
+        FileReadTool().run({"file_path": str(p), "limit": 10}, self.ctx)
+        out = FileEditTool().run({"file_path": str(p), "old_string": "world", "new_string": "you"}, self.ctx).output
+        self.assertEqual(out["filePath"], str(p))
+        self.assertEqual(out["replaceAll"], False)
+        self.assertEqual(p.read_text(encoding="utf-8"), "hello you")
+
+    def _edit(self, content: str, old: str, new: str) -> str:
+        p = self.root / "t.py"
+        p.write_text(content, encoding="utf-8")
+        FileReadTool().run({"file_path": str(p)}, self.ctx)
+        FileEditTool().run({"file_path": str(p), "old_string": old, "new_string": new}, self.ctx)
+        return p.read_text(encoding="utf-8")
+
+    def test_edit_tolerates_trailing_whitespace(self) -> None:
+        out = self._edit("def f():   \n    return 1\n", "def f():\n    return 1\n", "def f():\n    return 2\n")
+        self.assertEqual(out, "def f():\n    return 2\n")
+
+    def test_edit_reindents_to_file_indentation(self) -> None:
+        content = "class A:\n    def f(self):\n        return 1\n"
+        out = self._edit(content, "def f(self):\n    return 1", "def f(self):\n    return 2")
+        self.assertEqual(out, "class A:\n    def f(self):\n        return 2\n")
+
+    def test_edit_ignores_stray_trailing_blank_line(self) -> None:
+        out = self._edit("a\nb\nc\n", "b\n\n", "B\n")
+        self.assertEqual(out, "a\nB\nc\n")
+
+    def test_edit_keeps_line_break_when_new_drops_it(self) -> None:
+        out = self._edit("a\nb\nc\n", "b\n", "B")
+        self.assertEqual(out, "a\nB\nc\n")
+
+    def test_edit_tolerant_match_must_be_unique(self) -> None:
+        from src.tool_system.errors import ToolInputError
+
+        with self.assertRaisesRegex(ToolInputError, "matches 2 times"):
+            self._edit("  x = 1\n    x = 1\n", "x = 1", "x = 2")
+
+    def test_edit_not_found_points_at_closest_line(self) -> None:
+        from src.tool_system.errors import ToolInputError
+
+        with self.assertRaisesRegex(ToolInputError, "closest match is around line 2"):
+            self._edit("a = 1\nresult = compute(x)\nb = 2\n", "result = compute(y)", "z")
+
+    def test_edit_requires_replace_all_for_non_unique(self) -> None:
+        p = self.root / "f.txt"
+        p.write_text("a a a", encoding="utf-8")
+        FileReadTool().run({"file_path": str(p), "limit": 10}, self.ctx)
+        with self.assertRaises(Exception):
+            FileEditTool().run({"file_path": str(p), "old_string": "a", "new_string": "b"}, self.ctx)
+        FileEditTool().run({"file_path": str(p), "old_string": "a", "new_string": "b", "replace_all": True}, self.ctx)
+        self.assertEqual(p.read_text(encoding="utf-8"), "b b b")
+
+
+class TestNotebookEditTool(ToolSystemTests):
+    def _notebook(self, minor: int = 5) -> Path:
+        p = self.root / "nb.ipynb"
+        nb = {
+            "cells": [
+                {"cell_type": "code", "id": "a1", "metadata": {}, "source": "x = 1", "execution_count": 3, "outputs": [{"output_type": "stream"}]},
+                {"cell_type": "markdown", "id": "b2", "metadata": {}, "source": "# hi"},
+            ],
+            "metadata": {},
+            "nbformat": 4,
+            "nbformat_minor": minor,
+        }
+        p.write_text(json.dumps(nb), encoding="utf-8")
+        FileReadTool().run({"file_path": str(p)}, self.ctx)
+        return p
+
+    def _cells(self, p: Path) -> list:
+        return json.loads(p.read_text(encoding="utf-8"))["cells"]
+
+    def test_requires_read(self) -> None:
+        from src.tool_system.errors import ToolInputError
+
+        p = self.root / "unread.ipynb"
+        p.write_text('{"cells": []}', encoding="utf-8")
+        with self.assertRaises(ToolInputError):
+            NotebookEditTool().run({"notebook_path": str(p), "cell_id": "cell-0", "new_source": "y"}, self.ctx)
+
+    def test_replace_code_cell_clears_outputs_and_keeps_format(self) -> None:
+        p = self._notebook()
+        NotebookEditTool().run({"notebook_path": str(p), "cell_id": "a1", "new_source": "x = 2"}, self.ctx)
+        text = p.read_text(encoding="utf-8")
+        self.assertTrue(text.endswith("}\n"))
+        self.assertIn('\n "cells": [', text)
+        self.assertEqual(json.loads(text)["nbformat_minor"], 5)
+        cell = self._cells(p)[0]
+        self.assertEqual((cell["source"], cell["outputs"], cell["execution_count"]), ("x = 2", [], None))
+
+    def test_insert_after_cell_and_at_start(self) -> None:
+        p = self._notebook()
+        out = NotebookEditTool().run({"notebook_path": str(p), "cell_id": "a1", "new_source": "mid", "cell_type": "markdown", "edit_mode": "insert"}, self.ctx).output
+        NotebookEditTool().run({"notebook_path": str(p), "new_source": "top", "cell_type": "code", "edit_mode": "insert"}, self.ctx)
+        cells = self._cells(p)
+        self.assertEqual([c["source"] for c in cells], ["top", "x = 1", "mid", "# hi"])
+        self.assertEqual(cells[2]["id"], out["cell_id"])
+        self.assertEqual(cells[0]["outputs"], [])
+
+    def test_insert_without_ids_before_nbformat_4_5(self) -> None:
+        p = self._notebook(minor=4)
+        NotebookEditTool().run({"notebook_path": str(p), "cell_id": "cell-1", "new_source": "end", "cell_type": "markdown", "edit_mode": "insert"}, self.ctx)
+        self.assertNotIn("id", self._cells(p)[2])
+
+    def test_delete_by_index_form(self) -> None:
+        p = self._notebook()
+        NotebookEditTool().run({"notebook_path": str(p), "cell_id": "cell-0", "new_source": "", "edit_mode": "delete"}, self.ctx)
+        self.assertEqual([c["id"] for c in self._cells(p)], ["b2"])
+
+    def test_rejects_bad_input(self) -> None:
+        from src.tool_system.errors import ToolInputError
+
+        p = self._notebook()
+        for bad in (
+            {"notebook_path": "nb.ipynb", "cell_id": "a1", "new_source": "y"},
+            {"notebook_path": str(p), "new_source": "y", "edit_mode": "insert"},
+            {"notebook_path": str(p), "new_source": "y"},
+            {"notebook_path": str(p), "cell_id": "zz", "new_source": "y"},
+        ):
+            with self.assertRaises(ToolInputError):
+                NotebookEditTool().run(bad, self.ctx)
+
+
+class TestGlobTool(ToolSystemTests):
+    def test_glob_sorts_by_mtime(self) -> None:
+        a = self.root / "x1.py"
+        b = self.root / "x2.py"
+        a.write_text("a", encoding="utf-8")
+        time.sleep(0.01)
+        b.write_text("b", encoding="utf-8")
+        out = GlobTool().run({"pattern": "*.py", "path": str(self.root), "limit": 10}, self.ctx).output
+        self.assertEqual(out["filenames"][0], str(b))
+        self.assertEqual(out["filenames"][1], str(a))
+
+
+class TestGrepTool(ToolSystemTests):
+    def test_grep_files_with_matches(self) -> None:
+        (self.root / "a.txt").write_text("hello\nworld\n", encoding="utf-8")
+        (self.root / "b.txt").write_text("nope\n", encoding="utf-8")
+        out = GrepTool().run({"pattern": "hello", "path": str(self.root)}, self.ctx).output
+        self.assertEqual(out["mode"], "files_with_matches")
+        self.assertEqual(out["numFiles"], 1)
+        self.assertIn("a.txt", out["filenames"][0])
+
+    def test_grep_content_mode_with_line_numbers(self) -> None:
+        (self.root / "a.txt").write_text("hello\nhello\n", encoding="utf-8")
+        out = GrepTool().run({"pattern": "hello", "path": str(self.root), "output_mode": "content", "-n": True}, self.ctx).output
+        self.assertIn(":1:", out["content"])
+
+
+class TestBashTool(ToolSystemTests):
+    def test_bash_echo(self) -> None:
+        out = BashTool().run({"command": "echo hello"}, self.ctx).output
+        self.assertEqual(out["exit_code"], 0)
+        self.assertIn("hello", out["stdout"])
+
+    def test_bash_blocks_sudo(self) -> None:
+        with self.assertRaises(Exception):
+            BashTool().run({"command": "sudo echo nope"}, self.ctx)
+
+
+class TestWebFetchTool(ToolSystemTests):
+    def test_web_fetch_blocks_file_scheme(self) -> None:
+        with self.assertRaises(Exception):
+            WebFetchTool().run({"url": "file:///etc/passwd"}, self.ctx)
+
+    def test_web_fetch_extracts_text(self) -> None:
+        html_doc = "<html><body><h1>Title</h1><p>Hello <b>world</b></p></body></html>"
+
+        class _Resp(io.BytesIO):
+            headers = {"Content-Type": "text/html"}
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        with patch.object(socket, "getaddrinfo", return_value=[(None, None, None, None, ("93.184.216.34", 0))]):
+            with patch.object(urllib.request, "urlopen", return_value=_Resp(html_doc.encode("utf-8"))):
+                out = WebFetchTool().run({"url": "https://example.com/"}, self.ctx).output
+                self.assertIn("Title", out["content"])
+                self.assertIn("Hello world", out["content"])
+
+
+class TestWebSearchTool(ToolSystemTests):
+    def test_web_search_parses_results(self) -> None:
+        html_doc = """
+        <a class="result__a" href="https://example.com/">Example</a>
+        <a class="result__snippet">Snippet</a>
+        """
+
+        class _Resp(io.BytesIO):
+            headers = {"Content-Type": "text/html"}
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        with patch.object(urllib.request, "urlopen", return_value=_Resp(html_doc.encode("utf-8"))):
+            out = WebSearchTool().run({"query": "example", "num": 1}, self.ctx).output
+            self.assertEqual(len(out["results"]), 1)
+            self.assertEqual(out["results"][0]["url"], "https://example.com/")
+
+
+class TestSleepTool(ToolSystemTests):
+    def test_sleep_short(self) -> None:
+        start = time.time()
+        SleepTool().run({"seconds": 0.01}, self.ctx)
+        self.assertGreaterEqual(time.time() - start, 0.0)
+
+
+class TestTaskStopTool(ToolSystemTests):
+    def test_task_stop(self) -> None:
+        def target(stop_event):
+            while not stop_event.is_set():
+                time.sleep(0.01)
+
+        task = self.ctx.task_manager.start(name="loop", target=target)
+        out = TaskStopTool().run({"task_id": task.task_id}, self.ctx).output
+        self.assertTrue(out["stopped"])
+
+
+class TestConfigTool(ToolSystemTests):
+    def test_config_get_set_roundtrip(self) -> None:
+        from src import config as config_mod
+
+        cfg_path = self.root / "config.json"
+        cfg_path.write_text(json.dumps(config_mod.get_default_config()), encoding="utf-8")
+        with patch("src.config.get_config_path", return_value=cfg_path):
+            get_out = ConfigTool().run({"setting": "model"}, self.ctx).output
+            self.assertEqual(get_out["operation"], "get")
+            set_out = ConfigTool().run({"setting": "model", "value": "openai:gpt-5.4"}, self.ctx).output
+            self.assertEqual(set_out["operation"], "set")
+            self.assertEqual(ConfigTool().run({"setting": "model"}, self.ctx).output["value"], "openai:gpt-5.4")
+
+
+class TestMCPTool(ToolSystemTests):
+    def test_mcp_calls_client(self) -> None:
+        class Client:
+            def call_tool(self, tool_name: str, args: dict) -> Any:
+                return {"tool": tool_name, "args": args}
+
+            def list_tools(self) -> list[str]:
+                return ["x"]
+
+        self.ctx.mcp_clients["srv"] = Client()
+        out = MCPTool().run({"server": "srv", "tool": "x", "input": {"a": 1}}, self.ctx).output
+        self.assertEqual(out["output"]["args"]["a"], 1)
+
+
+class TestSkillTool(ToolSystemTests):
+    def test_skill_runs_markdown_skill(self) -> None:
+        from src.skills.create import create_skill
+
+        skills_dir = self.root / "skills"
+        create_skill(
+            directory=skills_dir,
+            name="hello",
+            description="say hello",
+            body="Hello $ARGUMENTS[0]!",
+            arguments=["name"],
+        )
+        with patch.dict(os.environ, {"CLYDE_SKILLS_DIR": str(skills_dir)}):
+            out = SkillTool().run({"skill": "hello", "args": "bob"}, self.ctx).output
+            self.assertTrue(out["success"])
+            self.assertIn("Hello bob!", out["prompt"])
+            self.assertEqual(out["loadedFrom"], "user")
+
+    def test_skill_runs_legacy_python_skill(self) -> None:
+        skills_dir = self.root / "skills"
+        skills_dir.mkdir(parents=True, exist_ok=True)
+        (skills_dir / "legacy.py").write_text(
+            "def run(input, context):\n    return 'hi ' + input.get('name','world')\n",
+            encoding="utf-8",
+        )
+        with patch.dict(os.environ, {"CLYDE_SKILLS_DIR": str(skills_dir)}):
+            out = SkillTool().run({"name": "legacy", "input": {"name": "bob"}}, self.ctx).output
+            self.assertEqual(out["output"], "hi bob")
+
+
+class TestNewParityTools(ToolSystemTests):
+    def test_ask_user_question_uses_handler(self) -> None:
+        self.ctx.ask_user = lambda questions: {questions[0]["question"]: "Option A"}
+        out = AskUserQuestionTool().run(
+            {
+                "questions": [
+                    {
+                        "question": "Choose?",
+                        "header": "Choice",
+                        "options": [
+                            {"label": "Option A", "description": "A"},
+                            {"label": "Option B", "description": "B"},
+                        ],
+                    }
+                ]
+            },
+            self.ctx,
+        ).output
+        self.assertEqual(out["answers"]["Choose?"], "Option A")
+
+    def test_todo_write(self) -> None:
+        out = TodoWriteTool().run(
+            {"todos": [{"content": "x", "status": "pending", "activeForm": "Doing x"}]},
+            self.ctx,
+        ).output
+        self.assertEqual(out["newTodos"][0]["content"], "x")
+
+    def test_task_tools_roundtrip(self) -> None:
+        created = TaskCreateTool().run({"subject": "T1", "description": "D1"}, self.ctx).output
+        task_id = created["task"]["id"]
+        listed = TaskListTool().run({}, self.ctx).output
+        self.assertEqual(len(listed["tasks"]), 1)
+        TaskUpdateTool().run({"taskId": task_id, "status": "completed"}, self.ctx)
+        got = TaskGetTool().run({"taskId": task_id}, self.ctx).output
+        self.assertEqual(got["task"]["status"], "completed")
+        task_out = TaskOutputTool().run({"task_id": task_id}, self.ctx).output
+        self.assertEqual(task_out["task"]["task_id"], task_id)
+
+    def test_tool_search(self) -> None:
+        reg = build_default_registry(include_user_tools=False)
+        out = ToolSearchTool(reg).run({"query": "read"}, self.ctx).output
+        self.assertIn("Read", out["matches"])
+
+    def test_cron_tools_roundtrip(self) -> None:
+        created = CronCreateTool().run({"cron": "*/5 * * * *", "prompt": "ping"}, self.ctx).output
+        cron_id = created["id"]
+        listed = CronListTool().run({}, self.ctx).output
+        self.assertEqual(len(listed["jobs"]), 1)
+        deleted = CronDeleteTool().run({"id": cron_id}, self.ctx).output
+        self.assertTrue(deleted["success"])
+
+    def test_structured_output(self) -> None:
+        out = StructuredOutputTool().run({"ok": True}, self.ctx).output
+        self.assertTrue(out["structured_output"]["ok"])
+
+    def test_mcp_resource_tools(self) -> None:
+        class Client:
+            def list_resources(self):
+                return [{"uri": "x://1", "name": "r1", "mimeType": "text/plain"}]
+
+            def read_resource(self, uri: str):
+                return {"contents": [{"uri": uri, "text": "hello"}]}
+
+        self.ctx.mcp_clients["srv"] = Client()
+        listed = ListMcpResourcesTool().run({"server": "srv"}, self.ctx).output
+        self.assertEqual(listed[0]["uri"], "x://1")
+        read = ReadMcpResourceTool().run({"server": "srv", "uri": "x://1"}, self.ctx).output
+        self.assertEqual(read["contents"][0]["text"], "hello")
+
+
+class TestRegistryAndHelloWorldTool(ToolSystemTests):
+    def test_can_load_user_tool_hello_world(self) -> None:
+        user_dir = self.root / "tools"
+        user_dir.mkdir(parents=True, exist_ok=True)
+        (user_dir / "hello.py").write_text(
+            "tool_spec = {\n"
+            "  'name': 'HelloWorld',\n"
+            "  'description': 'hello world tool',\n"
+            "  'input_schema': { 'type': 'object', 'properties': { 'name': { 'type': 'string' } } },\n"
+            "}\n"
+            "def run(tool_input, context):\n"
+            "  return { 'message': 'hello ' + tool_input.get('name','world') }\n",
+            encoding="utf-8",
+        )
+
+        from src.tool_system.loader import load_tools_from_dir
+
+        tools = load_tools_from_dir(user_dir)
+        self.assertEqual(len(tools), 1)
+        reg = ToolRegistry(tools=tools)
+        result = reg.dispatch(ToolCall(name="HelloWorld", input={"name": "alice"}), self.ctx)
+        self.assertEqual(result.output["message"], "hello alice")
+
+
+class TestBriefAndAgentTools(ToolSystemTests):
+    def test_brief_tool(self) -> None:
+        out = BriefTool().run({"text": "abc", "max_chars": 2}, self.ctx).output
+        self.assertEqual(out["preview"], "ab…")
+
+    def test_agent_tool_runs_a_sub_agent(self) -> None:
+        reg = build_default_registry(include_user_tools=False)
+        p = self.root / "x.txt"
+        p.write_text("hi", encoding="utf-8")
+        provider = FakeProvider(
+            reply(tool_calls=[("Agent", {"description": "read x", "prompt": "What is in x.txt?"})]),
+            reply(tool_calls=[("Read", {"file_path": str(p)})], usage={"input_tokens": 5, "output_tokens": 2}),
+            reply("x.txt says hi", usage={"input_tokens": 7, "output_tokens": 3}),
+            reply("done"),
+        )
+        conversation = Conversation()
+        conversation.add_user_message("delegate")
+
+        result = run_agent_loop(conversation, provider, "fake-model", reg, self.ctx)
+
+        self.assertEqual(result.response_text, "done")
+        sub_first = provider.requests[1]
+        self.assertEqual([m.text for m in sub_first["conversation"].messages], ["What is in x.txt?"])
+        self.assertNotIn("Agent", [t.name for t in sub_first["tools"]])
+        self.assertIn("Read", [t.name for t in sub_first["tools"]])
+        agent_result = provider.requests[3]["conversation"].messages[-1].tool_results[0]
+        self.assertFalse(agent_result.is_error)
+        out = json.loads(agent_result.content)
+        self.assertEqual(out["content"], "x.txt says hi")
+        self.assertEqual(out["usage"], {"input_tokens": 12, "output_tokens": 5})
+        # The sub-agent's Read must not let the parent Edit x.txt without reading it itself.
+        self.assertFalse(self.ctx.was_file_read_and_unchanged(p))
+
+    def test_agent_tool_without_provider_is_an_error(self) -> None:
+        reg = build_default_registry(include_user_tools=False)
+        result = reg.dispatch(ToolCall(name="Agent", input={"description": "d", "prompt": "p"}), self.ctx)
+        self.assertTrue(result.is_error)
+        self.assertIn("no provider", result.output["error"])
+
+    def test_agent_tool_rejects_unknown_subagent_type(self) -> None:
+        reg = build_default_registry(include_user_tools=False)
+        self.ctx.provider, self.ctx.model = FakeProvider(), "fake-model"
+        with self.assertRaises(ToolInputError):
+            reg.get("Agent").run({"description": "d", "prompt": "p", "subagent_type": "Explore"}, self.ctx)  # type: ignore[union-attr]
+
+
+class TestTeamTools(ToolSystemTests):
+    def test_team_create_roundtrip(self) -> None:
+        """Test creating and deleting a team."""
+        # Create team
+        create_out = TeamCreateTool().run(
+            {"team_name": "test-team", "description": "A test team"},
+            self.ctx,
+        ).output
+        self.assertEqual(create_out["team_name"], "test-team")
+        self.assertIsNotNone(create_out["lead_agent_id"])
+        self.assertEqual(self.ctx.team["team_name"], "test-team")
+
+        # Verify team file was created
+        team_file = self.root / ".clyde" / "team.json"
+        self.assertTrue(team_file.exists())
+
+        # Delete team
+        delete_out = TeamDeleteTool().run({}, self.ctx).output
+        self.assertTrue(delete_out["success"])
+        self.assertEqual(delete_out["team_name"], "test-team")
+        self.assertIsNone(self.ctx.team)
+
+        # Verify team file was deleted
+        self.assertFalse(team_file.exists())
+
+    def test_team_delete_no_team(self) -> None:
+        """Test deleting when no team exists."""
+        out = TeamDeleteTool().run({}, self.ctx).output
+        self.assertFalse(out["success"])
+        self.assertEqual(out["message"], "No active team")
+
+    def test_team_create_requires_name(self) -> None:
+        """Test team name validation."""
+        from src.tool_system.errors import ToolInputError
+
+        with self.assertRaises(ToolInputError):
+            TeamCreateTool().run({"team_name": ""}, self.ctx)
+
+
+class TestWorktreeTools(ToolSystemTests):
+    def setUp(self) -> None:
+        super().setUp()
+        git = ["git", "-c", "user.name=t", "-c", "user.email=t@t"]
+        subprocess.run([*git, "init", "-q"], cwd=self.root, check=True)
+        (self.root / "a.txt").write_text("a\n", encoding="utf-8")
+        subprocess.run([*git, "add", "."], cwd=self.root, check=True)
+        subprocess.run([*git, "commit", "-qm", "init"], cwd=self.root, check=True)
+
+    def _branches(self) -> str:
+        return subprocess.run(["git", "branch"], cwd=self.root, capture_output=True, text=True).stdout
+
+    def test_worktree_roundtrip(self) -> None:
+        enter_out = EnterWorktreeTool().run({"name": "test-tree"}, self.ctx).output
+        worktree_dir = self.root / ".clyde" / "worktrees" / "test-tree"
+        self.assertEqual(enter_out["worktreePath"], str(worktree_dir))
+        self.assertEqual(enter_out["worktreeBranch"], "worktree-test-tree")
+        self.assertEqual(self.ctx.cwd, worktree_dir)
+        self.assertTrue((worktree_dir / "a.txt").exists())
+        self.assertIn("worktree-test-tree", self._branches())
+
+        exit_out = ExitWorktreeTool().run({}, self.ctx).output
+        self.assertIn("Exited worktree", exit_out["message"])
+        self.assertIsNone(self.ctx.worktree_root)
+        self.assertEqual(self.ctx.cwd, self.root)
+        self.assertTrue(worktree_dir.exists())
+
+    def test_worktree_reenter_existing(self) -> None:
+        EnterWorktreeTool().run({"name": "again"}, self.ctx)
+        ExitWorktreeTool().run({}, self.ctx)
+        out = EnterWorktreeTool().run({"name": "again"}, self.ctx).output
+        self.assertEqual(out["worktreeBranch"], "worktree-again")
+
+    def test_worktree_remove(self) -> None:
+        EnterWorktreeTool().run({"name": "gone"}, self.ctx)
+        worktree_dir = self.ctx.worktree_root
+        out = ExitWorktreeTool().run({"action": "remove"}, self.ctx).output
+        self.assertIn("Removed worktree", out["message"])
+        self.assertFalse(worktree_dir.exists())
+        self.assertIn("worktree-gone", self._branches())
+
+    def test_worktree_remove_refuses_uncommitted_changes(self) -> None:
+        from src.tool_system.errors import ToolInputError
+
+        EnterWorktreeTool().run({"name": "dirty"}, self.ctx)
+        (self.ctx.worktree_root / "a.txt").write_text("changed\n", encoding="utf-8")
+        with self.assertRaises(ToolInputError):
+            ExitWorktreeTool().run({"action": "remove"}, self.ctx)
+        self.assertTrue(self.ctx.worktree_root.exists())
+
+    def test_worktree_requires_git_repo(self) -> None:
+        from src.tool_system.errors import ToolInputError
+
+        with tempfile.TemporaryDirectory() as plain:
+            with self.assertRaises(ToolInputError):
+                EnterWorktreeTool().run({"name": "x"}, ToolContext(workspace_root=Path(plain)))
+
+    def test_worktree_enter_already_in(self) -> None:
+        from src.tool_system.errors import ToolPermissionError
+
+        EnterWorktreeTool().run({"name": "first"}, self.ctx)
+        with self.assertRaises(ToolPermissionError):
+            EnterWorktreeTool().run({"name": "second"}, self.ctx)
+
+    def test_worktree_exit_not_in(self) -> None:
+        from src.tool_system.errors import ToolPermissionError
+
+        with self.assertRaises(ToolPermissionError):
+            ExitWorktreeTool().run({}, self.ctx)
+
+    def test_worktree_name_validation(self) -> None:
+        from src.tool_system.errors import ToolInputError
+
+        with self.assertRaises(ToolInputError):
+            EnterWorktreeTool().run({"name": ""}, self.ctx)
+        with self.assertRaises(ToolInputError):
+            EnterWorktreeTool().run({"name": "invalid name!"}, self.ctx)
+        with self.assertRaises(ToolInputError):
+            EnterWorktreeTool().run({"name": "a" * 65}, self.ctx)
+
+
+class TestPlanModeTools(ToolSystemTests):
+    def test_plan_mode_roundtrip(self) -> None:
+        """Test entering and exiting plan mode."""
+        # Enter plan mode
+        enter_out = EnterPlanModeTool().run({}, self.ctx).output
+        self.assertTrue(self.ctx.plan_mode)
+        self.assertIn("Entered plan mode", enter_out["message"])
+
+        # Exit plan mode
+        exit_out = ExitPlanModeTool().run({}, self.ctx).output
+        self.assertFalse(self.ctx.plan_mode)
+        self.assertFalse(exit_out["isAgent"])
+        self.assertTrue(exit_out["hasTaskTool"])
+
+    def test_plan_mode_exit_with_plan(self) -> None:
+        """Test exiting plan mode with a plan."""
+        EnterPlanModeTool().run({}, self.ctx)
+
+        plan_content = "# My Plan\n\n- Do something\n- Do something else"
+        exit_out = ExitPlanModeTool().run({"plan": plan_content}, self.ctx).output
+
+        self.assertEqual(exit_out["plan"], plan_content)
+        self.assertIsNotNone(exit_out["filePath"])
+
+        # Verify plan file was created
+        plan_file = self.root / ".clyde" / "plan.md"
+        self.assertTrue(plan_file.exists())
+        self.assertEqual(plan_file.read_text(encoding="utf-8"), plan_content)
+
+    def test_plan_mode_exit_with_custom_path(self) -> None:
+        """Test exiting plan mode with custom plan file path."""
+        EnterPlanModeTool().run({}, self.ctx)
+
+        custom_path = self.root / "my-plan.md"
+        plan_content = "# Custom Plan"
+        exit_out = ExitPlanModeTool().run(
+            {"plan": plan_content, "planFilePath": str(custom_path)},
+            self.ctx,
+        ).output
+
+        self.assertEqual(exit_out["filePath"], str(custom_path))
+        self.assertTrue(custom_path.exists())
+
+    def test_plan_mode_exit_not_in_mode(self) -> None:
+        """Test exiting plan mode when not in it."""
+        from src.tool_system.errors import ToolPermissionError
+
+        with self.assertRaises(ToolPermissionError):
+            ExitPlanModeTool().run({}, self.ctx)
+
+    def test_plan_mode_plan_validation(self) -> None:
+        """Test plan input validation."""
+        from src.tool_system.errors import ToolInputError
+
+        EnterPlanModeTool().run({}, self.ctx)
+
+        # Plan must be string
+        with self.assertRaises(ToolInputError):
+            ExitPlanModeTool().run({"plan": 123}, self.ctx)
+
+        # Plan file path must be string
+        with self.assertRaises(ToolInputError):
+            ExitPlanModeTool().run({"plan": "x", "planFilePath": 123}, self.ctx)
+
+
+if __name__ == "__main__":
+    unittest.main()

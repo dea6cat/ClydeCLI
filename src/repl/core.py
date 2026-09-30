@@ -77,7 +77,7 @@ from src.agent import Session
 from src.compact_service.service import auto_compact_threshold, compact_conversation, needs_auto_compact
 from src.context_system.context_analyzer import get_context_window_for_model
 from src.config import get_default_model, load_config, set_default_model
-from src.outputStyles import resolve_output_style
+from src.output_styles import resolve_output_style
 from src.providers import build_registry, keys, model_ref, pick_default_model, resolve, usable
 from src.providers import catalog
 from src.providers.base import ProviderError, is_auth_error
@@ -86,7 +86,7 @@ from src.tool_system.context import ToolContext
 from src.tool_system.defaults import build_default_registry
 from src.tool_system.protocol import ToolCall
 from src.tool_system.tools.cron import pop_due_jobs
-from src.tool_system.agent_loop import ToolEvent, run_agent_loop, summarize_tool_result, summarize_tool_use
+from src.agent.agent_loop import ToolEvent, run_agent_loop, summarize_tool_result, summarize_tool_use
 
 # New command system imports
 from src.command_system import (
@@ -97,8 +97,8 @@ from src.command_system import (
     execute_command_sync,
     register_builtin_commands,
 )
-from src.cost_tracker import CostTracker
-from src.history import HistoryLog
+from src.agent.cost_tracker import CostTracker
+from src.agent.history import HistoryLog
 
 _RESUME_SHOWN = 20   # sessions listed by the /resume picker
 _PREVIEW_CHARS = 80

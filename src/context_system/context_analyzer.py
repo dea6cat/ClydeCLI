@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
-from ..token_estimation import count_tokens, count_messages_tokens
+from .token_estimation import count_tokens, count_messages_tokens
 
 # Model context window sizes
 MODEL_CONTEXT_WINDOWS: dict[str, int] = {

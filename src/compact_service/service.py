@@ -43,7 +43,7 @@ def needs_auto_compact(conversation: Conversation, context_window: int) -> bool:
     """Whether the conversation has grown past the auto-compact threshold."""
     if len(get_messages_after_boundary(conversation.messages)) < 2:
         return False
-    from ..token_estimation import count_messages_tokens
+    from ..context_system.token_estimation import count_messages_tokens
     return count_messages_tokens(conversation.get_messages()) >= auto_compact_threshold(context_window)
 
 
@@ -125,7 +125,7 @@ async def compact_conversation(
         raise ValueError("Not enough messages to compact.")
 
     # Step 2: Count pre-compact tokens
-    from ..token_estimation import count_messages_tokens
+    from ..context_system.token_estimation import count_messages_tokens
     api_messages = conversation.get_messages()
     pre_compact_tokens = count_messages_tokens(api_messages)
     pre_compact_count = len(conversation.messages)

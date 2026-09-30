@@ -18,9 +18,9 @@ from ..context_system.context_analyzer import (
     get_context_window_for_model,
 )
 from ..context_system.microcompact import microcompact_messages, strip_images_from_messages
-from ..cost_tracker import CostTracker, estimate_usd
-from ..history import HistoryLog
-from ..setup import run_setup
+from ..agent.cost_tracker import CostTracker, estimate_usd
+from ..agent.history import HistoryLog
+from ..startup.setup import run_setup
 from .engine import CommandContext, CommandResult, LocalCommandResult
 from .registry import CommandRegistry, get_command_registry, list_commands
 from .types import Command, CommandType, CompactionResult, LocalCommand, PromptCommand
@@ -492,7 +492,7 @@ def _sync_compact_fallback(context: CommandContext) -> LocalCommandResult:
             get_messages_after_boundary,
             is_compact_boundary_message,
         )
-        from ..token_estimation import count_messages_tokens
+        from ..context_system.token_estimation import count_messages_tokens
 
         after_boundary = get_messages_after_boundary(messages)
         if len(after_boundary) < 2:

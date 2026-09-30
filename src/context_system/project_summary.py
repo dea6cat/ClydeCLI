@@ -5,7 +5,7 @@ import re
 import tomllib
 from pathlib import Path
 
-from ..token_estimation import rough_token_count
+from .token_estimation import rough_token_count
 from .models import ProjectSummary
 
 _README_NAMES = ("readme.md", "readme.rst", "readme.txt", "readme")

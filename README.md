@@ -37,9 +37,9 @@ Under the hood it's a Python rebuild of the Claude Code architecture. Rebuilt a 
 
 ```text
 >>> /stream on
->>> Explain tests/test_agent_loop.py
+>>> Explain tests/agent/test_agent_loop.py
 [streaming answer...]
-• Read (tests/test_agent_loop.py) running...
+• Read (tests/agent/test_agent_loop.py) running...
   ↳ lines 1-180
 >>> /render-last
 ```

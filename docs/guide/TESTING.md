@@ -5,20 +5,17 @@ This document describes the testing strategy and how to run tests for ClydeCLI.
 ## Test Structure
 
 ```
-tests/
+tests/                           # mirrors src/
 ├── fakes.py                     # scripted FakeProvider used instead of the network
 ├── fixtures/                    # saved HTML/JSON used by parser tests
-├── test_agent_loop.py           # tool loop, streaming, retries, reasoning replay
-├── test_provider_layer.py       # converter, registry, usage parsing, tool-call repair
-├── test_provider_errors.py      # HTTP error -> readable message
-├── test_model_listing.py        # live model lists, caching, filtering
-├── test_retry.py / test_cancel_streaming.py / test_abort_connections.py
-├── test_reasoning_*.py / test_thinking_*.py   # per-provider reasoning fields
-├── test_anthropic_streaming.py / test_google_streaming.py / test_prompt_cache.py
 ├── test_config.py               # config.json, legacy migration, key store
 ├── test_cli_login.py            # login flow
-├── test_repl.py                 # REPL commands, /model, /think, error handling
-└── ...                          # tools, skills, commands, context, compaction
+├── agent/                       # tool loop, streaming, retries, reasoning replay
+├── providers/                   # converter, registry, errors, model lists, retry/cancel, per-provider reasoning and streaming
+├── tool_system/                 # tools, permissions, Claude Code tool parity
+├── context_system/              # context prompt, analyzer, microcompact, token estimation
+├── compact_service/  command_system/  skills/  output_styles/
+└── repl/                        # REPL commands, /model, /think, error handling
 ```
 
 ## Running Tests
@@ -33,7 +30,7 @@ source .venv/bin/activate
 python -m pytest tests/ -q
 
 # Using unittest
-python -m unittest discover -s tests -v
+python -m unittest discover -s tests -t . -v
 ```
 
 ### Run Specific Test File
@@ -43,13 +40,13 @@ python -m unittest discover -s tests -v
 python -m pytest tests/test_config.py -q
 
 # Test the provider layer
-python -m pytest tests/test_provider_layer.py tests/test_model_listing.py -q
+python -m pytest tests/providers/test_provider_layer.py tests/providers/test_model_listing.py -q
 
 # Test REPL
-python -m pytest tests/test_repl.py -q
+python -m pytest tests/repl/test_repl.py -q
 
 # Test context and agent loop
-python -m pytest tests/test_context_system.py tests/test_agent_loop.py -q
+python -m pytest tests/context_system/test_context_system.py tests/agent/test_agent_loop.py -q
 ```
 
 ### Run Specific Test
