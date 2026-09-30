@@ -55,16 +55,16 @@ def _is_read_only_part(words: list[str]) -> bool:
     return name in _READ_ONLY_COMMANDS
 
 
-def is_read_only_command(command: str) -> bool:
-    """Whether every part of a (possibly compound) shell command only reads."""
+def split_command(command: str) -> list[list[str]] | None:
+    """Words of each part of a compound command; None if it substitutes, redirects to a file or won't parse."""
     if "$(" in command or "`" in command:
-        return False
+        return None
     lexer = shlex.shlex(command.replace("\n", ";"), posix=True, punctuation_chars=True)
     lexer.whitespace_split = True
     try:
         tokens = list(lexer)
     except ValueError:
-        return False
+        return None
     parts: list[list[str]] = [[]]
     i = 0
     while i < len(tokens):
@@ -75,12 +75,18 @@ def is_read_only_command(command: str) -> bool:
         elif any(c in tok for c in "<>()"):
             # Only discarding output (`>/dev/null`) or merging streams (`2>&1`) stays read-only.
             if not ((tok in (">", ">>") and nxt == "/dev/null") or (tok == ">&" and nxt.isdigit())):
-                return False
+                return None
             i += 1
         else:
             parts[-1].append(tok)
         i += 1
-    return all(_is_read_only_part(part) for part in parts)
+    return parts
+
+
+def is_read_only_command(command: str) -> bool:
+    """Whether every part of a (possibly compound) shell command only reads."""
+    parts = split_command(command)
+    return parts is not None and all(_is_read_only_part(part) for part in parts)
 
 
 def _truncate(s: str, limit: int = 20000) -> str:

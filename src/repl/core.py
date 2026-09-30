@@ -84,6 +84,7 @@ from src.providers.base import ProviderError, is_auth_error
 from src.providers.convert import append_response, to_canonical
 from src.tool_system.context import ToolContext
 from src.tool_system.hooks import load_hooks
+from src.tool_system.permission_rules import load_rules, save_allow_rule
 from src.tool_system.tools.code_map import start_background_refresh
 from src.tool_system.mcp_client import McpServerTool, connect_servers, load_servers
 from src.tool_system.defaults import build_default_registry
@@ -155,7 +156,7 @@ class ClydeREPL:
         self.session = Session.create(self.provider_name, self.model)
 
         self.tool_registry = build_default_registry()
-        self.tool_context = ToolContext(workspace_root=Path.cwd(), hooks=load_hooks())
+        self.tool_context = ToolContext(workspace_root=Path.cwd(), hooks=load_hooks(), permission_rules=load_rules())
         self._connect_mcp_servers()
         self.tool_context.ask_user = self._ask_user_questions
         # Session-scoped cron: due jobs are queued here and run only between turns.
@@ -293,7 +294,7 @@ class ClydeREPL:
         Args:
             tool_name: Name of the tool requesting permission.
             message: Message explaining what permission is needed.
-            suggestion: Optional suggestion for enabling the setting.
+            suggestion: Allow rule offered as "don't ask again", or None.
 
         Returns:
             Tuple of (allowed: bool, continue_without_caching: bool).
@@ -322,42 +323,43 @@ class ClydeREPL:
                 can_enable_setting = True
                 setting_to_enable = "allow_docs"
 
-        # Build options
-        options: list[tuple[str, str]] = [
-            ("y", "Yes, allow this action"),
-            ("n", "No, deny this action"),
-        ]
+        # Build options: (key, description, allowed)
+        options: list[tuple[str, str, bool]] = [("y", "Yes, allow this action", True)]
+        if suggestion:
+            options.append(("a", f"Yes, and don't ask again for {suggestion}", True))
+        options.append(("n", "No, deny this action", False))
         if can_enable_setting:
-            options.insert(0, ("e", f"Enable {setting_to_enable} and allow"))
+            options.insert(0, ("e", f"Enable {setting_to_enable} and allow", True))
 
         self.console.print("[bold]Options:[/bold]")
-        for i, (key, desc) in enumerate(options, start=1):
+        for i, (key, desc, _) in enumerate(options, start=1):
             self.console.print(f"  {i}. [{key}] {desc}")
         self.console.print("")
 
         # Get input - use standard input() which works after stopping status
         choice = input("Select option> ").strip().lower()
+        if choice in ("", "yes", "no", "enable"):
+            choice = choice[:1] or "y"
+        key = next((k for i, (k, _, _) in enumerate(options, start=1) if choice in (k, str(i))), None)
+        if key is None:
+            # Default to deny for invalid input
+            self.console.print("[dim]Invalid choice, defaulting to deny.[/dim]")
+            return False, False
+        if key == "e":
+            self._enable_permission_setting(setting_to_enable)
+        elif key == "a" and suggestion:
+            self._save_permission_rule(suggestion)
+        return next(allowed for k, _, allowed in options if k == key), False
 
-        # Parse choice based on the actual displayed options
-        if can_enable_setting:
-            # Menu: 1=Enable, 2=Yes, 3=No
-            if choice in ("1", "e", "enable"):
-                self._enable_permission_setting(setting_to_enable)
-                return True, False
-            elif choice in ("2", "y", "yes", ""):
-                return True, False
-            elif choice in ("3", "n", "no"):
-                return False, False
-        else:
-            # Menu: 1=Yes, 2=No
-            if choice in ("1", "y", "yes", ""):
-                return True, False
-            elif choice in ("2", "n", "no"):
-                return False, False
-
-        # Default to deny for invalid input
-        self.console.print("[dim]Invalid choice, defaulting to deny.[/dim]")
-        return False, False
+    def _save_permission_rule(self, rule: str) -> None:
+        """Apply an allow rule now and save it to the user settings for later sessions."""
+        self.tool_context.permission_rules["allow"].append(rule)
+        try:
+            save_allow_rule(rule)
+        except (OSError, ValueError) as e:
+            self.console.print(f"[yellow]Allowed {rule} for this session only; could not save it: {e}[/yellow]")
+            return
+        self.console.print(f"[green]✓ Saved allow rule {rule} to ~/.clyde/settings.json[/green]")
 
     def _enable_permission_setting(self, setting_name: str | None) -> None:
         """Enable a permission setting in the tool context."""

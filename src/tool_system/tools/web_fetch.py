@@ -10,6 +10,7 @@ from typing import Any
 
 from ..context import ToolContext
 from ..errors import ToolInputError, ToolPermissionError
+from ..permission_handler import PermissionResult
 from ..protocol import ToolResult
 from ..registry import ToolSpec
 
@@ -53,6 +54,14 @@ class WebFetchTool:
             is_read_only=True,
             max_result_size_chars=50_000,
         )
+
+    def check_permissions(self, tool_input: dict[str, Any], context: ToolContext) -> PermissionResult:
+        """Ask once per call for the URL's domain; a `WebFetch(domain:...)` rule skips the prompt."""
+        url = tool_input.get("url")
+        host = urllib.parse.urlparse(url).hostname if isinstance(url, str) else None
+        if not host:
+            return PermissionResult.allow()  # Input validation happens in run()
+        return PermissionResult.ask(message=f"Fetch content from {host}")
 
     def run(self, tool_input: dict[str, Any], context: ToolContext) -> ToolResult:
         url = tool_input["url"]
