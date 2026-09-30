@@ -40,6 +40,7 @@ Examples:
   clyde hooks import                  Bring over hooks set up for Claude Code, Gemini CLI, Cursor or Copilot CLI
   clyde mcp import                    Bring over MCP servers set up for Claude Code, Cursor, Gemini CLI, Codex or Copilot CLI
   clyde plugin install <path|git-url> Install a plugin (skills, hooks, MCP servers, tools); asks before enabling it
+  clyde plugin import                 Bring over plugins installed for Claude Code, Codex or Cursor
   clyde plugin list                   List installed plugins; also: plugin remove|enable|disable <name>
 """
     )
@@ -67,7 +68,7 @@ Examples:
     mcp_parser = subparsers.add_parser('mcp', help='Manage MCP servers')
     mcp_parser.add_argument('action', choices=['import'], help="'import': copy other agents' MCP servers into ~/.clyde/settings.json")
     plugin_parser = subparsers.add_parser('plugin', help='Manage plugins in ~/.clyde/plugins')
-    plugin_parser.add_argument('action', choices=['install', 'list', 'remove', 'enable', 'disable'])
+    plugin_parser.add_argument('action', choices=['install', 'import', 'list', 'remove', 'enable', 'disable'])
     plugin_parser.add_argument('target', nargs='?', help='install: a folder or git URL; remove/enable/disable: a plugin name')
     plugin_parser.add_argument('-y', '--yes', action='store_true', help='install without prompting; the plugin stays disabled')
 
@@ -259,12 +260,15 @@ def handle_setup(console: Console, assume_yes: bool = False) -> int:
     else:
         handle_mcp_import(console, quiet=True)
 
-    # 4) other agents' skills are read in place
+    # 4) other agents' plugins: they run code, so each one needs its own yes (never with --yes)
+    handle_plugin_import(console, assume_yes=assume_yes, quiet=True)
+
+    # 5) other agents' skills are read in place
     user_skills = [s for s in get_all_skills() if s.loaded_from == "user"]
     console.print(f"✓ {len(user_skills)} user skill(s) available, including ~/.claude, ~/.agents, ~/.codex, "
                   "~/.copilot and ~/.gemini skill folders.")
 
-    # 5) the code map (built by graphify), which every model queries through the Map tool
+    # 6) the code map (built by graphify), which every model queries through the Map tool
     if shutil.which("graphify"):
         console.print("✓ Code map ready: the Map tool maps each repo when ClydeCLI starts in it.")
     elif shutil.which("uv") and (assume_yes or Confirm.ask(
@@ -274,7 +278,7 @@ def handle_setup(console: Console, assume_yes: bool = False) -> int:
     else:
         console.print("• Install the code map builder later for the Map tool: [bold]uv tool install graphifyy[/bold].")
 
-    # 6) PATH
+    # 7) PATH
     if not _clyde_bin_on_path() and shutil.which("uv"):
         if not assume_yes and Confirm.ask("clyde isn't on your PATH yet. Add uv's tool folder to it (uv tool update-shell)?", default=True):
             subprocess.run(["uv", "tool", "update-shell"], check=False)
@@ -344,6 +348,8 @@ def handle_plugin(console: Console, action: str, target: str | None, assume_yes:
     from src import plugins
 
     try:
+        if action == 'import':
+            return handle_plugin_import(console, assume_yes=assume_yes)
         if action == 'list':
             found, errors = plugins.installed()
             if not found and not errors:
@@ -380,6 +386,43 @@ def handle_plugin(console: Console, action: str, target: str | None, assume_yes:
     except (OSError, ValueError) as e:
         console.print(str(e), style="red", markup=False)
         return 1
+
+
+def handle_plugin_import(console: Console, assume_yes: bool = False, quiet: bool = False) -> int:
+    """Offer every plugin other agents have installed; each is copied and enabled only after its own yes."""
+    from rich.prompt import Confirm
+    from src import plugins
+
+    found = plugins.find_foreign()
+    if not found:
+        if not quiet:
+            console.print("No plugins found for Claude Code, Codex or Cursor that ClydeCLI doesn't already have.")
+        return 0
+    importable = [f for f in found if not f.reason]
+    for f in found:
+        if f.reason:
+            console.print(f"[dim]• {f.agent}: {f.plugin.name if f.plugin else f.source.name} skipped: {f.reason}[/dim]")
+    if assume_yes:
+        if importable:
+            console.print(f"• {len(importable)} plugin(s) from other agents can be imported: run [bold]clyde plugin import[/bold].")
+        return 0
+    imported = []
+    for f in importable:
+        state = "" if f.enabled_there else f"  [dim](disabled in {f.agent})[/dim]"
+        console.print(f"\n[bold]{f.plugin.name}[/bold] {f.plugin.version} from {f.agent}{state}")
+        if f.plugin.description:
+            console.print(f"  {f.plugin.description}", markup=False)
+        for line in plugins.describe(f.plugin):
+            console.print(f"  {line}", markup=False)
+        if Confirm.ask("It will run on this machine (tools, hooks, MCP servers). Import and enable it?", default=f.enabled_there):
+            try:
+                plugins.set_enabled(plugins.install(str(f.source)).name, True)
+            except (OSError, ValueError) as e:
+                console.print(f"  [red]{e}[/red]")
+                continue
+            imported.append(f.plugin.name)
+    console.print(f"Imported plugin(s): {', '.join(imported)}; they load the next time ClydeCLI starts." if imported else "No plugins imported.")
+    return 0
 
 
 def handle_logout(provider: str) -> int:
