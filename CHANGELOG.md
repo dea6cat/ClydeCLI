@@ -55,6 +55,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tree with no LLM, via graphify) that any model can query for related symbols, paths between
   symbols, explanations and change impact. The map refreshes in the background into
   `.clyde/code-map/map.json` when `clyde` starts in a git repo, the context prompt points the model at it, and `clyde setup` offers to install the builder
+- Saved permission rules: `permissions.allow` / `deny` in `~/.clyde/settings.json` with Claude Code's
+  syntax (`Bash(git commit:*)`, `Edit(docs/**)`, `WebFetch(domain:…)`), and a "don't ask again" answer
+  at the prompt that saves one. WebFetch now asks per domain
+- Plugins: `clyde plugin install <dir|git-url>` (plus list / enable / disable / remove) for bundles of
+  tools, skills, hooks and MCP servers in Claude Code's layout, enabled only after a yes; `/plugins`
+- Self-checks: after a Python edit, ruff (and mypy when configured) run on the file and only new
+  problems go back to the model; `/check` runs ruff, mypy and pytest, via `uv run` when there is a
+  `uv.lock`
+- Tracing: per-session JSONL traces in `~/.clyde/traces/` with secrets redacted, `/debug` for the
+  last turn and `clyde --debug` for live output
 - `clyde mcp import` (and `clyde setup`) brings over stdio MCP servers from Claude Code, Cursor,
   Gemini CLI, Codex and Copilot CLI after a yes
 
