@@ -105,3 +105,12 @@ class TestUserSkillPriority(unittest.TestCase):
                 skills = {s.name: s for s in get_all_skills()}
         self.assertIn("from clyde", skills["shared"].description)
         self.assertIn("codex-only", skills)
+
+
+class TestFrontmatterCommas(unittest.TestCase):
+    def test_descriptions_keep_their_commas(self):
+        fm = parse_frontmatter('---\ndescription: "Use for code, docs, and papers."\nwhen_to_use: plain, prose, here\n'
+                               'allowed-tools: Read, Grep\n---\nbody').frontmatter
+        self.assertEqual(fm["description"], "Use for code, docs, and papers.")
+        self.assertEqual(fm["when_to_use"], "plain, prose, here")
+        self.assertEqual(fm["allowed-tools"], ["Read", "Grep"])

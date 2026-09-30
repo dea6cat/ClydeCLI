@@ -3,6 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, List, Tuple
 
+# Keys whose `a, b, c` shorthand means a list; everywhere else a comma is just text.
+LIST_KEYS = {"allowed-tools", "allowed_tools", "disallowed-tools", "tools", "arguments", "paths"}
+
 
 @dataclass(frozen=True)
 class FrontmatterParseResult:
@@ -22,8 +25,9 @@ def parse_frontmatter(markdown: str) -> FrontmatterParseResult:
         key:
           - item1
           - item2
-    - Lists via comma-separated shorthand:
-        key: a, b, c
+    - Lists via comma-separated shorthand, only for list keys such as allowed-tools:
+        allowed-tools: Read, Grep
+    Quoted values are plain strings; prose such as a description keeps its commas.
     Any unsupported structure falls back to a string.
     """
     lines = markdown.splitlines()
@@ -64,13 +68,17 @@ def parse_frontmatter(markdown: str) -> FrontmatterParseResult:
                     break
             fm[key] = [_coerce_scalar(x) for x in items]
             continue
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            fm[key] = value[1:-1]
+            i += 1
+            continue
         inline_list = _parse_inline_list(value)
         if inline_list is not None:
             fm[key] = inline_list
             i += 1
             continue
         # Comma-separated list
-        if "," in value:
+        if "," in value and key in LIST_KEYS:
             fm[key] = [_coerce_scalar(v.strip()) for v in value.split(",") if v.strip()]
         else:
             fm[key] = _coerce_scalar(value.strip())
