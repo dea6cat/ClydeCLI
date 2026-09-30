@@ -62,3 +62,12 @@ class TestLMStudio(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestLMStudioContext(unittest.TestCase):
+    def test_context_comes_from_lms_ps_or_a_safe_default(self):
+        provider = lmstudio.LMStudioProvider()
+        ps = json.dumps([{"modelKey": "qwen/qwen3.5-9b", "contextLength": 47872}])
+        with patch.object(lmstudio, "_lms", return_value="/bin/lms"), patch("subprocess.run", return_value=_done(ps)):
+            self.assertEqual(provider.context_window("qwen/qwen3.5-9b"), 47872)
+            self.assertEqual(provider.context_window("not-loaded"), lmstudio.UNLOADED_CONTEXT)

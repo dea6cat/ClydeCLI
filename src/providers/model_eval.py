@@ -6,9 +6,13 @@ expectation that the reply says 42. Results carry latency and output speed when 
 
 from __future__ import annotations
 
+import json
+import re
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Callable
 
 from .base import ProviderError, stream_with_retry
@@ -38,6 +42,26 @@ class ModelScore:
     @property
     def passed(self) -> bool:
         return self.tool_call and self.round_trip
+
+    @property
+    def kind(self) -> str:
+        """Why it failed: "tools" and "unavailable" say the model won't work for ClydeCLI;
+        "transient" (credits, rate limits, server errors) says nothing about the model itself."""
+        if self.passed:
+            return "ok"
+        e = self.error.lower()
+        if re.search(r"http (402|429|5\d\d)|rate.?limit|credits|timed? ?out|overloaded", e):
+            return "transient"
+        if "tool" in e and ("support" in e or "endpoint" in e) or not self.tool_call and "without calling" in e:
+            return "tools"
+        if re.search(r"http 40[0134]|not found|not available|no longer available|no endpoints", e):
+            return "unavailable"
+        return "answer"
+
+    @property
+    def short_note(self) -> str:
+        return {"ok": "", "transient": "credits or rate limit", "tools": "no tool calling",
+                "unavailable": "not available", "answer": self.error[:40]}[self.kind]
 
 
 def _as_int(value: Any) -> int | None:
@@ -98,3 +122,32 @@ def evaluate_all(targets: list[tuple[Any, str, str]], on_done: Callable[[ModelSc
         remote_scores = list(pool.map(run, remote))
     scores = [run(t) for t in local] + remote_scores
     return sorted(scores, key=lambda s: (not s.passed, not s.tool_call, s.latency_s or 1e9))
+
+
+def results_path() -> Path:
+    return Path.home() / ".clyde" / "model_evals.json"
+
+
+def load_results() -> dict[str, dict[str, Any]]:
+    try:
+        data = json.loads(results_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def save_results(scores: list[ModelScore]) -> None:
+    """Merge these results into ~/.clyde/model_evals.json (newest result per model wins)."""
+    data = load_results()
+    stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    for sc in scores:
+        data[sc.ref] = {"passed": sc.passed, "kind": sc.kind, "note": sc.error[:200], "at": stamp}
+    path = results_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def hidden_refs(results: dict[str, dict[str, Any]] | None = None) -> set[str]:
+    """Models whose last evaluation showed they don't work (no tools, or not available)."""
+    results = load_results() if results is None else results
+    return {ref for ref, r in results.items() if not r.get("passed") and r.get("kind") in ("tools", "unavailable", "answer")}

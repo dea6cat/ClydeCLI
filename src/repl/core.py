@@ -82,6 +82,7 @@ from src.config import get_default_model, load_config, set_default_model
 from src.output_styles import resolve_output_style
 from src.providers import build_registry, keys, model_ref, pick_default_model, resolve, usable
 from src.providers import catalog
+from src.providers.model_eval import hidden_refs
 from src.providers.base import ProviderError, is_auth_error
 from src.providers.convert import append_response, to_canonical
 from src.tool_system.context import ToolContext
@@ -178,7 +179,7 @@ _HELP_TEXT = """
 - `/stream [on|off|toggle]` - Toggle live response rendering
 - `/render-last` - Re-render the last assistant reply as Markdown
 - `/model [provider:model]` - Show or switch the model (saved as default)
-- `/models` - List models from every connected provider
+- `/models [all|refresh]` - List models from every connected provider (hides ones /eval showed don't work; refresh re-fetches)
 - `/eval [filter]` - Test the listed models (or those matching filter) on a tool call and a round trip
 - `/think [off|low|medium|high|on|default]` - Set the reasoning level
 - `/tools` - List available built-in tools
@@ -761,7 +762,7 @@ class ClydeREPL:
         all_commands.sort(key=lambda x: x[0].lower())
         for name, desc, cmd_type in all_commands:
             if cmd_type == "skill":
-                self.console.print(f"  [magenta]{name}[/magenta]")
+                self.console.print(Text(f"  {name}", style=_CARD_ACCENT))
                 if desc:
                     self.console.print(f"    [dim]{desc}[/dim]")
             else:
@@ -896,7 +897,7 @@ class ClydeREPL:
 
     def _run_cron_job(self, job: dict[str, Any]) -> None:
         kind = "recurring" if job.get("recurring", True) else "one-shot"
-        self.console.print(f"\n⏰ Scheduled run {job['id']} ({job['cron']}, {kind}): {job['prompt']}", style="bold magenta", markup=False)
+        self.console.print(f"\n⏰ Scheduled run {job['id']} ({job['cron']}, {kind}): {job['prompt']}", style=f"bold {_CARD_ACCENT}", markup=False)
         self.chat(job["prompt"])
 
     def handle_command(self, command: str):
@@ -1079,8 +1080,8 @@ class ClydeREPL:
             else:
                 self._switch_model(parts[1].strip())
 
-        elif cmd == '/models':
-            self._show_models()
+        elif cmd == '/models' or cmd.startswith('/models '):
+            self._show_models(raw.split(maxsplit=1)[1].strip().lower() if " " in raw.strip() else "")
 
         elif cmd == '/eval' or cmd.startswith('/eval '):
             self._eval_models(raw.split(maxsplit=1)[1].strip() if " " in raw.strip() else "")
@@ -1249,7 +1250,7 @@ class ClydeREPL:
             self.console.print(f"\n[bold]Available Skills ({len(skills)}):[/bold]")
             for source in sorted(by_source.keys()):
                 source_skills = by_source[source]
-                self.console.print(f"\n[cyan]{source.title()} Skills:[/cyan]")
+                self.console.print(Text(f"\n{source.title()} Skills:", style=_CARD_ACCENT))
                 for s in source_skills:
                     desc = (getattr(s, "description", None) or "").strip()
                     user_invocable = getattr(s, "user_invocable", True)
@@ -1472,7 +1473,7 @@ class ClydeREPL:
                     if isinstance(summary, str) and summary:
                         summary = self._shorten_path_text(summary)
                     suffix = f" [dim]({summary})[/dim]" if summary else ""
-                    self.console.print(f"[dim]•[/dim] [cyan]{ev.tool_name}[/cyan]{suffix} [dim]running...[/dim]")
+                    self.console.print(f"[dim]•[/dim] [{_CARD_ACCENT}]{ev.tool_name}[/{_CARD_ACCENT}]{suffix} [dim]running...[/dim]")
                     return
                 if ev.kind == "tool_result":
                     if ev.is_error:
@@ -1657,7 +1658,7 @@ class ClydeREPL:
     def _eval_models(self, query: str = "") -> None:
         """Grade every listed model (or those matching `query`) on a tool call and a round trip."""
         from rich.prompt import Confirm
-        from src.providers.model_eval import evaluate_all
+        from src.providers.model_eval import evaluate_all, save_results
 
         live = usable(self.registry)
         if not live:
@@ -1681,9 +1682,14 @@ class ClydeREPL:
                 done[0] += 1
                 status.update(f"[{_CARD_DIM}]Tested {done[0]}/{len(targets)} · {score.ref}[/{_CARD_DIM}]")
             scores = evaluate_all(targets, on_done=progress)
-        table = Table(box=None, pad_edge=False, header_style=_CARD_DIM)
-        for col in ("", "model", "tool call", "round trip", "latency", "tok/s", "note"):
-            table.add_column(col, no_wrap=col == "model")
+        save_results(scores)
+        width = getattr(self.console, "width", 100)
+        table = Table(box=None, pad_edge=False, header_style=_CARD_DIM, show_edge=False)
+        table.add_column("", no_wrap=True, width=1)
+        table.add_column("model", no_wrap=True, overflow="ellipsis", max_width=max(20, width - 58))
+        for col in ("tool", "trip", "secs", "tok/s"):
+            table.add_column(col, no_wrap=True, justify="right", min_width=len(col))
+        table.add_column("note", no_wrap=True, overflow="ellipsis", min_width=12, max_width=30)
         current = model_ref(self.provider, self.model)
         mark = lambda ok: Text("✓", style=_CARD_ACCENT) if ok else Text("✗", style="#d0202f")  # noqa: E731
         for sc in scores:
@@ -1691,33 +1697,53 @@ class ClydeREPL:
                 Text("●", style=_CARD_ACCENT) if sc.ref == current else "",
                 Text(sc.ref, style=f"bold {_CARD_TEXT}" if sc.passed else _CARD_DIM),
                 mark(sc.tool_call), mark(sc.round_trip),
-                f"{sc.latency_s:.1f}s" if sc.latency_s is not None else "-",
+                f"{sc.latency_s:.1f}" if sc.latency_s is not None else "-",
                 f"{sc.tokens_per_s:.0f}" if sc.tokens_per_s else "-",
-                Text(sc.error, style=_CARD_DIM),
+                Text(sc.short_note, style=_CARD_DIM),
             )
         self.console.print(table)
-        passed = sum(sc.passed for sc in scores)
-        self.console.print(Text.assemble((f"{passed}/{len(scores)} passed", f"bold {_CARD_ACCENT}"),
-                                         ("  ·  switch with /model provider:model", _CARD_DIM)))
+        kinds = {k: sum(sc.kind == k for sc in scores) for k in ("ok", "tools", "unavailable", "answer", "transient")}
+        parts = [(f"{kinds['ok']}/{len(scores)} passed", f"bold {_CARD_ACCENT}")]
+        for key, label in (("tools", "no tool calling"), ("unavailable", "not available"), ("answer", "wrong answer"),
+                           ("transient", "credits or rate limits (kept, retry later)")):
+            if kinds[key]:
+                parts += [("  ·  ", _CARD_DIM), (f"{kinds[key]} {label}", _CARD_DIM)]
+        self.console.print(Text.assemble(*parts))
+        hidden = kinds["tools"] + kinds["unavailable"] + kinds["answer"]
+        if hidden:
+            self.console.print(Text(f"/models now hides the {hidden} that don't work · /models all shows them", style=_CARD_DIM))
 
-    def _show_models(self) -> None:
+    def _show_models(self, arg: str = "") -> None:
+        """List models from every connected provider, minus those /eval showed don't work.
+        `/models all` includes them; `/models refresh` fetches fresh lists first."""
         live = usable(self.registry)
         if not live:
             self.console.print("[yellow]No providers connected.[/yellow] Run [bold]clyde login[/bold], "
-                               "or start Ollama for local models.")
+                               "or start Ollama or LM Studio for local models.")
             return
+        if arg == "refresh":
+            for p in live.values():
+                p.__dict__.pop("_models_cache", None)
+        hide = set() if arg == "all" else hidden_refs()
         current = model_ref(self.provider, self.model)
-        with self.console.status("[dim]Fetching model lists...[/dim]", spinner="dots"):
+        with self.console.status(f"[{_CARD_DIM}]Fetching model lists…[/{_CARD_DIM}]", spinner="dots", spinner_style=_CARD_ACCENT):
             listings = {name: p.list_models() for name, p in live.items()}
+        skipped = 0
         for name, models in listings.items():
-            self.console.print(f"\n[bold cyan]{name}[/bold cyan]")
+            self.console.print(Text(f"\n{name}", style=f"bold {_CARD_TEXT}"))
             if not models:
-                self.console.print("  [dim](couldn't list models; check the key or connection)[/dim]")
+                self.console.print(Text("  (couldn't list models; check the key or connection)", style=_CARD_DIM))
                 continue
             for m in models:
                 ref = f"{name}:{m}"
-                marker = "[green]●[/green]" if ref == current else " "
-                self.console.print(f"  {marker} {ref}")
+                if ref in hide and ref != current:
+                    skipped += 1
+                    continue
+                marker = Text("● ", style=_CARD_ACCENT) if ref == current else Text("  ")
+                self.console.print(Text.assemble("  ", marker, (ref, _CARD_TEXT)))
+        if skipped:
+            self.console.print(Text(f"\n{skipped} model(s) hidden because /eval showed they don't work · /models all shows them",
+                                    style=_CARD_DIM))
         self.console.print()
 
     _THINK_LEVELS = ("off", "low", "medium", "high", "on")
@@ -1744,7 +1770,7 @@ class ClydeREPL:
         """Handle re-authentication when an API key fails."""
         from src.cli import run_login_flow
 
-        self.console.print("\n[bold blue]🔑 Reconfigure API Key[/bold blue]\n")
+        self.console.print(Text.assemble(("\n♠ ", _CARD_ACCENT), ("Reconfigure API key", f"bold {_CARD_TEXT}"), "\n"))
         ref = run_login_flow(self.console, self.registry, default_provider=self.provider_name)
         if ref is None:
             return
