@@ -17,7 +17,8 @@ from typing import Any, Optional
 
 from ..agent.conversation import Conversation, Message
 from ..context_system.microcompact import microcompact_messages, strip_images_from_messages
-from ..providers.base import BaseProvider
+from ..providers.base import Provider, stream_with_retry
+from ..providers.convert import to_canonical
 from .messages import (
     create_compact_boundary_message,
     create_compact_summary_message,
@@ -26,6 +27,16 @@ from .messages import (
 )
 
 logger = logging.getLogger(__name__)
+
+SUMMARY_SYSTEM_PROMPT = "You summarize coding conversations accurately and concisely."
+
+
+def _has_tool_result(api_message: dict[str, Any]) -> bool:
+    content = api_message.get("content")
+    return isinstance(content, list) and any(
+        isinstance(b, dict) and b.get("type") == "tool_result" for b in content
+    )
+
 
 # Maximum output tokens for the summary model
 COMPACT_MAX_OUTPUT_TOKENS = 4096
@@ -68,7 +79,7 @@ class CompactResult:
 
 async def compact_conversation(
     conversation: Conversation,
-    provider: BaseProvider,
+    provider: Provider,
     model: str,
     custom_instructions: Optional[str] = None,
     trigger: str = "manual",
@@ -114,45 +125,35 @@ async def compact_conversation(
     if custom_instructions:
         prompt += f"\n\nAdditional instructions: {custom_instructions}"
 
-    # Build messages for the summary API call
-    # System prompt + recent messages + summary request
-    summary_request_messages: list[dict[str, Any]] = []
+    # Recent messages as context (after microcompact), bounded to stay within context
+    # limits. Start at a plain user turn so the slice never opens on a tool result whose
+    # tool call was cut off (providers reject that pairing).
+    context_messages = list(compacted_api[-20:])
+    while context_messages and (
+        context_messages[0].get("role") != "user" or _has_tool_result(context_messages[0])
+    ):
+        context_messages.pop(0)
+    summary_history = Conversation.from_dict(
+        {"messages": [*context_messages, {"role": "user", "content": prompt}]}
+    )
 
-    # Add the last N messages as context (after microcompact)
-    # Avoid sending too many old messages to stay within context limits
-    context_messages = compacted_api[-20:] if len(compacted_api) > 20 else compacted_api
-    for msg in context_messages:
-        summary_request_messages.append(msg)
-
-    # Add the summary request as the last user message
-    summary_request_messages.append({
-        "role": "user",
-        "content": prompt,
-    })
-
-    # Step 5: Call the LLM to generate summary
+    # Step 5: Call the LLM to generate summary (no tools, reasoning off)
     summary_text = ""
     try:
-        response = await provider.chat_async(
-            messages=summary_request_messages,
-            tools=None,  # No tools during compaction
-            model=model,
-            max_tokens=COMPACT_MAX_OUTPUT_TOKENS,
+        # Tool blocks are flattened to text: providers reject tool_use/tool_result blocks in a
+        # request that defines no tools.
+        response = stream_with_retry(
+            provider,
+            to_canonical(summary_history, SUMMARY_SYSTEM_PROMPT, flatten_tools=True),
+            model,
+            (),
+            lambda _chunk: None,
+            reasoning="off",
         )
-        summary_text = response.content.strip()
+        summary_text = (response.message.text or "").strip()
     except Exception as e:
-        # Try sync fallback
-        try:
-            response = provider.chat(
-                messages=summary_request_messages,
-                tools=None,
-                model=model,
-                max_tokens=COMPACT_MAX_OUTPUT_TOKENS,
-            )
-            summary_text = response.content.strip()
-        except Exception as e2:
-            logger.warning(f"Compact LLM call failed: {e}, sync fallback: {e2}, using text extraction")
-            summary_text = _fallback_summary(messages)
+        logger.warning(f"Compact LLM call failed: {e}, using text extraction")
+        summary_text = _fallback_summary(messages)
 
     if not summary_text:
         summary_text = _fallback_summary(messages)

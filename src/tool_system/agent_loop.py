@@ -3,28 +3,20 @@
 from __future__ import annotations
 
 import json
+import threading
 from dataclasses import dataclass
 from typing import Any, Callable
 
 from .registry import ToolRegistry
 from .context import ToolContext
-from ..agent.conversation import Conversation, TextContentBlock, ToolUseContentBlock
+from ..agent.conversation import Conversation
 from ..context_system import build_context_prompt
 from ..outputStyles import resolve_output_style
-from ..providers.base import BaseProvider, ChatResponse
-from ..providers.anthropic_provider import AnthropicProvider
-from ..providers.minimax_provider import MinimaxProvider
+from ..providers.base import Provider, stream_with_retry
+from ..providers.convert import append_response, to_canonical
+from ..providers.toolcall_repair import coerce_tool_args
+from ..providers.toolspec import from_specs
 
-
-def _is_anthropic_provider(provider: BaseProvider) -> bool:
-    return isinstance(provider, (AnthropicProvider, MinimaxProvider))
-
-
-def _build_openai_tool_result_content(result_output: Any) -> str:
-    """Format tool result as string for OpenAI/GLM."""
-    if isinstance(result_output, str):
-        return result_output
-    return json.dumps(result_output, ensure_ascii=False)
 
 def summarize_tool_result(name: str, output: Any) -> str:
     """Create a concise, single-line summary for tool result output."""
@@ -121,51 +113,6 @@ def _safe_call_handler(handler: ToolEventHandler | None, event: ToolEvent) -> No
         return
 
 
-def _emit_text_chunks(handler: TextChunkHandler | None, text: str, *, chunk_size: int = 12) -> None:
-    """Emit text in small chunks for user-visible streaming without changing loop semantics."""
-    if handler is None or not text:
-        return
-    if chunk_size <= 0:
-        chunk_size = len(text)
-    for idx in range(0, len(text), chunk_size):
-        try:
-            handler(text[idx: idx + chunk_size])
-        except Exception:
-            return
-
-
-def _call_provider_for_turn(
-    *,
-    provider: BaseProvider,
-    api_messages: list[dict[str, Any]],
-    call_kwargs: dict[str, Any],
-    stream: bool,
-    on_text_chunk: TextChunkHandler | None,
-) -> tuple[Any, bool]:
-    """Call the provider, preferring structured streaming when available.
-
-    Returns (response, streamed_live_text).
-    """
-    if stream:
-        try:
-            response = provider.chat_stream_response(
-                api_messages,
-                on_text_chunk=on_text_chunk,
-                **call_kwargs,
-            )
-            if not isinstance(response, ChatResponse):
-                raise TypeError("Structured streaming must return ChatResponse")
-            return response, True
-        except NotImplementedError:
-            pass
-        except Exception:
-            # Preserve existing stable behavior if streaming is unsupported or fails.
-            pass
-
-    response = provider.chat(api_messages, **call_kwargs)
-    return response, False
-
-
 def _build_effective_system_prompt(style_prompt: str, tool_context: ToolContext) -> str:
     try:
         context_prompt = build_context_prompt(
@@ -237,9 +184,20 @@ def summarize_tool_use(name: str, tool_input: dict[str, Any]) -> str:
 
 
 
+def _discard(_chunk: str) -> None:
+    return None
+
+
+def _add_usage(total: dict[str, int], usage: dict | None) -> None:
+    for key, value in (usage or {}).items():
+        if isinstance(value, int):
+            total[key] = total.get(key, 0) + value
+
+
 def run_agent_loop(
     conversation: Conversation,
-    provider: BaseProvider,
+    provider: Provider,
+    model: str,
     tool_registry: ToolRegistry,
     tool_context: ToolContext,
     max_turns: int = 20,
@@ -247,157 +205,90 @@ def run_agent_loop(
     verbose: bool = False,
     on_event: ToolEventHandler | None = None,
     on_text_chunk: TextChunkHandler | None = None,
+    *,
+    reasoning: str | None = None,
+    on_thinking: TextChunkHandler | None = None,
+    cancel: threading.Event | None = None,
 ) -> AgentLoopResult:
     """Run agent loop: LLM -> tools -> LLM until no more tools or max turns.
 
+    Every turn re-expresses the stored conversation in the provider's own wire format, so the
+    same history works with any provider. Retryable provider errors (429/5xx/connection) are
+    retried with backoff; anything else propagates as a ProviderError.
+
     Args:
-        conversation: Conversation with initial user message
-        provider: LLM provider
-        tool_registry: Tool registry to use
-        tool_context: Tool context
-        max_turns: Maximum tool turns before stopping
-        stream: Whether to stream responses
-        verbose: Whether to print tool calls/results
-        on_event: Optional callback for tool events
-        on_text_chunk: Optional callback for incremental user-visible text chunks
+        conversation: Conversation with the initial user message; replies and tool results are
+            appended to it.
+        provider: A provider from src.providers.registry.
+        model: Model id for that provider.
+        tool_registry: Tool registry to use.
+        tool_context: Tool context.
+        max_turns: Maximum model turns before stopping.
+        stream: Whether to forward text (and reasoning) chunks as they arrive.
+        verbose: Whether to print tool calls/results.
+        on_event: Optional callback for tool events.
+        on_text_chunk: Optional callback for incremental user-visible text chunks.
+        reasoning: Optional reasoning level (off | low | medium | high | on).
+        on_thinking: Optional callback for streamed reasoning chunks.
+        cancel: Optional event; setting it aborts the in-flight request.
 
     Returns:
         AgentLoopResult with final text response, usage info, and turn count
     """
-    # Convert tools to schemas (Anthropic format)
-    tool_schemas = []
-    for spec in tool_registry.list_specs():
-        tool_schemas.append({
-            "name": spec.name,
-            "description": spec.description,
-            "input_schema": spec.input_schema,
-        })
-
-    # For OpenAI/GLM, keep separate message list in OpenAI format
-    openai_messages: list[dict[str, Any]] = []
-    last_user_visible_message: str | None = None
+    specs = from_specs(tool_registry.list_specs())
+    known_tools = tuple(s.name for s in specs)
     style_name = getattr(tool_context, "output_style_name", None)
     style_dir = getattr(tool_context, "output_style_dir", None)
     style_prompt = resolve_output_style(style_name, style_dir).prompt
-    effective_system_prompt = _build_effective_system_prompt(style_prompt, tool_context)
+    system_prompt = _build_effective_system_prompt(style_prompt, tool_context)
+    text_handler = on_text_chunk if (stream and on_text_chunk is not None) else _discard
 
-    # Seed OpenAI messages from initial conversation messages
-    for msg in conversation.messages:
-        if isinstance(msg.content, str):
-            openai_messages.append({"role": msg.role, "content": msg.content})
-        else:
-            # If there are already block messages, we are probably Anthropic; leave as is
-            pass
-
-    # Track usage across all turns
+    last_user_visible_message: str | None = None
     total_usage: dict[str, int] = {"input_tokens": 0, "output_tokens": 0}
     turn_count = 0
 
-    for turn in range(max_turns):
-        if _is_anthropic_provider(provider):
-            api_messages = conversation.get_messages()
-        else:
-            # Use OpenAI formatted messages for non-Anthropic
-            api_messages = openai_messages
+    def _usage_or_none() -> dict[str, int] | None:
+        return total_usage if total_usage["input_tokens"] > 0 or total_usage["output_tokens"] > 0 else None
 
-        call_kwargs: dict[str, Any] = {"tools": tool_schemas}
-        if _is_anthropic_provider(provider):
-            call_kwargs["system"] = effective_system_prompt
-        else:
-            if turn == 0:
-                api_messages = [{"role": "system", "content": effective_system_prompt}, *api_messages]
-        response, streamed_live_text = _call_provider_for_turn(
-            provider=provider,
-            api_messages=api_messages,
-            call_kwargs=call_kwargs,
-            stream=stream,
-            on_text_chunk=on_text_chunk,
+    for _turn in range(max_turns):
+        response = stream_with_retry(
+            provider,
+            to_canonical(conversation, system_prompt),
+            model,
+            specs,
+            text_handler,
+            cancel=cancel,
+            reasoning=reasoning,
+            on_thinking=on_thinking if stream else None,
         )
         turn_count += 1
+        _add_usage(total_usage, response.usage)
+        append_response(conversation, response.message)
 
-        # Collect usage info
-        if response.usage:
-            total_usage["input_tokens"] += response.usage.get("input_tokens", 0)
-            total_usage["output_tokens"] += response.usage.get("output_tokens", 0)
+        final_assistant_content = response.message.text or ""
+        tool_calls = response.message.tool_calls
 
-        # Build assistant content for Anthropic or just text for OpenAI
-        final_assistant_content = response.content or ""
-
-        if _is_anthropic_provider(provider):
-            assistant_blocks: list = []
-            if response.content:
-                assistant_blocks.append(TextContentBlock(type="text", text=response.content))
-
-            tool_uses = response.tool_uses or []
-            for tool_use in tool_uses:
-                assistant_blocks.append(ToolUseContentBlock(
-                    type="tool_use",
-                    id=tool_use["id"],
-                    name=tool_use["name"],
-                    input=tool_use["input"],
-                ))
-
-            conversation.add_assistant_message(assistant_blocks if assistant_blocks else "")
-        else:
-            # Persist assistant text for session history features like /render-last
-            # and for subsequent non-Anthropic turns seeded from conversation.
-            conversation.add_assistant_message(final_assistant_content)
-            # Add assistant message to OpenAI messages (text only)
-            openai_assistant_msg: dict[str, Any] = {"role": "assistant", "content": final_assistant_content}
-            # If there are tool_uses, add them in OpenAI format
-            if response.tool_uses:
-                # Build OpenAI tool_calls
-                tool_calls = []
-                for tu in response.tool_uses:
-                    tool_calls.append({
-                        "id": tu["id"],
-                        "type": "function",
-                        "function": {
-                            "name": tu["name"],
-                            "arguments": json.dumps(tu["input"], ensure_ascii=False)
-                        }
-                    })
-                openai_assistant_msg["tool_calls"] = tool_calls
-            openai_messages.append(openai_assistant_msg)
-
-        tool_uses = response.tool_uses or []
-
-        if not tool_uses:
-            # No more tools, done
-            if stream and final_assistant_content and not streamed_live_text:
-                _emit_text_chunks(on_text_chunk, final_assistant_content)
-            if (final_assistant_content or "").strip() == "" and last_user_visible_message is not None:
-                return AgentLoopResult(
-                    response_text=last_user_visible_message,
-                    usage=total_usage if total_usage["input_tokens"] > 0 or total_usage["output_tokens"] > 0 else None,
-                    num_turns=turn_count,
-                )
+        if not tool_calls:
+            if final_assistant_content.strip() == "" and last_user_visible_message is not None:
+                final_assistant_content = last_user_visible_message
             return AgentLoopResult(
                 response_text=final_assistant_content,
-                usage=total_usage if total_usage["input_tokens"] > 0 or total_usage["output_tokens"] > 0 else None,
+                usage=_usage_or_none(),
                 num_turns=turn_count,
             )
 
-        # Call each tool
-        for tool_use in tool_uses:
-            tool_id = tool_use["id"]
-            tool_name = tool_use["name"]
-            tool_input = tool_use["input"]
+        for tc in tool_calls:
+            tool_id = tc.id
+            tool_name, tool_input = coerce_tool_args(tc.name, tc.arguments, known_tools)
 
             try:
                 _safe_call_handler(
                     on_event,
-                    ToolEvent(
-                        kind="tool_use",
-                        tool_name=tool_name,
-                        tool_input=tool_input,
-                        tool_use_id=tool_id,
-                    ),
+                    ToolEvent(kind="tool_use", tool_name=tool_name, tool_input=tool_input, tool_use_id=tool_id),
                 )
-                # Use dispatch to get proper validation and result wrapping
                 from ..tool_system.protocol import ToolCall
-                call = ToolCall(name=tool_name, input=tool_input, tool_use_id=tool_id)
-                result = tool_registry.dispatch(call, tool_context)
+                result = tool_registry.dispatch(ToolCall(name=tool_name, input=tool_input, tool_use_id=tool_id),
+                                                tool_context)
                 result_output = result.output
                 if tool_name.lower() == "sendusermessage" and isinstance(result_output, dict):
                     msg = result_output.get("message")
@@ -414,55 +305,27 @@ def run_agent_loop(
                     use_summary = summarize_tool_use(tool_name, tool_input)
                     if use_summary:
                         print(f"{tool_name} · {use_summary}")
-                    summary = summarize_tool_result(tool_name, result_output)
-                    print(f"{summary}")
+                    print(summarize_tool_result(tool_name, result_output))
 
                 _safe_call_handler(
                     on_event,
-                    ToolEvent(
-                        kind="tool_result",
-                        tool_name=tool_name,
-                        tool_output=result_output,
-                        tool_use_id=tool_id,
-                        is_error=result.is_error,
-                    ),
+                    ToolEvent(kind="tool_result", tool_name=tool_name, tool_output=result_output,
+                              tool_use_id=tool_id, is_error=result.is_error),
                 )
-                if _is_anthropic_provider(provider):
-                    conversation.add_tool_result_message(tool_id, result_output)
-                else:
-                    # Add tool result in OpenAI format
-                    openai_messages.append({
-                        "role": "tool",
-                        "tool_call_id": tool_id,
-                        "content": _build_openai_tool_result_content(result_output)
-                    })
+                conversation.add_tool_result_message(tool_id, result_output, is_error=result.is_error)
             except Exception as e:
                 error_str = f"Error: {e}"
                 if verbose:
                     print(f"[Tool Error] {error_str}")
                 _safe_call_handler(
                     on_event,
-                    ToolEvent(
-                        kind="tool_error",
-                        tool_name=tool_name,
-                        tool_input=tool_input,
-                        tool_use_id=tool_id,
-                        is_error=True,
-                        error=error_str,
-                    ),
+                    ToolEvent(kind="tool_error", tool_name=tool_name, tool_input=tool_input,
+                              tool_use_id=tool_id, is_error=True, error=error_str),
                 )
-                if _is_anthropic_provider(provider):
-                    conversation.add_tool_result_message(tool_id, error_str, is_error=True)
-                else:
-                    openai_messages.append({
-                        "role": "tool",
-                        "tool_call_id": tool_id,
-                        "content": error_str
-                    })
+                conversation.add_tool_result_message(tool_id, error_str, is_error=True)
 
-    # Reached max turns
     return AgentLoopResult(
         response_text="[Max tool turns reached]",
-        usage=total_usage if total_usage["input_tokens"] > 0 or total_usage["output_tokens"] > 0 else None,
+        usage=_usage_or_none(),
         num_turns=turn_count,
     )

@@ -275,11 +275,11 @@ class TestConfigTool(ToolSystemTests):
         cfg_path = self.root / "config.json"
         cfg_path.write_text(json.dumps(config_mod.get_default_config()), encoding="utf-8")
         with patch("src.config.get_config_path", return_value=cfg_path):
-            get_out = ConfigTool().run({"setting": "default_provider"}, self.ctx).output
+            get_out = ConfigTool().run({"setting": "model"}, self.ctx).output
             self.assertEqual(get_out["operation"], "get")
-            set_out = ConfigTool().run({"setting": "default_provider", "value": "openai"}, self.ctx).output
+            set_out = ConfigTool().run({"setting": "model", "value": "openai:gpt-5.4"}, self.ctx).output
             self.assertEqual(set_out["operation"], "set")
-            self.assertEqual(ConfigTool().run({"setting": "default_provider"}, self.ctx).output["value"], "openai")
+            self.assertEqual(ConfigTool().run({"setting": "model"}, self.ctx).output["value"], "openai:gpt-5.4")
 
 
 class TestMCPTool(ToolSystemTests):

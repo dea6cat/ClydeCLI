@@ -3,15 +3,14 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock
 
 from src.agent.conversation import Conversation
 from src.context_system import build_context_prompt
 from src.context_system.git_context import collect_git_context
-from src.providers.base import ChatResponse
 from src.tool_system.agent_loop import run_agent_loop
 from src.tool_system.context import ToolContext
 from src.tool_system.defaults import build_default_registry
+from tests.fakes import FakeProvider, reply
 
 
 class TestContextSystem(unittest.TestCase):
@@ -51,19 +50,11 @@ class TestContextSystem(unittest.TestCase):
             conversation = Conversation()
             conversation.add_user_message("hello")
 
-            provider = MagicMock()
-            provider.chat.return_value = ChatResponse(
-                content="ok",
-                model="test",
-                usage={"input_tokens": 1, "output_tokens": 1},
-                finish_reason="stop",
-                tool_uses=None,
-            )
+            provider = FakeProvider(reply("ok"))
 
-            out = run_agent_loop(conversation, provider, registry, ctx, verbose=False)
+            out = run_agent_loop(conversation, provider, "fake-model", registry, ctx, verbose=False)
             self.assertEqual(out.response_text, "ok")
-            system_message = provider.chat.call_args.args[0][0]
-            self.assertEqual(system_message["role"], "system")
+            system_message = {"content": provider.requests[0]["conversation"].system_prompt}
             self.assertIn("## Runtime Context", system_message["content"])
             self.assertIn("## Project Instructions", system_message["content"])
             self.assertIn("Follow the CLAUDE instructions.", system_message["content"])
