@@ -86,7 +86,7 @@
 | Task management | TaskStopTool | `task_stop.py` | ✅ Implemented |
 | Task management | TasksV2Tool | `tasks_v2.py` | ✅ Implemented |
 | Task management | TaskManager | `task_manager.py` | ✅ Implemented |
-| Agent tools | AgentTool | `agent.py` | 🟡 Batches tool calls; no sub-agent |
+| Agent tools | AgentTool | `agent.py` | ✅ Runs a general-purpose sub-agent (fresh conversation, no Agent tool, own read tracking); no custom agent types or background runs |
 | Agent tools | BriefTool | `brief.py` | ✅ Implemented |
 | Agent tools | TeamTool | `team.py` | 🟡 Writes a team file only |
 | Config tools | ConfigTool | `config.py` | ✅ Implemented |

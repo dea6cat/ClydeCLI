@@ -28,6 +28,9 @@ class ToolContext:
     team: dict[str, Any] | None = None
     output_style_name: str | None = None
     output_style_dir: Path | None = None
+    # Set by run_agent_loop so the Agent tool can run a sub-agent on the same model.
+    provider: Any | None = None
+    model: str | None = None
 
     # Permission handler callback: called when a tool needs user consent.
     # Signature: (tool_name: str, message: str, suggestion: str | None)
