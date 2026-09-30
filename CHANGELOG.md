@@ -20,6 +20,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tests covering the new context system integration
 - `EnterWorktree` creates a real git worktree on a `worktree-<name>` branch under `.clyde/worktrees`;
   `ExitWorktree` takes `action: remove` to delete it (git refuses if it has uncommitted changes)
+- Automatic compaction: before each turn, history at 80% or more of the model's context window is
+  summarized the same way as `/compact`; `/context` shows the threshold
+- `Edit` accepts an `old_string` that differs from the file only in trailing whitespace or
+  indentation (re-indenting `new_string`) when the match is unique; a miss shows the closest lines
+  to re-copy (ported from 2B)
+- `/doctor`: checks Python, dependencies, config, the key store (mode 600, no secrets shown),
+  providers with keys, the current model, git, and workspace/permission settings
+- `/resume` picks a recent session of the current workspace; `clyde -c` continues the latest one
+  and `clyde --resume [id]` opens the picker or loads a session by id
+- `/cost` reports input, output and cache tokens per model with an estimated $ total; prices live
+  in the model catalog, local Ollama is $0 and unpriced models say "price unknown"
+- NotebookEdit replaces, inserts or deletes cells in `.ipynb` files (by cell id or `cell-N`)
+- The Agent tool runs a real sub-agent on a fresh conversation with every tool except Agent, and
+  returns only its final answer
+- Cron jobs run: due jobs fire as a turn while the REPL is idle (5-field cron expressions,
+  session-scoped, one-shot jobs removed after running)
+- The LSP tool talks to a language server on PATH (pyright/pylsp, typescript-language-server,
+  gopls, rust-analyzer, dart, clangd): definition, references, hover, symbols, call hierarchy
+- The context prompt includes a README excerpt and the project's entry points, and loads
+  `CLAUDE.local.md` for personal project memory
 
 ### Changed
 - API keys moved from base64 entries in `config.json` to `~/.clyde/keys.json` (mode 600), with
@@ -32,6 +52,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Skill frontmatter parsing now supports inline list syntax such as `arguments: [path]`
 - README and contributor docs now prefer `uv`-based setup instructions
 - Documentation now distinguishes provider-level streaming interfaces from the current turn-based CLI output
+- Bash asks for approval before commands that are not clearly read-only; dangerous patterns are
+  refused outright. Config asks before changing a setting
+- Sessions are saved after every turn (honouring `session.auto_save`); before, only `/save` saved
+- OpenAI and Gemini usage no longer counts cached tokens twice
+- The LSP tool takes Claude Code's `operation`/`filePath`/`line`/`character` input instead of a
+  raw method and params
+- Source modules are grouped by purpose (`src/agent/`, `src/startup/`, `src/output_styles/`,
+  token estimation under `src/context_system/`), and `tests/` mirrors `src/`; run unittest with
+  `python -m unittest discover -s tests -t .`
+
+### Fixed
+- `/clear` and `/compact` acted on the previous conversation after loading a session
+- Loading a corrupt session file no longer crashes the REPL
+- An `Edit` whose `new_string` dropped the final newline no longer merges the next line into it
 
 ## [0.1.0] - 2026-04-01
 
