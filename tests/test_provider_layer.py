@@ -178,7 +178,8 @@ class TestWireDetails(unittest.TestCase):
             resp = p.stream(Conversation("S", [Message.user("q")]), "gpt-5.4", (), lambda c: None)
         self.assertNotIn("tools", captured["p"])
         self.assertEqual(captured["p"]["stream_options"], {"include_usage": True})
-        self.assertEqual(resp.usage, {"input_tokens": 7, "output_tokens": 2, "cache_read_input_tokens": 4})
+        self.assertEqual(resp.usage, {"input_tokens": 3, "output_tokens": 2, "cache_read_input_tokens": 4})
+        self.assertEqual(resp.prompt_tokens, 7)
 
     def test_openai_compat_no_stream_options_unless_enabled(self):
         captured = {}
