@@ -115,7 +115,7 @@
 | Output Styles | ✅ | Output style loading system implemented |
 | Session Persistence | ✅ | Session save/load available |
 | Context Engine | 🟡 | Context-building pipeline connected, supporting workspace, git, README excerpt / entry points, and `CLAUDE.md` / `CLAUDE.local.md` memory injection |
-| Permission Engine | 🟡 | Integrated for Write/Edit; other tools don't ask yet |
+| Permission Engine | 🟡 | Integrated for Bash, Write/Edit and Config set; no persistent allow rules or WebFetch domain checks yet |
 | Compaction Engine | ✅ | Manual `/compact` and automatic at 80% of the context window |
 | Hook Runtime | 🚫 | No settings-driven hook execution yet |
 | MCP Runtime | 🚫 | MCP tools exist but no client is ever connected |
