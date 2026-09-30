@@ -88,6 +88,7 @@ from src.providers.convert import append_response, to_canonical
 from src.tool_system.context import ToolContext
 from src.plugins import apply_plugins
 from src.tool_system.hooks import load_hooks
+from src.repl.esc import EscWatcher
 from src.tool_system.permission_rules import load_rules, save_allow_rule
 from src.tool_system.tools.code_map import start_background_refresh
 from src.tool_system.mcp_client import McpServerTool, connect_servers, load_servers
@@ -197,7 +198,7 @@ _HELP_TEXT = """
 **Usage:**
 - Type your message and press Enter to chat
 - Use Tab for command completion
-- Press Ctrl+C to interrupt current operation
+- Press Esc (or Ctrl+C) to interrupt the current reply or command
 - Press Ctrl+D to exit
 - Use `/multiline` for multi-paragraph inputs
 """
@@ -247,6 +248,9 @@ if Completer is not None:
 
 class ClydeREPL:
     """Interactive REPL for ClydeCLI."""
+
+    # Esc cancels a running turn or command; prompts pause it (see src/repl/esc.py).
+    _esc = EscWatcher()
 
     def __init__(self, model: str | None = None, stream: bool = False,
                  resume: str | None = None, continue_last: bool = False, debug: bool = False):
@@ -398,6 +402,10 @@ class ClydeREPL:
         return [("class:rule", "─" * self._rule_width() + "\n"), ("class:prompt", "... " if self.multiline_mode else "❯ ")]
 
     def _ask_user_questions(self, questions: list[dict]) -> dict[str, str]:
+        with self._esc.paused():
+            return self._ask_user_questions_unpaused(questions)
+
+    def _ask_user_questions_unpaused(self, questions: list[dict]) -> dict[str, str]:
         # Stop the Rich status spinner if running, so we can get clean input
         if self._current_status is not None:
             try:
@@ -483,10 +491,9 @@ class ClydeREPL:
             except Exception:
                 pass
 
-        self.console.print("")
-        self.console.print("[bold yellow]⚠ Permission Required[/bold yellow]")
-        self.console.print(f"  {message}")
-        self.console.print("")
+        self.console.print()
+        self.console.print(Text.assemble(("♠ ", _CARD_ACCENT), ("Permission required", f"bold {_CARD_TEXT}")))
+        self.console.print(Text(f"  {message}", style=_CARD_TEXT))
 
         # Determine if this is a setting that can be enabled
         can_enable_setting = False
@@ -500,26 +507,25 @@ class ClydeREPL:
                 setting_to_enable = "allow_docs"
 
         # Build options: (key, description, allowed)
-        options: list[tuple[str, str, bool]] = [("y", "Yes, allow this action", True)]
+        options: list[tuple[str, str, bool]] = [("y", "yes", True)]
         if suggestion:
-            options.append(("a", f"Yes, and don't ask again for {suggestion}", True))
-        options.append(("n", "No, deny this action", False))
+            options.append(("a", f"yes, and don't ask again for {suggestion}", True))
+        options.append(("n", "no", False))
         if can_enable_setting:
-            options.insert(0, ("e", f"Enable {setting_to_enable} and allow", True))
+            options.insert(0, ("e", f"enable {setting_to_enable} and allow", True))
 
-        self.console.print("[bold]Options:[/bold]")
-        for i, (key, desc, _) in enumerate(options, start=1):
-            self.console.print(f"  {i}. [{key}] {desc}")
-        self.console.print("")
+        # Plain Text, not markup: "[y]" in a markup string is read as a style tag and vanishes.
+        for key, desc, _ in options:
+            self.console.print(Text.assemble(("    ", ""), (key, f"bold {_CARD_ACCENT}"), ("  ", ""), (desc, _CARD_TEXT)))
+        keys = "/".join(k for k, _, _ in options)
 
-        # Get input - use standard input() which works after stopping status
-        choice = input("Select option> ").strip().lower()
-        if choice in ("", "yes", "no", "enable"):
-            choice = choice[:1] or "y"
+        with self._esc.paused():
+            choice = input(f"  Allow? [{keys}] (y): ").strip().lower()
+        if choice in ("", "yes", "no", "enable", "always"):
+            choice = {"": "y", "always": "a"}.get(choice, choice[:1])
         key = next((k for i, (k, _, _) in enumerate(options, start=1) if choice in (k, str(i))), None)
         if key is None:
-            # Default to deny for invalid input
-            self.console.print("[dim]Invalid choice, defaulting to deny.[/dim]")
+            self.console.print(Text("  Not an option; denied.", style=_CARD_DIM))
             return False, False
         if key == "e":
             self._enable_permission_setting(setting_to_enable)
@@ -858,15 +864,17 @@ class ClydeREPL:
 
                 # Handle commands
                 if user_input.startswith('/'):
-                    self.handle_command(user_input)
+                    with self._esc.active():
+                        self.handle_command(user_input)
                     continue
 
-                # Send to LLM
-                self.chat(user_input)
+                # Send to LLM; Esc (like Ctrl+C) cancels the turn
+                with self._esc.active():
+                    self.chat(user_input)
                 self.multiline_mode = False
 
             except KeyboardInterrupt:
-                self.console.print("\n[yellow]Interrupted. Type /exit to quit.[/yellow]")
+                self.console.print(Text("\nInterrupted. Type /exit to quit.", style=_CARD_DIM))
                 self.multiline_mode = False
                 continue
             except EOFError:
@@ -1573,6 +1581,7 @@ class ClydeREPL:
             if is_auth_error(e):
                 self.console.print(f"\n[red]❌ {e}[/red]")
                 from rich.prompt import Prompt
+                self._esc.stop()
                 choice = Prompt.ask(
                     "\nWould you like to reconfigure your API key now?",
                     choices=["y", "n"],
@@ -1674,8 +1683,9 @@ class ClydeREPL:
             return
         self.console.print(f"{len(targets)} model(s) to test, two short requests each on your own keys"
                            + ("" if query else " (narrow it with /eval <provider or name>)") + ".")
-        if not Confirm.ask("Run the evaluation?", default=len(targets) <= 20, console=self.console):
-            return
+        with self._esc.paused():
+            if not Confirm.ask("Run the evaluation?", default=len(targets) <= 20, console=self.console):
+                return
         done = [0]
         with self.console.status("", spinner="dots", spinner_style=_CARD_ACCENT) as status:
             def progress(score) -> None:  # type: ignore[no-untyped-def]
@@ -1820,7 +1830,8 @@ class ClydeREPL:
             self.console.print(f"  {i:>2}. {when}  {len(s.conversation.messages):>3} msgs  ", end="")
             self.console.print(_first_prompt(s), markup=False, highlight=False)
         try:
-            raw = input("Resume which session? (number, Enter to cancel) > ").strip()
+            with self._esc.paused():
+                raw = input("Resume which session? (number, Enter to cancel) > ").strip()
         except EOFError:
             raw = ""
         if not raw:
