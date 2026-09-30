@@ -44,6 +44,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   calls; exit 2 blocks the call or feeds stderr back to the model. Hooks can also live in
   `settings.toml`, use a shorthand, or be written in Gemini CLI, Cursor or Copilot CLI format,
   including their JSON deny/block replies
+- `install.sh` (`curl … | sh`) installs uv and `clyde`, then runs the new `clyde setup` onboarding:
+  connect a provider, import other agents' hooks after a yes, and put `clyde` on PATH
+- `clyde hooks import` copies hooks from Claude Code, Gemini CLI, Cursor and Copilot CLI settings
+- Skills in `~/.agents`, `~/.codex`, `~/.copilot` and `~/.gemini` skill folders are loaded in place
 
 ### Changed
 - API keys moved from base64 entries in `config.json` to `~/.clyde/keys.json` (mode 600), with
@@ -67,6 +71,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `python -m unittest discover -s tests -t .`
 
 ### Fixed
+- `~/.claude/skills` no longer overrides a same-named skill in `~/.clyde/skills`
 - `/clear` and `/compact` acted on the previous conversation after loading a session
 - Loading a corrupt session file no longer crashes the REPL
 - An `Edit` whose `new_string` dropped the final newline no longer merges the next line into it

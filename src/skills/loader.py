@@ -17,6 +17,8 @@ def _candidate_user_skills_dirs() -> list[Path]:
       2) $CLAUDE_SKILLS_DIR (TS-compatible override)
       3) ~/.clyde/skills (current project default)
       4) ~/.claude/skills (TS-compatible default)
+      5) ~/.agents/skills, ~/.codex/skills, ~/.copilot/skills, ~/.gemini/skills (other agents' SKILL.md
+         folders, read in place so they stay in sync)
     """
     env_primary = os.environ.get("CLYDE_SKILLS_DIR")
     env_ts = os.environ.get("CLAUDE_SKILLS_DIR")
@@ -28,7 +30,7 @@ def _candidate_user_skills_dirs() -> list[Path]:
         if p not in dirs:
             dirs.append(p)
     # Defaults
-    for d in (Path.home() / ".clyde" / "skills", Path.home() / ".claude" / "skills"):
+    for d in (Path.home() / name / "skills" for name in (".clyde", ".claude", ".agents", ".codex", ".copilot", ".gemini")):
         p = d.expanduser().resolve()
         if p not in dirs:
             dirs.append(p)
@@ -135,7 +137,8 @@ def get_all_skills(
         user_dirs = [Path(user_skills_dir).expanduser().resolve()]
     else:
         user_dirs = _candidate_user_skills_dirs()
-    for user_dir in user_dirs:
+    # Register lowest priority first: a later registration of the same name wins.
+    for user_dir in reversed(user_dirs):
         for s in load_skills_from_dir(user_dir, loaded_from="user"):
             _REGISTRY.register(s)
 
