@@ -1,4 +1,4 @@
-"""CodeGraph tool, context section and background refresh, against a fake `graphify` on PATH."""
+"""Map tool, context section and background refresh, against a fake `graphify` on PATH."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from unittest.mock import patch
 from src.context_system import build_context_prompt
 from src.tool_system.context import ToolContext
 from src.tool_system.errors import ToolInputError
-from src.tool_system.tools.code_graph import CodeGraphTool, start_background_refresh
+from src.tool_system.tools.code_map import MapTool, start_background_refresh
 
 # Records its argv; `update` writes a graph like the real one does.
 FAKE_GRAPHIFY = """#!/bin/sh
@@ -29,7 +29,7 @@ echo "NODE result for $1 $2"
 """
 
 
-class TestCodeGraph(unittest.TestCase):
+class TestMap(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name).resolve()
@@ -42,7 +42,7 @@ class TestCodeGraph(unittest.TestCase):
         self.repo = self.root / "repo"
         self.repo.mkdir()
         self.env = patch.dict(os.environ, {"PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
-                                           "GRAPHIFY_LOG": str(self.log), "CLYDE_CODE_GRAPH": ""})
+                                           "GRAPHIFY_LOG": str(self.log), "CLYDE_MAP": ""})
         self.env.start()
         self.ctx = ToolContext(workspace_root=self.repo)
 
@@ -54,7 +54,7 @@ class TestCodeGraph(unittest.TestCase):
         return self.log.read_text().splitlines() if self.log.exists() else []
 
     def test_first_query_builds_the_graph_then_queries_it(self) -> None:
-        out = CodeGraphTool().run({"action": "query", "question": "how does auth work"}, self.ctx)
+        out = MapTool().run({"action": "query", "question": "how does auth work"}, self.ctx)
         self.assertFalse(out.is_error)
         self.assertEqual(out.output, "NODE result for query how does auth work")
         calls = self._calls()
@@ -62,7 +62,7 @@ class TestCodeGraph(unittest.TestCase):
         self.assertIn(f"--graph {self.repo / 'graphify-out' / 'graph.json'}", calls[1])
 
     def test_actions_map_to_graphify_commands(self) -> None:
-        tool = CodeGraphTool()
+        tool = MapTool()
         tool.run({"action": "update"}, self.ctx)
         tool.run({"action": "path", "source": "A", "target": "B"}, self.ctx)
         tool.run({"action": "affected", "target": "X", "depth": 3}, self.ctx)
@@ -72,17 +72,17 @@ class TestCodeGraph(unittest.TestCase):
 
     def test_missing_fields_and_missing_graphify(self) -> None:
         with self.assertRaisesRegex(ToolInputError, "path needs: source, target"):
-            CodeGraphTool().run({"action": "path"}, self.ctx)
+            MapTool().run({"action": "path"}, self.ctx)
         with patch.dict(os.environ, {"PATH": "/usr/bin:/bin"}):
             with self.assertRaisesRegex(ToolInputError, "uv tool install graphifyy"):
-                CodeGraphTool().run({"action": "explain", "target": "X"}, self.ctx)
+                MapTool().run({"action": "explain", "target": "X"}, self.ctx)
 
     def test_context_prompt_points_at_the_tool_once_a_graph_exists(self) -> None:
-        self.assertNotIn("## Code Graph", build_context_prompt(self.repo))
-        CodeGraphTool().run({"action": "update"}, self.ctx)
+        self.assertNotIn("## Code Map", build_context_prompt(self.repo))
+        MapTool().run({"action": "update"}, self.ctx)
         prompt = build_context_prompt(self.repo)
-        self.assertIn("## Code Graph", prompt)
-        self.assertIn("CodeGraph tool", prompt)
+        self.assertIn("## Code Map", prompt)
+        self.assertIn("Map tool", prompt)
         self.assertIn("- `Engine` - 40 edges", prompt)
 
     def test_background_refresh_only_in_git_repos_and_excludes_output(self) -> None:
@@ -98,7 +98,7 @@ class TestCodeGraph(unittest.TestCase):
 
     def test_refresh_can_be_switched_off(self) -> None:
         subprocess.run(["git", "init", "-q"], cwd=self.repo, check=True)
-        with patch.dict(os.environ, {"CLYDE_CODE_GRAPH": "off"}):
+        with patch.dict(os.environ, {"CLYDE_MAP": "off"}):
             self.assertIsNone(start_background_refresh(self.repo))
 
 
