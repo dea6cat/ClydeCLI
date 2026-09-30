@@ -137,6 +137,11 @@ def get_all_skills(
         user_dirs = [Path(user_skills_dir).expanduser().resolve()]
     else:
         user_dirs = _candidate_user_skills_dirs()
+        # Enabled plugins' skills sit below every user skill folder.
+        from src.plugins import skill_dirs
+        for plugin_dir in skill_dirs():
+            for s in load_skills_from_dir(plugin_dir, loaded_from="plugin"):
+                _REGISTRY.register(s)
     # Register lowest priority first: a later registration of the same name wins.
     for user_dir in reversed(user_dirs):
         for s in load_skills_from_dir(user_dir, loaded_from="user"):
