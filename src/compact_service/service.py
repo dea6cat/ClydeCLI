@@ -11,10 +11,12 @@ Handles the full compaction flow:
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Optional
 
+from ..agent import trace
 from ..agent.conversation import Conversation, Message
 from ..context_system.microcompact import microcompact_messages, strip_images_from_messages
 from ..providers.base import Provider, stream_with_retry
@@ -118,6 +120,7 @@ async def compact_conversation(
     Returns:
         CompactResult with boundary, summary, and metadata
     """
+    started = time.monotonic()
     # Step 1: Get messages after the last boundary (skip already-summarized)
     messages = get_messages_after_boundary(conversation.messages)
 
@@ -156,18 +159,22 @@ async def compact_conversation(
     try:
         # Tool blocks are flattened to text: providers reject tool_use/tool_result blocks in a
         # request that defines no tools.
-        response = stream_with_retry(
+        request = to_canonical(summary_history, SUMMARY_SYSTEM_PROMPT, flatten_tools=True)
+        response = trace.model_call(provider, model, request, lambda: stream_with_retry(
             provider,
-            to_canonical(summary_history, SUMMARY_SYSTEM_PROMPT, flatten_tools=True),
+            request,
             model,
             (),
             lambda _chunk: None,
             reasoning="off",
-        )
+        ))
         summary_text = (response.message.text or "").strip()
     except Exception as e:
         logger.warning(f"Compact LLM call failed: {e}, using text extraction")
         summary_text = _fallback_summary(messages)
+        fallback = True
+    else:
+        fallback = not summary_text
 
     if not summary_text:
         summary_text = _fallback_summary(messages)
@@ -216,6 +223,9 @@ async def compact_conversation(
         conversation.messages.append(summary_msg)
 
     post_compact_count = len(conversation.messages)
+    trace.record("compact", trigger=trigger, pre_tokens=pre_compact_tokens, tokens_saved=tokens_saved,
+                 messages_before=pre_compact_count, messages_after=post_compact_count,
+                 fallback_summary=fallback, duration_ms=int((time.monotonic() - started) * 1000))
 
     # Step 9: Build user display message
     saved_str = f"~{tokens_saved:,}" if tokens_saved > 0 else "some"

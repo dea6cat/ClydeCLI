@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from . import trace
 from ..tool_system.registry import ToolRegistry
 from ..tool_system.context import ToolContext
 from .conversation import Conversation
@@ -194,6 +196,14 @@ def _add_usage(total: dict[str, int], usage: dict | None) -> None:
             total[key] = total.get(key, 0) + value
 
 
+def _trace_tool(name: str, tool_input: dict, started: float, is_error: bool, output: Any) -> None:
+    if not trace.active():
+        return
+    trace.record("tool_call", name=name, input=json.dumps(trace.redact(tool_input), ensure_ascii=False),
+                 duration_ms=int((time.monotonic() - started) * 1000), is_error=is_error,
+                 result_chars=len(output if isinstance(output, str) else str(output)))
+
+
 def run_agent_loop(
     conversation: Conversation,
     provider: Provider,
@@ -252,16 +262,17 @@ def run_agent_loop(
         return total_usage if total_usage["input_tokens"] > 0 or total_usage["output_tokens"] > 0 else None
 
     for _turn in range(max_turns):
-        response = stream_with_retry(
+        request = to_canonical(conversation, system_prompt)
+        response = trace.model_call(provider, model, request, lambda: stream_with_retry(
             provider,
-            to_canonical(conversation, system_prompt),
+            request,
             model,
             specs,
             text_handler,
             cancel=cancel,
             reasoning=reasoning,
             on_thinking=on_thinking if stream else None,
-        )
+        ))
         turn_count += 1
         _add_usage(total_usage, response.usage)
         append_response(conversation, response.message)
@@ -281,6 +292,7 @@ def run_agent_loop(
         for tc in tool_calls:
             tool_id = tc.id
             tool_name, tool_input = coerce_tool_args(tc.name, tc.arguments, known_tools)
+            started = time.monotonic()
 
             try:
                 _safe_call_handler(
@@ -291,6 +303,7 @@ def run_agent_loop(
                 result = tool_registry.dispatch(ToolCall(name=tool_name, input=tool_input, tool_use_id=tool_id),
                                                 tool_context)
                 result_output = result.output
+                _trace_tool(tool_name, tool_input, started, result.is_error, result_output)
                 if tool_name.lower() == "sendusermessage" and isinstance(result_output, dict):
                     msg = result_output.get("message")
                     if isinstance(msg, str):
@@ -316,6 +329,7 @@ def run_agent_loop(
                 conversation.add_tool_result_message(tool_id, result_output, is_error=result.is_error)
             except Exception as e:
                 error_str = f"Error: {e}"
+                _trace_tool(tool_name, tool_input, started, True, error_str)
                 if verbose:
                     print(f"[Tool Error] {error_str}")
                 _safe_call_handler(
