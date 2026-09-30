@@ -20,7 +20,7 @@
 ## Project Highlights
 
 - **Python rewrite**: Not just a UI imitation, but a rebuild following Claude Code's architectural approach.
-- **Multi-model first**: Currently supports three providers: Anthropic, OpenAI, and GLM.
+- **Multi-model first**: 12 providers (Anthropic, OpenAI, Gemini, OpenRouter, DeepSeek, Mistral, NVIDIA, Cerebras, GLM, MiniMax, Ollama local and cloud) over stdlib HTTP, no vendor SDKs.
 - **Usable CLI / REPL**: Basic interaction already works and is ready for continued iteration.
 - **Complete tool system framework**: 30+ tool modules, an Agent Loop, and a permission system framework are implemented.
 - **Built for community collaboration**: The Python ecosystem is easier to extend, well suited to tooling, automation, and data engineering scenarios.
@@ -35,8 +35,8 @@
 | CLI entry point | ✅ | Supports `clyde`, `login`, `config`, `--version` |
 | Interactive REPL | ✅ | Supports interactive output, history, Tab completion, multi-line input |
 | Slash Commands | ✅ | Supports `/help`, `/clear`, `/save`, `/load`, `/multiline`, `/exit` |
-| Multi-provider abstraction | ✅ | Supports Anthropic / OpenAI / GLM |
-| Provider configuration management | ✅ | Supports default provider, Base URL, and default model configuration |
+| Multi-provider abstraction | ✅ | Canonical types in, canonical response out; each adapter owns its wire format |
+| Provider configuration management | ✅ | `provider:model` selection, `/model` switching, keys via env or `~/.clyde/keys.json` |
 | Session persistence | ✅ | Supports saving/loading local sessions |
 | Session message management | ✅ | Supports session history maintenance and serialization |
 | Error recovery / re-login | 🟡 | Basic authentication error handling and reconfiguration flow exist |
@@ -108,7 +108,7 @@
 
 | Module | Status | Current State |
 |------|------|----------|
-| Provider Runtime | ✅ | Handles basic chat requests; the provider layer offers a streaming interface |
+| Provider Runtime | ✅ | Streaming, retries with backoff, cancellation, readable errors, reasoning controls |
 | REPL Runtime | ✅ | Supports basic interaction, command dispatch, and message logging |
 | Agent Loop Runtime | ✅ | Complete tool-call loop and result handling implemented |
 | Tool Execution Engine | ✅ | Full loop of tool loading, execution, and result feedback implemented |
@@ -129,7 +129,7 @@
 | Tool system tests | ✅ | `test_tool_system_tools.py` (427 lines) |
 | Agent Loop tests | ✅ | `test_agent_loop.py` (134 lines) |
 | Claude Code tool parity tests | ✅ | `test_claude_code_tool_parity.py` (137 lines) |
-| Provider tests | ✅ | `test_providers.py` (113 lines) |
+| Provider tests | ✅ | `test_provider_layer.py` plus per-adapter streaming/reasoning/error suites |
 | Output style tests | ✅ | `test_output_styles.py` (64 lines) |
 | Config tests | ✅ | `test_config.py` |
 
@@ -192,7 +192,7 @@ Goal: upgrade the project from a monolithic CLI to an extensible platform.
 - [ ] Complete MCP client/runtime
 - [ ] Python plugin system
 - [ ] Custom commands / tools / hooks
-- [ ] Local model and third-party provider extensions
+- [x] Local model (Ollama) and third-party provider support
 - [ ] Better observability and debugging tools
 
 ## Phase 5: Distinctive strengths of the Python version
@@ -201,7 +201,7 @@ Goal: build features unique to the Python rewrite.
 
 - [ ] Notebook-friendly toolchain
 - [ ] Enhancements for data engineering / ETL scenarios
-- [ ] First-class support for Chinese model providers (GLM, etc.)
+- [x] Support for Chinese model providers (GLM, DeepSeek, MiniMax)
 - [ ] pytest / ruff / mypy / uv integration experience
 - [ ] Extension interfaces for in-house enterprise automation and workflows
 

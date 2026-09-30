@@ -1,124 +1,91 @@
-# Environment Setup Guide
+# Setup Guide
 
-## 1. Activate the Virtual Environment
+## 1. Install
 
 ```bash
-# Enter the project directory
-cd /root/ClydeCLI
+git clone https://github.com/dea6cat/ClydeCLI.git
+cd ClydeCLI
 
-# Activate the virtual environment
+uv venv --python 3.14
 source .venv/bin/activate
+uv pip install -e .
 
-# Confirm the Python version
-python --version  # Should show Python 3.14.x
+clyde --version
 ```
 
-## 2. Configure the GLM API Key
+Or install it as a tool that's on your PATH everywhere: `uv tool install --editable . --python 3.14`.
 
-### Option 1: Environment variable (recommended for testing)
+## 2. Connect a provider
+
+### Option 1: `clyde login` (recommended)
 
 ```bash
-# Temporary (valid for the current session)
-export GLM_API_KEY="your_api_key_here"
-
-# Permanent (add to ~/.bashrc)
-echo 'export GLM_API_KEY="your_api_key_here"' >> ~/.bashrc
-source ~/.bashrc
+clyde login
 ```
 
-### Option 2: .env file (recommended for development)
+Pick a provider, paste its API key (each character shows as `*`), then choose a default model
+from the provider's live model list. The key is saved to `~/.clyde/keys.json` (mode 600) and the
+model to `~/.clyde/config.json` as `provider:model`.
+
+### Option 2: environment variables
+
+| Provider | Variable |
+|----------|----------|
+| anthropic | `ANTHROPIC_API_KEY` |
+| openai | `OPENAI_API_KEY` |
+| google | `GEMINI_API_KEY` (or `GOOGLE_API_KEY`) |
+| openrouter | `OPENROUTER_API_KEY` |
+| deepseek | `DEEPSEEK_API_KEY` |
+| mistral | `MISTRAL_API_KEY` |
+| nvidia | `NVIDIA_API_KEY` |
+| cerebras | `CEREBRAS_API_KEY` |
+| glm | `GLM_API_KEY` |
+| minimax | `MINIMAX_API_KEY` |
+| ollama-cloud | `OLLAMA_API_KEY` |
 
 ```bash
-# Create a .env file in the project root
-cat > .env << 'EOF'
-# GLM API Configuration
-GLM_API_KEY=your_api_key_here
-GLM_BASE_URL=https://open.bigmodel.cn/api/paas/v4
-GLM_DEFAULT_MODEL=glm-4
-
-# Optional: Other APIs
-# ANTHROPIC_API_KEY=your_anthropic_key
-# OPENAI_API_KEY=your_openai_key
-EOF
-
-# The .env file is in .gitignore and will not be committed to Git
+export OPENAI_API_KEY="sk-..."
+clyde --model openai:gpt-5.4
 ```
 
-## 3. GLM API Information
+A key exported in your shell always wins over a saved one.
 
-### API Endpoint
-- **Base URL**: `https://open.bigmodel.cn/api/paas/v4`
-- **Authentication**: Bearer Token (API Key)
-- **Documentation**: https://open.bigmodel.cn/dev/api
+### Option 3: local models with Ollama
 
-### Available Models
-- `glm-4` - Latest GLM-4 model (recommended)
-- `glm-4-flash` - Fast version
-- `glm-3-turbo` - GLM-3 Turbo
+No key needed. Start Ollama (`ollama serve`), pull a tool-capable model, and ClydeCLI picks up
+the first installed model when nothing else is configured:
 
-### API Call Example (Python)
-```python
-from zhipuai import ZhipuAI
-
-client = ZhipuAI(api_key="your_api_key")
-
-response = client.chat.completions.create(
-    model="glm-4",
-    messages=[
-        {"role": "user", "content": "Hello"}
-    ]
-)
-print(response.choices[0].message.content)
-```
-
-## 4. Verify the Configuration
-
-### Test Environment Variables
 ```bash
-# Check whether the environment variable is set
-echo $GLM_API_KEY
-
-# If using a .env file, Python loads it automatically
-python -c "from dotenv import load_dotenv; import os; load_dotenv(); print(os.getenv('GLM_API_KEY'))"
+ollama pull qwen3:8b
+clyde --model ollama:qwen3:8b
 ```
 
-## 5. Next Steps
+`clyde login` → `ollama` suggests models that fit your machine's RAM. Set `OLLAMA_HOST` if the
+server isn't on `localhost:11434`. The context window is sized to your RAM automatically;
+override it with `CLYDE_CONTEXT_TOKENS` (all models) or `CLYDE_MODEL_CONTEXT_<MODEL>`.
 
-Once configuration is complete, the remaining setup steps are:
-1. Create `requirements.txt` and `setup.py`
-2. Install dependencies: `uv pip install -e .`
-3. Create the config file: `~/.clyde/config.json`
-4. Test the GLM API connection
+## 3. Verify
 
----
+```bash
+clyde config          # default model + which providers have keys
+clyde --list-models   # every model you can use right now
+```
+
+## 4. Switching models
+
+- `clyde --model provider:model` for one session
+- `/model provider:model` inside the REPL (saved as the new default)
+- `/models` lists everything available; `/think high` turns up reasoning where supported
+
+The conversation carries over when you switch: history is re-expressed for whichever provider is
+active.
 
 ## FAQ
 
-### Q: Where do I get an API Key?
-A: Visit https://open.bigmodel.cn/ and register an account to obtain one
+**401 / "authentication failed"**: the key is wrong or revoked. Run `clyde login` again, or
+`clyde logout <provider>` to remove a saved key.
 
-### Q: How do I get an API Key?
-A:
-1. Log in to the Zhipu Open Platform
-2. Go to the "API Keys" page
-3. Create a new API Key
+**"model not found"**: the provider doesn't offer that id to your account. Check `/models`.
 
-### Q: Is there a free quota?
-A: New users usually receive a free trial quota; see the official website for details
-
----
-
-## Checklist
-
-Complete the following steps:
-
-1. ✅ **Activate the virtual environment**:
-   ```bash
-   source .venv/bin/activate
-   ```
-
-2. ✅ **Configure the API Key** (choose one):
-   - Option 1: `export GLM_API_KEY="your_key"`
-   - Option 2: Create a `.env` file and add the key to it
-
-3. ✅ **Continue with the next steps** in section 5 once the above is done
+**Upgrading from an older config**: keys stored in the old `config.json` are moved to
+`keys.json` on first run, and your previous default provider's model becomes `model`.

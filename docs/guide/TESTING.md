@@ -6,16 +6,19 @@ This document describes the testing strategy and how to run tests for ClydeCLI.
 
 ```
 tests/
-├── test_agent_loop.py
-├── test_claude_code_tool_parity.py
-├── test_config.py
-├── test_context_system.py
-├── test_output_styles.py
-├── test_porting_workspace.py
-├── test_providers.py
-├── test_repl.py
-├── test_skills_system.py
-└── test_tool_system_tools.py
+├── fakes.py                     # scripted FakeProvider used instead of the network
+├── fixtures/                    # saved HTML/JSON used by parser tests
+├── test_agent_loop.py           # tool loop, streaming, retries, reasoning replay
+├── test_provider_layer.py       # converter, registry, usage parsing, tool-call repair
+├── test_provider_errors.py      # HTTP error -> readable message
+├── test_model_listing.py        # live model lists, caching, filtering
+├── test_retry.py / test_cancel_streaming.py / test_abort_connections.py
+├── test_reasoning_*.py / test_thinking_*.py   # per-provider reasoning fields
+├── test_anthropic_streaming.py / test_google_streaming.py / test_prompt_cache.py
+├── test_config.py               # config.json, legacy migration, key store
+├── test_cli_login.py            # login flow
+├── test_repl.py                 # REPL commands, /model, /think, error handling
+└── ...                          # tools, skills, commands, context, compaction
 ```
 
 ## Running Tests
@@ -39,8 +42,8 @@ python -m unittest discover -s tests -v
 # Test configuration
 python -m pytest tests/test_config.py -q
 
-# Test providers
-python -m pytest tests/test_providers.py -q
+# Test the provider layer
+python -m pytest tests/test_provider_layer.py tests/test_model_listing.py -q
 
 # Test REPL
 python -m pytest tests/test_repl.py -q
@@ -53,10 +56,10 @@ python -m pytest tests/test_context_system.py tests/test_agent_loop.py -q
 
 ```bash
 # Run specific test by name
-python -m pytest tests/test_config.py::TestLoadSaveConfig::test_save_and_load_config -v
+python -m pytest tests/test_config.py::TestLegacyMigration::test_keys_move_to_keys_file_decoded -v
 
 # Run tests matching pattern
-python -m pytest tests/ -k "api_key" -v
+python -m pytest tests/ -k "reasoning" -v
 ```
 
 ### Run with Coverage
@@ -77,67 +80,35 @@ xdg-open htmlcov/index.html  # Linux
 
 ### 1. Configuration Tests (`test_config.py`)
 
-Tests for configuration management:
+- **Config file**: location, defaults, save/load round trip, 0600 permissions
+- **Default model**: `provider:model` get/set
+- **Legacy migration**: old per-provider keys move to `keys.json`, the default model carries over
+- **Key store**: env vars win over saved keys, connect/disconnect, masking
 
-- **Config Path**: Test config file location and directory creation
-- **Default Config**: Test default configuration values
-- **API Key Encoding**: Test base64 encoding/decoding
-- **Load/Save**: Test config persistence
-- **Provider Config**: Test provider-specific settings
-- **Set API Key**: Test API key configuration
-- **Default Provider**: Test default provider management
+Each test runs against a throwaway `HOME`, never your real `~/.clyde`.
 
-**Example:**
+### 2. Provider Tests
+
+Adapters are tested by patching their HTTP helper (`post_stream` / `post_json`) and asserting on
+the exact JSON payload they build and how they parse the provider's SSE/NDJSON reply. Nothing
+touches the network.
+
 ```python
-def test_save_and_load_config(self):
-    """Test save and load roundtrip."""
-    config = {
-        "default_provider": "glm",
-        "providers": {
-            "glm": {
-                "api_key": "test_key",
-                "base_url": "https://example.com",
-                "default_model": "glm-4"
-            }
-        }
-    }
+def test_anthropic_system_prompt_is_cached(self):
+    captured = {}
 
-    save_config(config)
-    loaded = load_config()
+    def fake_post(url, payload, **k):
+        captured["p"] = payload
+        return {"content": [{"type": "text", "text": "ok"}]}
 
-    assert loaded["default_provider"] == "glm"
+    with patch.object(anthropic, "post_json", fake_post), patch.dict(os.environ, {"ANTHROPIC_API_KEY": "x"}):
+        AnthropicProvider().send(Conversation(system_prompt="SYS"), "claude-sonnet-5", ())
+    self.assertEqual(captured["p"]["system"][-1]["cache_control"], {"type": "ephemeral"})
 ```
 
-### 2. Provider Tests (`test_providers.py`)
-
-Tests for LLM provider implementations:
-
-- **ChatMessage**: Test message dataclass
-- **ChatResponse**: Test response dataclass
-- **Anthropic Provider**: Test Claude integration
-- **OpenAI Provider**: Test GPT integration
-- **GLM Provider**: Test GLM integration
-- **Provider Selection**: Test provider class retrieval
-
-**Example:**
-```python
-@patch('anthropic.Anthropic')
-def test_chat(self, mock_anthropic):
-    """Test synchronous chat."""
-    # Setup mock response
-    mock_response = MagicMock()
-    mock_response.content = [MagicMock(text="Hello!")]
-    mock_response.model = "claude-sonnet-4-20250514"
-    mock_response.usage = MagicMock(input_tokens=10, output_tokens=5)
-    mock_response.stop_reason = "end_turn"
-
-    # Test
-    provider = AnthropicProvider(api_key="test_key")
-    messages = [ChatMessage(role="user", content="Hi")]
-    response = provider.chat(messages)
-
-    assert response.content == "Hello!"
-```
+Code above the provider layer (agent loop, REPL, compaction) uses `tests/fakes.py`:
+`FakeProvider(reply("text"), reply(tool_calls=[("Read", {...})]), SomeError(...))` replays those in
+order and records every request in `provider.requests`.
 
 ### 3. REPL Tests (`test_repl.py`)
 
@@ -153,7 +124,7 @@ Tests for interactive REPL:
 ```python
 def test_handle_command_multiline_toggle(self):
     """Test /multiline command."""
-    repl = ClydeREPL(provider_name="glm")
+    repl = ClydeREPL(model="glm:glm-4.5")   # inside _fake_provider_env()
 
     # Initially False
     assert repl.multiline_mode is False
@@ -211,14 +182,14 @@ def test_<what_is_being_tested>(self):
 ```python
 def test_feature(self):
     # Arrange - Set up test data
-    config = {"default_provider": "glm"}
+    config = {"model": "openai:gpt-5.4"}
 
     # Act - Execute the code
     save_config(config)
     loaded = load_config()
 
     # Assert - Verify results
-    assert loaded["default_provider"] == "glm"
+    assert loaded["model"] == "openai:gpt-5.4"
 ```
 
 ### Best Practices
@@ -230,25 +201,22 @@ def test_feature(self):
 5. **Use fixtures for common setup**
 6. **Mock external dependencies**
 
-### Example Test with Mock
+### Example Test with a Scripted Provider
 
 ```python
-@patch('src.providers.openai.OpenAI')
-def test_openai_chat(self, mock_openai):
-    """Test OpenAI chat with mock."""
+def test_tool_call_round_trip(self):
     # Arrange
-    mock_client = MagicMock()
-    mock_response = MagicMock()
-    mock_response.choices[0].message.content = "Response"
-    mock_client.chat.completions.create.return_value = mock_response
-    mock_openai.return_value = mock_client
+    provider = FakeProvider(
+        reply(tool_calls=[("Read", {"file_path": str(path)}, "t1")]),
+        reply("done"),
+    )
 
     # Act
-    provider = OpenAIProvider(api_key="test")
-    response = provider.chat([ChatMessage(role="user", content="Hi")])
+    result = run_agent_loop(conversation, provider, "fake-model", registry, ctx)
 
     # Assert
-    self.assertEqual(response.content, "Response")
+    self.assertEqual(result.response_text, "done")
+    self.assertEqual(provider.requests[1]["conversation"].messages[-1].tool_results[0].tool_call_id, "t1")
 ```
 
 ## Test Coverage
@@ -349,7 +317,7 @@ python -m pytest tests/ --benchmark-only
 ## Security Tests
 
 - API keys are never logged
-- Config files use encoded keys
+- Saved keys live in `~/.clyde/keys.json` with mode 0600
 - Secrets are not in git
 - `.env` is in `.gitignore`
 

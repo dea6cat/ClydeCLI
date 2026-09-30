@@ -23,7 +23,7 @@ This project follows the [Contributor Covenant Code of Conduct](https://www.cont
 - Python 3.14 or higher
 - `uv` (recommended) or `pip`
 - git
-- A valid API key from at least one provider (Anthropic, OpenAI, or GLM)
+- An API key for at least one provider, or a local Ollama install (tests need neither)
 
 ### Initial Setup
 
@@ -59,7 +59,7 @@ uv pip install black isort mypy pytest
 
 ```bash
 python -m src.cli login
-# or use environment variables such as GLM_API_KEY / OPENAI_API_KEY / ANTHROPIC_API_KEY
+# or export a provider key, e.g. OPENAI_API_KEY / ANTHROPIC_API_KEY / GEMINI_API_KEY
 ```
 
 6. **Run tests to verify setup**
@@ -89,11 +89,17 @@ ClydeCLI/
 
 ### Key Modules
 
-- **`src/providers/`**: LLM provider implementations
-  - `base.py`: Abstract base class for providers
-  - `anthropic_provider.py`: Anthropic/Claude integration
-  - `openai_provider.py`: OpenAI/GPT integration
-  - `glm_provider.py`: GLM/Zhipu AI integration
+- **`src/providers/`**: LLM providers, stdlib HTTP only (no vendor SDKs)
+  - `types.py`: canonical conversation types every adapter serializes from
+  - `base.py`: `Provider` protocol, `ProviderResponse`/`ProviderError`, HTTP helpers, retry, cancellation
+  - `openai_compat.py`: one adapter for every OpenAI-compatible service
+  - `anthropic.py`, `google.py`, `ollama.py`: adapters for the other wire formats
+  - `registry.py`: the provider table and `provider:model` resolution
+  - `keys.py`: API keys (env vars + `~/.clyde/keys.json`)
+  - `convert.py`: stored conversation <-> canonical types
+
+  Adding an OpenAI-compatible provider is one row in `registry._OPENAI_COMPAT` plus its env var
+  in `keys.PROVIDER_KEY_ENV`.
 
 - **`src/repl/`**: Interactive REPL implementation
   - `core.py`: Main REPL logic
@@ -103,9 +109,8 @@ ClydeCLI/
   - `conversation.py`: Message history
 
 - **`src/config.py`**: Configuration management
-  - Load/save configuration
-  - API key management
-  - Provider settings
+  - Load/save `~/.clyde/config.json` (default model, session settings)
+  - One-time migration of the old per-provider config
 
 - **`src/cli.py`**: CLI command implementations
 
@@ -125,13 +130,13 @@ We follow PEP 8 with a few modifications:
 
 ```python
 # Good
-def get_provider_config(provider: str) -> dict[str, Any]:
-    """Get configuration for a specific provider."""
-    pass
+def resolve(reg: dict[str, Provider], model: str) -> tuple[Provider, str] | None:
+    """Resolve a model string to (provider, model)."""
+    ...
 
 # Bad
-def get_provider_config(provider):
-    pass
+def resolve(reg, model):
+    ...
 ```
 
 ### Docstrings
@@ -309,34 +314,24 @@ python -m pytest tests/ --cov=src --cov-report=html
 We use **pytest** for testing:
 
 ```python
-import pytest
-from src.config import load_config, save_config
+def test_default_model_roundtrip(tmp_path, monkeypatch):
+    """Config persistence, isolated from the real home directory."""
+    monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+    from src.config import get_default_model, set_default_model
 
+    set_default_model("openai:gpt-5.4")
+    assert get_default_model() == "openai:gpt-5.4"
+```
 
-def test_load_config_default():
-    """Test that load_config returns a valid config."""
-    config = load_config()
-    assert "providers" in config
-    assert "default_provider" in config
+For anything that talks to a model, use the scripted provider in `tests/fakes.py` instead of the
+network:
 
+```python
+from tests.fakes import FakeProvider, reply
 
-def test_save_and_load_config(tmp_path):
-    """Test config persistence."""
-    config = {
-        "default_provider": "glm",
-        "providers": {
-            "glm": {
-                "api_key": "test_key",
-                "base_url": "https://example.com",
-                "default_model": "glm-4"
-            }
-        }
-    }
-
-    save_config(config)
-    loaded = load_config()
-
-    assert loaded["default_provider"] == "glm"
+provider = FakeProvider(reply("Hello"))   # queue replies (or exceptions) in order
+# ... run code under test ...
+assert provider.requests[0]["model"] == "fake-model"
 ```
 
 ### Test Guidelines
