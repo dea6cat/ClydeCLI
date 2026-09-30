@@ -280,6 +280,7 @@ That's all it takes: clone, configure, run.
 | `/multiline` | Toggle multiline mode |
 | `/model [provider:model]` | Show or switch the model |
 | `/models`    | List models from every connected provider |
+| `/eval [filter]` | Test listed models on a tool call and a round trip; shows pass/fail, latency and tok/s |
 | `/think [level]` | Reasoning: off, low, medium, high, on, default |
 | `/doctor`    | Diagnose environment, config, keys and permissions |
 | `/mcp`       | Connected MCP servers and their tools |
