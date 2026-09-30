@@ -235,6 +235,7 @@ def run_agent_loop(
     Returns:
         AgentLoopResult with final text response, usage info, and turn count
     """
+    tool_context.provider, tool_context.model = provider, model
     specs = from_specs(tool_registry.list_specs())
     known_tools = tuple(s.name for s in specs)
     style_name = getattr(tool_context, "output_style_name", None)
