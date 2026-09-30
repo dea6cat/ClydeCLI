@@ -29,6 +29,8 @@ Examples:
   clyde                               Start interactive REPL
   clyde --model openai:gpt-5.4        Start with a specific provider:model
   clyde --stream                      Start REPL with live response rendering
+  clyde -c                            Continue the most recent session in this directory
+  clyde --resume [SESSION_ID]         Pick a recent session to resume, or resume one by id
   clyde --list-models                 List models from every connected provider
   clyde login                         Connect a provider and pick a default model
   clyde logout openai                 Remove a saved API key
@@ -40,6 +42,10 @@ Examples:
     parser.add_argument('--config', action='store_true', help='Show current configuration')
     parser.add_argument('--stream', action='store_true', help='Enable live response rendering in the REPL')
     parser.add_argument('--model', metavar='PROVIDER:MODEL', help='Model to use for this session')
+    parser.add_argument('-c', '--continue', dest='continue_last', action='store_true',
+                        help='Continue the most recent session in this directory')
+    parser.add_argument('-r', '--resume', nargs='?', const='', metavar='SESSION_ID',
+                        help='Resume a session by id, or pick one of the recent sessions')
     parser.add_argument('--list-models', action='store_true', help='List models from every connected provider')
 
     subparsers = parser.add_subparsers(dest='command', help='Available commands')
@@ -63,7 +69,7 @@ Examples:
     if args.command == 'logout':
         return handle_logout(args.provider)
 
-    return start_repl(model=args.model, stream=args.stream)
+    return start_repl(model=args.model, stream=args.stream, resume=args.resume, continue_last=args.continue_last)
 
 
 def prompt_secret(label: str) -> str:
@@ -262,11 +268,11 @@ def list_models() -> int:
     return 0
 
 
-def start_repl(model: str | None = None, stream: bool = False):
+def start_repl(model: str | None = None, stream: bool = False, resume: str | None = None, continue_last: bool = False):
     """Start interactive REPL."""
     from src.repl import ClydeREPL
 
-    repl = ClydeREPL(model=model, stream=stream)
+    repl = ClydeREPL(model=model, stream=stream, resume=resume, continue_last=continue_last)
     repl.run()
     return 0
 
