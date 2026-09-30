@@ -138,6 +138,7 @@ clyde --version                # Check version
 | Permissions | 🟡 | Interactive approval is wired into tool dispatch: Bash asks for any command that is not clearly read-only (and still blocks dangerous patterns), Write/Edit ask for docs files, Config asks before changing a setting; approvals are one-shot, there are no saved allow rules |
 | Sessions | ✅ | Auto-saved after each turn; `/resume` picker per workspace, `clyde -c` / `clyde --resume [id]` |
 | Cost Tracking | ✅ | `/cost` shows input, output and cache tokens per model with an estimated $ total from catalog prices |
+| Hooks | ✅ | PreToolUse / PostToolUse shell commands from `~/.clyde/settings.json` |
 | Compaction | ✅ | `/compact` on demand; runs automatically once history reaches 80% of the context window |
 
 ### Tools
@@ -163,8 +164,8 @@ clyde --version                # Check version
 - ✅ **Phase 0**: Installable, runnable CLI
 - ✅ **Phase 1**: Core agent experience (REPL, sessions, slash commands)
 - ✅ **Phase 2**: Real tool-calling loop, multi-provider
-- 🟡 **Phase 3**: Context, permissions, recovery (`/resume`, `/doctor`, auto-compaction and README context are in; hooks and saved permission rules are not)
-- ⏳ **Phase 4**: MCP client, plugins, hooks (only custom tools from `~/.clyde/tools/` so far)
+- 🟡 **Phase 3**: Context, permissions, recovery (`/resume`, `/doctor`, auto-compaction and README context and pre/post tool hooks are in; saved permission rules are not)
+- ⏳ **Phase 4**: MCP client and plugins (only custom tools from `~/.clyde/tools/` so far)
 - ⏳ **Phase 5**: Python-native differentiators (not started)
 
 **See [FEATURE_LIST.md](FEATURE_LIST.md) for detailed feature status and PR guidelines.**
@@ -310,6 +311,32 @@ Example:
 - Tool limits: `allowed-tools` controls which tools the skill can use.
 - Arguments: use `$ARGUMENTS`, `$0`, `$1`, or named args like `$path` (from `arguments`).
 - Placeholder syntax: use `$path`, not `${path}`.
+
+### Hooks
+
+Run your own shell commands before or after a tool call. Put them in `~/.clyde/settings.json`
+(same format as Claude Code):
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {"matcher": "Bash", "hooks": [{"type": "command", "command": "~/bin/check-command.sh"}]}
+    ],
+    "PostToolUse": [
+      {"matcher": "Write|Edit", "hooks": [{"type": "command", "command": "ruff format --quiet ."}]}
+    ]
+  }
+}
+```
+
+- `matcher` is a regex on the tool name; `""` or `"*"` matches every tool
+- The command gets the event as JSON on stdin: `hook_event_name`, `tool_name`, `tool_input`, `cwd`,
+  plus `tool_response` for PostToolUse
+- Exit 2 blocks the call (PreToolUse) or sends stderr back to the model (PostToolUse); any other
+  exit code carries on. Each command times out after 60s (`"timeout"` overrides it)
+- Only your user settings are read; project `.clyde/settings.json` hooks are ignored, since a cloned
+  repo could otherwise run commands on your machine
 
 ***
 

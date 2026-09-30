@@ -83,6 +83,7 @@ from src.providers import catalog
 from src.providers.base import ProviderError, is_auth_error
 from src.providers.convert import append_response, to_canonical
 from src.tool_system.context import ToolContext
+from src.tool_system.hooks import load_hooks
 from src.tool_system.defaults import build_default_registry
 from src.tool_system.protocol import ToolCall
 from src.tool_system.tools.cron import pop_due_jobs
@@ -152,7 +153,7 @@ class ClydeREPL:
         self.session = Session.create(self.provider_name, self.model)
 
         self.tool_registry = build_default_registry()
-        self.tool_context = ToolContext(workspace_root=Path.cwd())
+        self.tool_context = ToolContext(workspace_root=Path.cwd(), hooks=load_hooks())
         self.tool_context.ask_user = self._ask_user_questions
         # Session-scoped cron: due jobs are queued here and run only between turns.
         self._cron_checked_at = datetime.now()
