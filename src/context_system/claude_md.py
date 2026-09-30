@@ -4,7 +4,8 @@ from pathlib import Path
 
 from .models import ClaudeMdContext, ClaudeMdFile
 
-_PROJECT_CANDIDATES = ("CLAUDE.md", ".clyde/CLAUDE.md", ".claude/CLAUDE.md")
+# CLAUDE.local.md is the personal, usually gitignored, per-project memory file.
+_PROJECT_CANDIDATES = ("CLAUDE.md", ".clyde/CLAUDE.md", ".claude/CLAUDE.md", "CLAUDE.local.md")
 _USER_CANDIDATES = (".clyde/CLAUDE.md", ".claude/CLAUDE.md")
 
 

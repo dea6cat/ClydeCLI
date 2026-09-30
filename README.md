@@ -132,7 +132,7 @@ clyde --version                # Check version
 | Multi-Provider | ✅ | 12 providers, stdlib HTTP, live model lists, `provider:model` switching |
 | Agent Loop | ✅ | Tool-calling loop with retries, reasoning control, history repair |
 | Skill System | ✅ | SKILL.md slash-command skills with args + tool limits |
-| Context Building | 🟡 | Workspace snapshot, git status and CLAUDE.md go into the prompt; no deeper project indexing |
+| Context Building | 🟡 | Workspace snapshot, git status, a README excerpt, entry points (`[project.scripts]`, package.json `main`/`bin`) and memory files go into the prompt: `~/.clyde/CLAUDE.md` (user), `CLAUDE.md` (project, shared) and `CLAUDE.local.md` (project, personal, keep it gitignored); no deeper project indexing |
 | Permissions | 🟡 | Interactive approval is wired into tool dispatch, but only Write and Edit ask; Bash only blocks a short list of dangerous patterns |
 | Sessions | 🟡 | Manual `/save` and `/load`; no session picker, no auto-save |
 | Compaction | 🟡 | Manual `/compact` summarizes older history; no automatic compaction |
