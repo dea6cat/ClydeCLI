@@ -46,7 +46,7 @@
 | `/resume` session recovery experience | ✅ | Sessions auto-save after each turn; `/resume` picks from this workspace's recent sessions (or takes an id) and shows a recap; `clyde -c` / `clyde --resume [id]` on the CLI |
 | `/compact` conversation compaction | ✅ | Manual `/compact`, plus automatic compaction before a turn once history reaches 80% of the context window |
 | `/doctor` diagnostics | ✅ | Checks Python vs requires-python, dependencies, config and key store (mode 600, no secrets shown), providers with keys, current model, git, workspace and permission settings |
-| Hook system | ✅ | PreToolUse / PostToolUse shell hooks from `~/.clyde/settings.json` (Claude Code format); no project-level hooks until there is a workspace trust prompt |
+| Hook system | ✅ | PreToolUse / PostToolUse shell hooks from `~/.clyde/settings.json` or `.toml` (Claude Code, shorthand, Gemini CLI, Cursor or Copilot CLI format); no project-level hooks until there is a workspace trust prompt |
 | Permission system | 🟡 | Approval prompts wired into tool dispatch; Bash asks unless the command is read-only (dangerous patterns still blocked), Write/Edit ask for docs, Config asks before setting; no "always allow" rules yet |
 
 ---
