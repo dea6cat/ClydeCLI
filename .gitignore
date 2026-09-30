@@ -82,3 +82,6 @@ sessions/
 
 # Claude Code personal settings
 CLAUDE.local.md
+
+# graphify knowledge graph output
+graphify-out/
