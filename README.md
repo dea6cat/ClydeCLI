@@ -280,8 +280,8 @@ That's all it takes: clone, configure, run.
 | `/resume [id]` | Pick a recent session of this workspace to continue |
 | `/multiline` | Toggle multiline mode |
 | `/model [provider:model]` | Show or switch the model |
-| `/models`    | List models from every connected provider |
-| `/eval [filter]` | Test listed models on a tool call and a round trip; shows pass/fail, latency and tok/s |
+| `/models [all\|refresh]` | List models from every connected provider; hides ones `/eval` found broken (`all` shows them, `refresh` re-fetches the lists) |
+| `/eval [filter]` | Test listed models on a tool call and a round trip; shows pass/fail, latency and tok/s, and remembers which ones don't work |
 | `/think [level]` | Reasoning: off, low, medium, high, on, default |
 | `/doctor`    | Diagnose environment, config, keys and permissions |
 | `/mcp`       | Connected MCP servers and their tools |

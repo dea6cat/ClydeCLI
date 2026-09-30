@@ -212,7 +212,7 @@ def handle_login():
     from src.providers import build_registry, keys
 
     console = Console()
-    console.print("\n[bold blue]ClydeCLI - Connect a provider[/bold blue]\n")
+    console.print("\n[bold #4eba65]ClydeCLI - Connect a provider[/bold #4eba65]\n")
     keys.load_into_env()
     registry = build_registry()
     _print_provider_table(console, registry)
@@ -234,7 +234,7 @@ def handle_setup(console: Console, assume_yes: bool = False) -> int:
     from src.providers import build_registry, keys, usable
     from src.skills.loader import get_all_skills
 
-    console.print("\n[bold blue]ClydeCLI setup[/bold blue]")
+    console.print("\n[bold #4eba65]ClydeCLI setup[/bold #4eba65]")
 
     # 1) provider and default model
     keys.load_into_env()
@@ -448,8 +448,8 @@ def _print_provider_table(console: Console, registry: dict) -> None:
 
     saved = keys.saved_providers()
     table = Table(title="Providers", show_header=True, header_style="bold")
-    table.add_column("Provider", style="cyan")
-    table.add_column("Key", style="magenta")
+    table.add_column("Provider", style="#4eba65")
+    table.add_column("Key", style="#e8e4dc")
     table.add_column("Status", style="green")
     for name in _login_choices(registry):
         if name == "ollama":
@@ -478,7 +478,7 @@ def show_config():
         config = load_config()
         console.print(f"\n[bold]Configuration file:[/bold] {get_config_path()}")
         console.print(f"[bold]Saved keys:[/bold] {keys.keys_file()}\n")
-        console.print(f"[cyan]Default model:[/cyan] {config.get('model') or 'Not set (picks a connected model at startup)'}\n")
+        console.print(f"[#4eba65]Default model:[/#4eba65] {config.get('model') or 'Not set (picks a connected model at startup)'}\n")
         _print_provider_table(console, build_registry())
     except Exception as e:
         console.print(f"\n[red]Error loading configuration: {e}[/red]\n")
@@ -497,7 +497,7 @@ def list_models() -> int:
         return 1
     for name, provider in live.items():
         models = provider.list_models()
-        console.print(f"[bold cyan]{name}[/bold cyan]")
+        console.print(f"[bold #e8e4dc]{name}[/bold #e8e4dc]")
         if not models:
             console.print("  [dim](couldn't list models; check the key or connection)[/dim]")
         for m in models:

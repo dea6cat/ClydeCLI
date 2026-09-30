@@ -20,7 +20,7 @@ _NON_CHAT = (
     "embed", "embedding", "ocr", "tts", "whisper", "transcribe", "moderation",
     "rerank", "guard", "safety", "reward", "-parse", "nemoretriever", "nvclip",
     "bge-", "arctic-embed", "voxtral", "riva", "diffusion", "calibration",
-    "topic-control", "detector", "-fim-",
+    "topic-control", "detector", "-fim-", ":batch",  # OpenRouter batch variants reject chat requests
 )
 
 
