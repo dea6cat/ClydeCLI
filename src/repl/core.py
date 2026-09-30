@@ -107,12 +107,7 @@ class ClydeREPL:
 
         keys.load_into_env()
         self.registry = build_registry()
-        requested = model or get_default_model() or pick_default_model(self.registry)
-        if not requested:
-            self.console.print("[red]No model configured.[/red]")
-            self.console.print("Run [bold]clyde login[/bold], or pass [bold]--model provider:model[/bold].")
-            sys.exit(1)
-        resolved = self._resolve_model(requested)
+        resolved = self._startup_model(model)
         if resolved is None:
             sys.exit(1)
         self.provider, self.model = resolved
@@ -1259,6 +1254,28 @@ class ClydeREPL:
                 self.console.print(f"\n[red]Error: {e}[/red]")
                 import traceback
                 traceback.print_exc()
+
+    def _startup_model(self, requested: str | None):
+        """(provider, model) to start with. An explicit --model must resolve. Otherwise the saved
+        default is used when it works, and if it doesn't (or none is saved) a model is picked
+        from whatever is connected, so an exported API key is enough; no login required."""
+        if requested:
+            return self._resolve_model(requested)
+        saved = get_default_model()
+        if saved:
+            resolved = resolve(self.registry, saved)
+            if resolved is not None:
+                return resolved
+            self.console.print(f"[yellow]Saved model '{saved}' isn't available right now.[/yellow]")
+        with self.console.status("[dim]Looking for a connected provider...[/dim]", spinner="dots"):
+            auto = pick_default_model(self.registry)
+        resolved = resolve(self.registry, auto) if auto else None
+        if resolved is None:
+            self.console.print("[red]No provider available.[/red] Export an API key (e.g. OPENAI_API_KEY), "
+                               "start Ollama, or run [bold]clyde login[/bold].")
+            return None
+        self.console.print(f"[dim]Using {auto}. Change it with /model provider:model.[/dim]")
+        return resolved
 
     def _resolve_model(self, requested: str):
         """(provider, model) for a model string, or None after explaining why it didn't resolve."""
