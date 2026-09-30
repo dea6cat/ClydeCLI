@@ -252,6 +252,7 @@ That's all it takes: clone, configure, run.
 | `/model [provider:model]` | Show or switch the model |
 | `/models`    | List models from every connected provider |
 | `/think [level]` | Reasoning: off, low, medium, high, on, default |
+| `/doctor`    | Diagnose environment, config, keys and permissions |
 | `/clear`     | Clear history         |
 | `/exit`      | Exit REPL             |
 

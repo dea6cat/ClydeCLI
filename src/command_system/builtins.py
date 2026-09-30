@@ -555,6 +555,100 @@ def _sync_compact_fallback(context: CommandContext) -> LocalCommandResult:
         )
 
 
+def _requires_python() -> str | None:
+    """requires-python from the installed package metadata, else from a source checkout's pyproject.toml."""
+    try:
+        from importlib.metadata import metadata
+        return metadata("clyde-cli").get("Requires-Python")
+    except Exception:
+        pass
+    try:
+        import tomllib
+        pyproject = Path(__file__).resolve().parents[2] / "pyproject.toml"
+        return tomllib.loads(pyproject.read_text(encoding="utf-8"))["project"]["requires-python"]
+    except Exception:
+        return None
+
+
+def _check(ok: bool, text: str, hint: str = "") -> str:
+    return f"  {'✓' if ok else '✗'} {text}" + (f" — {hint}" if hint and not ok else "")
+
+
+def doctor_command_call(args: str, context: CommandContext) -> LocalCommandResult:
+    """Handle /doctor - diagnose the environment, config, keys, providers and permissions."""
+    import json
+    import os
+    import shutil
+    from importlib.metadata import PackageNotFoundError, version
+
+    from ..config import get_config_path
+    from ..providers import keys
+
+    lines = ["ClydeCLI doctor:", ""]
+
+    running = ".".join(map(str, sys.version_info[:3]))
+    spec = _requires_python()
+    # Only ">=X.Y[.Z]" is evaluated; any other specifier is shown unchecked.
+    if spec and spec.strip().startswith(">="):
+        minimum = tuple(int(p) for p in spec.strip()[2:].split(".") if p.isdigit())
+        lines.append(_check(sys.version_info[:len(minimum)] >= minimum, f"Python {running} (requires {spec})",
+                            f"install Python {spec}"))
+    else:
+        lines.append(_check(True, f"Python {running}" + (f" (requires {spec}, not checked)" if spec else "")))
+
+    for dep in ("rich", "prompt-toolkit", "tiktoken"):
+        try:
+            lines.append(_check(True, f"{dep} {version(dep)}"))
+        except PackageNotFoundError:
+            lines.append(_check(False, f"{dep} not installed", f"pip install {dep}"))
+
+    config_path = get_config_path()
+    saved_model = None
+    if not config_path.exists():
+        lines.append(_check(True, f"Config {config_path} not created yet (defaults in use)"))
+    else:
+        try:
+            config = json.loads(config_path.read_text(encoding="utf-8"))
+            saved_model = config.get("model") if isinstance(config, dict) else None
+            lines.append(_check(True, f"Config {config_path} parses"))
+        except (OSError, ValueError) as e:
+            lines.append(_check(False, f"Config {config_path} is invalid: {e}", "fix the JSON or delete the file"))
+
+    keys_path = keys.keys_file()
+    if not keys_path.exists():
+        lines.append(_check(True, f"Key store {keys_path} not present (no saved keys)"))
+    else:
+        try:
+            saved = len(keys._load())
+            lines.append(_check(True, f"Key store {keys_path} parses ({saved} saved)"))
+        except keys.KeysFileError as e:
+            lines.append(_check(False, f"Key store unreadable: {e}", "fix or remove the file"))
+        if os.name != "nt":
+            mode = keys_path.stat().st_mode & 0o777
+            lines.append(_check(mode == 0o600, f"Key store mode {mode:o}", f"chmod 600 {keys_path}"))
+
+    saved_names = keys.saved_providers()
+    with_keys = [name for name, env in keys.PROVIDER_KEY_ENV.items() if os.environ.get(env) or name in saved_names]
+    lines.append(_check(bool(with_keys), "Providers with keys: " + (", ".join(with_keys) or "none"),
+                        "run `clyde login` or export a provider key (local Ollama needs none)"))
+
+    provider, model = context.config.get("provider"), context.config.get("model")
+    current = f"{provider.name}:{model}" if provider is not None and model else saved_model
+    lines.append(_check(bool(current), f"Model: {current or 'none selected'}", "choose one with /model provider:model"))
+
+    git = shutil.which("git")
+    lines.append(_check(bool(git), f"git: {git or 'not found'}", "install git for repository context"))
+
+    lines.append(_check(True, f"Workspace: {context.workspace_root} (cwd {context.cwd})"))
+    perms = context.config.get("permission_context")
+    if perms is not None:
+        extra = ", ".join(str(p) for p in perms.additional_working_directories) or "none"
+        denied = ", ".join(sorted(perms.deny_names) + [f"{p}*" for p in perms.deny_prefixes]) or "none"
+        lines.append(_check(True, f"Permissions: extra dirs {extra}; allow_docs {perms.allow_docs}; denied tools {denied}"))
+
+    return LocalCommandResult(type="text", value="\n".join(lines))
+
+
 # Command definitions
 HELP_COMMAND = LocalCommand(
     name="help",
@@ -606,6 +700,13 @@ COMPACT_COMMAND = LocalCommand(
     supports_non_interactive=True,
 )
 
+DOCTOR_COMMAND = LocalCommand(
+    name="doctor",
+    description="Diagnose Python, dependencies, config, keys, providers, tools and permissions",
+    argument_hint="",
+    supports_non_interactive=True,
+)
+
 INIT_COMMAND = PromptCommand(
     name="init",
     description="Initialize new CLAUDE.md file(s) and optional skills/hooks with codebase documentation",
@@ -650,6 +751,8 @@ def execute_command_sync(cmd_name: str, args: str, context: CommandContext) -> t
             result = context_command_call(args, context)
         elif cmd is COMPACT_COMMAND:
             result = compact_command_call(args, context)
+        elif cmd is DOCTOR_COMMAND:
+            result = doctor_command_call(args, context)
         else:
             return False, None, f"Command not implemented for sync execution: {cmd_name}"
 
@@ -666,6 +769,7 @@ SKILLS_COMMAND.set_call(skills_command_call)
 COST_COMMAND.set_call(cost_command_call)
 CONTEXT_COMMAND.set_call(context_command_call)
 COMPACT_COMMAND.set_call(compact_command_call)
+DOCTOR_COMMAND.set_call(doctor_command_call)
 
 
 def get_builtin_commands() -> list[Command]:
@@ -678,6 +782,7 @@ def get_builtin_commands() -> list[Command]:
         COST_COMMAND,
         CONTEXT_COMMAND,
         COMPACT_COMMAND,
+        DOCTOR_COMMAND,
         INIT_COMMAND,
     ]
 
