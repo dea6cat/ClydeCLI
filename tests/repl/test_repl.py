@@ -619,3 +619,27 @@ class TestPermissionPrompt(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestSlashCompleter(unittest.TestCase):
+    def _names(self, text):
+        from prompt_toolkit.document import Document
+        from src.repl.core import SlashCompleter
+
+        completer = SlashCompleter([("/help", "Show help"), ("/exit", "Exit"), ("/check", "Run checks")])
+        return [(c.text, c.display_meta_text) for c in completer.get_completions(Document(text), None)]
+
+    def test_plain_text_gets_no_menu(self):
+        self.assertEqual(self._names("so hi how you"), [])
+        self.assertEqual(self._names("/help me"), [])
+
+    def test_slash_prefix_first_then_substring(self):
+        self.assertEqual(self._names("/he"), [("/help", "Show help"), ("/check", "Run checks")])
+        self.assertEqual([n for n, _ in self._names("/")], ["/help", "/exit", "/check"])
+
+    def test_descriptions_come_from_help_text(self):
+        from src.repl.core import _help_descriptions
+
+        desc = _help_descriptions()
+        self.assertEqual(desc["/help"], "Show this help message")
+        self.assertEqual(desc["/quit"], desc["/exit"])
