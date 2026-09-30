@@ -31,6 +31,7 @@ from src.tool_system.tools import (
     GrepTool,
     LSPTool,
     MCPTool,
+    NotebookEditTool,
     ListMcpResourcesTool,
     ReadMcpResourceTool,
     SkillTool,
@@ -201,6 +202,76 @@ class TestEditTool(ToolSystemTests):
             FileEditTool().run({"file_path": str(p), "old_string": "a", "new_string": "b"}, self.ctx)
         FileEditTool().run({"file_path": str(p), "old_string": "a", "new_string": "b", "replace_all": True}, self.ctx)
         self.assertEqual(p.read_text(encoding="utf-8"), "b b b")
+
+
+class TestNotebookEditTool(ToolSystemTests):
+    def _notebook(self, minor: int = 5) -> Path:
+        p = self.root / "nb.ipynb"
+        nb = {
+            "cells": [
+                {"cell_type": "code", "id": "a1", "metadata": {}, "source": "x = 1", "execution_count": 3, "outputs": [{"output_type": "stream"}]},
+                {"cell_type": "markdown", "id": "b2", "metadata": {}, "source": "# hi"},
+            ],
+            "metadata": {},
+            "nbformat": 4,
+            "nbformat_minor": minor,
+        }
+        p.write_text(json.dumps(nb), encoding="utf-8")
+        FileReadTool().run({"file_path": str(p)}, self.ctx)
+        return p
+
+    def _cells(self, p: Path) -> list:
+        return json.loads(p.read_text(encoding="utf-8"))["cells"]
+
+    def test_requires_read(self) -> None:
+        from src.tool_system.errors import ToolInputError
+
+        p = self.root / "unread.ipynb"
+        p.write_text('{"cells": []}', encoding="utf-8")
+        with self.assertRaises(ToolInputError):
+            NotebookEditTool().run({"notebook_path": str(p), "cell_id": "cell-0", "new_source": "y"}, self.ctx)
+
+    def test_replace_code_cell_clears_outputs_and_keeps_format(self) -> None:
+        p = self._notebook()
+        NotebookEditTool().run({"notebook_path": str(p), "cell_id": "a1", "new_source": "x = 2"}, self.ctx)
+        text = p.read_text(encoding="utf-8")
+        self.assertTrue(text.endswith("}\n"))
+        self.assertIn('\n "cells": [', text)
+        self.assertEqual(json.loads(text)["nbformat_minor"], 5)
+        cell = self._cells(p)[0]
+        self.assertEqual((cell["source"], cell["outputs"], cell["execution_count"]), ("x = 2", [], None))
+
+    def test_insert_after_cell_and_at_start(self) -> None:
+        p = self._notebook()
+        out = NotebookEditTool().run({"notebook_path": str(p), "cell_id": "a1", "new_source": "mid", "cell_type": "markdown", "edit_mode": "insert"}, self.ctx).output
+        NotebookEditTool().run({"notebook_path": str(p), "new_source": "top", "cell_type": "code", "edit_mode": "insert"}, self.ctx)
+        cells = self._cells(p)
+        self.assertEqual([c["source"] for c in cells], ["top", "x = 1", "mid", "# hi"])
+        self.assertEqual(cells[2]["id"], out["cell_id"])
+        self.assertEqual(cells[0]["outputs"], [])
+
+    def test_insert_without_ids_before_nbformat_4_5(self) -> None:
+        p = self._notebook(minor=4)
+        NotebookEditTool().run({"notebook_path": str(p), "cell_id": "cell-1", "new_source": "end", "cell_type": "markdown", "edit_mode": "insert"}, self.ctx)
+        self.assertNotIn("id", self._cells(p)[2])
+
+    def test_delete_by_index_form(self) -> None:
+        p = self._notebook()
+        NotebookEditTool().run({"notebook_path": str(p), "cell_id": "cell-0", "new_source": "", "edit_mode": "delete"}, self.ctx)
+        self.assertEqual([c["id"] for c in self._cells(p)], ["b2"])
+
+    def test_rejects_bad_input(self) -> None:
+        from src.tool_system.errors import ToolInputError
+
+        p = self._notebook()
+        for bad in (
+            {"notebook_path": "nb.ipynb", "cell_id": "a1", "new_source": "y"},
+            {"notebook_path": str(p), "new_source": "y", "edit_mode": "insert"},
+            {"notebook_path": str(p), "new_source": "y"},
+            {"notebook_path": str(p), "cell_id": "zz", "new_source": "y"},
+        ):
+            with self.assertRaises(ToolInputError):
+                NotebookEditTool().run(bad, self.ctx)
 
 
 class TestGlobTool(ToolSystemTests):
