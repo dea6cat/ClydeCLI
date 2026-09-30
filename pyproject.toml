@@ -12,7 +12,7 @@ requires-python = ">=3.14"
 authors = [
     {name = "dea6cat", email = "notalexander24@gmail.com"}
 ]
-keywords = ["claude", "cli", "ai", "llm", "anthropic", "openai", "glm"]
+keywords = ["cli", "ai", "llm", "agent", "anthropic", "openai", "gemini", "ollama", "openrouter"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -22,9 +22,6 @@ classifiers = [
 ]
 
 dependencies = [
-    "anthropic",
-    "openai",
-    "zhipuai",
     "python-dotenv",
     "rich",
     "prompt-toolkit",
