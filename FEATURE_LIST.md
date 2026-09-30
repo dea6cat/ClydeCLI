@@ -48,7 +48,7 @@
 | `/doctor` diagnostics | ✅ | Checks Python vs requires-python, dependencies, config and key store (mode 600, no secrets shown), providers with keys, current model, git, workspace and permission settings |
 | Hook system | ✅ | PreToolUse / PostToolUse shell hooks from `~/.clyde/settings.json` or `.toml` (Claude Code, shorthand, Gemini CLI, Cursor or Copilot CLI format); no project-level hooks until there is a workspace trust prompt |
 | Permission system | ✅ | Bash asks unless read-only (dangerous patterns refused), Write/Edit ask for docs, Config asks before setting, WebFetch asks per domain; saved `permissions.allow` / `deny` rules in Claude Code syntax and a "don't ask again" answer |
-| Plugin system | ✅ | `clyde plugin install/list/enable/disable/remove`; plugins bundle tools, skills, hooks and MCP servers (Claude Code layout) and are enabled only after a yes |
+| Plugin system | ✅ | `clyde plugin install/import/list/enable/disable/remove` (import brings over Claude Code, Codex and Cursor plugins); plugins bundle tools, skills, hooks and MCP servers (Claude Code layout) and are enabled only after a yes |
 | Self-checks | ✅ | ruff / mypy on edited Python files with only new problems fed back to the model; `/check` runs ruff, mypy and pytest (uv-aware) |
 | Tracing / `/debug` | ✅ | Per-session JSONL traces with redaction, `/debug` for the last turn, `clyde --debug` live |
 

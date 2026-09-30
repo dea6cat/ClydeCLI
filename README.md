@@ -117,6 +117,7 @@ clyde login                    # Connect a provider, pick a default model
 clyde hooks import             # Bring over hooks from Claude Code, Gemini CLI, Cursor, Copilot CLI
 clyde mcp import               # Bring over MCP servers from Claude Code, Cursor, Gemini CLI, Codex, Copilot CLI
 clyde plugin install <dir|url> # Install a plugin (then list / enable / disable / remove)
+clyde plugin import            # Bring over plugins installed for Claude Code, Codex or Cursor
 clyde --debug                  # Print trace events live while you work
 clyde logout openai            # Forget a saved key
 clyde --list-models            # Every model you can use right now
@@ -193,10 +194,10 @@ One line (installs uv if needed, then `clyde`, then runs `clyde setup`):
 curl -fsSL https://raw.githubusercontent.com/dea6cat/ClydeCLI/main/install.sh | sh
 ```
 
-`clyde setup` connects a provider and picks a default model, lists the hooks and MCP servers you
+`clyde setup` connects a provider and picks a default model, lists the hooks, MCP servers and plugins you
 already set up for other agents (Claude Code, Cursor, Gemini CLI, Codex, Copilot CLI) and imports
 them only if you say yes, and offers to
-put `clyde` on your PATH. Pass `--yes` for no prompts (hooks and MCP servers are never imported that way). Run it
+put `clyde` on your PATH. Pass `--yes` for no prompts (hooks, MCP servers and plugins are never imported that way). Run it
 again any time.
 
 Or from source:
@@ -450,6 +451,9 @@ A plugin is a folder that bundles extensions; Claude Code plugins mostly work as
 
 - `clyde plugin install <folder-or-git-url>` shows what it contains and asks before enabling it
   (`--yes` installs it disabled); `clyde plugin list | enable | disable | remove` manage it
+- Already use plugins in Claude Code, Codex or Cursor? `clyde plugin import` (also offered by
+  `clyde setup`) lists every one it finds, what ClydeCLI can load from it and why any are skipped, and
+  copies and enables each only after its own yes; plugins switched off in their agent default to no
 - `${CLYDE_PLUGIN_ROOT}` (or `${CLAUDE_PLUGIN_ROOT}`) in hook and MCP commands is the plugin's folder
 - Plugin tools and MCP servers never replace existing ones; clashes are skipped with a warning.
   Markdown `commands/` are not supported yet
