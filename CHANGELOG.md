@@ -41,7 +41,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The context prompt includes a README excerpt and the project's entry points, and loads
   `CLAUDE.local.md` for personal project memory
 - PreToolUse / PostToolUse hooks: shell commands from `~/.clyde/settings.json` run around tool
-  calls; exit 2 blocks the call or feeds stderr back to the model
+  calls; exit 2 blocks the call or feeds stderr back to the model. Hooks can also live in
+  `settings.toml`, use a shorthand, or be written in Gemini CLI, Cursor or Copilot CLI format,
+  including their JSON deny/block replies
 
 ### Changed
 - API keys moved from base64 entries in `config.json` to `~/.clyde/keys.json` (mode 600), with
