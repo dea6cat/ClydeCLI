@@ -129,22 +129,23 @@ clyde --version                # Check version
 
 | System | Status | Description |
 |--------|--------|-------------|
-| CLI Entry | ✅ | `clyde`, `login`, `logout`, `config`, `--model`, `--list-models` |
+| CLI Entry | ✅ | `clyde`, `login`, `logout`, `config`, `--model`, `--list-models`, `-c`, `--resume` |
 | Interactive REPL | ✅ | Rich output, history, tab completion, multiline, streaming |
 | Multi-Provider | ✅ | 12 providers, stdlib HTTP, live model lists, `provider:model` switching |
 | Agent Loop | ✅ | Tool-calling loop with retries, reasoning control, history repair |
 | Skill System | ✅ | SKILL.md slash-command skills with args + tool limits |
 | Context Building | 🟡 | Workspace snapshot, git status, a README excerpt, entry points (`[project.scripts]`, package.json `main`/`bin`) and memory files go into the prompt: `~/.clyde/CLAUDE.md` (user), `CLAUDE.md` (project, shared) and `CLAUDE.local.md` (project, personal, keep it gitignored); no deeper project indexing |
-| Permissions | 🟡 | Interactive approval is wired into tool dispatch, but only Write and Edit ask; Bash only blocks a short list of dangerous patterns |
+| Permissions | 🟡 | Interactive approval is wired into tool dispatch: Bash asks for any command that is not clearly read-only (and still blocks dangerous patterns), Write/Edit ask for docs files, Config asks before changing a setting; approvals are one-shot, there are no saved allow rules |
 | Sessions | ✅ | Auto-saved after each turn; `/resume` picker per workspace, `clyde -c` / `clyde --resume [id]` |
+| Cost Tracking | ✅ | `/cost` shows input, output and cache tokens per model with an estimated $ total from catalog prices |
 | Compaction | ✅ | `/compact` on demand; runs automatically once history reaches 80% of the context window |
 
 ### Tools
 
 | Category | Tools | Status |
 |----------|-------|--------|
-| Files | Read, Write, Edit, NotebookEdit, Glob, Grep | ✅ Working |
-| System | Bash | ✅ Working |
+| Files | Read, Write, Edit, NotebookEdit, Glob, Grep | ✅ Working; Edit also lands a unique match that is off only by trailing whitespace or indentation |
+| System | Bash | ✅ Working; asks before commands that are not read-only |
 | Web | WebFetch, WebSearch | ✅ Working |
 | Interaction | AskUserQuestion, SendUserMessage | ✅ Working |
 | Tasks | TodoWrite, TaskCreate/Get/List/Update/Output/Stop | ✅ Working |
@@ -156,14 +157,13 @@ clyde --version                # Check version
 | MCP | MCP, ListMcpResources, ReadMcpResource | ⏳ Tools exist, but no MCP client is connected yet |
 | LSP | LSP | ✅ Definition, references, hover, symbols and call hierarchy via a language server on PATH |
 | Not implemented | RemoteTrigger, REPL | ⏳ Stubs that return an error |
-| Not implemented | RemoteTrigger, NotebookEdit, REPL | ⏳ Stubs that return an error |
 
 ### Roadmap
 
 - ✅ **Phase 0**: Installable, runnable CLI
 - ✅ **Phase 1**: Core agent experience (REPL, sessions, slash commands)
 - ✅ **Phase 2**: Real tool-calling loop, multi-provider
-- 🟡 **Phase 3**: Context, permissions, recovery (partly done: see the table above)
+- 🟡 **Phase 3**: Context, permissions, recovery (`/resume`, `/doctor`, auto-compaction and README context are in; hooks and saved permission rules are not)
 - ⏳ **Phase 4**: MCP client, plugins, hooks (only custom tools from `~/.clyde/tools/` so far)
 - ⏳ **Phase 5**: Python-native differentiators (not started)
 
@@ -257,6 +257,9 @@ That's all it takes: clone, configure, run.
 | `/models`    | List models from every connected provider |
 | `/think [level]` | Reasoning: off, low, medium, high, on, default |
 | `/doctor`    | Diagnose environment, config, keys and permissions |
+| `/cost`      | Tokens and estimated cost per model |
+| `/context`   | Context window usage and auto-compact threshold |
+| `/compact`   | Summarize the conversation to free context |
 | `/clear`     | Clear history         |
 | `/exit`      | Exit REPL             |
 
@@ -315,15 +318,22 @@ Example:
 ```text
 ClydeCLI/
 ├── src/
-│   ├── cli.py           # CLI entry
-│   ├── providers/       # LLM providers
-│   ├── repl/            # Interactive REPL
-│   ├── skills/          # SKILL.md loading and creation
-│   └── tool_system/     # Tool registry, loop, validation
-├── tests/               # Core test suite
+│   ├── cli.py              # CLI entry
+│   ├── config.py           # config.json and default model
+│   ├── agent/              # conversation, sessions, agent loop, cost tracking
+│   ├── providers/          # LLM providers and the model catalog
+│   ├── repl/               # Interactive REPL
+│   ├── command_system/     # slash commands (/doctor, /cost, /context, ...)
+│   ├── context_system/     # workspace, git, README and CLAUDE.md context; token estimation
+│   ├── compact_service/    # /compact and auto-compaction
+│   ├── output_styles/      # reply style prompts
+│   ├── skills/             # SKILL.md loading and creation
+│   ├── startup/            # setup report
+│   └── tool_system/        # tool registry, permissions, validation, tools/
+├── tests/                  # mirrors src/
 ├── .clyde/
-│   └── skills/          # Project-local custom skills
-└── FEATURE_LIST.md      # Current feature status
+│   └── skills/             # Project-local custom skills
+└── FEATURE_LIST.md         # Current feature status
 ```
 
 ***
