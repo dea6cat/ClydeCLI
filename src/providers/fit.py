@@ -41,11 +41,12 @@ _EFFICIENCY = 0.6   # ponytail: real decoding reaches roughly 60% of peak bandwi
 class Offer:
     """One downloadable model from a source, sized and rated for this machine."""
     name: str          # what the source calls it
-    pull_tag: str      # what `ollama pull` takes
+    pull_tag: str      # what the downloader takes: an ollama tag, hf.co/<repo>:<quant>, or a Hugging Face URL
     size_bytes: int    # the weights' download size (exact, or estimated by the source)
     rating: str        # relax | balance | hard
     popularity: int    # pulls or downloads, for ranking
     note: str = ""     # e.g. the quantization
+    source: str = ""   # the source module that offered it (ollama, hf, mlx)
 
 
 def _sysctl(name: str) -> str:
