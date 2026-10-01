@@ -104,6 +104,7 @@ Assistant: Still here. What's broken?
 >>> /multiline    # Multi-paragraph input
 >>> Tab           # Auto-complete
 >>> Esc           # Stop the current reply or command (Ctrl+C works too)
+>>> Shift+Tab     # Cycle modes: ♠ hold · ♠ reading the table · ♠♠ all in
 >>> /explain-code qsort.py   # Run a skill
 ```
 
@@ -425,6 +426,21 @@ Add stdio MCP servers under `mcpServers` in `~/.clyde/settings.json` (Claude Cod
   env values are never printed and the settings file is kept at mode 600
 - Only stdio servers from your user settings for now: HTTP/SSE servers and project `.mcp.json`
   files are skipped
+
+### Modes
+
+*Every hand plays differently. Pick how I play this one.*
+
+Shift+Tab cycles the mode, shown under the prompt:
+
+| Mode | What it does |
+|---|---|
+| `♠ hold` | The default. Asks before anything risky: non-read-only shell commands, doc edits, settings changes |
+| `♠ reading the table` | Plan mode. Reads, searches and runs read-only commands, then presents a plan; anything that would change files is refused until the plan is in |
+| `♠♠ all in` | Plays without asking, except major moves: `rm -r`/`-f`, `git push`, `git reset --hard`, `git clean -f`, `branch -D`, publishing, `curl … \| sh`, `docker rm`/`prune`, `kubectl delete`, `terraform apply`/`destroy`, `chmod -R`, `kill -9`, writing to secrets |
+
+Deny rules and the always-refused commands (like `sudo`) apply in every mode, and writes outside the
+project are refused in every mode.
 
 ### Permission Rules
 

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from dataclasses import dataclass
 from typing import Any, Iterable, Mapping, Protocol
 
@@ -42,6 +44,41 @@ class Tool(Protocol):
             PermissionResult indicating allow, deny, or ask.
         """
         return PermissionResult.allow()
+
+
+# Plan mode still lets the model look around, delegate research and present its plan.
+_PLAN_MODE_ALLOWED = {"exitplanmode", "agent", "task"}
+
+
+def _changes_things(spec: ToolSpec, tool_input: dict[str, Any]) -> bool:
+    """Whether a call would modify something, for plan mode ("reading the table")."""
+    if spec.name.lower() in _PLAN_MODE_ALLOWED:
+        return False
+    if spec.name.lower() == "bash":
+        from .tools.bash import is_read_only_command
+        return not is_read_only_command(str(tool_input.get("command", "")))
+    return spec.is_destructive
+
+
+_SECRET_NAMES = re.compile(r"(^|/)(\.env(\..*)?|\.ssh/.*|.*\.(pem|key)|id_(rsa|ed25519).*|\.netrc|credentials.*)$")
+
+
+def _is_major(spec: ToolSpec, tool_input: dict[str, Any], context: ToolContext) -> bool:
+    """What "all in" mode still asks about: hard to undo, outside the project, or touching secrets."""
+    name = spec.name.lower()
+    if name == "bash":
+        from .tools.bash import is_major_command
+        return is_major_command(str(tool_input.get("command", "")))
+    path = tool_input.get("file_path") or tool_input.get("notebook_path")
+    if isinstance(path, str) and path:
+        from pathlib import Path
+        target = Path(path).expanduser().resolve()
+        try:
+            target.relative_to(context.workspace_root)
+        except ValueError:
+            return True
+        return bool(_SECRET_NAMES.search(target.as_posix()))
+    return False
 
 
 class ToolRegistry:
@@ -89,6 +126,15 @@ class ToolRegistry:
             trace.record("hook_block", hook="PreToolUse", tool=spec.name, reason=blocked)
             return ToolResult(name=spec.name, output={"error": blocked}, is_error=True, tool_use_id=call.tool_use_id)
 
+        if context.plan_mode and _changes_things(spec, call.input):
+            return ToolResult(
+                name=spec.name,
+                output={"error": f"Reading the table (plan mode): {spec.name} would change things. Investigate with "
+                                 "read-only tools, then present your plan with ExitPlanMode."},
+                is_error=True,
+                tool_use_id=call.tool_use_id,
+            )
+
         # Saved deny rules block without asking; the tool's own deny wins over saved allow rules.
         ruling = check_rules(spec.name, call.input, context)
         if ruling == "deny":
@@ -99,7 +145,10 @@ class ToolRegistry:
                 tool_use_id=call.tool_use_id,
             )
         permission_result = tool.check_permissions(call.input, context) if hasattr(tool, 'check_permissions') else PermissionResult.allow()
-        if ruling == "allow" and permission_result.behavior.value == "ask":
+        auto = context.auto_approve and not _is_major(spec, call.input, context)
+        if permission_result.behavior.value == "ask" and (ruling == "allow" or auto):
+            if auto and ruling != "allow":
+                trace.record("permission_auto", tool=spec.name, message=permission_result.message)
             permission_result = PermissionResult.allow(permission_result.updated_input)
         if permission_result.behavior.value == "deny":
             return ToolResult(

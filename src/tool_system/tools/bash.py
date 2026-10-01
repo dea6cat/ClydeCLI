@@ -83,6 +83,29 @@ def split_command(command: str) -> list[list[str]] | None:
     return parts
 
 
+# Commands that still ask in "all in" mode: hard to undo, or they reach outside the machine.
+# ponytail: a pattern list, not a classifier; add patterns as new kinds of major commands turn up
+_MAJOR_PATTERNS = [re.compile(p) for p in (
+    r"\brm\s+(-\w*[rRf]|--recursive|--force)",
+    r"\bgit\s+push\b", r"\bgit\s+reset\s+--hard\b", r"\bgit\s+clean\s+-\w*f",
+    r"\bgit\s+(checkout|restore)\s+(--\s+)?\.(\s|$)", r"\bgit\s+branch\s+-D\b",
+    r"\bgit\s+(rebase|filter-branch|filter-repo)\b", r"--force\b|\s-f\b.*\bpush\b",
+    r"\b(npm|pnpm|yarn)\s+publish\b", r"\btwine\s+upload\b", r"\bcargo\s+publish\b", r"\bgh\s+release\b",
+    r"\b(curl|wget)\b[^|]*\|\s*(ba|z)?sh\b",
+    r"\bdocker\s+(rm|rmi|system\s+prune|volume\s+rm)\b", r"\bkubectl\s+delete\b",
+    r"\bterraform\s+(apply|destroy)\b",
+    r"\b(chmod|chown)\s+-\w*R", r"\bkill\s+-9\b|\bkillall\b|\bpkill\b",
+    r"\b(shutdown|reboot|halt)\b", r"\bdd\s+if=", r"\bmkfs\b", r"\btruncate\b",
+    r"\bdrop\s+(table|database)\b",
+)]
+
+
+def is_major_command(command: str) -> bool:
+    """Whether a shell command is risky enough to ask even in all-in mode."""
+    low = command.lower()
+    return any(p.search(low) for p in _MAJOR_PATTERNS) or bool(re.search(r"\bbranch\s+-D\b", command))
+
+
 def is_read_only_command(command: str) -> bool:
     """Whether every part of a (possibly compound) shell command only reads."""
     parts = split_command(command)
