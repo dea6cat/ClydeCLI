@@ -14,21 +14,26 @@ from .fit import Offer, pick
 
 API = "https://huggingface.co/api/models"
 _REPOS = 15     # repos looked at per search
-_QUANT = re.compile(r"[-_.]((?:I?Q\d(?:_[A-Z0-9]+)*)|F16|BF16|F32)\.gguf$", re.I)
+_QUANT = re.compile(r"[-_.]((?:I?Q\d(?:_[A-Z0-9]+)*)|F16|BF16)\.gguf$", re.I)
 _SPLIT = re.compile(r"-\d{5}-of-\d{5}\.gguf$")
 
 
 def _quants(files: list[dict]) -> list[tuple[str, int]]:
-    """(quant, bytes) for each single-file GGUF at the repo root. Split files and vision
-    projectors (mmproj) are skipped: ollama pulls one file per tag."""
-    out = []
+    """(quant, bytes) for the single-file GGUFs at the repo root. Split files, vision projectors
+    (mmproj) and speculative-decoding drafts are skipped. When several files share a quant (a
+    `noMTP-Q4_K_M` beside `Q4_K_M`), Ollama's `:Q4_K_M` tag may fetch any of them, so the largest
+    size is the one reported: a rating must never understate the download."""
+    sizes: dict[str, int] = {}
     for f in files:
         path, size = str(f.get("path", "")), f.get("size")
         m = _QUANT.search(path)
-        if f.get("type") != "file" or not m or not isinstance(size, int) or "mmproj" in path.lower() or _SPLIT.search(path):
+        lower = path.lower()
+        if f.get("type") != "file" or not m or not isinstance(size, int) or _SPLIT.search(path) \
+                or "mmproj" in lower or "draft" in lower:
             continue
-        out.append((m.group(1).upper(), size))
-    return out
+        quant = m.group(1).upper()
+        sizes[quant] = max(size, sizes.get(quant, 0))
+    return list(sizes.items())
 
 
 def _offer(repo: dict, budget: int) -> Offer | None:
@@ -49,7 +54,8 @@ def search(query: str, budget: int) -> list[Offer]:
     ranked by downloads."""
     if os.environ.get("CLYDE_NO_MODEL_FETCH"):
         return []
-    params = {"filter": "gguf", "sort": "downloads", "direction": "-1", "limit": str(_REPOS)}
+    params = {"filter": "gguf", "pipeline_tag": "text-generation", "sort": "downloads", "direction": "-1",
+              "limit": str(_REPOS)}
     if query:
         params["search"] = query
     try:

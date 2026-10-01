@@ -60,9 +60,20 @@ class TestConfirm(unittest.TestCase):
             local_models.show(self.repl, " ollama coder")
         pull.assert_not_called()
 
-    def test_unknown_source_shows_usage(self):
-        local_models.show(self.repl, " pypi")
-        self.assertIn("Usage: /models local ollama|hf", self.repl.console.export_text())
+    def _searched(self, arg: str) -> dict[str, str]:
+        """Which sources show() searched for `arg`, and with what query."""
+        seen: dict[str, str] = {}
+        sources = {name: (lambda q, b, name=name: seen.__setitem__(name, q) or []) for name in ("ollama", "hf")}
+        with patch.object(local_models, "SOURCES", sources):
+            local_models.show(self.repl, arg)
+        return seen
+
+    def test_bare_command_searches_both_sources_with_no_query(self):
+        self.assertEqual(self._searched(""), {"ollama": "", "hf": ""})
+
+    def test_words_search_both_and_a_source_name_narrows_to_it(self):
+        self.assertEqual(self._searched(" qwen coder"), {"ollama": "qwen coder", "hf": "qwen coder"})
+        self.assertEqual(self._searched(" hf qwen"), {"hf": "qwen"})
 
 
 if __name__ == "__main__":
