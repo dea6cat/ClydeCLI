@@ -85,6 +85,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Every message you send is shown with the machine time (5:47 PM), each reply ends with how long it
   took and when it finished ("♠ Shuffled for 2m 45s · 5:47 PM"), and each tool result shows its duration
 
+- Modes on Shift+Tab, shown under the prompt: `♠ hold` (asks before risky actions), `♠ reading the
+  table` (plan mode, now enforced: changes are refused until the plan is presented) and `♠♠ all in`
+  (no questions except major moves such as recursive deletes, pushes or hard resets)
+
 ### Changed
 - Memory files are now `CLYDE.md` and `CLYDE.local.md` (`/init` writes these). Files made for other agents
   still load: `CLAUDE.md`, `CLAUDE.local.md`, `AGENTS.md`, `GEMINI.md`, `.cursorrules` and
@@ -110,6 +114,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `python -m unittest discover -s tests -t .`
 
 ### Fixed
+- Plan mode was only a flag; tools could still edit files while it was on
 - `/clear` (and `/reset`, `/new`) clears the screen too and redraws the banner
 - The thinking spinner comes back after a permission or question prompt, and when a tool runs after
   streamed text; before, the rest of the turn ran with nothing on screen

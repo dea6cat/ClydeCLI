@@ -202,6 +202,7 @@ _HELP_TEXT = """
 - Type your message and press Enter to chat
 - Use Tab for command completion
 - Press Esc (or Ctrl+C) to interrupt the current reply or command
+- Press Shift+Tab to cycle modes: hold, reading the table (plan only), all in (asks only before major moves)
 - Press Ctrl+D to exit
 - Use `/multiline` for multi-paragraph inputs
 """
@@ -356,6 +357,11 @@ class ClydeREPL:
 
         # Key bindings for multiline
         self.bindings = KeyBindings()
+        if hasattr(self.bindings, "add"):
+            @self.bindings.add("s-tab")  # type: ignore[attr-defined]
+            def _cycle_mode(event):  # type: ignore[no-untyped-def]
+                self._cycle_mode()
+                event.app.invalidate()
 
         self.prompt_session = PromptSession(
             history=FileHistory(str(history_file)),
@@ -364,6 +370,8 @@ class ClydeREPL:
             style=Style.from_dict({
                 'prompt': 'bold #ffffff',
                 'rule': '#5a5a5a',
+                'mode': f'bold {_CARD_ACCENT}',
+                'mode-note': _CARD_DIM,
                 # A plain list like Claude Code's: no grey block, green for the selected row.
                 'completion-menu': 'bg:default',
                 'completion-menu.completion': 'bg:default #d8d4cc',
@@ -408,10 +416,36 @@ class ClydeREPL:
                 state = buffer.complete_state
                 return D.exact(min(16, len(state.completions)) if state else 0)
 
+            mode = Window(FormattedTextControl(self._mode_line), height=1, dont_extend_height=True)
             rows.insert(at + 1, ConditionalContainer(rule, filter=~has_completions))
-            rows.insert(at + 2, ConditionalContainer(Window(height=menu_room), filter=has_completions))
+            rows.insert(at + 2, ConditionalContainer(mode, filter=~has_completions))
+            rows.insert(at + 3, ConditionalContainer(Window(height=menu_room), filter=has_completions))
         except Exception:
             return
+
+    # Shift+Tab cycles: hold (asks before risky actions) -> reading the table (plan only) -> all in.
+    _MODES = ("hold", "plan", "all_in")
+    _MODE_LABELS = {
+        "hold": ("♠ hold", ""),
+        "plan": ("♠ reading the table", " · plans only, no edits"),
+        "all_in": ("♠♠ all in", " · asks only before major moves"),
+    }
+
+    @property
+    def mode(self) -> str:
+        ctx = self.tool_context
+        return "plan" if ctx.plan_mode else "all_in" if ctx.auto_approve else "hold"
+
+    def _set_mode(self, mode: str) -> None:
+        self.tool_context.plan_mode = mode == "plan"
+        self.tool_context.auto_approve = mode == "all_in"
+
+    def _cycle_mode(self) -> None:
+        self._set_mode(self._MODES[(self._MODES.index(self.mode) + 1) % len(self._MODES)])
+
+    def _mode_line(self):  # type: ignore[no-untyped-def]
+        label, note = self._MODE_LABELS[self.mode]
+        return [("class:mode", f"  {label}"), ("class:mode-note", note), ("class:rule", "  (shift+tab to cycle)")]
 
     @staticmethod
     def _rule_width() -> int:
