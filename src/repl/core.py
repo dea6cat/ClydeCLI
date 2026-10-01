@@ -191,7 +191,7 @@ _HELP_TEXT = """
 - `/render-last` - Re-render the last assistant reply as Markdown
 - `/model [provider:model]` - Show or switch the model (saved as default)
 - `/models [all|refresh]` - List models from every connected provider (hides ones /eval showed don't work; refresh re-fetches)
-- `/models local ollama|hf [words]` - Find local models on ollama.com or Hugging Face that fit this machine, rated relax / balance / hard, and pull one
+- `/models local [ollama|hf] [words]` - Find local models on ollama.com and Hugging Face (or just one) that fit this machine, rated relax / balance / hard, and pull one
 - `/eval [filter]` - Test the listed models (or those matching filter) on a tool call and a round trip
 - `/think [off|low|medium|high|on|default]` - Set the reasoning level
 - `/tools` - List available built-in tools

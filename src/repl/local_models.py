@@ -1,4 +1,4 @@
-"""/models local <source> [query]: find local models that fit this machine, rate how hard they'd
+"""/models local [ollama|hf] [query]: find local models that fit this machine, rate how hard they'd
 run (relax, balance, hard), and pull the chosen one through Ollama. The machine's numbers come
 first and every pull is confirmed with what it will cost, so nothing heavy lands by surprise;
 /eval runs afterwards only when asked, so cardShuffle can deal the model."""
@@ -6,6 +6,7 @@ first and every pull is confirmed with what it will cost, so nothing heavy lands
 from __future__ import annotations
 
 import json
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable
 
 from rich.prompt import Confirm, Prompt
@@ -21,9 +22,9 @@ SOURCES: dict[str, Callable[[str, int], list[fit.Offer]]] = {
     "ollama": discover.search,
     "hf": huggingface.search,
 }
-_SHOWN = 15
+_SHOWN = 15            # rows from one source
+_SHOWN_EACH = 8        # rows per source when searching them all
 _RATING_STYLE = {"relax": "#4eba65", "balance": "#e0b341", "hard": "#d0202f"}
-_USAGE = "Usage: /models local ollama|hf [search words]   e.g. /models local hf qwen coder"
 
 
 def _gb(n: int | None) -> str:
@@ -70,35 +71,41 @@ def _count(n: int) -> str:
     return f"{n / 1e6:.1f}M" if n >= 1e6 else f"{n / 1e3:.0f}K" if n >= 1e3 else str(n)
 
 
+def _source(offer: fit.Offer) -> str:
+    return "hf" if offer.pull_tag.startswith("hf.co/") else "ollama"
+
+
 def _table(offers: list[fit.Offer], chip: str) -> Table:
     table = Table(box=None, pad_edge=False, show_edge=False, header_style="dim")
     table.add_column("#", justify="right")
     table.add_column("fit", no_wrap=True)
+    table.add_column("from", style="dim", no_wrap=True)
     table.add_column("model", overflow="fold")
     for col in ("size", "~tok/s", "pulls"):
         table.add_column(col, justify="right", no_wrap=True)
     table.add_column("note", style="dim", no_wrap=True)
     for i, o in enumerate(offers, 1):
         speed = fit.tokens_per_s(o.size_bytes, chip, o.name)
-        table.add_row(str(i), Text(o.rating, style=_RATING_STYLE[o.rating]), o.pull_tag, f"{o.size_bytes / fit.GB:.1f} GB",
+        table.add_row(str(i), Text(o.rating, style=_RATING_STYLE[o.rating]), _source(o), o.pull_tag, f"{o.size_bytes / fit.GB:.1f} GB",
                       str(speed) if speed else "-", _count(o.popularity), o.note)
     return table
 
 
 def show(repl: Any, arg: str) -> None:
-    """List what fits from one source, then offer to pull a row."""
-    source, _, query = arg.strip().partition(" ")
-    search = SOURCES.get(source)
-    if search is None:
-        repl.console.print(_USAGE)
-        return
+    """List what fits, then offer to pull a row. A first word naming a source searches only it;
+    otherwise every source is searched, with the whole argument (possibly empty) as the query."""
+    first, _, rest = arg.strip().partition(" ")
+    names, query = ([first], rest.strip()) if first in SOURCES else (list(SOURCES), arg.strip())
+    shown = _SHOWN if len(names) == 1 else _SHOWN_EACH
     budget, chip = fit.budget_bytes(), fit.chip()
     repl.console.print(_machine(budget, chip))
-    with repl.console.status(f"[dim]Searching {source} for models that fit…[/dim]", spinner="dots"):
-        offers = search(query.strip(), budget)[:_SHOWN]
+    with repl.console.status(f"[dim]Searching {' and '.join(names)} for models that fit…[/dim]", spinner="dots"):
+        with ThreadPoolExecutor(max_workers=len(names)) as pool:
+            found = pool.map(lambda name: SOURCES[name](query, budget)[:shown], names)
+            offers = [o for rows in found for o in rows]
     if not offers:
-        repl.console.print(f"Nothing from {source} fits {budget / fit.GB:.0f} GB" + (f" for '{query.strip()}'." if query.strip() else ".")
-                           + " Try other search words, or the other source.")
+        repl.console.print(f"Nothing from {' or '.join(names)} fits {budget / fit.GB:.0f} GB" + (f" for '{query}'." if query else ".")
+                           + " Try other search words.")
         return
     repl.console.print(_table(offers, chip))
     with repl._esc.paused():
