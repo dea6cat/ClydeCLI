@@ -86,6 +86,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   took and when it finished ("♠ Shuffled for 2m 45s · 5:47 PM"), and each tool result shows its duration
 
 ### Changed
+- Memory files are now `CLYDE.md` and `CLYDE.local.md` (`/init` writes these). Files made for other agents
+  still load: `CLAUDE.md`, `CLAUDE.local.md`, `AGENTS.md`, `GEMINI.md`, `.cursorrules` and
+  `.github/copilot-instructions.md`, one per folder with `CLYDE.md` first
 - API keys moved from base64 entries in `config.json` to `~/.clyde/keys.json` (mode 600), with
   shell env vars taking precedence; old configs migrate automatically on first run
 - The agent loop uses one code path for every provider; conversation history (including

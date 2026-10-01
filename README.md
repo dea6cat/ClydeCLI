@@ -142,7 +142,7 @@ clyde --version                # Check version
 | Multi-Provider | ✅ | 13 providers (incl. local Ollama and LM Studio), stdlib HTTP, live model lists, `provider:model` switching |
 | Agent Loop | ✅ | Tool-calling loop with retries, reasoning control, history repair |
 | Skill System | ✅ | SKILL.md slash-command skills with args + tool limits |
-| Context Building | ✅ | Workspace snapshot, git status, a README excerpt, entry points, the code map and memory files go into the prompt: `~/.clyde/CLAUDE.md` (user), `CLAUDE.md` (project, shared) and `CLAUDE.local.md` (project, personal, keep it gitignored) |
+| Context Building | ✅ | Workspace snapshot, git status, a README excerpt, entry points, the code map and memory files go into the prompt: `~/.clyde/CLYDE.md` (user), `CLYDE.md` (project, shared) and `CLYDE.local.md` (project, personal, keep it gitignored). Files written for other agents are read too: `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, `.cursorrules`, `.github/copilot-instructions.md` (one per folder, first found wins) |
 | Permissions | ✅ | Bash asks for any command that is not read-only (dangerous patterns are refused), Write/Edit ask for docs files, Config asks before a change, WebFetch asks per domain. Answer "don't ask again" or add `permissions.allow` / `deny` rules (Claude Code syntax) to `~/.clyde/settings.json` |
 | Sessions | ✅ | Auto-saved after each turn; `/resume` picker per workspace, `clyde -c` / `clyde --resume [id]` |
 | Cost Tracking | ✅ | `/cost` shows input, output and cache tokens per model with an estimated $ total from catalog prices |
@@ -492,7 +492,7 @@ ClydeCLI/
 │   ├── providers/          # LLM providers and the model catalog
 │   ├── repl/               # Interactive REPL
 │   ├── command_system/     # slash commands (/doctor, /cost, /context, ...)
-│   ├── context_system/     # workspace, git, README and CLAUDE.md context; token estimation
+│   ├── context_system/     # workspace, git, README and CLYDE.md memory context; token estimation
 │   ├── compact_service/    # /compact and auto-compaction
 │   ├── output_styles/      # reply style prompts
 │   ├── skills/             # SKILL.md loading and creation
