@@ -54,10 +54,12 @@ class Message:
     thinking: str | None = None
     tool_calls: list[ToolCall] = field(default_factory=list)
     tool_results: list[ToolResult] = field(default_factory=list)
+    # User-turn images as (media_type, base64 data) pairs.
+    images: list[tuple[str, str]] = field(default_factory=list)
 
     @staticmethod
-    def user(text: str) -> "Message":
-        return Message(role=Role.USER, text=text)
+    def user(text: str, images: list[tuple[str, str]] | None = None) -> "Message":
+        return Message(role=Role.USER, text=text, images=images or [])
 
     @staticmethod
     def assistant(text: str | None = None, thinking: str | None = None,
