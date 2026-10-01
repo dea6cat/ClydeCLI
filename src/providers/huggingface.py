@@ -8,6 +8,7 @@ import os
 import re
 import urllib.parse
 from concurrent.futures import ThreadPoolExecutor
+from typing import Callable
 
 from .base import ProviderError, get_json
 from .fit import Offer, pick
@@ -36,25 +37,21 @@ def _quants(files: list[dict]) -> list[tuple[str, int]]:
     return list(sizes.items())
 
 
-def _offer(repo: dict, budget: int) -> Offer | None:
-    repo_id = repo.get("id", "")
+def files(repo_id: str) -> list[dict]:
+    """The files at a repo's root ({type, path, size}); [] on any failure."""
     try:
-        files = get_json(f"{API}/{repo_id}/tree/main", provider="huggingface", timeout=10)
+        listing = get_json(f"{API}/{repo_id}/tree/main", provider="huggingface", timeout=10)
     except ProviderError:
-        return None
-    best = pick(_quants(files if isinstance(files, list) else []), budget)
-    if best is None:
-        return None
-    quant, size, rating = best
-    return Offer(repo_id, f"hf.co/{repo_id}:{quant}", size, rating, int(repo.get("downloads") or 0), quant)
+        return []
+    return listing if isinstance(listing, list) else []
 
 
-def search(query: str, budget: int) -> list[Offer]:
-    """GGUF repos matching `query` (the most downloaded when empty) that fit `budget` bytes,
-    ranked by downloads."""
+def offers(fmt: str, query: str, offer: Callable[[dict], Offer | None]) -> list[Offer]:
+    """Text-generation repos in format `fmt` (gguf, mlx) matching `query` (the most downloaded when
+    empty), each turned into an Offer by `offer` (None drops it), ranked by downloads."""
     if os.environ.get("CLYDE_NO_MODEL_FETCH"):
         return []
-    params = {"filter": "gguf", "pipeline_tag": "text-generation", "sort": "downloads", "direction": "-1",
+    params = {"filter": fmt, "pipeline_tag": "text-generation", "sort": "downloads", "direction": "-1",
               "limit": str(_REPOS)}
     if query:
         params["search"] = query
@@ -65,5 +62,17 @@ def search(query: str, budget: int) -> list[Offer]:
     if not isinstance(repos, list):
         return []
     with ThreadPoolExecutor(max_workers=8) as pool:
-        offers = [o for o in pool.map(lambda r: _offer(r, budget), repos) if o is not None]
-    return sorted(offers, key=lambda o: o.popularity, reverse=True)
+        found = [o for o in pool.map(offer, repos) if o is not None]
+    return sorted(found, key=lambda o: o.popularity, reverse=True)
+
+
+def search(query: str, budget: int) -> list[Offer]:
+    """GGUF repos matching `query` that fit `budget` bytes, each at its best-fitting quant."""
+    def offer(repo: dict) -> Offer | None:
+        repo_id = repo.get("id", "")
+        best = pick(_quants(files(repo_id)), budget)
+        if best is None:
+            return None
+        quant, size, rating = best
+        return Offer(repo_id, f"hf.co/{repo_id}:{quant}", size, rating, int(repo.get("downloads") or 0), quant, "hf")
+    return offers("gguf", query, offer)
