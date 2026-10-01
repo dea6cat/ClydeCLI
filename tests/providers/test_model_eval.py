@@ -40,6 +40,25 @@ class TestModelEval(unittest.TestCase):
         self.assertFalse(score.passed)
         self.assertIn("404", score.error)
 
+    def test_passing_models_play_the_hand_for_strength(self):
+        from src.providers.model_eval import HAND
+        hand = [reply(tool_calls=[("read_file", {"path": "README.md"})]),
+                reply(tool_calls=[("read_file", {"path": "config/app.toml"})]),
+                reply(tool_calls=[("read_file", {"path": "./env/PORT"})]),
+                reply(tool_calls=[("submit", {"answer": "8431"})]),
+                reply(tool_calls=[("submit", {"answer": "Line 5."})]),   # wrong: "line 5." isn't "5"
+                reply(tool_calls=[("submit", {"answer": "1.9.2"})]),
+                reply("4")]                                               # answered without submit
+        provider = GOOD()
+        provider._responses += hand
+        score = evaluate(provider, "m", "good:m")
+        self.assertEqual(score.strength, 2)
+        self.assertEqual(len(HAND), 4)
+        self.assertEqual(provider.requests[4]["conversation"].messages[-1].tool_results[0].content, "8431\n")
+
+    def test_a_failing_model_plays_no_hand(self):
+        self.assertIsNone(evaluate(FakeProvider(reply("42")), "m", "fake:m").strength)
+
     def test_evaluate_all_ranks_passing_models_first(self):
         seen = []
         scores = evaluate_all([(FakeProvider(reply("no")), "m", "bad:m"), (GOOD(), "m", "good:m")], on_done=lambda s: seen.append(s.ref))
