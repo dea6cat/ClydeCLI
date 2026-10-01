@@ -16,12 +16,15 @@ TREE = [
     {"type": "file", "path": "Coder-7B-IQ2_XS.gguf", "size": 2 * GB},
     {"type": "file", "path": "mmproj-Coder-7B-F16.gguf", "size": 1 * GB},
     {"type": "file", "path": "Coder-7B-F16-00001-of-00002.gguf", "size": 7 * GB},
+    {"type": "file", "path": "Coder-7B-draft-Q8_0.gguf", "size": 1 * GB},
+    {"type": "file", "path": "Coder-7B-noMTP-Q4_K_M.gguf", "size": 6 * GB},
 ]
 
 
 class TestHuggingFace(unittest.TestCase):
-    def test_quants_skip_projectors_split_files_and_folders(self):
-        self.assertEqual(sorted(huggingface._quants(TREE)), [("IQ2_XS", 2 * GB), ("Q4_K_M", 5 * GB), ("Q8_0", 8 * GB)])
+    def test_quants_skip_projectors_drafts_split_files_and_folders(self):
+        # Q4_K_M has two files; the larger (6 GB noMTP) is reported, never the smaller.
+        self.assertEqual(sorted(huggingface._quants(TREE)), [("IQ2_XS", 2 * GB), ("Q4_K_M", 6 * GB), ("Q8_0", 8 * GB)])
 
     def test_search_offers_each_repo_at_its_best_fitting_quant(self):
         def fake_get(url, **_):
