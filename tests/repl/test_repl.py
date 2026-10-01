@@ -643,3 +643,32 @@ class TestSlashCompleter(unittest.TestCase):
         desc = _help_descriptions()
         self.assertEqual(desc["/help"], "Show this help message")
         self.assertEqual(desc["/quit"], desc["/exit"])
+
+
+class TestTimesAndClear(unittest.TestCase):
+    def test_clock_and_duration_formats(self):
+        from datetime import datetime
+        from src.repl.core import _clock, _duration
+
+        self.assertEqual(_clock(datetime(2026, 1, 1, 17, 47)), "5:47 PM")
+        self.assertEqual(_clock(datetime(2026, 1, 1, 0, 5)), "12:05 AM")
+        self.assertEqual([_duration(x) for x in (0.42, 12, 165, 3725)], ["0.4s", "12s", "2m 45s", "1h 2m"])
+
+    def test_clear_wipes_the_conversation_and_the_screen(self):
+        import io
+        from unittest.mock import MagicMock
+        from rich.console import Console
+        from src.repl.core import ClydeREPL
+
+        repl = ClydeREPL.__new__(ClydeREPL)
+        repl.console = Console(file=io.StringIO(), width=100)
+        repl.console.clear = MagicMock()
+        repl._print_startup_header = MagicMock()
+        repl._try_execute_new_command = MagicMock(return_value=(False, None))
+        repl._built_in_commands = ["/clear"]
+        repl.session = MagicMock()
+        repl.handle_command("/clear")
+        repl.session.conversation.clear.assert_called_once()
+        repl.console.clear.assert_called_once()
+        repl._print_startup_header.assert_called_once()
+        self.assertIn("Conversation cleared.", repl.console.file.getvalue())

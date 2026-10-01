@@ -69,6 +69,8 @@ except ModuleNotFoundError:  # pragma: no cover
             self.text = text
 from pathlib import Path
 import asyncio
+import random
+import time
 from contextlib import contextmanager
 import re
 import sys
@@ -204,17 +206,39 @@ _HELP_TEXT = """
 - Use `/multiline` for multi-paragraph inputs
 """
 
-# Rotating spinner words while the model works, in the spirit of Claude Code and Gemini CLI.
+# Rotating spinner words while the model works (in the spirit of Claude Code and Gemini CLI), with
+# the past tense used in the line that closes the turn.
 _THINKING_WORDS = (
-    "Thinking", "Pondering", "Shuffling the deck", "Reading the table", "Counting cards",
-    "Dealing", "Calculating odds", "Bluffing", "Cutting the deck", "Stacking the deck",
-    "Tinkering", "Noodling", "Scheming", "Mulling it over", "Connecting dots",
+    ("Thinking", "Thought"), ("Pondering", "Pondered"), ("Shuffling the deck", "Shuffled"),
+    ("Reading the table", "Read the table"), ("Counting cards", "Counted cards"), ("Dealing", "Dealt"),
+    ("Calculating odds", "Calculated"), ("Bluffing", "Bluffed"), ("Cutting the deck", "Cut the deck"),
+    ("Stacking the deck", "Stacked the deck"), ("Tinkering", "Tinkered"), ("Noodling", "Noodled"),
+    ("Scheming", "Schemed"), ("Mulling it over", "Mulled it over"), ("Connecting dots", "Connected the dots"),
 )
 
 
-def _thinking_label() -> str:
+def _clock(when: datetime | None = None) -> str:
+    """Machine time as 5:47 PM."""
+    return (when or datetime.now()).strftime("%I:%M %p").lstrip("0")
+
+
+def _duration(seconds: float) -> str:
+    """0.4s, 12s, 2m 45s, 1h 3m."""
+    if seconds < 10:
+        return f"{seconds:.1f}s"
+    seconds = int(round(seconds))
+    if seconds < 60:
+        return f"{seconds}s"
+    minutes, secs = divmod(seconds, 60)
+    if minutes < 60:
+        return f"{minutes}m {secs}s"
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours}h {minutes}m"
+
+
+def _thinking_label(word: str | None = None) -> str:
     import random
-    return f"[{_CARD_DIM}]{random.choice(_THINKING_WORDS)}…[/{_CARD_DIM}]"
+    return f"[{_CARD_DIM}]{word or random.choice(_THINKING_WORDS)[0]}…[/{_CARD_DIM}]"
 
 
 def _help_descriptions() -> dict[str, str]:
@@ -867,7 +891,7 @@ class ClydeREPL:
                 if user_input is _CRON_WAKE:
                     continue
                 if user_input.strip():
-                    self.console.print(user_input, style=_CARD_DIM, markup=False, highlight=False)
+                    self.console.print(Text.assemble((f"{_clock()}  ", _CARD_DIM), (user_input, _CARD_TEXT)), highlight=False)
 
                 if not user_input.strip():
                     self.multiline_mode = False
@@ -948,6 +972,7 @@ class ClydeREPL:
                 'model', 'models', 'think', 'eval',
                 'skill', 'mcp', 'debug',
                 'context', 'compact',  # These need special handling
+                'clear', 'reset', 'new',  # also clears the screen and redraws the banner
                 ''
             }
 
@@ -1047,18 +1072,18 @@ class ClydeREPL:
             self.console.print(json.dumps(result.output, indent=2, ensure_ascii=False))
             self.console.print()
 
-        elif cmd == '/clear':
+        elif cmd in ('/clear', '/reset', '/new'):
             # Try new command system first, fall back to original
             try:
                 handled, result_text = self._try_execute_new_command('clear', '')
-                if handled and result_text:
-                    self.console.print("\n[green]" + result_text + "[/green]")
-                    return
             except Exception:
-                pass
-            # Original implementation
-            self.session.conversation.clear()
-            self.console.print("[green]Conversation cleared.[/green]")
+                handled, result_text = False, None
+            if not handled:
+                self.session.conversation.clear()
+            # Clear the screen as well, then redraw the banner
+            self.console.clear()
+            self._print_startup_header()
+            self.console.print(Text(result_text or "Conversation cleared.", style=_CARD_DIM))
 
         elif cmd == '/save':
             self.save_session()
@@ -1472,6 +1497,9 @@ class ClydeREPL:
         # Add user message
         self.session.conversation.add_user_message(user_input)
 
+        turn_started = time.monotonic()
+        word, past = random.choice(_THINKING_WORDS)
+        tool_started: dict[str, float] = {}
         try:
             self.console.print()
 
@@ -1500,6 +1528,7 @@ class ClydeREPL:
             def on_event(ev: ToolEvent) -> None:
                 if ev.kind == "tool_use":
                     _resume_status()
+                    tool_started[ev.tool_use_id or ev.tool_name] = time.monotonic()
                     summary = summarize_tool_use(ev.tool_name, ev.tool_input or {})
                     if isinstance(summary, str) and summary:
                         summary = self._shorten_path_text(summary)
@@ -1507,13 +1536,15 @@ class ClydeREPL:
                     self.console.print(f"[dim]•[/dim] [{_CARD_ACCENT}]{ev.tool_name}[/{_CARD_ACCENT}]{suffix} [dim]running...[/dim]")
                     return
                 if ev.kind == "tool_result":
+                    began = tool_started.pop(ev.tool_use_id or ev.tool_name, None)
+                    took = f" · {_duration(time.monotonic() - began)}" if began is not None else ""
                     if ev.is_error:
                         if self._is_recoverable_tool_error(ev.tool_name, ev.tool_output):
                             return
                         msg = ""
                         if isinstance(ev.tool_output, dict) and isinstance(ev.tool_output.get("error"), str):
                             msg = ev.tool_output["error"]
-                        self.console.print(f"[red]  ↳ {msg or 'Error'}[/red]")
+                        self.console.print(Text(f"  ↳ {msg or 'Error'}{took}", style="#d0202f"))
                         return
                     msg = summarize_tool_result(ev.tool_name, ev.tool_output)
                     if isinstance(msg, str):
@@ -1521,7 +1552,7 @@ class ClydeREPL:
                         if msg.startswith(prefix):
                             msg = msg[len(prefix):]
                         msg = self._shorten_path_text(msg)
-                    self.console.print(f"[dim]  ↳ {msg}[/dim]")
+                    self.console.print(Text(f"  ↳ {msg}{took}", style=_CARD_DIM))
                     problems = ev.tool_output.get("newProblems") if isinstance(ev.tool_output, dict) else None
                     if isinstance(problems, str):
                         self.console.print("  ↳ " + problems.replace("\n", "\n    "), style="yellow", markup=False)
@@ -1551,17 +1582,19 @@ class ClydeREPL:
                 self.console.print(chunk, end="", markup=False, highlight=False, soft_wrap=True)
 
             if self._should_try_direct_stream(user_input):
-                self._current_status = self.console.status(_thinking_label(), spinner="dots", spinner_style=_CARD_ACCENT)
+                self._current_status = self.console.status(_thinking_label(word), spinner="dots", spinner_style=_CARD_ACCENT)
                 with self._current_status:
                     direct_response = self._stream_direct_response(on_text_chunk=on_text_chunk,
                                                                    on_thinking=on_thinking)
                 self._current_status = None
                 if direct_response is not None:
-                    self.console.print("\n")
+                    self.console.print()
+                    self.console.print()
+                    self._turn_footer(past, turn_started)
                     return
 
             # Use agent loop with tools for any provider that supports it
-            self._current_status = self.console.status(_thinking_label(), spinner="dots", spinner_style=_CARD_ACCENT)
+            self._current_status = self.console.status(_thinking_label(word), spinner="dots", spinner_style=_CARD_ACCENT)
             with self._current_status:
                 result = run_agent_loop(
                     conversation=self.session.conversation,
@@ -1597,7 +1630,8 @@ class ClydeREPL:
                 self.console.print()
             else:
                 self.console.print(Markdown(result.response_text))
-                self.console.print("\n")
+                self.console.print()
+            self._turn_footer(past, turn_started)
 
         except Exception as e:
             self._current_status = None
@@ -1683,6 +1717,11 @@ class ClydeREPL:
         set_default_model(ref)
         self.console.print(f"[green]Model: {ref}[/green] [dim](saved as default)[/dim]")
         return True
+
+    def _turn_footer(self, past: str, started: float) -> None:
+        """Close a reply with how long it took and the machine time, e.g. ♠ Shuffled for 2m 45s · 5:47 PM."""
+        self.console.print(Text.assemble(("♠ ", _CARD_ACCENT), (f"{past} for {_duration(time.monotonic() - started)} · {_clock()}", _CARD_DIM)))
+        self.console.print()
 
     def _say_goodbye(self) -> None:
         self.console.print(Text.assemble(("♠ ", _CARD_ACCENT), ("Goodbye!", f"bold {_CARD_TEXT}")))
