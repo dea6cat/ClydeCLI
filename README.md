@@ -87,10 +87,32 @@ Explain the code in $path. Start with an analogy, then draw a diagram.
 | Ollama (local) | none | native `/api/chat`, context sized to your RAM |
 | LM Studio (local) | none | picked up when installed: models from its server or `lms ls`; the server starts on first use |
 | Ollama Cloud | `OLLAMA_API_KEY` | |
+| cardShuffle | none | not a provider: deals each turn to one of the models above (see below) |
 
 No vendor SDKs. Every provider is plain HTTP from the standard library. Model lists come live
 from each provider, not a hardcoded guess. Pick one with `provider:model`, switch mid-session
 with `/model`, and the conversation carries over.
+
+### cardShuffle
+
+*Don't pick a card. I'll deal.*
+
+`cardShuffle` shows up as a model, but it plays every turn with a real one: each new message is
+dealt to a model that passed `/eval`, and that model keeps the turn through its tool rounds.
+
+| Model | Deals |
+|---|---|
+| `cardShuffle:high-roller` | the strongest model first |
+| `cardShuffle:house` | the middle card; in ♠ reading the table (plan mode), the strongest |
+| `cardShuffle:free` | local Ollama / LM Studio models only, strongest first |
+| `cardShuffle:small` | the weakest, fastest model first |
+
+Strength comes from `/eval`: every model that passes the basic tool check then plays a hand of four
+harder, exactly graded tasks (chained file reads, spotting a bug, version ordering, tracing a Python
+gotcha), and its score is how many it solved; ties go to the faster model. If the dealt model errors,
+or runs out of tool turns (`[Max tool turns reached]`), the turn goes to the next card. A
+`♠ dealt <model>` line shows who is playing, and `/cost` counts each real model. No key, no config:
+run `/eval`, then `/model cardShuffle:house`.
 
 ### Interactive REPL
 
@@ -285,7 +307,7 @@ That's all it takes: clone, configure, run.
 | `/multiline` | Toggle multiline mode |
 | `/model [provider:model]` | Show or switch the model |
 | `/models [all\|refresh]` | List models from every connected provider; hides ones `/eval` found broken (`all` shows them, `refresh` re-fetches the lists) |
-| `/eval [filter]` | Test listed models on a tool call and a round trip; shows pass/fail, latency and tok/s, and remembers which ones don't work |
+| `/eval [filter]` | Test listed models on a tool call and a round trip, then a hand of 4 harder tasks for those that pass; shows pass/fail, hand score, latency and tok/s, and remembers which ones don't work |
 | `/think [level]` | Reasoning: off, low, medium, high, on, default |
 | `/doctor`    | Diagnose environment, config, keys and permissions |
 | `/mcp`       | Connected MCP servers and their tools |

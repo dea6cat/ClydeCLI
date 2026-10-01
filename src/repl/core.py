@@ -89,6 +89,7 @@ from src.providers import build_registry, keys, model_ref, pick_default_model, r
 from src.providers import catalog
 from src.providers.model_eval import hidden_refs
 from src.providers.base import ProviderError, is_auth_error
+from src.providers.card_shuffle import CardShuffle
 from src.providers.convert import append_response, to_canonical
 from src.tool_system.context import ToolContext
 from src.plugins import apply_plugins
@@ -101,7 +102,7 @@ from src.tool_system.mcp_client import McpServerTool, connect_servers, load_serv
 from src.tool_system.defaults import build_default_registry
 from src.tool_system.protocol import ToolCall
 from src.tool_system.tools.cron import pop_due_jobs
-from src.agent.agent_loop import ToolEvent, run_agent_loop, summarize_tool_result, summarize_tool_use
+from src.agent.agent_loop import MAX_TURNS_REPLY, ToolEvent, run_agent_loop, summarize_tool_result, summarize_tool_use
 
 # New command system imports
 from src.command_system import (
@@ -441,6 +442,10 @@ class ClydeREPL:
             pasted = self._pastes.get(int(match.group(1)))
             return pasted if isinstance(pasted, str) else match.group(0)
         return re.sub(r"\[Pasted text #(\d+) \+\d+ lines\]", full, text)
+
+    def _show_deal(self, ref: str, why: str) -> None:
+        """cardShuffle's note on which real model plays this turn, and why."""
+        self.console.print(Text.assemble(("♠ dealt ", _CARD_ACCENT), (ref, _CARD_TEXT), (f"  {why}", _CARD_DIM)), highlight=False)
 
     def _attached_images(self, text: str) -> list[ImageContentBlock]:
         """The pasted images a message refers to, in the order its [Image #N] markers appear."""
@@ -1589,6 +1594,8 @@ class ClydeREPL:
         self._maybe_auto_compact()
         # Add user message
         self.session.conversation.add_user_message(user_input, self._attached_images(user_input))
+        if isinstance(self.provider, CardShuffle):
+            self.provider.mode, self.provider.on_deal = self.mode, self._show_deal
 
         turn_started = time.monotonic()
         word, past = random.choice(_THINKING_WORDS)
@@ -1687,9 +1694,8 @@ class ClydeREPL:
                     return
 
             # Use agent loop with tools for any provider that supports it
-            self._current_status = self.console.status(_thinking_label(word), spinner="dots", spinner_style=_CARD_ACCENT)
-            with self._current_status:
-                result = run_agent_loop(
+            def play():  # type: ignore[no-untyped-def]
+                return run_agent_loop(
                     conversation=self.session.conversation,
                     provider=self.provider,
                     model=self.model,
@@ -1703,10 +1709,23 @@ class ClydeREPL:
                     reasoning=self.reasoning,
                     on_thinking=on_thinking,
                 )
+
+            self._current_status = self.console.status(_thinking_label(word), spinner="dots", spinner_style=_CARD_ACCENT)
+            with self._current_status:
+                result = play()
+                # cardShuffle: a model stuck in its tool loop hands the turn to the next card.
+                while (result.response_text == MAX_TURNS_REPLY and isinstance(self.provider, CardShuffle)
+                       and self.provider.redeal(f"{self.provider.dealt} hit max tool turns")):
+                    result = play()
             self._current_status = None
 
-            # Record usage to cost tracker
-            if result.usage:
+            # Record usage to cost tracker; cardShuffle reports each real model it dealt.
+            if isinstance(self.provider, CardShuffle):
+                for ref, usage in self.provider.spent:
+                    provider_name, _, model = ref.partition(":")
+                    self.cost_tracker.record_usage(provider_name, model, usage, label=f"turn_{result.num_turns}_tokens")
+                self.provider.spent.clear()
+            elif result.usage:
                 input_tokens = result.usage.get("input_tokens", 0)
                 output_tokens = result.usage.get("output_tokens", 0)
                 if input_tokens > 0 or output_tokens > 0:
@@ -1822,7 +1841,7 @@ class ClydeREPL:
     def _eval_models(self, query: str = "") -> None:
         """Grade every listed model (or those matching `query`) on a tool call and a round trip."""
         from rich.prompt import Confirm
-        from src.providers.model_eval import evaluate_all, save_results
+        from src.providers.model_eval import HAND, evaluate_all, save_results
 
         live = usable(self.registry)
         if not live:
@@ -1832,11 +1851,11 @@ class ClydeREPL:
             listings = {name: p.list_models() for name, p in live.items()}
         q = query.lower()
         targets = [(live[name], m, f"{name}:{m}") for name, models in listings.items() for m in models
-                   if not q or q in f"{name}:{m}".lower()]
+                   if name != CardShuffle.name and (not q or q in f"{name}:{m}".lower())]
         if not targets:
             self.console.print(f"No models match '{query}'." if query else "No models listed.")
             return
-        self.console.print(f"{len(targets)} model(s) to test, two short requests each on your own keys"
+        self.console.print(f"{len(targets)} model(s) to test on your own keys: two short requests, then a hand of {len(HAND)} harder tasks for each that passes"
                            + ("" if query else " (narrow it with /eval <provider or name>)") + ".")
         with self._esc.paused():
             if not Confirm.ask("Run the evaluation?", default=len(targets) <= 20, console=self.console):
@@ -1851,8 +1870,8 @@ class ClydeREPL:
         width = getattr(self.console, "width", 100)
         table = Table(box=None, pad_edge=False, header_style=_CARD_DIM, show_edge=False)
         table.add_column("", no_wrap=True, width=1)
-        table.add_column("model", no_wrap=True, overflow="ellipsis", max_width=max(20, width - 58))
-        for col in ("tool", "trip", "secs", "tok/s"):
+        table.add_column("model", no_wrap=True, overflow="ellipsis", max_width=max(20, width - 64))
+        for col in ("tool", "trip", "hand", "secs", "tok/s"):
             table.add_column(col, no_wrap=True, justify="right", min_width=len(col))
         table.add_column("note", no_wrap=True, overflow="ellipsis", min_width=12, max_width=30)
         current = model_ref(self.provider, self.model)
@@ -1862,6 +1881,7 @@ class ClydeREPL:
                 Text("●", style=_CARD_ACCENT) if sc.ref == current else "",
                 Text(sc.ref, style=f"bold {_CARD_TEXT}" if sc.passed else _CARD_DIM),
                 mark(sc.tool_call), mark(sc.round_trip),
+                f"{sc.strength}/{len(HAND)}" if sc.strength is not None else "-",
                 f"{sc.latency_s:.1f}" if sc.latency_s is not None else "-",
                 f"{sc.tokens_per_s:.0f}" if sc.tokens_per_s else "-",
                 Text(sc.short_note, style=_CARD_DIM),

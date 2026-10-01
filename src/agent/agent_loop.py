@@ -214,6 +214,9 @@ def _trace_tool(name: str, tool_input: dict, started: float, is_error: bool, out
                  result_chars=len(output if isinstance(output, str) else str(output)))
 
 
+MAX_TURNS_REPLY = "[Max tool turns reached]"
+
+
 def run_agent_loop(
     conversation: Conversation,
     provider: Provider,
@@ -356,7 +359,7 @@ def run_agent_loop(
                 conversation.add_tool_result_message(tool_id, error_str, is_error=True)
 
     return AgentLoopResult(
-        response_text="[Max tool turns reached]",
+        response_text=MAX_TURNS_REPLY,
         usage=_usage_or_none(),
         num_turns=turn_count,
     )
