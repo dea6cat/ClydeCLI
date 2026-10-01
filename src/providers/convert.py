@@ -14,6 +14,7 @@ from typing import Any
 
 from ..agent.conversation import (
     Conversation as History,
+    ImageContentBlock,
     TextContentBlock,
     ThinkingContentBlock,
     ToolResultContentBlock,
@@ -48,9 +49,12 @@ def _raw_messages(history: History, flatten_tools: bool) -> list[Message]:
         thinking: list[str] = []
         calls: list[ToolCall] = []
         results: list[ToolResult] = []
+        images: list[tuple[str, str]] = []
         for block in msg.content:
             if isinstance(block, TextContentBlock):
                 texts.append(block.text)
+            elif isinstance(block, ImageContentBlock):
+                images.append((block.media_type, block.data))
             elif isinstance(block, ThinkingContentBlock):
                 thinking.append(block.thinking)
             elif isinstance(block, ToolUseContentBlock):
@@ -73,7 +77,7 @@ def _raw_messages(history: History, flatten_tools: bool) -> list[Message]:
         if results:
             out.append(Message.results(results))
         if text:
-            out.append(Message.user(text))
+            out.append(Message.user(text, images))
     return out
 
 
