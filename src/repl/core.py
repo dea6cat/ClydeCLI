@@ -115,6 +115,9 @@ from src.command_system import (
 from src.agent.cost_tracker import CostTracker
 from src.agent.history import HistoryLog
 
+# Pastes longer than this collapse to a [Pasted text #N +X lines] marker in the prompt.
+_PASTE_MAX_LINES = 2
+_PASTE_MAX_CHARS = 800
 _RESUME_SHOWN = 20   # sessions listed by the /resume picker
 _PREVIEW_CHARS = 80
 
@@ -360,7 +363,8 @@ class ClydeREPL:
 
         # Key bindings for multiline
         self.bindings = KeyBindings()
-        self._images: dict[int, ImageContentBlock] = {}   # pasted images by their [Image #N] number
+        # Pasted images and long pasted texts, numbered together by their [Image #N] / [Pasted text #N ...] markers.
+        self._pastes: dict[int, ImageContentBlock | str] = {}
         if hasattr(self.bindings, "add"):
             from prompt_toolkit.keys import Keys
 
@@ -380,7 +384,7 @@ class ClydeREPL:
                 data = event.data.replace("\r\n", "\n").replace("\r", "\n")
                 path = image_path(data)
                 if path is None:
-                    event.current_buffer.insert_text(data)
+                    event.current_buffer.insert_text(self._collapse_text(data))
                     return
                 self._insert_image(event.current_buffer, path.read_bytes(), IMAGE_TYPES[path.suffix.lower()])
 
@@ -418,14 +422,30 @@ class ClydeREPL:
             note = "No image on the clipboard." if not data else f"Image is over {MAX_IMAGE_BYTES // 2**20} MB, not attached."
             run_in_terminal(lambda: self.console.print(Text(note, style=_CARD_DIM)))
             return
-        number = len(self._images) + 1
-        self._images[number] = ImageContentBlock(media_type=media_type, data=base64.b64encode(data).decode("ascii"))
+        number = len(self._pastes) + 1
+        self._pastes[number] = ImageContentBlock(media_type=media_type, data=base64.b64encode(data).decode("ascii"))
         buffer.insert_text(f"[Image #{number}]")
+
+    def _collapse_text(self, text: str) -> str:
+        """A long paste as a [Pasted text #N +X lines] marker (kept, expanded on send); short ones as is."""
+        lines = text.count("\n")
+        if lines <= _PASTE_MAX_LINES and len(text) <= _PASTE_MAX_CHARS:
+            return text
+        number = len(self._pastes) + 1
+        self._pastes[number] = text
+        return f"[Pasted text #{number} +{lines} lines]"
+
+    def _expand_pastes(self, text: str) -> str:
+        """The input with each [Pasted text #N ...] marker replaced by the text it stands for."""
+        def full(match: re.Match) -> str:
+            pasted = self._pastes.get(int(match.group(1)))
+            return pasted if isinstance(pasted, str) else match.group(0)
+        return re.sub(r"\[Pasted text #(\d+) \+\d+ lines\]", full, text)
 
     def _attached_images(self, text: str) -> list[ImageContentBlock]:
         """The pasted images a message refers to, in the order its [Image #N] markers appear."""
         numbers = dict.fromkeys(int(n) for n in re.findall(r"\[Image #(\d+)\]", text))
-        return [self._images[n] for n in numbers if n in self._images]
+        return [p for n in numbers if isinstance(p := self._pastes.get(n), ImageContentBlock)]
 
     def _add_rule_under_input(self) -> None:
         """Draw a line right under the input, hidden while the completion menu is open so the menu
@@ -968,6 +988,7 @@ class ClydeREPL:
                 if not user_input.strip():
                     self.multiline_mode = False
                     continue
+                user_input = self._expand_pastes(user_input)
 
                 # Handle commands
                 if user_input.startswith('/'):
