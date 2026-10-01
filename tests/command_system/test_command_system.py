@@ -413,7 +413,7 @@ class TestInitCommand(unittest.IsolatedAsyncioTestCase):
         """Test that /init has the correct description."""
         init_cmd = self._get_init_command()
         self.assertIsNotNone(init_cmd)
-        self.assertIn("CLAUDE.md", init_cmd.description)
+        self.assertIn("CLYDE.md", init_cmd.description)
         self.assertIn("skills", init_cmd.description)
         self.assertIn("hooks", init_cmd.description)
 

@@ -4,9 +4,30 @@ from pathlib import Path
 
 from .models import ClaudeMdContext, ClaudeMdFile
 
-# CLAUDE.local.md is the personal, usually gitignored, per-project memory file.
-_PROJECT_CANDIDATES = ("CLAUDE.md", ".clyde/CLAUDE.md", ".claude/CLAUDE.md", "CLAUDE.local.md")
-_USER_CANDIDATES = (".clyde/CLAUDE.md", ".claude/CLAUDE.md")
+# Memory files, one per location: the first name that exists wins, so a repo that keeps the same
+# notes for several agents doesn't load them twice. CLYDE.md is ClydeCLI's own name; the others are
+# read so files written for other harnesses keep working: CLAUDE.md (Claude Code), AGENTS.md (Codex,
+# Cursor, Copilot), GEMINI.md (Gemini CLI), .cursorrules (Cursor) and copilot-instructions (Copilot).
+# CLYDE.local.md / CLAUDE.local.md is the personal, usually gitignored, per-project file.
+_MEMORY_NAMES = ("CLYDE.md", "CLAUDE.md", "AGENTS.md", "GEMINI.md")
+_PROJECT_GROUPS = (
+    (*_MEMORY_NAMES, ".cursorrules", ".github/copilot-instructions.md"),
+    tuple(f".clyde/{n}" for n in _MEMORY_NAMES),
+    (".claude/CLAUDE.md",),
+    ("CLYDE.local.md", "CLAUDE.local.md"),
+)
+_USER_GROUPS = (
+    tuple(f".clyde/{n}" for n in _MEMORY_NAMES),
+    (".claude/CLAUDE.md",),
+)
+
+
+def _first_existing(base: Path, names: tuple[str, ...]) -> Path | None:
+    for rel in names:
+        path = (base / rel).resolve()
+        if path.is_file():
+            return path
+    return None
 
 
 def load_claude_md_context(
@@ -23,15 +44,15 @@ def load_claude_md_context(
     candidates: list[Path] = []
 
     home = Path.home()
-    for rel in _USER_CANDIDATES:
-        path = (home / rel).resolve()
-        if path not in candidates:
+    for group in _USER_GROUPS:
+        path = _first_existing(home, group)
+        if path is not None and path not in candidates:
             candidates.append(path)
 
     for base in _walk_up_to_root(current, root):
-        for rel in _PROJECT_CANDIDATES:
-            path = (base / rel).resolve()
-            if path not in candidates:
+        for group in _PROJECT_GROUPS:
+            path = _first_existing(base, group)
+            if path is not None and path not in candidates:
                 candidates.append(path)
 
     files: list[ClaudeMdFile] = []
