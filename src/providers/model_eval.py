@@ -2,6 +2,10 @@
 
 Each model gets two short requests: "call add_numbers(17, 25)", then the tool result 42 with the
 expectation that the reply says 42. Results carry latency and output speed when usage is reported.
+
+A model that passes then plays the hand: a few harder tasks graded exactly (chained tool reads,
+spotting a bug, version ordering, tracing a Python gotcha). How many it solves is its strength,
+which cardShuffle ranks models by.
 """
 
 from __future__ import annotations
@@ -26,8 +30,45 @@ EVAL_TOOL = ToolSpec(
 )
 SYSTEM = "You are being tested. Follow the instructions exactly and keep replies short."
 ASK = "Use the add_numbers tool to add 17 and 25. Call the tool; do not answer in text first."
-# ponytail: one fixed probe; add harder tasks (multi-step edits, like 2B's --test) if this stops separating models
 WORKERS = 4
+
+SUBMIT_TOOL = ToolSpec(
+    "submit",
+    "Submit your final answer.",
+    {"type": "object", "properties": {"answer": {"type": "string"}}, "required": ["answer"]},
+)
+READ_TOOL = ToolSpec(
+    "read_file",
+    "Read a file from the project and return its contents.",
+    {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]},
+)
+_HAND_ROUNDS = 6   # model turns allowed per task (the chained task needs four)
+
+
+@dataclass(frozen=True)
+class HardTask:
+    prompt: str
+    answer: str
+    files: dict[str, str] | None = None   # offered through read_file when set
+
+
+# ponytail: four fixed tasks; add more (or harder ones) when strong models start tying at 4/4.
+HAND = (
+    HardTask("Using read_file (start with README.md), find the port the service listens on, "
+             "then call submit with just the number.", "8431",
+             {"README.md": "Service docs. The listening port is configured in config/app.toml.\n",
+              "config/app.toml": "[server]\nport_from = \"env/PORT\"\n",
+              "env/PORT": "8431\n"}),
+    HardTask("This function should return the last n items of a list, oldest first. Which line has the bug? "
+             "Call submit with just the line number.\n\n"
+             "1  def last_n(items, n):\n2      \"\"\"Return the last n items, oldest first.\"\"\"\n"
+             "3      if n <= 0:\n4          return []\n5      return items[len(items) - n - 1:]", "5"),
+    HardTask("Sort these versions from oldest to newest by semantic versioning, then call submit with the third "
+             "one: 1.10.0, 1.9.2, 1.2.10, 10.0.0, 1.2.9", "1.9.2"),
+    HardTask("What does this Python program print? Call submit with just the output.\n\n"
+             "def add(x, acc=[]):\n    acc.append(x)\n    return len(acc)\n\n"
+             "print(add(1) + add(2) + add(3, []))", "4"),
+)
 
 
 @dataclass
@@ -37,6 +78,7 @@ class ModelScore:
     round_trip: bool = False
     latency_s: float | None = None     # time to the first reply (the tool call)
     tokens_per_s: float | None = None  # output tokens per second over both replies, when reported
+    strength: int | None = None        # HAND tasks solved; None when the basic check failed
     error: str = ""
 
     @property
@@ -69,6 +111,32 @@ def _as_int(value: Any) -> int | None:
         return int(float(str(value).strip()))
     except ValueError:
         return None
+
+
+def _norm(answer: Any) -> str:
+    return str(answer).strip().strip("\"'`. ").lower()
+
+
+def play(provider: Any, model: str, task: HardTask) -> bool:
+    """Whether the model submits the task's exact answer within _HAND_ROUNDS turns. Any error loses."""
+    tools = (SUBMIT_TOOL, READ_TOOL) if task.files else (SUBMIT_TOOL,)
+    convo = Conversation(SYSTEM, [Message.user(task.prompt)])
+    try:
+        for _ in range(_HAND_ROUNDS):
+            reply = stream_with_retry(provider, convo, model, tools, lambda _chunk: None, retries=0)
+            calls = reply.message.tool_calls
+            submitted = next((c for c in calls if c.name == SUBMIT_TOOL.name), None)
+            if submitted is not None:
+                return _norm((submitted.arguments or {}).get("answer", "")) == _norm(task.answer)
+            if not calls:
+                return False
+            convo.append(reply.message)
+            convo.append(Message.results([
+                ToolResult(c.id, (task.files or {}).get(str((c.arguments or {}).get("path", "")).lstrip("./"),
+                                                        "No such file.")) for c in calls]))
+    except Exception:
+        return False
+    return False
 
 
 def evaluate(provider: Any, model: str, ref: str) -> ModelScore:
@@ -104,6 +172,8 @@ def evaluate(provider: Any, model: str, ref: str) -> ModelScore:
         score.error = f"{type(e).__name__}: {e}"[:160]
     if out_tokens and spent:
         score.tokens_per_s = out_tokens / spent
+    if score.passed:
+        score.strength = sum(play(provider, model, task) for task in HAND)
     return score
 
 
@@ -121,7 +191,7 @@ def evaluate_all(targets: list[tuple[Any, str, str]], on_done: Callable[[ModelSc
     with ThreadPoolExecutor(max_workers=WORKERS) as pool:
         remote_scores = list(pool.map(run, remote))
     scores = [run(t) for t in local] + remote_scores
-    return sorted(scores, key=lambda s: (not s.passed, not s.tool_call, s.latency_s or 1e9))
+    return sorted(scores, key=lambda s: (not s.passed, not s.tool_call, -(s.strength or 0), s.latency_s or 1e9))
 
 
 def results_path() -> Path:
@@ -141,7 +211,8 @@ def save_results(scores: list[ModelScore]) -> None:
     data = load_results()
     stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
     for sc in scores:
-        data[sc.ref] = {"passed": sc.passed, "kind": sc.kind, "note": sc.error[:200], "at": stamp}
+        data[sc.ref] = {"passed": sc.passed, "kind": sc.kind, "note": sc.error[:200], "at": stamp,
+                        "strength": sc.strength, "tokens_per_s": sc.tokens_per_s}
     path = results_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=1, sort_keys=True) + "\n", encoding="utf-8")
