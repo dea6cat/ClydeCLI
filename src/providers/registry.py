@@ -12,6 +12,7 @@ from __future__ import annotations
 from . import ollama
 from .anthropic import AnthropicProvider
 from .base import Provider
+from .card_shuffle import CardShuffle
 from .google import GoogleProvider
 from .lmstudio import LMStudioProvider
 from .openai_compat import OpenAICompatProvider
@@ -50,6 +51,7 @@ SUGGESTED_MODELS = {
     "mistral": "mistral-medium-latest",
     "glm": "glm-5",
     "minimax": "MiniMax-M2.7",
+    "cardShuffle": "house",
 }
 
 # Order automatic selection tries connected cloud providers in, after local Ollama.
@@ -69,6 +71,7 @@ def build_registry() -> dict[str, Provider]:
     reg["minimax"] = AnthropicProvider(name="minimax", base_url="https://api.minimaxi.com/anthropic",
                                        key_env="MINIMAX_API_KEY", models=_MINIMAX_MODELS)
     reg["google"] = GoogleProvider()
+    reg[CardShuffle.name] = CardShuffle(reg)   # deals from the providers above
     return reg
 
 
