@@ -105,6 +105,8 @@ Assistant: Still here. What's broken?
 >>> Tab           # Auto-complete
 >>> Esc           # Stop the current reply or command (Ctrl+C works too)
 >>> Shift+Tab     # Cycle modes: ♠ hold · ♠ reading the table · ♠♠ all in
+>>> Ctrl+V        # Paste a copied image as [Image #N]
+>>> Cmd+V         # Paste text; long pastes fold to [Pasted text #N +X lines]
 >>> /explain-code qsort.py   # Run a skill
 ```
 
@@ -441,6 +443,22 @@ Shift+Tab cycles the mode, shown under the prompt:
 
 Deny rules and the always-refused commands (like `sudo`) apply in every mode, and writes outside the
 project are refused in every mode.
+
+### Pasting
+
+*Show me the cards. I'll read them.*
+
+| Paste | What lands in the prompt |
+|---|---|
+| Ctrl+V with an image copied (a screenshot, an image copied from a browser) | `[Image #N]` |
+| Cmd+V with an image file path copied (plain, quoted, `\ `-escaped or `file://`) | `[Image #N]` |
+| Cmd+V with text over 2 lines or 800 characters | `[Pasted text #N +X lines]` |
+
+Images and pasted texts share one counter. On send, each `[Image #N]` attaches that image (PNG,
+JPEG, GIF or WebP, up to 5 MB) and each `[Pasted text #N …]` expands back to the full text; the
+transcript keeps the short marker. Images travel with every provider and are saved with the session,
+so `/resume` keeps them. Pick a model that reads images: a text-only model rejects the request.
+Clipboard images use `osascript` on macOS and `wl-paste` or `xclip` on Linux.
 
 ### Permission Rules
 
