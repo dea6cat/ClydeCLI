@@ -189,7 +189,7 @@ _HELP_TEXT = """
 - `/tools` - List available built-in tools
 - `/tool <name> <json>` - Run a tool directly
 - `/skills` - List all available skills
-- `/init` - Create CLAUDE.md file for the project
+- `/init` - Create a CLYDE.md memory file for the project
 - `/cost` - Show session cost and usage
 - `/compact` - Compact conversation to save context space
 - `/doctor` - Diagnose environment, config, keys and permissions

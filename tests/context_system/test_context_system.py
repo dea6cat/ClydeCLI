@@ -130,3 +130,37 @@ class TestContextSystem(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestMemoryFileNames(unittest.TestCase):
+    def test_clyde_md_wins_then_claude_md_then_agents_md(self):
+        import tempfile
+        from unittest import mock
+        from src.context_system.claude_md import load_claude_md_context
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "repo"
+            sub = root / "pkg"
+            sub.mkdir(parents=True)
+            (root / "CLYDE.md").write_text("clyde root")
+            (root / "CLAUDE.md").write_text("claude root")       # same folder: CLYDE.md wins
+            (sub / "AGENTS.md").write_text("agents pkg")         # only AGENTS.md here: read
+            (root / "CLYDE.local.md").write_text("mine")
+            (root / "CLAUDE.local.md").write_text("old mine")    # same folder: CLYDE.local.md wins
+            with mock.patch.object(Path, "home", return_value=Path(tmp) / "home"):
+                files = load_claude_md_context(root, cwd=sub).files
+        self.assertEqual([f.content for f in files], ["agents pkg", "clyde root", "mine"])
+
+
+class TestOtherHarnessFiles(unittest.TestCase):
+    def test_gemini_cursor_and_copilot_files_are_read_when_nothing_else_is(self):
+        import tempfile
+        from unittest import mock
+        from src.context_system.claude_md import load_claude_md_context
+
+        for rel in ("GEMINI.md", ".cursorrules", ".github/copilot-instructions.md"):
+            with tempfile.TemporaryDirectory() as tmp, mock.patch.object(Path, "home", return_value=Path(tmp) / "home"):
+                root = Path(tmp) / "repo"
+                (root / rel).parent.mkdir(parents=True, exist_ok=True)
+                (root / rel).write_text(f"notes from {rel}")
+                self.assertEqual([f.content for f in load_claude_md_context(root).files], [f"notes from {rel}"], rel)

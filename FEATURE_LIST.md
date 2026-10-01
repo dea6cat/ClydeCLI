@@ -41,7 +41,7 @@
 | Session message management | ✅ | Supports session history maintenance and serialization |
 | Error recovery / re-login | 🟡 | Basic authentication error handling and reconfiguration flow exist |
 | Token / Cost tracking | ✅ | `/cost` shows input/output/cache tokens per model and an estimated USD total from list prices in `catalog.json` ("price unknown" for unpriced models, $0 for local Ollama); `/context` reports token usage |
-| Context building | ✅ | `context_system` injects workspace / git / README excerpt + entry points / the code map / `CLAUDE.md` memory (user `~/.clyde/CLAUDE.md`, project `CLAUDE.md`, personal `CLAUDE.local.md`) |
+| Context building | ✅ | `context_system` injects workspace / git / README excerpt + entry points / the code map / memory files: `CLYDE.md` (user `~/.clyde/CLYDE.md`, project, personal `CLYDE.local.md`), falling back to `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, `.cursorrules` or `.github/copilot-instructions.md` |
 | Claude Code Agent Loop | ✅ | agent_loop.py implemented, supports the tool-call loop |
 | `/resume` session recovery experience | ✅ | Sessions auto-save after each turn; `/resume` picks from this workspace's recent sessions (or takes an id) and shows a recap; `clyde -c` / `clyde --resume [id]` on the CLI |
 | `/compact` conversation compaction | ✅ | Manual `/compact`, plus automatic compaction before a turn once history reaches 80% of the context window |
@@ -118,7 +118,7 @@
 | Tool Execution Engine | ✅ | Full loop of tool loading, execution, and result feedback implemented |
 | Output Styles | ✅ | Output style loading system implemented |
 | Session Persistence | ✅ | Session save/load available |
-| Context Engine | ✅ | Context-building pipeline: workspace, git, README excerpt / entry points, code map, and `CLAUDE.md` / `CLAUDE.local.md` memory |
+| Context Engine | ✅ | Context-building pipeline: workspace, git, README excerpt / entry points, code map, and `CLYDE.md` memory (reads `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, Cursor and Copilot files too) |
 | Permission Engine | ✅ | Bash, Write/Edit, Config set and WebFetch ask; allow/deny rules from `~/.clyde/settings.json`; no project-level rules yet |
 | Compaction Engine | ✅ | Manual `/compact` and automatic at 80% of the context window |
 | Hook Runtime | ✅ | Matching hooks run around every tool dispatch; exit 2 blocks (pre) or feeds stderr back (post) |
@@ -180,7 +180,7 @@ Goal: move from a "mirrored tool list" to a "truly executable Python agent".
 Goal: fill in Claude Code's engineering capabilities.
 
 - [x] Complete workspace context building
-- [x] Basic git status / file tree / `CLAUDE.md` injection
+- [x] Basic git status / file tree / `CLYDE.md` memory injection
 - [x] README / entry file summary injection
 - [x] Memory and history context management
 - [x] Full permission system integration

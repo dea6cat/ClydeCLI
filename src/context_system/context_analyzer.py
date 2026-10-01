@@ -97,7 +97,7 @@ def count_system_prompt_tokens(system_prompt: str) -> int:
 
 
 def count_claude_md_tokens(claude_md_content: str) -> int:
-    """Count tokens in CLAUDE.md content."""
+    """Count tokens in memory file (CLYDE.md / CLAUDE.md / AGENTS.md) content."""
     return count_tokens(claude_md_content)
 
 
@@ -247,7 +247,7 @@ def analyze_context(
     # Build memory files list
     memory_files: list[dict[str, Any]] = []
     if claude_md_tokens > 0:
-        memory_files.append({"path": "CLAUDE.md", "tokens": claude_md_tokens})
+        memory_files.append({"path": "memory files (CLYDE.md / CLAUDE.md / AGENTS.md)", "tokens": claude_md_tokens})
 
     return ContextData(
         categories=categories,
