@@ -101,5 +101,16 @@ class Discover(unittest.TestCase):
         self.assertTrue(small <= big)
 
 
+class Search(unittest.TestCase):
+    def test_offers_each_model_at_its_best_fitting_size(self):
+        from src.providers.fit import GB
+        with mock.patch.object(discover, "_fetch", return_value=_html()):
+            offers = discover.search("", 12 * GB)
+        by_name = {o.name: o for o in offers}
+        self.assertEqual(by_name["granite4.1"].pull_tag, "granite4.1:8b")   # 30b won't fit 12 GB, 8b runs easily
+        self.assertTrue(all(o.rating in ("relax", "balance", "hard") for o in offers))
+        self.assertEqual([o.popularity for o in offers], sorted((o.popularity for o in offers), reverse=True))
+
+
 if __name__ == "__main__":
     unittest.main()
