@@ -11,9 +11,11 @@ from __future__ import annotations
 
 import os
 import re
+import urllib.parse
 import urllib.request
 
 from .base import _USER_AGENT
+from .fit import Offer, pick
 
 SEARCH_URL = "https://ollama.com/search?c=tools"
 CODING_URL = "https://ollama.com/search?q=coding&c=tools"
@@ -109,6 +111,26 @@ def parse_search(html: str) -> list[dict]:
             if c:
                 out.append(c)
     return out
+
+
+# Ollama's default tags are Q4_K_M, about 4.85 bits per parameter.
+_Q4_BYTES_PER_B = 0.6e9
+
+
+def search(query: str, budget: int) -> list[Offer]:
+    """Tool-capable ollama.com models matching `query` (the most pulled when empty) that fit
+    `budget` bytes, each at its best-fitting size, ranked by pulls. [] on any failure."""
+    if os.environ.get("CLYDE_NO_MODEL_FETCH"):
+        return []
+    url = f"https://ollama.com/search?q={urllib.parse.quote(query)}&c=tools" if query else SEARCH_URL
+    offers = []
+    for c in parse_search(_fetch(url, _HX_HEADERS) or ""):
+        if "tools" not in c["caps"]:
+            continue
+        best = pick([(f"{c['slug']}:{_fmt(b)}b", int(b * _Q4_BYTES_PER_B)) for b in c["sizes"]], budget)
+        if best:
+            offers.append(Offer(c["slug"], best[0], best[1], best[2], c["pulls"], "est. Q4"))
+    return sorted(offers, key=lambda o: o.popularity, reverse=True)
 
 
 def discover(ram_gb: int, search_url: str = SEARCH_URL) -> list[tuple[str, int, int]]:
