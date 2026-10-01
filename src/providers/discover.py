@@ -129,7 +129,7 @@ def search(query: str, budget: int) -> list[Offer]:
             continue
         best = pick([(f"{c['slug']}:{_fmt(b)}b", int(b * _Q4_BYTES_PER_B)) for b in c["sizes"]], budget)
         if best:
-            offers.append(Offer(c["slug"], best[0], best[1], best[2], c["pulls"], "est. Q4"))
+            offers.append(Offer(c["slug"], best[0], best[1], best[2], c["pulls"], "est. Q4", "ollama"))
     return sorted(offers, key=lambda o: o.popularity, reverse=True)
 
 

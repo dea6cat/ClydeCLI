@@ -97,8 +97,9 @@ with `/model`, and the conversation carries over.
 
 *Know the table before you buy in.*
 
-`/models local` searches both ollama.com and Hugging Face GGUF repos for the popular models that fit;
-add words to search for something (`/models local coder`), or name one source (`/models local hf qwen`). Before anything is searched, Clyde reads the machine: chip, RAM, the memory models may use
+`/models local` searches ollama.com, Hugging Face GGUF repos and, on Apple Silicon, Hugging Face MLX
+repos for the popular models that fit; add words to search for something (`/models local coder`), or
+name one source (`/models local mlx qwen`). Before anything is searched, Clyde reads the machine: chip, RAM, the memory models may use
 (about two thirds of RAM on Apple Silicon up to 36 GB, three quarters above or elsewhere), what's free
 right now and free disk. Each result is offered at the largest size that fits, rated by how much of that
 memory it takes when loaded:
@@ -114,8 +115,12 @@ mixture-of-experts names like `30B-A3B` count only the active weights). Picking 
 costs before anything downloads: the download size against free disk, the memory it takes against the
 budget and what's free right now, and what its rating means. Hard models default to no, and a download
 bigger than the free disk is refused. After the pull, `/eval` is offered (again defaulting to no for hard
-models, since loading is the heavy part); once it passes, `cardShuffle:free` can deal it. Hugging Face
-models pull through Ollama as `hf.co/<repo>:<quant>`.
+models, since loading is the heavy part); once it passes, `cardShuffle:free` can deal it.
+
+Each model downloads with the app that runs it: ollama.com models through Ollama; MLX through LM Studio
+(`lms get <url> --mlx`); Hugging Face GGUF through Ollama (`hf.co/<repo>:<quant>`), or LM Studio when
+Ollama isn't running (`lms get <url>@<quant>`, pinned to exactly the file that was rated). MLX sizes are
+exact (the repo's safetensors); GGUF sizes are exact per file; ollama.com sizes are estimated at Q4.
 
 ### cardShuffle
 
@@ -331,7 +336,7 @@ That's all it takes: clone, configure, run.
 | `/multiline` | Toggle multiline mode |
 | `/model [provider:model]` | Show or switch the model |
 | `/models [all\|refresh]` | List models from every connected provider; hides ones `/eval` found broken (`all` shows them, `refresh` re-fetches the lists) |
-| `/models local [ollama\|hf] [words]` | Find local models on ollama.com and Hugging Face (or just one) that fit this machine, rated relax / balance / hard, and pull one through Ollama |
+| `/models local [ollama\|hf\|mlx] [words]` | Find local models on ollama.com and Hugging Face (GGUF, and MLX on Apple Silicon) that fit this machine, rated relax / balance / hard, and download one |
 | `/eval [filter]` | Test listed models on a tool call and a round trip, then a hand of 4 harder tasks for those that pass; shows pass/fail, hand score, latency and tok/s, and remembers which ones don't work |
 | `/think [level]` | Reasoning: off, low, medium, high, on, default |
 | `/doctor`    | Diagnose environment, config, keys and permissions |
