@@ -51,5 +51,23 @@ class TestImageMessages(unittest.TestCase):
         self.assertEqual(google["inlineData"], {"mimeType": "image/jpeg", "data": "QUJD"})
 
 
+class TestPastedText(unittest.TestCase):
+    def setUp(self):
+        from src.repl.core import ClydeREPL
+
+        self.repl = ClydeREPL.__new__(ClydeREPL)
+        self.repl._pastes = {1: ImageContentBlock(data="QUJD")}
+
+    def test_long_paste_collapses_and_expands_back(self):
+        text = "\n".join(f"line {i}" for i in range(146))
+        marker = self.repl._collapse_text(text)
+        self.assertEqual(marker, "[Pasted text #2 +145 lines]")
+        self.assertEqual(self.repl._expand_pastes(f"fix [Image #1] {marker}"), f"fix [Image #1] {text}")
+
+    def test_short_paste_stays_inline(self):
+        self.assertEqual(self.repl._collapse_text("a\nb"), "a\nb")
+        self.assertEqual(len(self.repl._pastes), 1)
+
+
 if __name__ == "__main__":
     unittest.main()
