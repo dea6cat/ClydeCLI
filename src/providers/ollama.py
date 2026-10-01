@@ -212,7 +212,10 @@ class OllamaProvider:
                     ]
                 out.append(entry)
             else:
-                out.append({"role": "user", "content": m.text or ""})
+                entry = {"role": "user", "content": m.text or ""}
+                if m.images:
+                    entry["images"] = [data for _, data in m.images]
+                out.append(entry)
         return out
 
     def _payload(self, conversation: Conversation, model: str, tools: tuple[ToolSpec, ...], stream: bool) -> dict:
