@@ -41,7 +41,15 @@ class ToolResultContentBlock:
     is_error: bool = False
 
 
-ContentBlock = Union[TextContentBlock, ThinkingContentBlock, ToolUseContentBlock, ToolResultContentBlock]
+@dataclass
+class ImageContentBlock:
+    """An image the user pasted, kept as base64 so the session file carries it."""
+    type: str = "image"
+    media_type: str = "image/png"
+    data: str = ""
+
+
+ContentBlock = Union[TextContentBlock, ImageContentBlock, ThinkingContentBlock, ToolUseContentBlock, ToolResultContentBlock]
 
 
 @dataclass
@@ -67,9 +75,9 @@ class Conversation:
 
         self.messages.append(Message(role=role, content=content))
 
-    def add_user_message(self, text: str):
-        """Add a plain user text message."""
-        self.add_message("user", text)
+    def add_user_message(self, text: str, images: Optional[list[ImageContentBlock]] = None):
+        """Add a user message: plain text, or text followed by the images it refers to."""
+        self.add_message("user", [TextContentBlock(text=text), *images] if images else text)
 
     def add_assistant_message(self, content: Union[str, list[ContentBlock]]):
         """Add an assistant message (text or tool use)."""
@@ -99,6 +107,9 @@ class Conversation:
                 for block in msg.content:
                     if isinstance(block, TextContentBlock):
                         content_blocks.append({"type": "text", "text": block.text})
+                    elif isinstance(block, ImageContentBlock):
+                        content_blocks.append({"type": "image", "source": {
+                            "type": "base64", "media_type": block.media_type, "data": block.data}})
                     elif isinstance(block, ToolUseContentBlock):
                         content_blocks.append({
                             "type": "tool_use",
@@ -131,6 +142,8 @@ class Conversation:
                 for block in msg.content:
                     if isinstance(block, TextContentBlock):
                         content_data.append({"type": "text", "text": block.text})
+                    elif isinstance(block, ImageContentBlock):
+                        content_data.append({"type": "image", "media_type": block.media_type, "data": block.data})
                     elif isinstance(block, ThinkingContentBlock):
                         content_data.append({"type": "thinking", "thinking": block.thinking})
                     elif isinstance(block, ToolUseContentBlock):
@@ -170,6 +183,9 @@ class Conversation:
                     block_type = block_data.get("type")
                     if block_type == "text":
                         msg_content.append(TextContentBlock(type="text", text=block_data.get("text", "")))
+                    elif block_type == "image":
+                        msg_content.append(ImageContentBlock(media_type=block_data.get("media_type", "image/png"),
+                                                             data=block_data.get("data", "")))
                     elif block_type == "thinking":
                         msg_content.append(ThinkingContentBlock(thinking=block_data.get("thinking", "")))
                     elif block_type == "tool_use":

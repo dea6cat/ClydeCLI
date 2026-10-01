@@ -69,6 +69,7 @@ except ModuleNotFoundError:  # pragma: no cover
             self.text = text
 from pathlib import Path
 import asyncio
+import base64
 import random
 import time
 from contextlib import contextmanager
@@ -79,6 +80,7 @@ from datetime import datetime
 from typing import Any
 
 from src.agent import Session, trace
+from src.agent.conversation import ImageContentBlock
 from src.compact_service.service import auto_compact_threshold, compact_conversation, needs_auto_compact
 from src.context_system.context_analyzer import get_context_window_for_model
 from src.config import get_default_model, load_config, set_default_model
@@ -92,6 +94,7 @@ from src.tool_system.context import ToolContext
 from src.plugins import apply_plugins
 from src.tool_system.hooks import load_hooks
 from src.repl.esc import EscWatcher
+from src.repl.images import IMAGE_TYPES, MAX_IMAGE_BYTES, clipboard_image, image_path
 from src.tool_system.permission_rules import load_rules, save_allow_rule
 from src.tool_system.tools.code_map import start_background_refresh
 from src.tool_system.mcp_client import McpServerTool, connect_servers, load_servers
@@ -357,11 +360,29 @@ class ClydeREPL:
 
         # Key bindings for multiline
         self.bindings = KeyBindings()
+        self._images: dict[int, ImageContentBlock] = {}   # pasted images by their [Image #N] number
         if hasattr(self.bindings, "add"):
+            from prompt_toolkit.keys import Keys
+
             @self.bindings.add("s-tab")  # type: ignore[attr-defined]
             def _cycle_mode(event):  # type: ignore[no-untyped-def]
                 self._cycle_mode()
                 event.app.invalidate()
+
+            # Ctrl+V reaches us raw (the terminal doesn't paste images), so read the clipboard image.
+            @self.bindings.add("c-v")  # type: ignore[attr-defined]
+            def _paste_image(event):  # type: ignore[no-untyped-def]
+                self._insert_image(event.current_buffer, clipboard_image(), "image/png")
+
+            # Cmd+V is the terminal's paste: a copied image file path becomes the image itself.
+            @self.bindings.add(Keys.BracketedPaste)  # type: ignore[attr-defined]
+            def _paste(event):  # type: ignore[no-untyped-def]
+                data = event.data.replace("\r\n", "\n").replace("\r", "\n")
+                path = image_path(data)
+                if path is None:
+                    event.current_buffer.insert_text(data)
+                    return
+                self._insert_image(event.current_buffer, path.read_bytes(), IMAGE_TYPES[path.suffix.lower()])
 
         self.prompt_session = PromptSession(
             history=FileHistory(str(history_file)),
@@ -388,6 +409,23 @@ class ClydeREPL:
             complete_while_typing=True,
         )
         self._add_rule_under_input()
+
+    def _insert_image(self, buffer, data: bytes | None, media_type: str) -> None:  # type: ignore[no-untyped-def]
+        """Keep a pasted image and type its [Image #N] marker at the cursor, or say why there is none."""
+        if not data or len(data) > MAX_IMAGE_BYTES:
+            from prompt_toolkit.application import run_in_terminal
+
+            note = "No image on the clipboard." if not data else f"Image is over {MAX_IMAGE_BYTES // 2**20} MB, not attached."
+            run_in_terminal(lambda: self.console.print(Text(note, style=_CARD_DIM)))
+            return
+        number = len(self._images) + 1
+        self._images[number] = ImageContentBlock(media_type=media_type, data=base64.b64encode(data).decode("ascii"))
+        buffer.insert_text(f"[Image #{number}]")
+
+    def _attached_images(self, text: str) -> list[ImageContentBlock]:
+        """The pasted images a message refers to, in the order its [Image #N] markers appear."""
+        numbers = dict.fromkeys(int(n) for n in re.findall(r"\[Image #(\d+)\]", text))
+        return [self._images[n] for n in numbers if n in self._images]
 
     def _add_rule_under_input(self) -> None:
         """Draw a line right under the input, hidden while the completion menu is open so the menu
@@ -1529,7 +1567,7 @@ class ClydeREPL:
         trace.record("turn", provider=self.provider_name, model=self.model, prompt_chars=len(user_input))
         self._maybe_auto_compact()
         # Add user message
-        self.session.conversation.add_user_message(user_input)
+        self.session.conversation.add_user_message(user_input, self._attached_images(user_input))
 
         turn_started = time.monotonic()
         word, past = random.choice(_THINKING_WORDS)

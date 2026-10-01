@@ -126,7 +126,11 @@ class AnthropicProvider:
                     blocks.append({"type": "tool_use", "id": _tool_id(tc.id), "name": tc.name, "input": tc.arguments})
                 out.append({"role": "assistant", "content": blocks or [{"type": "text", "text": ""}]})
             else:
-                out.append({"role": "user", "content": m.text or ""})
+                out.append({"role": "user", "content": [
+                    {"type": "text", "text": m.text or ""},
+                    *({"type": "image", "source": {"type": "base64", "media_type": mt, "data": data}}
+                      for mt, data in m.images),
+                ] if m.images else m.text or ""})
         return out
 
     def stream(self, conversation: Conversation, model: str, tools: tuple[ToolSpec, ...],

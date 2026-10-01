@@ -139,7 +139,10 @@ class OpenAICompatProvider:
                     ]
                 out.append(entry)
             else:
-                out.append({"role": "user", "content": m.text or ""})
+                out.append({"role": "user", "content": [
+                    {"type": "text", "text": m.text or ""},
+                    *({"type": "image_url", "image_url": {"url": f"data:{mt};base64,{data}"}} for mt, data in m.images),
+                ] if m.images else m.text or ""})
         return out
 
     def _payload(self, conversation: Conversation, model: str, tools: tuple[ToolSpec, ...], stream: bool) -> dict:

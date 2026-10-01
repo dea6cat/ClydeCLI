@@ -80,7 +80,10 @@ class GoogleProvider:
                                   "thoughtSignature": tc.signature or _SKIP_SIGNATURE})
                 contents.append({"role": "model", "parts": parts or [{"text": ""}]})
             else:
-                contents.append({"role": "user", "parts": [{"text": m.text or ""}]})
+                contents.append({"role": "user", "parts": [
+                    {"text": m.text or ""},
+                    *({"inlineData": {"mimeType": mt, "data": data}} for mt, data in m.images),
+                ]})
         return contents
 
     def supports_reasoning(self, model: str) -> bool:
