@@ -82,6 +82,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Esc cancels the running reply, tool call or command the same way Ctrl+C does; arrow keys and
   other escape sequences don't, and prompts that need the keyboard pause it
 
+- Every message you send is shown with the machine time (5:47 PM), each reply ends with how long it
+  took and when it finished ("♠ Shuffled for 2m 45s · 5:47 PM"), and each tool result shows its duration
+
 ### Changed
 - API keys moved from base64 entries in `config.json` to `~/.clyde/keys.json` (mode 600), with
   shell env vars taking precedence; old configs migrate automatically on first run
@@ -104,6 +107,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `python -m unittest discover -s tests -t .`
 
 ### Fixed
+- `/clear` (and `/reset`, `/new`) clears the screen too and redraws the banner
 - The thinking spinner comes back after a permission or question prompt, and when a tool runs after
   streamed text; before, the rest of the turn ran with nothing on screen
 - Bash results show the last line the command printed (or its error) after the exit code
