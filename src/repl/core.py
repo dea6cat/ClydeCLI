@@ -191,6 +191,7 @@ _HELP_TEXT = """
 - `/render-last` - Re-render the last assistant reply as Markdown
 - `/model [provider:model]` - Show or switch the model (saved as default)
 - `/models [all|refresh]` - List models from every connected provider (hides ones /eval showed don't work; refresh re-fetches)
+- `/models local ollama|hf [words]` - Find local models on ollama.com or Hugging Face that fit this machine, rated relax / balance / hard, and pull one
 - `/eval [filter]` - Test the listed models (or those matching filter) on a tool call and a round trip
 - `/think [off|low|medium|high|on|default]` - Set the reasoning level
 - `/tools` - List available built-in tools
@@ -1900,7 +1901,12 @@ class ClydeREPL:
 
     def _show_models(self, arg: str = "") -> None:
         """List models from every connected provider, minus those /eval showed don't work.
-        `/models all` includes them; `/models refresh` fetches fresh lists first."""
+        `/models all` includes them; `/models refresh` fetches fresh lists first; `/models local ...`
+        finds downloadable local models that fit this machine."""
+        if arg.split(" ", 1)[0] == "local":
+            from src.repl import local_models
+            local_models.show(self, arg[len("local"):])
+            return
         live = usable(self.registry)
         if not live:
             self.console.print("[yellow]No providers connected.[/yellow] Run [bold]clyde login[/bold], "
