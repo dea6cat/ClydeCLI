@@ -193,6 +193,7 @@ _HELP_TEXT = """
 - `/model [provider:model]` - Show or switch the model (saved as default)
 - `/models [all|refresh]` - List models from every connected provider (hides ones /eval showed don't work; refresh re-fetches)
 - `/models local [ollama|hf|mlx] [words]` - Find local models on ollama.com and Hugging Face (GGUF, MLX on Apple Silicon) that fit this machine, rated relax / balance / hard, and download one
+- `/laya` - Laya's status, and how its stuck checks and difficulty scores lined up with how traced turns ended
 - `/eval [filter]` - Test the listed models (or those matching filter) on a tool call and a round trip
 - `/think [off|low|medium|high|on|default]` - Set the reasoning level
 - `/tools` - List available built-in tools
@@ -341,6 +342,7 @@ class ClydeREPL:
             "/mcp",
             "/plugins",
             "/debug",
+            "/laya",
             "/multiline",
             "/stream",
             "/render-last",
@@ -1072,7 +1074,7 @@ class ClydeREPL:
                 'help', 'tools', 'tool',
                 'save', 'load', 'resume', 'multiline', 'stream', 'render-last',
                 'model', 'models', 'think', 'eval',
-                'skill', 'mcp', 'debug',
+                'skill', 'mcp', 'debug', 'laya',
                 'context', 'compact',  # These need special handling
                 'clear', 'reset', 'new',  # also clears the screen and redraws the banner
                 ''
@@ -1257,6 +1259,8 @@ class ClydeREPL:
 
         elif cmd == '/plugins':
             self._print_plugins()
+        elif cmd == '/laya':
+            self._show_laya()
         elif cmd == '/debug' or cmd.startswith('/debug '):
             self._show_debug(raw.split(maxsplit=1)[1].strip().lower() if " " in raw else "")
 
@@ -1525,6 +1529,15 @@ class ClydeREPL:
             trace.record("mcp_error", server=name, error=error)
             self.console.print(f"[yellow]MCP server '{name}' not connected: {error}[/yellow]", markup=True)
 
+    def _show_laya(self) -> None:
+        """Laya's status, and how its judgments lined up with how traced turns ended."""
+        from src.providers.card_shuffle import laya_report
+
+        files = sorted(trace.traces_dir().glob("*.jsonl"), key=lambda p: p.stat().st_mtime)
+        lines = [line for path in files for line in path.read_text(encoding="utf-8", errors="replace").splitlines()]
+        self.console.print(f"Laya: {laya_client.status()} · from {len(files)} traced session(s)\n", markup=False)
+        self.console.print(laya_report(lines), markup=False, highlight=False)
+
     def _show_debug(self, arg: str) -> None:
         path = trace.trace_path()
         if arg == "path":
@@ -1723,6 +1736,8 @@ class ClydeREPL:
                        and self.provider.redeal(f"{self.provider.dealt} hit max tool turns")):
                     result = play()
             self._current_status = None
+            trace.record("turn_end", ran_out=result.response_text == MAX_TURNS_REPLY, rounds=result.num_turns,
+                         model=self.provider.dealt if isinstance(self.provider, CardShuffle) else model_ref(self.provider, self.model))
 
             # Record usage to cost tracker; cardShuffle reports each real model it dealt.
             if isinstance(self.provider, CardShuffle):
