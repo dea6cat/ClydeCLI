@@ -241,7 +241,6 @@ Goal: build features unique to the Python rewrite.
 ### P2: Filling in key Claude Code experiences
 
 - IDE integration (VS Code / JetBrains: editor diagnostics, diff views)
-- A shorter wait for a provider's first byte, so a stalled endpoint doesn't hold a turn for minutes
 - Linux sandbox testing on a machine with `bwrap`
 - Performance monitoring and tuning
 
