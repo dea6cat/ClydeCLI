@@ -7,7 +7,8 @@ from unittest.mock import patch
 
 from src.providers.base import ProviderError
 from src.providers import laya_client
-from src.providers.card_shuffle import CardShuffle, deck, laya_report, turn_tool_calls
+from src.providers.card_shuffle import (PROMOTE_MIN_TURNS, CardShuffle, Verdict, deck, difficulty_verdict, laya_report,
+                                        turn_tool_calls)
 from src.providers.types import Conversation, Message, ToolCall, ToolResult
 from tests.fakes import FakeProvider, reply
 
@@ -44,7 +45,7 @@ class TestDealing(unittest.TestCase):
         self.anthropic = FakeProvider(name="anthropic")
         self.ollama = FakeProvider(name="ollama")
         self.deals: list[str] = []
-        self.card = CardShuffle({"anthropic": self.anthropic, "ollama": self.ollama})
+        self.card = CardShuffle({"anthropic": self.anthropic, "ollama": self.ollama}, ask=lambda *a: None, verdict=Verdict([]))
         self.card.on_deal = lambda ref, why: self.deals.append(ref)
 
     def _stream(self, conv: Conversation, tier: str = "small"):
@@ -105,8 +106,12 @@ class TestLaya(unittest.TestCase):
             self.asked.append(state)
             if "stuck" in questions:
                 return {"stuck": {"noul": self.stuck}}
-            return {"difficulty": {"score": 2.6, "confidence": 0.3}}
-        self.card = CardShuffle({"anthropic": self.anthropic, "ollama": self.ollama}, ask=ask)
+            return {"difficulty": {"score": self.score, "confidence": 0.3}}
+        self.score = 2.6
+        self.waits: list[float] = []
+        self.shadow = Verdict([])
+        self.card = CardShuffle({"anthropic": self.anthropic, "ollama": self.ollama}, ask=ask,
+                                wait=lambda t: self.waits.append(t) or True, verdict=self.shadow)
         self.deals: list[str] = []
         self.card.on_deal = lambda ref, why: self.deals.append(f"{ref} | {why}")
 
@@ -132,17 +137,78 @@ class TestLaya(unittest.TestCase):
         self.assertIsNone(self.card._stuck(_looping_turn(7)))     # not a STUCK_EVERY round
         self.assertEqual(self.card._stuck(_looping_turn(9)), 0.9)
 
-    def test_difficulty_is_shown_but_does_not_change_the_deal(self):
+    def test_in_shadow_difficulty_is_shown_on_every_tier_but_does_not_change_the_deal(self):
         self.card.mode = "hold"
         self.card.shuffle("house", "redesign the auth system")
         self.assertEqual(self.card.dealt, HAIKU)                  # the middle card, as without Laya
         self.assertIn("laya difficulty 2.6/3 (shadow)", self.deals[-1])
+        self.card.shuffle("small", "hi")
+        self.assertEqual(self.card.dealt, LOCAL)
+        self.assertIn("(shadow)", self.deals[-1])                 # scored on small too, for evidence
+
+    def test_the_first_turn_waits_once_for_laya_to_load(self):
+        self.card.shuffle("small", "one")
+        self.card.shuffle("small", "two")
+        self.assertEqual(self.waits, [30])
+
+    def test_once_promoted_house_starts_harder_requests_on_stronger_cards(self):
+        self.card._verdict = _promoted()                          # past scores 1.3 (easy) and 1.8 (hard)
+        self.score = 1.9                                          # harder than every past request
+        self.card.shuffle("house", "redesign the provider layer")
+        self.assertEqual(self.card.dealt, OPUS)
+        self.assertNotIn("(shadow)", self.deals[-1])
+        self.score = 1.2                                          # easier than every past request
+        self.card.shuffle("house", "hi")
+        self.assertEqual(self.card.dealt, LOCAL)
+        self.card.mode = "plan"
+        self.card.shuffle("house", "hi")
+        self.assertEqual(self.card.dealt, OPUS)                   # planning still gets the strongest
+        self.card.mode = "hold"
+        self.card.shuffle("small", "redesign the provider layer")
+        self.assertEqual(self.card.dealt, LOCAL)                  # only house acts on it
 
     def test_turn_tool_calls_cover_only_this_turn(self):
         conv = _looping_turn(2)
         conv.messages += [Message.assistant(text="done"), Message.user("next task")]
         self.assertEqual(turn_tool_calls(conv), [])
         self.assertEqual(turn_tool_calls(_looping_turn(2))[0], 'Grep {"pattern": "onError"} -> 0 files')
+
+
+def _turns(n: int, score: float, rounds: int, acted: bool = False) -> list[dict]:
+    return [e for _ in range(n) for e in ({"event": "turn"}, {"event": "laya", "question": "difficulty", "score": score, "acted": acted},
+                                          {"event": "turn_end", "ran_out": False, "rounds": rounds})]
+
+
+def _promoted() -> Verdict:
+    import json
+    return difficulty_verdict(json.dumps(e) for e in _turns(PROMOTE_MIN_TURNS, 1.3, 2) + _turns(PROMOTE_MIN_TURNS, 1.8, 6))
+
+
+class TestVerdict(unittest.TestCase):
+    def verdict(self, events):
+        import json
+        return difficulty_verdict(json.dumps(e) for e in events)
+
+    def test_promotes_once_harder_scored_turns_clearly_take_more_rounds(self):
+        v = _promoted()
+        self.assertTrue(v.promoted)
+        self.assertIn("acts in house", v.summary())
+
+    def test_stays_in_shadow_without_enough_turns_or_a_clear_gap(self):
+        few = self.verdict(_turns(PROMOTE_MIN_TURNS - 1, 1.3, 2) + _turns(PROMOTE_MIN_TURNS, 1.8, 6))
+        self.assertFalse(few.promoted)
+        self.assertIn("needs 1 more scored turn", few.summary())
+        close = self.verdict(_turns(PROMOTE_MIN_TURNS, 1.3, 4) + _turns(PROMOTE_MIN_TURNS, 1.8, 5))
+        self.assertFalse(close.promoted)
+        self.assertFalse(self.verdict([]).promoted)
+
+    def test_turns_it_already_steered_are_not_evidence(self):
+        v = self.verdict(_turns(PROMOTE_MIN_TURNS, 1.3, 2) + _turns(PROMOTE_MIN_TURNS, 1.8, 6, acted=True))
+        self.assertFalse(v.promoted)
+
+    def test_a_new_score_is_placed_among_past_scores(self):
+        v = _promoted()
+        self.assertEqual((v.relative(1.0), v.relative(1.5), v.relative(2.0)), (0.0, 0.5, 1.0))
 
 
 class TestLayaReport(unittest.TestCase):
@@ -163,13 +229,19 @@ class TestLayaReport(unittest.TestCase):
                 if line.startswith("  ") and line.split()[-1].isdigit()}
         self.assertEqual(rows["0.50to"], ["1", "0", "1"])        # one loop slipped under the threshold
         self.assertEqual(rows["0.80and"], ["1", "1", "0"])       # one re-deal, and that turn finished
-        self.assertEqual(rows["2to"], ["1", "7.0", "0"])         # difficulty 2.4 took 7 rounds
+        self.assertEqual(rows["harderhalf"], ["1", "7.0", "0"])  # difficulty 2.4 took 7 rounds
+        self.assertIn("stays in shadow", report)
 
 
 class TestLayaClient(unittest.TestCase):
     def test_without_a_loaded_model_there_is_no_answer(self):
         with patch.object(laya_client, "_router", None):
             self.assertIsNone(laya_client.ask({"request": "hi"}, {}))
+
+    def test_waiting_without_downloaded_weights_returns_at_once(self):
+        with patch.object(laya_client, "cached", return_value=False), patch.object(laya_client, "_thread", None), \
+                patch.object(laya_client, "_router", None):
+            self.assertFalse(laya_client.wait_ready(30))
 
     def test_nothing_loads_when_the_weights_are_not_downloaded(self):
         with patch.object(laya_client, "cached", return_value=False), patch.object(laya_client, "_thread", None), \
