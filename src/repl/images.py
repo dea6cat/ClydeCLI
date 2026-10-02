@@ -14,6 +14,20 @@ IMAGE_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
 
+def shrink(data: bytes) -> bytes | None:
+    """The image re-encoded as JPEG, longest side 2048 px, when that brings it under MAX_IMAGE_BYTES;
+    None when it can't be shrunk here. Uses macOS's built-in `sips`; other systems get None."""
+    if sys.platform != "darwin" or not shutil.which("sips"):
+        return None
+    with tempfile.TemporaryDirectory() as tmp:
+        src, out = Path(tmp) / "in", Path(tmp) / "out.jpg"
+        src.write_bytes(data)
+        done = subprocess.run(["sips", "-s", "format", "jpeg", "-s", "formatOptions", "80", "-Z", "2048", str(src),
+                               "--out", str(out)], capture_output=True)
+        small = out.read_bytes() if done.returncode == 0 and out.exists() else b""
+    return small if 0 < len(small) <= MAX_IMAGE_BYTES else None
+
+
 def clipboard_image() -> bytes | None:
     """PNG bytes of the image on the clipboard, or None when it holds no image."""
     if sys.platform == "darwin":

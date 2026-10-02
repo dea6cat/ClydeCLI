@@ -660,10 +660,13 @@ or cleared after a checkpoint, only its files can be rewound.
 | Cmd+V with text over 2 lines or 800 characters | `[Pasted text #N +X lines]` |
 
 Images and pasted texts share one counter. On send, each `[Image #N]` attaches that image (PNG,
-JPEG, GIF or WebP, up to 5 MB) and each `[Pasted text #N …]` expands back to the full text; the
-transcript keeps the short marker. Images travel with every provider and are saved with the session,
-so `/resume` keeps them. Pick a model that reads images: a text-only model rejects the request.
-Clipboard images use `osascript` on macOS and `wl-paste` or `xclip` on Linux.
+JPEG, GIF or WebP) and each `[Pasted text #N …]` expands back to the full text; the transcript keeps
+the short marker. Images travel with every provider and are saved with the session, so `/resume`
+keeps them. An image over 5 MB is shrunk (JPEG, longest side 2048 px, with macOS's built-in `sips`;
+elsewhere it's refused). When the model can't read images (the catalog says so, or Ollama doesn't
+list vision), pasting says so, and sending drops the image with a note instead of failing; models
+the catalog doesn't know get the image. Clipboard images use `osascript` on macOS and `wl-paste` or
+`xclip` on Linux.
 
 ### Permission Rules
 
