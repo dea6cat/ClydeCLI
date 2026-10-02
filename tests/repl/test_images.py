@@ -71,3 +71,54 @@ class TestPastedText(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestImageSupport(unittest.TestCase):
+    def _repl(self, model: str, provider=None):
+        from rich.console import Console
+        from src.repl.core import ClydeREPL
+
+        repl = ClydeREPL.__new__(ClydeREPL)
+        repl.console = Console(record=True, width=200)
+        repl.provider = provider or type("P", (), {"name": "openai"})()
+        repl.model = model
+        repl._pastes = {}
+        return repl
+
+    def test_the_catalog_and_ollama_say_which_models_read_images(self):
+        self.assertFalse(self._repl("gpt-3.5-turbo")._reads_images())
+        self.assertTrue(self._repl("claude-sonnet-4-6")._reads_images())
+        self.assertIsNone(self._repl("some-unknown-model")._reads_images())            # unknown: don't block
+        vision = type("O", (), {"name": "ollama", "reads_images": lambda self, m: m == "llava"})()
+        self.assertTrue(self._repl("llava", vision)._reads_images())
+        self.assertFalse(self._repl("qwen3", vision)._reads_images())
+
+    def test_pasting_for_a_text_only_model_warns_but_keeps_the_marker(self):
+        from unittest.mock import Mock, patch
+        repl, buffer = self._repl("gpt-3.5-turbo"), Mock()
+        with patch("prompt_toolkit.application.run_in_terminal", side_effect=lambda f: f()):
+            repl._insert_image(buffer, b"\x89PNG small", "image/png")
+        buffer.insert_text.assert_called_once_with("[Image #1]")
+        self.assertIn("can't read images", repl.console.export_text())
+
+    def test_an_oversized_image_is_shrunk_or_refused(self):
+        from unittest.mock import Mock, patch
+        repl, buffer = self._repl("claude-sonnet-4-6"), Mock()
+        big = b"x" * (6 * 1024 * 1024)
+        with patch("prompt_toolkit.application.run_in_terminal", side_effect=lambda f: f()), \
+                patch("src.repl.core.shrink", return_value=b"\xff\xd8\xff small jpeg"):
+            repl._insert_image(buffer, big, "image/png")
+        self.assertEqual(repl._pastes[1].media_type, "image/jpeg")
+        self.assertIn("shrank it", repl.console.export_text())
+        buffer = Mock()
+        with patch("prompt_toolkit.application.run_in_terminal", side_effect=lambda f: f()), \
+                patch("src.repl.core.shrink", return_value=None):
+            repl._insert_image(buffer, big, "image/png")
+        buffer.insert_text.assert_not_called()
+        self.assertIn("couldn't be shrunk", repl.console.export_text())
+
+    def test_shrink_needs_macos_sips(self):
+        from unittest.mock import patch
+        from src.repl.images import shrink
+        with patch("sys.platform", "linux"):
+            self.assertIsNone(shrink(b"anything"))
