@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Laya's difficulty score promotes itself into `cardShuffle:house`: it's scored on every cardShuffle
+  turn, and once shadow turns show the harder half (split at the median score) takes at least 1.5x
+  and one more tool round than the easier half, with 10+ turns each, house starts harder requests on
+  stronger cards. `/laya` shows the split and the verdict
 - `/login [provider]` in the REPL: connect a provider or replace its key without leaving, then
   switch to its model
 - Custom providers: `clyde login` / `/login` -> `custom` adds any OpenAI-compatible API by name,
@@ -149,6 +153,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The RemoteTrigger and REPL tools: stubs that only ever returned "not implemented"
 
 ### Fixed
+- Laya never answered the first turns of a session, and never in `clyde -p`: its 15 s cold load
+  started with the turn that needed it. The first cardShuffle turn now waits for it, once, up to 30 s
 - A stalled cloud provider no longer holds a turn for 10 minutes: a stream that sends nothing for
   180 s fails with "no response" (not retried; cardShuffle re-deals). Local servers keep 600 s
 - `clyde -p` no longer hangs when stdin is a pipe nobody closes (cron, `ssh` without `-n`, CI)
