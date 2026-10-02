@@ -39,7 +39,7 @@
 | Provider configuration management | ✅ | `provider:model` selection, `/model` switching, keys via env or `~/.clyde/keys.json` |
 | Session persistence | ✅ | Supports saving/loading local sessions |
 | Session message management | ✅ | Supports session history maintenance and serialization |
-| Error recovery / re-login | 🟡 | Basic authentication error handling and reconfiguration flow exist |
+| Error recovery / re-login | ✅ | A rejected key (401, or a 400/403 that says the key is bad) offers a new key for the same provider, a switch of provider or model, or not now; the failed message is retried once, and a stale key exported in the shell is pointed out |
 | Token / Cost tracking | ✅ | `/cost` shows input/output/cache tokens per model and an estimated USD total from list prices in `catalog.json` ("price unknown" for unpriced models, $0 for local Ollama); `/context` reports token usage |
 | Context building | ✅ | `context_system` injects workspace / git / README excerpt + entry points / the code map / memory files: `CLYDE.md` (user `~/.clyde/CLYDE.md`, project, personal `CLYDE.local.md`), falling back to `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, `.cursorrules` or `.github/copilot-instructions.md` |
 | Claude Code Agent Loop | ✅ | agent_loop.py implemented, supports the tool-call loop |
