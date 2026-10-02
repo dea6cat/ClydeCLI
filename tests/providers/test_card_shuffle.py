@@ -27,6 +27,10 @@ class TestDeck(unittest.TestCase):
         tied = {"a:slow": {"strength": 3, "tokens_per_s": 20}, "b:fast": {"strength": 3, "tokens_per_s": 90}}
         self.assertEqual(deck("high-roller", tied), ["b:fast", "a:slow"])
 
+    def test_old_four_task_scores_and_new_eight_task_scores_compare_by_share(self):
+        mixed = {"old:full": {"strength": 4}, "new:most": {"strength": 7, "hand": 8}, "new:half": {"strength": 4, "hand": 8}}
+        self.assertEqual(deck("high-roller", mixed), ["old:full", "new:most", "new:half"])
+
     def test_house_deals_the_middle_card_unless_planning(self):
         self.assertEqual(deck("house", RANKED, "hold"), [HAIKU, OPUS, LOCAL])
         self.assertEqual(deck("house", RANKED, "plan"), [OPUS, HAIKU, LOCAL])

@@ -57,11 +57,12 @@ def turn_tool_calls(conversation: Conversation) -> list[str]:
 
 
 def by_strength(results: dict[str, dict]) -> list[str]:
-    """Refs weakest to strongest; among equals the faster model ranks higher. Models evaluated
-    before the hard tasks existed count as strength 0 until /eval runs again."""
-    def key(ref: str) -> tuple[int, float]:
+    """Refs weakest to strongest by the share of /eval's hand they solved; among equals the faster
+    model ranks higher. Results from before the hand had 8 tasks count out of 4 until /eval runs
+    again; models evaluated before any hand count as 0."""
+    def key(ref: str) -> tuple[float, float]:
         r = results[ref]
-        return r.get("strength") or 0, r.get("tokens_per_s") or 0.0
+        return (r.get("strength") or 0) / (r.get("hand") or 4), r.get("tokens_per_s") or 0.0
     return sorted(results, key=key)
 
 

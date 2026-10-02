@@ -48,13 +48,47 @@ class TestModelEval(unittest.TestCase):
                 reply(tool_calls=[("submit", {"answer": "8431"})]),
                 reply(tool_calls=[("submit", {"answer": "Line 5."})]),   # wrong: "line 5." isn't "5"
                 reply(tool_calls=[("submit", {"answer": "1.9.2"})]),
-                reply("4")]                                               # answered without submit
+                reply("4"),                                               # answered without submit
+                reply(tool_calls=[("read_file", {"path": "orders.csv"})]),
+                reply(tool_calls=[("read_file", {"path": "rates.json"})]),
+                reply(tool_calls=[("submit", {"answer": "$257.2"})]),    # same number, written differently
+                reply(tool_calls=[("submit", {"answer": "6"})]),          # the late-binding trap
+                reply(tool_calls=[("submit", {"answer": "8 hours"})]),    # not just the number
+                reply(tool_calls=[("read_file", {"path": "config.yaml"})]),
+                reply(tool_calls=[("read_file", {"path": ".env"})]),
+                reply(tool_calls=[("read_file", {"path": "overrides/prod.env"})]),
+                reply(tool_calls=[("submit", {"answer": "2,500"})]),      # a thousands separator is fine
+                reply(tool_calls=[("submit", {"answer": "3"})]),
+                reply(tool_calls=[("submit", {"answer": "tuesday"})]),
+                reply(tool_calls=[("submit", {"answer": "A, C"})])]       # the logic trap
         provider = GOOD()
         provider._responses += hand
         score = evaluate(provider, "m", "good:m")
-        self.assertEqual(score.strength, 2)
-        self.assertEqual(len(HAND), 4)
+        self.assertEqual(score.strength, 5)   # 8431, 1.9.2, $257.2, 2,500, tuesday
+        self.assertEqual(len(HAND), 11)
         self.assertEqual(provider.requests[4]["conversation"].messages[-1].tool_results[0].content, "8431\n")
+
+    def test_a_provider_error_mid_hand_scores_nothing_and_keeps_the_earlier_strength(self):
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        from src.providers.model_eval import load_results, save_results
+        provider = GOOD()
+        provider._responses += [reply(tool_calls=[("read_file", {"path": "README.md"})]),
+                                ProviderError("openrouter", "HTTP 402 — out of credits", status=402)]
+        score = evaluate(provider, "m", "good:m")
+        self.assertIsNone(score.strength)
+        self.assertIn("provider error", score.note)
+        with patch.object(Path, "home", return_value=Path(tempfile.mkdtemp())):
+            (Path.home() / ".clyde").mkdir()
+            (Path.home() / ".clyde" / "model_evals.json").write_text('{"good:m": {"passed": true, "strength": 3}}')
+            save_results([score])
+            self.assertEqual(load_results()["good:m"]["strength"], 3)
+
+    def test_dot_files_are_found_by_the_hand(self):
+        from src.providers.model_eval import _task_path
+        self.assertEqual([_task_path(p) for p in (".env", "./.env", "/overrides/prod.env", "./README.md")],
+                         [".env", ".env", "overrides/prod.env", "README.md"])
 
     def test_a_failing_model_plays_no_hand(self):
         self.assertIsNone(evaluate(FakeProvider(reply("42")), "m", "fake:m").strength)
