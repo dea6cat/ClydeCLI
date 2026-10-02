@@ -13,7 +13,8 @@ reply as JSON or an SSE stream, keeping the Mcp-Session-Id the server hands out.
 GET stream open, POSTs to the endpoint its first event names, and reads replies off the stream. A
 `url` with no `type` (Cursor's form) tries Streamable HTTP and falls back to SSE, as the spec advises;
 Gemini CLI's `httpUrl` means Streamable HTTP. `${VAR}` in a url or header comes from the environment.
-Remote servers authenticate with headers; OAuth sign-in is not supported.
+Remote servers authenticate with headers, or with OAuth: `/mcp login <server>` signs in once
+(see mcp_oauth.py) and the token rides on every request after that, refreshed as it expires.
 
 Each server's tools are registered as `mcp__<server>__<tool>`; resources are reachable through
 ListMcpResourcesTool / ReadMcpResourceTool.
@@ -46,6 +47,10 @@ _NAME_RE = re.compile(r"[^a-zA-Z0-9_-]")
 
 class McpError(Exception):
     pass
+
+
+class McpAuthRequired(McpError):
+    """The server wants an OAuth sign-in that ClydeCLI doesn't have (or can no longer refresh)."""
 
 
 def load_servers(path: Path | None = None) -> dict[str, dict[str, Any]]:
@@ -209,6 +214,37 @@ def _sse_events(lines: Any) -> Iterator[tuple[str, str]]:
         yield event, "\n".join(data)
 
 
+def _oauth_headers(url: str, headers: dict[str, str]) -> dict[str, str]:
+    """The configured headers plus a stored OAuth token, unless the config sets its own Authorization."""
+    if any(k.lower() == "authorization" for k in headers):
+        return headers
+    from . import mcp_oauth
+
+    token = mcp_oauth.bearer(url)
+    return {**headers, "Authorization": f"Bearer {token}"} if token else headers
+
+
+def _open_authorized(name: str, url: str, headers: dict[str, str], build: Any, timeout: float | None) -> Any:
+    """urlopen(build(headers)) with the OAuth token; on 401, one refresh and retry, then McpAuthRequired."""
+    from . import mcp_oauth
+
+    managed = not any(k.lower() == "authorization" for k in headers)
+    try:
+        return urllib.request.urlopen(build(_oauth_headers(url, headers)), timeout=timeout)
+    except urllib.error.HTTPError as e:
+        if e.code != 401 or not managed:
+            raise
+        token = mcp_oauth.refresh(url) if mcp_oauth.signed_in(url) else None
+        if token is None:
+            raise McpAuthRequired(f"MCP server '{name}' needs sign-in: run /mcp login {name}") from e
+    try:
+        return urllib.request.urlopen(build({**headers, "Authorization": f"Bearer {token}"}), timeout=timeout)
+    except urllib.error.HTTPError as e:
+        if e.code == 401:
+            raise McpAuthRequired(f"MCP server '{name}' needs sign-in: run /mcp login {name}") from e
+        raise
+
+
 def _http_error(name: str, e: Exception) -> McpError:
     if isinstance(e, urllib.error.HTTPError):
         body = e.read().decode("utf-8", errors="replace")[:200] if e.fp else ""
@@ -234,9 +270,11 @@ class McpHttpClient(McpClient):
         if message.get("method") != "initialize":
             headers["MCP-Protocol-Version"] = self.server_info.get("protocolVersion", PROTOCOL_VERSION)
         body = json.dumps({"jsonrpc": "2.0", **message}).encode()
-        req = urllib.request.Request(self.url, data=body, headers=headers, method="POST")
         try:
-            resp = urllib.request.urlopen(req, timeout=CALL_TIMEOUT)
+            resp = _open_authorized(self.name, self.url, headers,
+                                    lambda h: urllib.request.Request(self.url, data=body, headers=h, method="POST"), CALL_TIMEOUT)
+        except McpError:
+            raise
         except (urllib.error.URLError, OSError) as e:
             raise _http_error(self.name, e) from e
         with resp:
@@ -285,9 +323,9 @@ class McpSseClient(McpClient):
             raise self._error
 
     def _read_loop(self) -> None:
-        req = urllib.request.Request(self.url, headers={**self._headers, "Accept": "text/event-stream"})
         try:
-            self._stream = urllib.request.urlopen(req, timeout=None)
+            self._stream = _open_authorized(self.name, self.url, self._headers,
+                                            lambda h: urllib.request.Request(self.url, headers={**h, "Accept": "text/event-stream"}), None)
             for event, data in _sse_events(self._stream):
                 if event == "endpoint":
                     self._endpoint = urllib.parse.urljoin(self.url, data.strip())
@@ -297,6 +335,8 @@ class McpSseClient(McpClient):
                         self._receive(json.loads(data))
                     except ValueError:
                         continue
+        except McpError as e:
+            self._error = e
         except (urllib.error.URLError, OSError, ValueError) as e:
             self._error = _http_error(self.name, e)
         self._ready.set()
@@ -305,10 +345,12 @@ class McpSseClient(McpClient):
     def _send(self, message: dict[str, Any]) -> None:
         if not self._endpoint:
             raise self._error or McpError(f"MCP server '{self.name}' is not connected")
-        req = urllib.request.Request(self._endpoint, data=json.dumps({"jsonrpc": "2.0", **message}).encode(),
-                                     headers={**self._headers, "Content-Type": "application/json"}, method="POST")
+        body = json.dumps({"jsonrpc": "2.0", **message}).encode()
         try:
-            urllib.request.urlopen(req, timeout=CALL_TIMEOUT).close()
+            _open_authorized(self.name, self.url, self._headers, lambda h: urllib.request.Request(
+                self._endpoint, data=body, headers={**h, "Content-Type": "application/json"}, method="POST"), CALL_TIMEOUT).close()
+        except McpError:
+            raise
         except (urllib.error.URLError, OSError) as e:
             raise _http_error(self.name, e) from e
 
@@ -350,8 +392,8 @@ def _connect_remote(name: str, transport: str, url: str, headers: dict[str, str]
             return client
         except McpError as e:
             # The spec's fallback: an old server rejects the POST with 4xx; then try HTTP+SSE.
-            if transport == "http" or not re.search(r"HTTP 4\d\d", str(e)):
-                raise
+            if transport == "http" or isinstance(e, McpAuthRequired) or not re.search(r"HTTP 4(0[02-9]|[1-9]\d)", str(e)):
+                raise   # 401/403 mean "sign in", not "old server": no fallback
     client = McpSseClient(name, url, headers, cwd)
     try:
         client.initialize()
