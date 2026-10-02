@@ -199,12 +199,12 @@ Goal: upgrade the project from a monolithic CLI to an extensible platform.
 - [x] Local model (Ollama) and third-party provider support
 - [x] Better observability and debugging tools
 
-## Phase 5: Distinctive strengths of the Python version (in progress)
+## Phase 5: Distinctive strengths of the Python version
 
 Goal: build features unique to the Python rewrite.
 
 - [x] Notebook-friendly toolchain
-- [ ] Enhancements for data engineering / ETL scenarios
+- [x] Enhancements for data engineering / ETL scenarios (the Data tool: profile and read-only SQL over CSV, Parquet, JSON and SQLite via DuckDB)
 - [x] Support for Chinese model providers (GLM, DeepSeek, MiniMax)
 - [x] pytest / ruff / mypy / uv integration experience
 - [x] Extension interfaces for in-house enterprise automation and workflows (plugins, hooks, MCP)
