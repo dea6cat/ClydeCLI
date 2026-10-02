@@ -32,9 +32,9 @@
 
 | Capability | Status | Current State |
 |------|------|----------|
-| CLI entry point | ✅ | Supports `clyde`, `login`, `config`, `--version` |
+| CLI entry point | ✅ | `clyde`, `login`, `logout`, `config`, `setup`, `--model`, `-c`, `--resume`, `--version`; `clyde -p` runs one headless turn (answer on stdout, `--output-format json`, `--mode`, exit status) for scripts and CI |
 | Interactive REPL | ✅ | Supports interactive output, history, Tab completion, multi-line input |
-| Slash Commands | ✅ | Supports `/help`, `/clear`, `/save`, `/load`, `/multiline`, `/exit` |
+| Slash Commands | ✅ | `/help`, `/clear`, `/save`, `/load`, `/resume`, `/model`, `/models [local]`, `/eval`, `/rewind`, `/mcp [login\|logout]`, `/skills scan\|allow`, `/laya`, `/doctor`, `/cost`, `/compact`, `/debug`, `/exit` and more |
 | Multi-provider abstraction | ✅ | Canonical types in, canonical response out; each adapter owns its wire format |
 | Provider configuration management | ✅ | `provider:model` selection, `/model` switching, keys via env or `~/.clyde/keys.json` |
 | Session persistence | ✅ | Supports saving/loading local sessions |
@@ -51,6 +51,15 @@
 | Plugin system | ✅ | `clyde plugin install/import/list/enable/disable/remove` (import brings over Claude Code, Codex and Cursor plugins); plugins bundle tools, skills, hooks and MCP servers (Claude Code layout) and are enabled only after a yes |
 | Self-checks | ✅ | ruff / mypy on edited Python files with only new problems fed back to the model; `/check` runs ruff, mypy and pytest (uv-aware) |
 | Tracing / `/debug` | ✅ | Per-session JSONL traces with redaction, `/debug` for the last turn, `clyde --debug` live |
+| Headless mode | ✅ | `clyde -p "<prompt>"`: piped stdin added, permission asks denied and listed, JSON output, exit 0/1/2, never hangs on an open stdin pipe |
+| Edit checkpoints | ✅ | Every message opens a checkpoint; `/rewind` puts files (and/or the conversation) back to before it; survives `/resume`; shell-command changes aren't captured |
+| Shell sandbox | ✅ | macOS `sandbox-exec` / Linux `bwrap`: the model's commands write only to the project, temp and package caches; `unsandboxed: true` always asks |
+| cardShuffle | ✅ | A model that deals each turn to an `/eval`-ranked real model (high-roller, house, free, small); re-deals on errors, max tool turns and Laya-detected loops |
+| Model evaluation | ✅ | `/eval`: a tool-call check, then an 11-task graded hand calibrated on live models; provider errors mid-hand don't count against a model |
+| Local models | ✅ | `/models local [ollama\|hf\|mlx]`: models that fit this machine, rated relax / balance / hard, confirmed with their cost before downloading through Ollama or LM Studio |
+| Laya (bundled) | ✅ | Local decision model: stops stuck cardShuffle turns; difficulty scored in shadow mode; `/laya` shows the evidence |
+| SkillSpector (bundled) | ✅ | Scans skills, plugins, agents and MCP tool lists from other tools; `DO_NOT_INSTALL` items held back until `/skills allow` |
+| Pasting | ✅ | Ctrl+V images, image paths, long text folded to `[Pasted text #N +X lines]`; text-only models warned; images over 5 MB shrunk |
 
 ---
 
@@ -80,7 +89,8 @@
 | File operations | FileEditTool | `edit.py` | ✅ Exact match, then whitespace- and indent-tolerant unique match; misses point at the closest lines |
 | File operations | GlobTool | `glob.py` | ✅ Implemented |
 | File operations | GrepTool | `grep.py` | ✅ Implemented |
-| System operations | BashTool | `bash.py` | ✅ Implemented |
+| Data | DataTool | `data.py` | ✅ Profile and read-only SQL over CSV, TSV, Parquet, JSON and SQLite (sandboxed DuckDB) |
+| System operations | BashTool | `bash.py` | ✅ Runs in the OS sandbox (`sandbox.py`); `unsandboxed: true` always asks |
 | Web tools | WebFetchTool | `web_fetch.py` | ✅ Implemented |
 | Web tools | WebSearchTool | `web_search.py` | ✅ Implemented |
 | Interaction tools | AskUserQuestionTool | `ask_user_question.py` | ✅ Implemented |
@@ -89,13 +99,13 @@
 | Task management | TaskStopTool | `task_stop.py` | ✅ Implemented |
 | Task management | TasksV2Tool | `tasks_v2.py` | ✅ Implemented |
 | Task management | TaskManager | `task_manager.py` | ✅ Implemented |
-| Agent tools | AgentTool | `agent.py` | ✅ Runs a general-purpose sub-agent (fresh conversation, no Agent tool, own read tracking); no custom agent types or background runs |
+| Agent tools | AgentTool | `agent.py` | ✅ General-purpose or custom types (`.clyde/agents/*.md`, Claude Code format), foreground or background (`TaskOutput` / `TaskStop`); no nesting |
 | Agent tools | BriefTool | `brief.py` | ✅ Implemented |
-| Agent tools | TeamTool | `team.py` | 🟡 Writes a team file only |
+| Agent tools | TeamTool | `team.py` | ✅ Runs up to 8 sub-agents in parallel; `TeamDelete` stops the rest |
 | Config tools | ConfigTool | `config.py` | ✅ Implemented |
 | Plan mode | PlanModeTool | `plan_mode.py` | ✅ Implemented |
 | Scheduled tasks | CronTool | `cron.py` | ✅ Session-scoped; due jobs run as a turn while the REPL is idle |
-| MCP tools | MCPTool | `mcp.py`, `mcp_client.py` | ✅ Stdio servers from `~/.clyde/settings.json`; each tool is registered as `mcp__<server>__<tool>` |
+| MCP tools | MCPTool | `mcp.py`, `mcp_client.py`, `mcp_oauth.py` | ✅ Stdio, Streamable HTTP and HTTP+SSE servers from settings and approved project `.mcp.json`; OAuth sign-in with `/mcp login`; each tool registered as `mcp__<server>__<tool>` |
 | MCP tools | MCPResourcesTool | `mcp_resources.py` | ✅ Lists and reads resources from connected servers |
 | Skill system | SkillTool | `skill.py` | ✅ Implemented |
 | Tool search | ToolSearchTool | `tool_search.py` | ✅ Implemented |
@@ -119,10 +129,10 @@
 | Output Styles | ✅ | Output style loading system implemented |
 | Session Persistence | ✅ | Session save/load available |
 | Context Engine | ✅ | Context-building pipeline: workspace, git, README excerpt / entry points, code map, and `CLYDE.md` memory (reads `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, Cursor and Copilot files too) |
-| Permission Engine | ✅ | Bash, Write/Edit, Config set and WebFetch ask; allow/deny rules from `~/.clyde/settings.json`; no project-level rules yet |
+| Permission Engine | ✅ | Bash, Write/Edit, Config set and WebFetch ask; allow/deny rules from `~/.clyde/settings.json`; shell commands also run in the OS sandbox; no project-level rules yet |
 | Compaction Engine | ✅ | Manual `/compact` and automatic at 80% of the context window |
 | Hook Runtime | ✅ | Matching hooks run around every tool dispatch; exit 2 blocks (pre) or feeds stderr back (post) |
-| MCP Runtime | 🟡 | Stdlib stdio JSON-RPC client, started with the REPL; no HTTP/SSE servers or project `.mcp.json` yet |
+| MCP Runtime | ✅ | Stdlib JSON-RPC over stdio, Streamable HTTP and HTTP+SSE (with fallback); OAuth (discovery, client registration, PKCE, refresh); project `.mcp.json` behind a per-entry yes; tool lists scanned by SkillSpector |
 
 ---
 
@@ -130,6 +140,7 @@
 
 | Test Type | Status | File |
 |---------|------|------|
+| Full suite | ✅ | 684 tests (`pytest`), all passing; live shakedown of every feature on 2026-10-02 |
 | Tool system tests | ✅ | `test_tool_system_tools.py` (427 lines) |
 | Agent Loop tests | ✅ | `test_agent_loop.py` (134 lines) |
 | Claude Code tool parity tests | ✅ | `test_claude_code_tool_parity.py` (137 lines) |
@@ -229,13 +240,15 @@ Goal: build features unique to the Python rewrite.
 
 ### P2: Filling in key Claude Code experiences
 
-- MCP over HTTP/SSE, and project `.mcp.json` behind a trust prompt
+- IDE integration (VS Code / JetBrains: editor diagnostics, diff views)
+- A shorter wait for a provider's first byte, so a stalled endpoint doesn't hold a turn for minutes
+- Linux sandbox testing on a machine with `bwrap`
 - Performance monitoring and tuning
 
 ### P3: Python version highlights
 
 - Enhanced notebook editing and reading
-- Enhanced data file tools
+- More data formats for the Data tool (Excel, Avro) and write-back with confirmation
 - pytest / ruff / mypy / uv integration
 - More domestic and international model providers
 - Pluggable tool system
