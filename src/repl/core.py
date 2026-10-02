@@ -209,6 +209,7 @@ _HELP_TEXT = """
 - `/mcp login <server>` / `/mcp logout <server>` - OAuth sign-in for a remote MCP server (opens your browser), or forget its tokens
 - `/plugins` - Show loaded plugins and what each added
 - `/debug [path]` - Show the last turn's model and tool calls from the trace, or the trace file path
+- `/login [provider]` - Connect a provider or replace its key, or add an OpenAI-compatible one (`custom`), then switch to a model
 - `/rewind` - Undo the model's file edits and/or the conversation back to before one of your messages
 - `/check` - Run the project's ruff, mypy and pytest and show a summary
 
@@ -356,6 +357,7 @@ class ClydeREPL:
             "/plugins",
             "/debug",
             "/rewind",
+            "/login",
             "/laya",
             "/multiline",
             "/stream",
@@ -1311,6 +1313,8 @@ class ClydeREPL:
             self._print_plugins()
         elif cmd == '/rewind':
             self._rewind()
+        elif cmd == '/login' or cmd.startswith('/login '):
+            self._handle_relogin(raw.split(maxsplit=1)[1].strip() if " " in raw.strip() else None, title="Connect a provider")
         elif cmd == '/laya':
             self._show_laya()
         elif cmd == '/debug' or cmd.startswith('/debug '):
@@ -2261,12 +2265,14 @@ class ClydeREPL:
         self.console.print(Text("Retrying your message…", style=_CARD_DIM))
         self.chat(user_input, max_turns, _auth_retry=True)
 
-    def _handle_relogin(self):
-        """Handle re-authentication when an API key fails."""
-        from src.cli import run_login_flow
+    def _handle_relogin(self, provider: str | None = None, title: str = "Reconfigure API key"):
+        """Connect a provider (or re-enter a failed key) and switch to the model picked."""
+        from src.cli import _print_provider_table, run_login_flow
 
-        self.console.print(Text.assemble(("\n♠ ", _CARD_ACCENT), ("Reconfigure API key", f"bold {_CARD_TEXT}"), "\n"))
-        ref = run_login_flow(self.console, self.registry, default_provider=self.provider_name)
+        self.console.print(Text.assemble(("\n♠ ", _CARD_ACCENT), (title, f"bold {_CARD_TEXT}"), "\n"))
+        if provider is None:
+            _print_provider_table(self.console, self.registry)
+        ref = run_login_flow(self.console, self.registry, default_provider=self.provider_name, provider=provider)
         if ref is None:
             return
         self.registry = build_registry()   # a new key can add providers (e.g. Ollama Cloud)
