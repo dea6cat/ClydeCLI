@@ -10,15 +10,24 @@
 <meta property="og:type" content="website">
 <meta name="theme-color" content="#0f1a14">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>♠</text></svg>">
+<link rel="preload" href="fonts/bricolage-grotesque.woff2" as="font" type="font/woff2" crossorigin>
 <style>
+  /* Bricolage Grotesque and JetBrains Mono, self-hosted under the SIL OFL (licenses in fonts/) */
+  @font-face { font-family: "Bricolage Grotesque"; src: url(fonts/bricolage-grotesque.woff2) format("woff2");
+               font-weight: 400 800; font-stretch: 75% 100%; font-display: swap; unicode-range: U+0000-00FF, U+2010-2027, U+2190-21FF; }
+  @font-face { font-family: "JetBrains Mono"; src: url(fonts/jetbrains-mono.woff2) format("woff2");
+               font-weight: 400 700; font-display: swap; unicode-range: U+0000-00FF, U+2010-2027, U+2190-21FF; }
   :root {
     --felt: #0f1a14; --felt-2: #15241b; --felt-3: #1b2e22; --line: #24382b;
     --face: #f5f1e8; --face-2: #e9e3d6; --ink: #111111; --ink-2: #3d3a34;
     --red: #d0202f; --green: #4eba65; --text: #e8e4dc; --dim: #9aa39c;
     --term: #0a120d; --term-line: #1d2b22; --term-text: #e8e4dc; --term-dim: #8a8a8a;
-    --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
-    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
-    --r-sm: 6px; --r-md: 10px; --r-lg: 14px;
+    --mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+    --sans: "Bricolage Grotesque", -apple-system, "Segoe UI", Roboto, sans-serif;
+    /* type scale: 17px body, perfect fourth */
+    --t-0: 17px; --t-1: 22.6px; --t-2: 30px; --t-3: 40px; --t-4: 53px;
+    /* radius by what a thing is: controls 6, panels and terminals 8, physical cards 12, tags pill */
+    --r-sm: 6px; --r-md: 8px; --r-lg: 12px;
     --ease: cubic-bezier(.2, .7, .2, 1);
   }
   @media (prefers-color-scheme: light) {
@@ -26,7 +35,8 @@
   }
   * { box-sizing: border-box; }
   html { scroll-behavior: smooth; scroll-padding-top: 72px; }
-  body { margin: 0; background: var(--felt); color: var(--text); font: 16px/1.6 var(--sans); -webkit-font-smoothing: antialiased; }
+  body { margin: 0; background: var(--felt); color: var(--text); font: 400 var(--t-0)/1.6 var(--sans); font-optical-sizing: auto; -webkit-font-smoothing: antialiased; }
+  p, dd, li { max-width: 68ch; }
   a { color: var(--green); }
   :focus-visible { outline: 2px solid var(--green); outline-offset: 3px; border-radius: 4px; }
   .wrap { max-width: 1120px; margin: 0 auto; padding: 0 20px; }
@@ -38,22 +48,20 @@
          backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-bottom: 1px solid transparent; transition: border-color .2s; }
   .nav.scrolled { border-bottom-color: var(--line); }
   .nav .wrap { display: flex; justify-content: space-between; align-items: center; height: 60px; }
-  .brand { font: 700 17px var(--mono); color: var(--text); text-decoration: none; display: flex; gap: 8px; align-items: center; }
+  .brand { font: 800 19px var(--sans); letter-spacing: -0.01em; color: var(--text); text-decoration: none; display: flex; gap: 8px; align-items: center; }
   .brand b { color: var(--red); font-size: 20px; display: inline-block; transition: transform .5s var(--ease); }
-  .brand:hover b { transform: rotate(-12deg) scale(1.1); }
   .nav .links { display: flex; gap: 4px; align-items: center; }
-  .nav .links a { color: var(--dim); text-decoration: none; font-size: 14.5px; padding: 6px 10px; border-radius: var(--r-sm); transition: color .15s, background .15s; }
+  .nav .links a { color: var(--dim); text-decoration: none; font-size: 15px; font-weight: 500; padding: 6px 10px; border-radius: var(--r-sm); transition: color .15s, background .15s; }
   .nav .links a:hover, .nav .links a.active { color: var(--text); background: var(--felt-2); }
   .nav .links a.gh { border: 1px solid var(--line); margin-left: 6px; }
 
   /* Hero */
-  .hero { display: grid; grid-template-columns: 1fr 1.05fr; gap: 56px; align-items: center; padding: 64px 0 88px; position: relative; }
+  .hero { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; align-items: center; padding: 64px 0 88px; position: relative; }
   .hero > * { min-width: 0; }
-  h1 { font-size: clamp(36px, 4.4vw, 52px); line-height: 1.05; margin: 0 0 20px; letter-spacing: -0.025em; }
-  h1 .deal { color: var(--red); display: inline-block; }
-  .lede { font-size: 18.5px; color: var(--dim); margin: 0 0 28px; max-width: 46ch; }
+  h1 { font-size: clamp(38px, 4.2vw, 50px); font-weight: 800; font-stretch: 84%; line-height: 1.02; margin: 0 0 22px; letter-spacing: -0.03em; text-wrap: balance; }
+  .lede { font-size: var(--t-1); line-height: 1.4; color: var(--dim); margin: 0 0 28px; max-width: 46ch; }
   .install { display: flex; align-items: center; gap: 10px; background: var(--term); color: var(--term-text); border: 1px solid var(--line);
-             border-radius: var(--r-md); padding: 10px 10px 10px 16px; font: 13.5px var(--mono); }
+             border-radius: var(--r-sm); padding: 10px 10px 10px 16px; font: 13.5px var(--mono); }
   .install code { white-space: nowrap; flex: 1; overflow-x: auto; scrollbar-width: none; }
   .install code::before { content: "$ "; color: #4eba65; }
   .copy { flex: none; background: var(--face); color: var(--ink); border: 0; border-radius: var(--r-sm); padding: 7px 12px;
@@ -62,7 +70,7 @@
   .copy:active { transform: scale(.96); }
   .copy.done { background: #4eba65; color: #06120a; }
   .cta { display: flex; gap: 12px; margin-top: 18px; flex-wrap: wrap; }
-  .btn { display: inline-flex; align-items: center; gap: 8px; padding: 11px 18px; border-radius: var(--r-md); font-weight: 600;
+  .btn { display: inline-flex; align-items: center; gap: 8px; padding: 11px 18px; border-radius: var(--r-sm); font-weight: 600;
          text-decoration: none; font-size: 15px; transition: transform .15s var(--ease), background .15s, border-color .15s; }
   .btn:hover { transform: translateY(-1px); }
   .btn.primary { background: var(--red); color: #fff; }
@@ -71,7 +79,7 @@
   .btn.ghost:hover { border-color: var(--dim); }
 
   /* Terminals */
-  .term { background: var(--term); border: 1px solid var(--line); border-radius: var(--r-lg); color: var(--term-text);
+  .term { background: var(--term); border: 1px solid var(--line); border-radius: var(--r-md); color: var(--term-text);
           font: 13px/1.7 var(--mono); overflow: hidden; box-shadow: 0 24px 60px -20px rgba(0,0,0,.5); }
   .term .bar { display: flex; gap: 7px; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--term-line); }
   .term .bar i { width: 11px; height: 11px; border-radius: 50%; background: #2d3b31; }
@@ -95,27 +103,26 @@
 
   /* Sections */
   section { padding: 88px 0; border-top: 1px solid var(--line); }
-  .kicker { font: 700 12.5px var(--mono); color: var(--red); letter-spacing: .08em; text-transform: uppercase; margin: 0 0 10px; }
   .nav-sentinel { position: absolute; top: 0; height: 8px; width: 1px; }
-  h2 { font-size: clamp(28px, 3.6vw, 40px); line-height: 1.12; margin: 0 0 12px; letter-spacing: -0.02em; }
-  .sub { color: var(--dim); margin: 0 0 40px; max-width: 640px; font-size: 17px; }
+  h2 { font-size: clamp(30px, 3.6vw, var(--t-3)); font-weight: 750; font-stretch: 92%; line-height: 1.08; margin: 0 0 14px; letter-spacing: -0.025em; text-wrap: balance; }
+  .sub { color: var(--dim); margin: 0 0 40px; max-width: 58ch; }
 
   /* cardShuffle table */
   .table { display: grid; grid-template-columns: 320px 1fr; gap: 32px; background: var(--felt-2); border: 1px solid var(--line);
-           border-radius: var(--r-lg); padding: 28px; }
+           border-radius: var(--r-md); padding: 28px; }
   .table > * { min-width: 0; }
   .tiers { display: grid; gap: 8px; margin: 0; padding: 0; border: 0; }
-  .tiers legend { font: 600 13px var(--mono); color: var(--dim); margin-bottom: 10px; padding: 0; }
+  .tiers legend { font-size: 15px; font-weight: 600; color: var(--dim); margin-bottom: 10px; padding: 0; }
   .tier { display: block; position: relative; }
   .tier input { position: absolute; opacity: 0; }
-  .tier label { display: block; cursor: pointer; border: 1px solid var(--line); border-radius: var(--r-md); padding: 10px 14px; background: var(--felt);
+  .tier label { display: block; cursor: pointer; border: 1px solid var(--line); border-radius: var(--r-sm); padding: 10px 14px; background: var(--felt);
                 transition: border-color .15s, background .15s; }
   .tier label b { font-family: var(--mono); font-size: 14px; }
-  .tier label span { display: block; color: var(--dim); font-size: 13.5px; }
+  .tier label span { display: block; color: var(--dim); font-size: 14.5px; }
   .tier input:checked + label { border-color: var(--red); background: var(--felt-3); }
   .tier input:focus-visible + label { outline: 2px solid var(--green); outline-offset: 2px; }
   .deal-actions { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
-  .deal-actions button { font: 600 14px var(--sans); border-radius: var(--r-md); padding: 10px 14px; cursor: pointer; border: 1px solid var(--line);
+  .deal-actions button { font: 600 15px var(--sans); border-radius: var(--r-sm); padding: 10px 14px; cursor: pointer; border: 1px solid var(--line);
                          background: var(--felt); color: var(--text); transition: transform .15s var(--ease), border-color .15s; }
   .deal-actions button:hover:not(:disabled) { border-color: var(--dim); }
   .deal-actions button:active:not(:disabled) { transform: scale(.97); }
@@ -127,7 +134,7 @@
         transition: transform .55s var(--ease), opacity .4s; }
   .pc .inner { position: relative; width: 100%; height: 100%; transform-style: preserve-3d; transition: transform .6s var(--ease); }
   .pc.up .inner { transform: rotateY(180deg); }
-  .pc .back, .pc .front { position: absolute; inset: 0; border-radius: var(--r-md); backface-visibility: hidden; -webkit-backface-visibility: hidden;
+  .pc .back, .pc .front { position: absolute; inset: 0; border-radius: var(--r-lg); backface-visibility: hidden; -webkit-backface-visibility: hidden;
                           box-shadow: 0 10px 24px -8px rgba(0,0,0,.45); }
   .pc .back { background: var(--red); border: 6px solid var(--face);
               background-image: repeating-linear-gradient(45deg, transparent 0 6px, rgba(255,255,255,.14) 6px 7px), repeating-linear-gradient(-45deg, transparent 0 6px, rgba(255,255,255,.14) 6px 7px); }
@@ -145,22 +152,18 @@
 
   /* Bento: five tiles, varied sizes and surfaces */
   .bento { display: grid; grid-template-columns: repeat(6, 1fr); gap: 16px; }
-  .tile { position: relative; border-radius: var(--r-lg); padding: 34px 24px 26px; min-width: 0; overflow: hidden;
-          transition: transform .3s var(--ease); }
-  .tile:hover { transform: translateY(-3px); }
-  .tile::before { content: attr(data-pip); position: absolute; top: 12px; left: 14px; font: 700 14px/1 var(--mono); }
-  .tile h3 { margin: 0 0 8px; font-size: 19px; letter-spacing: -0.01em; }
+  .tile { position: relative; border-radius: var(--r-lg); padding: 26px 26px 28px; min-width: 0; overflow: hidden; }
+  .tile.dark { border-radius: var(--r-md); }
+  .tile h3 { margin: 0 0 8px; font-size: var(--t-1); font-weight: 700; letter-spacing: -0.015em; line-height: 1.2; }
   .tile p { margin: 0; font-size: 15px; max-width: 52ch; }
   .tile code { font: 12.5px var(--mono); padding: 1px 5px; border-radius: 4px; }
   .tile.face { background: var(--face); color: var(--ink); box-shadow: 0 10px 26px -16px rgba(15, 26, 20, .5); }
   .tile.face p { color: var(--ink-2); } .tile.face code { background: var(--face-2); }
-  .tile.face::before { color: var(--red); } .tile.face.black::before { color: var(--ink); }
   .tile.dark { background: var(--term); color: var(--term-text); border: 1px solid var(--line); }
   .tile.dark p { color: #b9bfb9; } .tile.dark code { background: #17241b; }
-  .tile.dark::before { color: #4eba65; }
   .tile.back { background: var(--red); color: #fff;
                background-image: repeating-linear-gradient(45deg, transparent 0 9px, rgba(255,255,255,.08) 9px 10px), repeating-linear-gradient(-45deg, transparent 0 9px, rgba(255,255,255,.08) 9px 10px); }
-  .tile.back p { color: #ffe3e5; } .tile.back code { background: rgba(0,0,0,.18); color: #fff; } .tile.back::before { color: #fff; }
+  .tile.back p { color: #ffe3e5; } .tile.back code { background: rgba(0,0,0,.18); color: #fff; }
   .t-eval { grid-column: span 4; } .t-prov { grid-column: span 2; grid-row: span 2; }
   .t-local, .t-scan { grid-column: span 2; } .t-setup { grid-column: span 6; }
   .scores { display: grid; gap: 6px; margin-top: 18px; font: 12.5px var(--mono); }
@@ -171,19 +174,19 @@
   .tile .chip { background: var(--face-2); border-color: transparent; color: var(--ink); font-size: 13px; padding: 5px 12px; }
   .tile .chip.local { border-color: #2f8a45; }
   .fit { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
-  .fit span { font: 600 12.5px var(--mono); padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); }
+  .fit span { font-size: 14px; font-weight: 600; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); }
   .fit .relax { color: #2f8a45; border-color: #2f8a45; } .fit .balance { color: #9a6b00; border-color: #c99a2e; } .fit .hard { color: var(--red); border-color: var(--red); }
   .tools { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
-  .tools span { font: 13px var(--mono); color: var(--ink-2); background: var(--face-2); border-radius: var(--r-sm); padding: 4px 10px; }
+  .tools span { font-size: 14px; font-weight: 500; color: var(--ink-2); background: var(--face-2); border-radius: var(--r-sm); padding: 4px 10px; }
 
   /* Tabs */
   .showcase { display: grid; grid-template-columns: 300px 1fr; gap: 28px; align-items: start; }
   .showcase > * { min-width: 0; }
   [role="tablist"] { display: grid; gap: 6px; }
-  [role="tab"] { text-align: left; background: transparent; border: 1px solid transparent; border-radius: var(--r-md); padding: 12px 14px;
+  [role="tab"] { text-align: left; background: transparent; border: 1px solid transparent; border-radius: var(--r-sm); padding: 12px 14px;
                  color: var(--text); cursor: pointer; font: inherit; transition: background .15s, border-color .15s; }
-  [role="tab"] b { display: block; font-size: 15.5px; }
-  [role="tab"] span { display: block; color: var(--dim); font-size: 13.5px; line-height: 1.45; }
+  [role="tab"] b { display: block; font-size: var(--t-0); font-weight: 650; }
+  [role="tab"] span { display: block; color: var(--dim); font-size: 14.5px; line-height: 1.45; }
   [role="tab"]:hover { background: var(--felt-2); }
   [role="tab"][aria-selected="true"] { background: var(--felt-2); border-color: var(--line); box-shadow: inset 3px 0 0 var(--red); }
   [role="tabpanel"] pre { min-height: 300px; }
@@ -191,7 +194,7 @@
   .panel-in { animation: rise .35s var(--ease) both; }
 
   .groups { display: grid; grid-template-columns: repeat(3, 1fr); gap: 40px; margin-top: 64px; }
-  .groups h3 { font-size: 15px; margin: 0 0 14px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+  .groups h3 { font-size: var(--t-1); font-weight: 700; letter-spacing: -0.015em; margin: 0 0 14px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
   .groups dl { margin: 0; display: grid; gap: 14px; }
   .groups dt { font-weight: 600; }
   .groups dd { margin: 2px 0 0; color: var(--dim); font-size: 14.5px; }
@@ -199,26 +202,22 @@
   .chips { display: flex; flex-wrap: wrap; gap: 8px; }
   .chip { border: 1px solid var(--line); background: var(--felt-2); border-radius: 999px; padding: 7px 15px; font-size: 14px;
           transition: transform .2s var(--ease), border-color .2s; }
-  .chip:hover { transform: translateY(-2px); border-color: var(--dim); }
   .chip.local { border-color: var(--green); }
   .chip.local::before { content: "● "; color: var(--green); font-size: 10px; vertical-align: 2px; }
 
   .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; counter-reset: step; }
-  .step { background: var(--felt-2); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 20px; min-width: 0; }
-  .step h3 { margin: 0; font-size: 17px; }
+  .step { background: var(--felt-2); border: 1px solid var(--line); border-radius: var(--r-md); padding: 20px; min-width: 0; }
+  .step h3 { margin: 0; font-size: var(--t-1); font-weight: 700; }
   .step p { margin: 6px 0 0; color: var(--dim); font-size: 14.5px; }
   .step .install { margin-top: 12px; }
 
-  .honest { background: transparent; border: 1px dashed var(--line); border-radius: var(--r-lg); padding: 20px 24px; margin-top: 24px; }
+  .honest { background: transparent; border: 1px dashed var(--line); border-radius: var(--r-md); padding: 20px 24px; margin-top: 24px; }
   .honest ul { margin: 8px 0 0; padding-left: 20px; color: var(--dim); }
 
   .flinks { display: flex; gap: 18px; flex-wrap: wrap; }
   footer { padding: 36px 0 56px; border-top: 1px solid var(--line); color: var(--dim); font-size: 14px;
            display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
 
-  /* Scroll reveal: only when JS runs and motion is welcome */
-  .js .reveal { opacity: 0; transform: translateY(16px); transition: opacity .6s var(--ease), transform .6s var(--ease); transition-delay: var(--delay, 0s); }
-  .js .reveal.in { opacity: 1; transform: none; }
 
   @media (max-width: 960px) {
     .hero { grid-template-columns: 1fr; gap: 36px; padding-top: 36px; }
@@ -239,7 +238,6 @@
   }
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
-    .js .reveal { opacity: 1; transform: none; }
   }
 </style>
 </head>
@@ -253,7 +251,7 @@
       <a href="#different">Why Clyde</a>
       <a href="#basics">Features</a>
       <a href="#start">Get started</a>
-      <a class="gh" href="https://github.com/dea6cat/ClydeCLI">GitHub ↗</a>
+      <a class="gh" href="https://github.com/dea6cat/ClydeCLI">GitHub</a>
     </nav>
   </div>
 </header>
@@ -262,7 +260,7 @@
 <div class="wrap">
   <div class="hero">
     <div>
-      <h1>The coding agent that <span class="deal">deals</span> the right model.</h1>
+      <h1>The coding agent that deals the right model.</h1>
       <p class="lede">An open-source coding agent for your terminal. Any model, cloud or local, and it keeps going until the thing works.</p>
       <div class="install">
         <code id="cmd-hero">curl -fsSL https://raw.githubusercontent.com/dea6cat/ClydeCLI/main/install.sh | sh</code>
@@ -270,7 +268,7 @@
       </div>
       <div class="cta">
         <a class="btn primary" href="https://github.com/dea6cat/ClydeCLI">View on GitHub</a>
-        <a class="btn ghost" href="#shuffle">Try a deal ↓</a>
+        <a class="btn ghost" href="#shuffle">See cardShuffle</a>
       </div>
     </div>
 
@@ -284,11 +282,10 @@
 
 <section id="shuffle">
   <div class="wrap">
-    <p class="kicker reveal">cardShuffle</p>
-    <h2 class="reveal">One model name. The whole table behind it.</h2>
-    <p class="sub reveal">Pick <code>cardShuffle</code> as your model and Clyde deals every turn to a real one, ranked by its own <code>/eval</code>. If that model errors, stalls or loops, the next card takes over mid-turn. Go on, deal a hand.</p>
+    <h2>One model name. The whole table behind it.</h2>
+    <p class="sub">Choose <code>cardShuffle</code> as your model and Clyde hands each turn to a real one, ranked by its own <code>/eval</code>. If that model errors, stalls or loops, the next one takes over mid-turn.</p>
 
-    <div class="table reveal">
+    <div class="table">
       <div>
         <fieldset class="tiers" id="tiers">
           <legend>Choose a tier</legend>
@@ -313,10 +310,10 @@
 
 <section id="different">
   <div class="wrap">
-    <h2 class="reveal">What other harnesses don't do</h2>
-    <p class="sub reveal">Vendor CLIs are built around one company's models. Clyde is built around all of them, and it checks which ones actually work.</p>
+    <h2>What other harnesses don't do</h2>
+    <p class="sub">Vendor CLIs are built around one company's models. Clyde is built around all of them, and it checks which ones actually work.</p>
     <div class="bento">
-      <article class="tile dark t-eval reveal" data-pip="K♥">
+      <article class="tile dark t-eval">
         <h3>It grades your models</h3>
         <p><code>/eval</code> tests every model you can reach on a tool call, then deals it a hand of 11 graded tasks. Broken models drop out of <code>/models</code>.</p>
         <div class="scores" aria-label="Example /eval results">
@@ -327,7 +324,7 @@
           <div><b>openrouter:llama-3.1-8b:free</b><span class="bad">no tool calls</span><span>hidden</span></div>
         </div>
       </article>
-      <article class="tile face black t-prov reveal" data-pip="Q♣">
+      <article class="tile face black t-prov">
         <h3>Any provider, your keys</h3>
         <p>13 built in, local servers included. Any OpenAI-compatible API joins with <code>/login</code>. No account with us, no proxy in between.</p>
         <div class="chips">
@@ -337,16 +334,16 @@
           <span class="chip local">Ollama</span><span class="chip local">LM Studio</span><span class="chip">your endpoint</span>
         </div>
       </article>
-      <article class="tile face t-local reveal" data-pip="J♦">
+      <article class="tile face t-local">
         <h3>Local models that fit</h3>
         <p><code>/models local</code> searches ollama.com, Hugging Face and MLX, and rates each for your machine before anything downloads.</p>
         <div class="fit"><span class="relax">relax</span><span class="balance">balance</span><span class="hard">hard</span></div>
       </article>
-      <article class="tile back t-scan reveal" data-pip="10♠">
+      <article class="tile back t-scan">
         <h3>Scanned before it loads</h3>
         <p>Bundled SkillSpector checks skills, plugins, agents and MCP tool lists. Anything flagged stays out until you allow it.</p>
       </article>
-      <article class="tile face t-setup reveal" data-pip="9♥">
+      <article class="tile face t-setup">
         <h3>Brings your setup with it</h3>
         <p>Reads the memory files, skills, hooks, MCP servers and plugins you made for other agents, and imports them only with a yes.</p>
         <div class="tools"><span>Claude Code</span><span>Cursor</span><span>Gemini CLI</span><span>Codex</span><span>Copilot CLI</span></div>
@@ -357,10 +354,10 @@
 
 <section id="basics">
   <div class="wrap">
-    <h2 class="reveal">Everything you'd expect, done properly</h2>
-    <p class="sub reveal">The fundamentals are covered by nearly 700 tests and a live shakedown against real providers.</p>
+    <h2>Everything you'd expect, done properly</h2>
+    <p class="sub">The fundamentals are covered by nearly 700 tests and a live shakedown against real providers.</p>
 
-    <div class="showcase reveal">
+    <div class="showcase">
       <div role="tablist" aria-label="Feature demos" aria-orientation="vertical" id="tabs">
         <button role="tab" id="tab-p" aria-controls="panel-p" aria-selected="true"><b>Headless mode</b><span>Scripts and CI with <code>clyde -p</code></span></button>
         <button role="tab" id="tab-r" aria-controls="panel-r" aria-selected="false" tabindex="-1"><b>Undo with /rewind</b><span>Every message is a checkpoint</span></button>
@@ -432,17 +429,17 @@ the assertion and the likely cause.
     </div>
 
     <div class="groups">
-      <div class="reveal"><h3>Connect</h3><dl>
+      <div><h3>Connect</h3><dl>
         <dt>MCP, local and remote</dt><dd>stdio, HTTP and SSE servers, OAuth sign-in, and a repo's <code>.mcp.json</code> after approval.</dd>
         <dt>Skills, hooks, plugins</dt><dd>Markdown skills as slash commands, tool hooks, and plugin bundles.</dd>
         <dt>Data tool</dt><dd>Read-only SQL across CSV, Parquet, JSON and SQLite with sandboxed DuckDB.</dd>
       </dl></div>
-      <div class="reveal"><h3>Stay in control</h3><dl>
+      <div><h3>Stay in control</h3><dl>
         <dt>Permission modes</dt><dd>Hold, plan and all-in, with allow and deny rules. Major moves always ask.</dd>
         <dt>Check after edit</dt><dd>Python edits run through ruff, and new problems go back to the model.</dd>
         <dt>Stalls end cleanly</dt><dd>A cloud model silent for 180 s ends the turn, and cardShuffle deals again.</dd>
       </dl></div>
-      <div class="reveal"><h3>Work comfortably</h3><dl>
+      <div><h3>Work comfortably</h3><dl>
         <dt>Pasting that works</dt><dd>Screenshots with Ctrl+V, and long pastes fold into one line.</dd>
         <dt>Sessions</dt><dd>Auto-saved, resumable per workspace, compacted near the context limit.</dd>
         <dt>Cost and tracing</dt><dd><code>/cost</code> per model, and a trace of every call with secrets redacted.</dd>
@@ -453,17 +450,17 @@ the assertion and the likely cause.
 
 <section id="start">
   <div class="wrap">
-    <h2 class="reveal">Up and running in three steps</h2>
-    <p class="sub reveal">Python 3.14+ on macOS or Linux, and a key for any provider you like.</p>
+    <h2>Up and running in three steps</h2>
+    <p class="sub">Python 3.14+ on macOS or Linux, and a key for any provider you like.</p>
     <div class="steps">
-      <div class="step reveal"><h3>Install</h3><p>Sets up uv if needed, then Clyde, then runs <code>clyde setup</code>.</p>
+      <div class="step"><h3>Install</h3><p>Sets up uv if needed, then Clyde, then runs <code>clyde setup</code>.</p>
         <div class="install"><code id="cmd-1">curl -fsSL https://raw.githubusercontent.com/dea6cat/ClydeCLI/main/install.sh | sh</code><button class="copy" type="button" data-copy="cmd-1">Copy</button></div></div>
-      <div class="step reveal"><h3>Connect</h3><p>Pick a provider and paste its key, or export one.</p>
+      <div class="step"><h3>Connect</h3><p>Pick a provider and paste its key, or export one.</p>
         <div class="install"><code id="cmd-2">clyde login</code><button class="copy" type="button" data-copy="cmd-2">Copy</button></div></div>
-      <div class="step reveal"><h3>Work</h3><p>Start it in your project and say what's broken.</p>
+      <div class="step"><h3>Work</h3><p>Start it in your project and say what's broken.</p>
         <div class="install"><code id="cmd-3">clyde</code><button class="copy" type="button" data-copy="cmd-3">Copy</button></div></div>
     </div>
-    <div class="honest reveal">
+    <div class="honest">
       <b>Straight talk</b>
       <ul>
         <li>The install is about 850 MB, mostly PyTorch for Laya, the bundled local model that spots stuck loops.</li>
@@ -517,17 +514,6 @@ the assertion and the likely cause.
     }, { rootMargin: "-45% 0px -50% 0px" });
     Object.keys(links).forEach(function (id) { var s = document.getElementById(id); if (s) spy.observe(s); });
 
-    /* Scroll reveal, staggered within a group */
-    var reveal = new IntersectionObserver(function (entries) {
-      entries.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add("in"); reveal.unobserve(e.target); } });
-    }, { rootMargin: "0px 0px -8% 0px" });
-    document.querySelectorAll(".reveal").forEach(function (el) {
-      var sibs = Array.prototype.filter.call(el.parentNode.children, function (c) { return c.classList.contains("reveal"); });
-      el.style.setProperty("--delay", Math.min(sibs.indexOf(el), 8) * 0.06 + "s");
-      reveal.observe(el);
-    });
-  } else {
-    document.querySelectorAll(".reveal").forEach(function (el) { el.classList.add("in"); });
   }
 
   /* Hero terminal: replays a turn */
@@ -539,7 +525,7 @@ the assertion and the likely cause.
   var TOOLS = [
     { name: "Grep", arg: '"parse_date" src tests', result: "mode=files_with_matches · files=2 · 0.1s", ms: 500 },
     { name: "Read", arg: "src/dates.py", result: "src/dates.py · lines=1-88/88 · 0.0s", ms: 450 },
-    { name: "Bash", arg: "pytest tests/test_dates.py -q", result: "exit=1 · FAILED tests/test_dates.py::test_leap_year · 1.2s", err: true, ms: 1200 },
+    { name: "Bash", arg: "pytest tests/test_dates.py -q", result: "exit=1 · 1 failed, 11 passed in 0.32s · 1.2s", err: true, ms: 1200 },
     { name: "Edit", arg: "src/dates.py", result: "src/dates.py · replaceAll=False · 0.0s", ms: 550 },
     { name: "Bash", arg: "pytest tests/test_dates.py -q", result: "exit=0 · 12 passed in 0.31s · 1.1s", ms: 1100 }
   ];
