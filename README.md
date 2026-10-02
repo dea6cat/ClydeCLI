@@ -279,7 +279,7 @@ clyde --version                # Check version
 | Scheduling | CronCreate/List/Delete | ✅ Session-scoped; due jobs run as a turn while the REPL is idle at the prompt |
 | Team | TeamCreate/Delete | 🟡 Writes a team file; no multi-agent execution |
 | Worktree | EnterWorktree/ExitWorktree | ✅ Creates a git worktree on a new branch; exit keeps or removes it |
-| MCP | MCP, ListMcpResources, ReadMcpResource, `mcp__<server>__<tool>` | ✅ Stdio, Streamable HTTP and HTTP+SSE servers from `~/.clyde/settings.json`; header auth (no OAuth yet) |
+| MCP | MCP, ListMcpResources, ReadMcpResource, `mcp__<server>__<tool>` | ✅ Stdio, Streamable HTTP and HTTP+SSE servers from `~/.clyde/settings.json`; header auth or OAuth sign-in (`/mcp login`) |
 | Code map | Map | ✅ query / path / explain / affected / god_nodes over a map of the repo, refreshed when ClydeCLI starts |
 | LSP | LSP | ✅ Definition, references, hover, symbols and call hierarchy via a language server on PATH |
 | Not implemented | RemoteTrigger, REPL | ⏳ Stubs that return an error |
@@ -405,6 +405,7 @@ That's all it takes: clone, configure, run.
 | `/think [level]` | Reasoning: off, low, medium, high, on, default |
 | `/doctor`    | Diagnose environment, config, keys and permissions |
 | `/mcp`       | Connected MCP servers and their tools |
+| `/mcp login <server>` / `/mcp logout <server>` | OAuth sign-in (browser) for a remote MCP server, or forget its tokens |
 | `/plugins`   | Loaded plugins and what each added |
 | `/check`     | Run the project's ruff, mypy and pytest |
 | `/debug [path]` | The last turn's model and tool calls, or the trace file path |
@@ -551,7 +552,14 @@ that ClydeCLI starts (stdio), and remote ones it reaches over HTTP:
 | just a `url` (Cursor's form) | Streamable HTTP first, falling back to HTTP+SSE when the server refuses the POST, as the spec advises |
 
 `${VAR}` in a `url` or a header comes from your environment, so tokens can stay out of the file.
-Remote servers sign in with headers (API keys, bearer tokens); OAuth sign-in isn't supported yet.
+Remote servers sign in with headers (API keys, bearer tokens) or with OAuth. A server that wants
+OAuth shows as "needs sign-in" until you run `/mcp login <server>` (or `clyde mcp login <server>`):
+ClydeCLI finds the server's authorization server from its metadata (RFC 9728 / RFC 8414), registers
+itself (RFC 7591, so there's no app to create), opens your browser on the sign-in page with PKCE, and
+catches the redirect on `127.0.0.1`. Tokens are kept in `~/.clyde/mcp_oauth.json` (mode 600), sent
+with every request and refreshed when they expire or the server rejects them; `/mcp logout <server>`
+forgets them. A sign-in never starts on its own, and a server you give an `Authorization` header
+keeps using that header.
 
 - They start with the REPL; each tool shows up as `mcp__<server>__<tool>`, and `/mcp` lists them
 - Resources are available through ListMcpResources / ReadMcpResource

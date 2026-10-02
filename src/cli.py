@@ -66,7 +66,10 @@ Examples:
     hooks_parser = subparsers.add_parser('hooks', help='Manage tool hooks')
     hooks_parser.add_argument('action', choices=['import'], help="'import': copy other agents' hooks into ~/.clyde/settings.json")
     mcp_parser = subparsers.add_parser('mcp', help='Manage MCP servers')
-    mcp_parser.add_argument('action', choices=['import'], help="'import': copy other agents' MCP servers into ~/.clyde/settings.json")
+    mcp_parser.add_argument('action', choices=['import', 'login', 'logout'],
+                            help="'import': copy other agents' MCP servers into ~/.clyde/settings.json; "
+                                 "'login'/'logout': OAuth sign-in for a remote server")
+    mcp_parser.add_argument('server', nargs='?', help='login/logout: the server name from mcpServers')
     plugin_parser = subparsers.add_parser('plugin', help='Manage plugins in ~/.clyde/plugins')
     plugin_parser.add_argument('action', choices=['install', 'import', 'list', 'remove', 'enable', 'disable'])
     plugin_parser.add_argument('target', nargs='?', help='install: a folder or git URL; remove/enable/disable: a plugin name')
@@ -91,7 +94,9 @@ Examples:
     if args.command == 'hooks':
         return handle_hooks_import(Console())
     if args.command == 'mcp':
-        return handle_mcp_import(Console())
+        if args.action == 'import':
+            return handle_mcp_import(Console())
+        return handle_mcp_auth(Console(), args.action, args.server or "")
     if args.command == 'plugin':
         if args.action != 'list' and not args.target:
             parser.error(f"plugin {args.action} needs a {'folder or git URL' if args.action == 'install' else 'plugin name'}")
@@ -335,6 +340,33 @@ def handle_mcp_import(console: Console, quiet: bool = False) -> int:
                 console.print(f"[red]{e}[/red]")
                 return 1
     console.print(f"Imported MCP server(s): {', '.join(added)}." if added else "No MCP servers imported.")
+    return 0
+
+
+def handle_mcp_auth(console: Console, action: str, name: str) -> int:
+    """`clyde mcp login|logout <server>`: OAuth sign-in (browser) for a remote server, or forget its tokens."""
+    from src.tool_system import mcp_oauth
+    from src.tool_system.mcp_client import load_servers, remote_spec
+
+    servers = load_servers()
+    spec = remote_spec(servers[name]) if name in servers else None
+    if spec is None:
+        remote = [n for n, c in servers.items() if remote_spec(c)]
+        console.print(f"Usage: clyde mcp {action} <server>. Remote servers: {', '.join(remote) or 'none configured'}.")
+        return 1
+    if action == "logout":
+        console.print(f"Signed out of {name}." if mcp_oauth.logout(spec[1]) else f"{name} had no saved sign-in.")
+        return 0
+    console.print(f"Opening your browser to sign in to {name}…")
+    try:
+        mcp_oauth.login(spec[1], on_url=lambda u: console.print(f"[dim]If it didn't open: {u}[/dim]", soft_wrap=True))
+    except mcp_oauth.OAuthError as e:
+        console.print(f"[red]Sign-in failed:[/red] {e}")
+        return 1
+    except KeyboardInterrupt:
+        console.print("Sign-in cancelled.")
+        return 1
+    console.print(f"[green]✓ Signed in to {name}.[/green] ClydeCLI connects to it the next time it starts.")
     return 0
 
 
