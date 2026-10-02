@@ -204,6 +204,7 @@ _HELP_TEXT = """
 - `/compact` - Compact conversation to save context space
 - `/doctor` - Diagnose environment, config, keys and permissions
 - `/mcp` - Show connected MCP servers and their tools
+- `/mcp login <server>` / `/mcp logout <server>` - OAuth sign-in for a remote MCP server (opens your browser), or forget its tokens
 - `/plugins` - Show loaded plugins and what each added
 - `/debug [path]` - Show the last turn's model and tool calls from the trace, or the trace file path
 - `/check` - Run the project's ruff, mypy and pytest and show a summary
@@ -319,6 +320,7 @@ class ClydeREPL:
             for warning in loaded.warnings:
                 self.console.print(warning, style="yellow", markup=False)
         self.tool_context = ToolContext(workspace_root=Path.cwd(), hooks=hooks, permission_rules=load_rules())
+        self._mcp_servers, self._mcp_errors = servers, {}
         self._connect_mcp_servers(servers)
         self.tool_context.ask_user = self._ask_user_questions
         # Session-scoped cron: due jobs are queued here and run only between turns.
@@ -1256,6 +1258,8 @@ class ClydeREPL:
 
         elif cmd == '/mcp':
             self._print_mcp_status()
+        elif raw.strip().startswith(('/mcp login', '/mcp logout')):
+            self._mcp_auth(*raw.strip().split()[1:3])
 
         elif cmd == '/plugins':
             self._print_plugins()
@@ -1561,7 +1565,8 @@ class ClydeREPL:
         """Start the MCP servers from settings and plugins, registering their tools as mcp__<server>__<tool>."""
         if not servers:
             return
-        clients, self._mcp_errors = connect_servers(servers, Path.cwd())
+        clients, errors = connect_servers(servers, Path.cwd())
+        self._mcp_errors = {**{k: v for k, v in getattr(self, "_mcp_errors", {}).items() if k not in servers}, **errors}
         from src import skill_scan
         for name in list(clients):
             verdict = skill_scan.check_mcp(name, clients[name].tools)
@@ -1571,14 +1576,14 @@ class ClydeREPL:
                                    f"(risk {verdict.score}).[/red] /skills scan shows why; /skills allow mcp:{name} lets it in.")
             elif verdict.recommendation == skill_scan.CAUTION:
                 self.console.print(f"[yellow]MCP server '{name}': SkillSpector says CAUTION (risk {verdict.score}); /skills scan shows why.[/yellow]")
-        self.tool_context.mcp_clients = clients
+        self.tool_context.mcp_clients = {**(self.tool_context.mcp_clients or {}), **clients}
         for client in clients.values():
             for tool in client.tools:
                 try:
                     self.tool_registry.register(McpServerTool(client, tool))
                 except ValueError:  # two tools that sanitize to the same name: keep the first
                     pass
-        for name, error in self._mcp_errors.items():
+        for name, error in errors.items():
             trace.record("mcp_error", server=name, error=error)
             self.console.print(f"[yellow]MCP server '{name}' not connected: {error}[/yellow]", markup=True)
 
@@ -1604,6 +1609,42 @@ class ClydeREPL:
                                "[dim](tracing is off with CLYDE_TRACE=off or session.trace=false)[/dim]")
             return
         self.console.print(trace.last_turn_report(), markup=False, highlight=False)
+
+    def _mcp_auth(self, action: str, name: str = "") -> None:
+        """/mcp login <server> signs in with OAuth (browser) and connects it; /mcp logout <server> forgets the tokens."""
+        from src.tool_system import mcp_oauth
+        from src.tool_system.mcp_client import remote_spec
+
+        cfg = self._mcp_servers.get(name)
+        spec = remote_spec(cfg) if cfg else None
+        if spec is None:
+            remote = [n for n, c in self._mcp_servers.items() if remote_spec(c)]
+            self.console.print(f"Usage: /mcp {action} <server>. Remote servers: {', '.join(remote) or 'none configured'}.")
+            return
+        url = spec[1]
+        if action == "logout":
+            gone = mcp_oauth.logout(url)
+            self.console.print(f"Signed out of {name}." if gone else f"{name} had no saved sign-in.")
+            return
+        self.console.print(f"Opening your browser to sign in to {name}. Waiting up to {mcp_oauth.LOGIN_TIMEOUT // 60} minutes "
+                           "(Ctrl+C cancels).", markup=False)
+        try:
+            with self._esc.paused():
+                mcp_oauth.login(url, on_url=lambda u: self.console.print(f"If it didn't open: {u}", style=_CARD_DIM,
+                                                                          markup=False, soft_wrap=True))
+        except mcp_oauth.OAuthError as e:
+            self.console.print(f"[red]Sign-in failed:[/red] {e}")
+            return
+        except KeyboardInterrupt:
+            self.console.print("Sign-in cancelled.")
+            return
+        old = self.tool_context.mcp_clients.pop(name, None) if self.tool_context.mcp_clients else None
+        if old is not None:
+            old.close()
+        self._connect_mcp_servers({name: cfg})
+        client = self.tool_context.mcp_clients.get(name)
+        self.console.print(f"[green]✓ Signed in to {name}[/green]: {len(client.tools)} tool(s) connected." if client
+                           else f"Signed in, but {name} didn't connect: {self._mcp_errors.get(name, 'unknown error')}")
 
     def _print_mcp_status(self) -> None:
         clients, errors = self.tool_context.mcp_clients, getattr(self, "_mcp_errors", {})
