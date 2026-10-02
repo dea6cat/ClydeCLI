@@ -136,9 +136,13 @@ dealt to a model that passed `/eval`, and that model keeps the turn through its 
 | `cardShuffle:free` | local Ollama / LM Studio models only, strongest first |
 | `cardShuffle:small` | the weakest, fastest model first |
 
-Strength comes from `/eval`: every model that passes the basic tool check then plays a hand of four
-harder, exactly graded tasks (chained file reads, spotting a bug, version ordering, tracing a Python
-gotcha), and its score is how many it solved; ties go to the faster model. If the dealt model errors,
+Strength comes from `/eval`: every model that passes the basic tool check then plays a hand of eleven
+exactly graded tasks. Four separate weak models from capable ones (chained file reads, spotting a bug,
+version ordering, a Python gotcha); seven, calibrated on live models, separate the strong ones (totals
+across files with distractors, a config chain with a stale note, a closure trap, parallel scheduling,
+a modular sequence, date arithmetic, a logic puzzle). A model ranks by the share it solved, ties go to
+the faster model, and a provider error mid-hand (credits, rate limits) leaves its earlier score alone
+instead of counting as wrong answers. If the dealt model errors,
 or runs out of tool turns (`[Max tool turns reached]`), the turn goes to the next card. A
 `♠ dealt <model>` line shows who is playing, and `/cost` counts each real model. No key, no config:
 run `/eval`, then `/model cardShuffle:house`.
@@ -419,7 +423,7 @@ That's all it takes: clone, configure, run.
 | `/model [provider:model]` | Show or switch the model |
 | `/models [all\|refresh]` | List models from every connected provider; hides ones `/eval` found broken (`all` shows them, `refresh` re-fetches the lists) |
 | `/models local [ollama\|hf\|mlx] [words]` | Find local models on ollama.com and Hugging Face (GGUF, and MLX on Apple Silicon) that fit this machine, rated relax / balance / hard, and download one |
-| `/eval [filter]` | Test listed models on a tool call and a round trip, then a hand of 4 harder tasks for those that pass; shows pass/fail, hand score, latency and tok/s, and remembers which ones don't work |
+| `/eval [filter]` | Test listed models on a tool call and a round trip, then a hand of 11 graded tasks for those that pass; shows pass/fail, hand score, latency and tok/s, and remembers which ones don't work |
 | `/think [level]` | Reasoning: off, low, medium, high, on, default |
 | `/doctor`    | Diagnose environment, config, keys and permissions |
 | `/mcp`       | Connected MCP servers and their tools |
