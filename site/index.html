@@ -155,7 +155,7 @@
   .laya > * { min-width: 0; }
   .laya h3 { margin: 0 0 8px; font-size: var(--t-1); font-weight: 700; letter-spacing: -0.015em; line-height: 1.2; }
   .laya p { margin: 0; color: var(--dim); }
-  .laya .state { display: inline-block; margin-top: 12px; font-size: 14px; font-weight: 600; border-radius: 999px; padding: 3px 12px; border: 1px solid var(--line); }
+  .laya .state { display: inline-block; margin-top: 12px; font-size: 14px; font-weight: 600; border-radius: 14px; padding: 3px 12px; border: 1px solid var(--line); }
   .laya .state.on { color: var(--green); border-color: var(--green); }
   @media (max-width: 960px) { .laya { grid-template-columns: 1fr; gap: 28px; } }
 
@@ -323,12 +323,12 @@
       <div>
         <h3>Is the model going in circles?</h3>
         <p>From the sixth tool call, every third round, Laya checks whether the dealt model keeps repeating itself. A confident yes hands the turn to the next card.</p>
-        <span class="state on">Acting</span>
+        <span class="state on">On: switches models when stuck</span>
       </div>
       <div>
         <h3>How hard is this request?</h3>
-        <p>Every turn gets a difficulty score. It starts in shadow, and steers <code>house</code> only after your own turns show harder-scored requests really take more work. <code>/laya</code> shows the evidence.</p>
-        <span class="state">Shadow until proven</span>
+        <p>Every turn gets a difficulty score. At first it is only recorded. It starts choosing models for <code>house</code> once your own turns show that higher-scored requests really take more work. <code>/laya</code> shows the evidence.</p>
+        <span class="state">Watching only: not yet choosing models</span>
       </div>
     </div>
   </div>
