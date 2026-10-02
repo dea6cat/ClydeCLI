@@ -27,23 +27,13 @@ class ToolSpec:
 
 
 class Tool(Protocol):
+    """What every tool provides. A tool may also define the optional hook
+    `check_permissions(tool_input, context) -> PermissionResult` (allow, deny or ask); the registry
+    calls it when present and treats a tool without it as allowed."""
+
     def spec(self) -> ToolSpec: ...
 
     def run(self, tool_input: dict[str, Any], context: ToolContext) -> ToolResult: ...
-
-    def check_permissions(
-        self, tool_input: dict[str, Any], context: ToolContext
-    ) -> PermissionResult:
-        """Check if this tool has permission to run.
-
-        Args:
-            tool_input: The input arguments for the tool.
-            context: The tool execution context.
-
-        Returns:
-            PermissionResult indicating allow, deny, or ask.
-        """
-        return PermissionResult.allow()
 
 
 # Plan mode still lets the model look around, delegate research and present its plan.
@@ -144,7 +134,8 @@ class ToolRegistry:
                 is_error=True,
                 tool_use_id=call.tool_use_id,
             )
-        permission_result = tool.check_permissions(call.input, context) if hasattr(tool, 'check_permissions') else PermissionResult.allow()
+        check = getattr(tool, "check_permissions", None)   # optional hook (see Tool)
+        permission_result = check(call.input, context) if check is not None else PermissionResult.allow()
         auto = context.auto_approve and not _is_major(spec, call.input, context)
         if permission_result.behavior.value == "ask" and (ruling == "allow" or auto):
             if auto and ruling != "allow":
