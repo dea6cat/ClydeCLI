@@ -62,6 +62,21 @@ def add_custom(name: str, base_url: str) -> str | None:
         return f"{name} is a built-in provider"
     if not base_url.startswith(("http://", "https://")):
         return "the base URL must start with http:// or https://"
+    problem = _edit_providers(lambda providers: providers.__setitem__(name, {"base_url": base_url.rstrip("/")}))
+    custom_providers()
+    return problem
+
+
+def remove_custom(name: str) -> str | None:
+    """Delete a custom provider from settings.json; returns why it couldn't, or None."""
+    problem = _edit_providers(lambda providers: providers.pop(name, None))
+    if problem is None and name not in _BUILT_IN:
+        PROVIDER_KEY_ENV.pop(name, None)
+    return problem
+
+
+def _edit_providers(change) -> str | None:
+    """Apply `change` to the "providers" object in settings.json, keeping every other key."""
     path = _settings_file()
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -71,11 +86,15 @@ def add_custom(name: str, base_url: str) -> str | None:
         return f"can't read {path}: {e}"
     if not isinstance(data, dict):
         return f"{path} is not a JSON object"
-    data.setdefault("providers", {})[name] = {"base_url": base_url.rstrip("/")}
+    providers = data.setdefault("providers", {})
+    if not isinstance(providers, dict):
+        return f'"providers" in {path} is not a JSON object'
+    change(providers)
+    if not providers:
+        del data["providers"]
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
     path.chmod(0o600)  # settings may hold MCP tokens
-    custom_providers()
     return None
 
 
