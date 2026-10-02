@@ -222,6 +222,8 @@ clyde                          # Start REPL
 clyde --model openai:gpt-5.4   # Start with a specific model
 clyde -c                       # Continue the latest session in this directory
 clyde --resume [id]            # Pick a recent session, or resume one by id
+clyde -p "explain src/cli.py"  # One turn, no prompt: the answer on stdout, for scripts and CI
+git diff | clyde -p "review"   # Piped input is added to the prompt
 clyde setup                    # First-run onboarding (provider, other agents' hooks, PATH)
 clyde login                    # Connect a provider, pick a default model
 clyde hooks import             # Bring over hooks from Claude Code, Gemini CLI, Cursor, Copilot CLI
@@ -235,6 +237,21 @@ clyde config                   # View settings
 clyde --version                # Check version
 ```
 
+`clyde -p` runs one turn without the interactive prompt. Only the answer goes to stdout; progress,
+tool calls and warnings go to stderr, so `> file` and pipes stay clean. Nobody is there to answer
+a question, so anything that would ask for permission is denied (and listed), and the model is told
+it can't ask you anything. Options:
+
+| Option | Does |
+|---|---|
+| `--mode hold\|plan\|all_in` | Permission mode (default `hold`). `all_in` lets edits and commands through but still denies major moves (`rm -r`, `git push`, ...) |
+| `--output-format json` | `{"result", "is_error", "error", "model", "num_turns", "usage", "denied", "session_id"}` |
+| `--max-turns N` | Tool rounds before giving up (default 20) |
+| `--model provider:model` | As in the REPL; `cardShuffle:house` works too |
+
+Exit status is 0 when it answered, 1 when it failed or ran out of rounds, 2 when there was nothing
+to do. The session is saved, so `clyde -c` picks the conversation up interactively.
+
 ***
 
 ## 📊 Status
@@ -245,7 +262,7 @@ clyde --version                # Check version
 
 | System | Status | Description |
 |--------|--------|-------------|
-| CLI Entry | ✅ | `clyde`, `login`, `logout`, `config`, `--model`, `--list-models`, `-c`, `--resume` |
+| CLI Entry | ✅ | `clyde`, `login`, `logout`, `config`, `--model`, `--list-models`, `-c`, `--resume`, `-p` (headless: answer on stdout, JSON output, exit status) |
 | Interactive REPL | ✅ | Rich output, history, tab completion, multiline, streaming |
 | Multi-Provider | ✅ | 13 providers (incl. local Ollama and LM Studio), stdlib HTTP, live model lists, `provider:model` switching |
 | Agent Loop | ✅ | Tool-calling loop with retries, reasoning control, history repair |

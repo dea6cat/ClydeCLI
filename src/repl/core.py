@@ -291,8 +291,13 @@ class ClydeREPL:
     _esc = EscWatcher()
 
     def __init__(self, model: str | None = None, stream: bool = False,
-                 resume: str | None = None, continue_last: bool = False, debug: bool = False):
-        self.console = Console()
+                 resume: str | None = None, continue_last: bool = False, debug: bool = False,
+                 console: Console | None = None, headless: bool = False):
+        # headless: `clyde -p`, one turn and no terminal prompts (see src/repl/headless.py).
+        self.console = console or Console()
+        self.headless = headless
+        self.last_result: Any = None   # the latest turn's AgentLoopResult
+        self.last_error: str | None = None
         self.stream = stream
         self._startup_resume = resume   # "" opens the picker, an id loads that session
         self._continue_last = continue_last
@@ -363,6 +368,13 @@ class ClydeREPL:
         # Initialize new command system
         self._init_command_system()
 
+        # Pasted images and long pasted texts, numbered together by their [Image #N] / [Pasted text #N ...] markers.
+        self._pastes: dict[int, ImageContentBlock | str] = {}
+        if not self.headless:
+            self._setup_prompt()
+
+    def _setup_prompt(self) -> None:
+        """The interactive prompt: history, completion, key bindings (paste, Shift+Tab) and the frame."""
         # Prompt toolkit with tab completion
         history_file = Path.home() / ".clyde" / "history"
         history_file.parent.mkdir(parents=True, exist_ok=True)
@@ -371,8 +383,6 @@ class ClydeREPL:
 
         # Key bindings for multiline
         self.bindings = KeyBindings()
-        # Pasted images and long pasted texts, numbered together by their [Image #N] / [Pasted text #N ...] markers.
-        self._pastes: dict[int, ImageContentBlock | str] = {}
         if hasattr(self.bindings, "add"):
             from prompt_toolkit.keys import Keys
 
@@ -1702,6 +1712,7 @@ class ClydeREPL:
             user_input: The user message to send.
             max_turns: Maximum number of tool call turns (default 20, higher for complex commands).
         """
+        self.last_result, self.last_error = None, None
         trace.record("turn", provider=self.provider_name, model=self.model, prompt_chars=len(user_input))
         self._maybe_auto_compact()
         # Add user message
@@ -1831,6 +1842,7 @@ class ClydeREPL:
                        and self.provider.redeal(f"{self.provider.dealt} hit max tool turns")):
                     result = play()
             self._current_status = None
+            self.last_result = result
             trace.record("turn_end", ran_out=result.response_text == MAX_TURNS_REPLY, rounds=result.num_turns,
                          model=self.provider.dealt if isinstance(self.provider, CardShuffle) else model_ref(self.provider, self.model))
 
@@ -1852,7 +1864,9 @@ class ClydeREPL:
                     if hasattr(self, 'command_context') and self.command_context:
                         self.command_context.cost_tracker = self.cost_tracker
 
-            if self.stream and stream_started:
+            if self.headless:
+                pass   # `clyde -p` prints the answer itself, on stdout
+            elif self.stream and stream_started:
                 self.console.print()
                 self.console.print()
             else:
@@ -1862,7 +1876,10 @@ class ClydeREPL:
 
         except Exception as e:
             self._current_status = None
-            if is_auth_error(e):
+            self.last_error = str(e) or type(e).__name__
+            if self.headless:
+                self.console.print(f"[red]❌ {e}[/red]" + (" (fix the key with clyde login)" if is_auth_error(e) else ""))
+            elif is_auth_error(e):
                 self.console.print(f"\n[red]❌ {e}[/red]")
                 if self._recover_auth() and not _auth_retry:
                     self._retry_last(user_input, max_turns)

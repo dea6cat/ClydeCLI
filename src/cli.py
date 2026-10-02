@@ -42,6 +42,8 @@ Examples:
   clyde plugin install <path|git-url> Install a plugin (skills, hooks, MCP servers, tools); asks before enabling it
   clyde plugin import                 Bring over plugins installed for Claude Code, Codex or Cursor
   clyde plugin list                   List installed plugins; also: plugin remove|enable|disable <name>
+  clyde -p "<prompt>"                 One turn without the prompt, answer on stdout (scripts, CI); also --mode,
+                                      --output-format json, --max-turns. Piped input is added: git diff | clyde -p "review"
 """
     )
 
@@ -55,6 +57,15 @@ Examples:
                         help='Resume a session by id, or pick one of the recent sessions')
     parser.add_argument('-d', '--debug', action='store_true', help='Print trace events (model and tool calls) live to stderr')
     parser.add_argument('--list-models', action='store_true', help='List models from every connected provider')
+    parser.add_argument('-p', '--print', dest='print_prompt', nargs='?', const='', metavar='PROMPT',
+                        help='Run one turn without the interactive prompt and print the answer (piped stdin is added '
+                             'to the prompt); for scripts and CI')
+    parser.add_argument('--mode', choices=['hold', 'plan', 'all_in'], default='hold',
+                        help="-p: permission mode. hold (default) and plan deny anything that would ask; all_in still "
+                             "denies major moves (rm -r, git push, ...)")
+    parser.add_argument('--output-format', choices=['text', 'json'], default='text',
+                        help='-p: plain answer, or JSON with the answer, model, usage, turns and session id')
+    parser.add_argument('--max-turns', type=int, default=20, metavar='N', help='-p: tool rounds before giving up (default 20)')
 
     subparsers = parser.add_subparsers(dest='command', help='Available commands')
     subparsers.add_parser('login', help='Connect a provider and pick a default model')
@@ -76,6 +87,11 @@ Examples:
     plugin_parser.add_argument('-y', '--yes', action='store_true', help='install without prompting; the plugin stays disabled')
 
     args = parser.parse_args()
+
+    if args.print_prompt is not None:
+        from src.repl import headless
+        return headless.run(args.print_prompt, model=args.model, mode=args.mode,
+                            output_format=args.output_format, max_turns=args.max_turns)
 
     if args.version:
         from src import __version__
