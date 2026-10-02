@@ -127,6 +127,15 @@ def load_skills_from_dir(base_dir: str | Path, *, loaded_from: str = "skills") -
     return skills
 
 
+def _cleared(skill: PromptSkill) -> bool:
+    """Whether SkillSpector's verdict lets this skill reach the model (see src/skill_scan.py)."""
+    if not skill.skill_root:
+        return True
+    from src import skill_scan
+
+    return not skill_scan.check("skill", skill.name, Path(skill.skill_root)).blocked
+
+
 def get_all_skills(
     *,
     project_root: str | Path | None = None,
@@ -141,17 +150,20 @@ def get_all_skills(
         from src.plugins import skill_dirs
         for plugin_dir in skill_dirs():
             for s in load_skills_from_dir(plugin_dir, loaded_from="plugin"):
-                _REGISTRY.register(s)
+                if _cleared(s):
+                    _REGISTRY.register(s)
     # Register lowest priority first: a later registration of the same name wins.
     for user_dir in reversed(user_dirs):
         for s in load_skills_from_dir(user_dir, loaded_from="user"):
-            _REGISTRY.register(s)
+            if _cleared(s):
+                _REGISTRY.register(s)
 
     managed_env = os.environ.get("CLYDE_MANAGED_SKILLS_DIR")
     if managed_env:
         managed_dir = Path(managed_env).expanduser().resolve()
         for s in load_skills_from_dir(managed_dir, loaded_from="managed"):
-            _REGISTRY.register(s)
+            if _cleared(s):
+                _REGISTRY.register(s)
 
     if project_root is not None:
         pr = Path(project_root).expanduser().resolve()
@@ -163,7 +175,8 @@ def get_all_skills(
             proj_dirs.append(compat_path)
         for pr_dir in proj_dirs:
             for s in load_skills_from_dir(pr_dir, loaded_from="project"):
-                _REGISTRY.register(s)
+                if _cleared(s):
+                    _REGISTRY.register(s)
 
     return _REGISTRY.list()
 

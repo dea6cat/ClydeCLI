@@ -613,7 +613,7 @@ def doctor_command_call(args: str, context: CommandContext) -> LocalCommandResul
     else:
         lines.append(_check(True, f"Python {running}" + (f" (requires {spec}, not checked)" if spec else "")))
 
-    for dep in ("rich", "prompt-toolkit", "tiktoken", "laya"):
+    for dep in ("rich", "prompt-toolkit", "tiktoken", "laya", "skillspector"):
         try:
             lines.append(_check(True, f"{dep} {version(dep)}"))
         except PackageNotFoundError:
@@ -621,6 +621,12 @@ def doctor_command_call(args: str, context: CommandContext) -> LocalCommandResul
     from ..providers import laya_client
     lines.append(_check(laya_client.cached(), f"Laya model {'downloaded' if laya_client.cached() else 'not downloaded'} "
                         f"({laya_client.status()})", "run clyde setup to download it"))
+    from .. import skill_scan
+    held = [k for k, v in skill_scan.cached_verdicts().items() if v.blocked]
+    caution = [k for k, v in skill_scan.cached_verdicts().items() if v.recommendation == skill_scan.CAUTION]
+    lines.append(_check(not held, f"SkillSpector: {len(skill_scan.cached_verdicts())} item(s) scanned, {len(held)} held back"
+                        + (f" ({', '.join(held)})" if held else "") + (f", {len(caution)} caution" if caution else ""),
+                        "/skills scan shows why; /skills allow <kind:name> lets one in"))
 
     config_path = get_config_path()
     saved_model = None
