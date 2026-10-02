@@ -92,7 +92,9 @@
   .term .line { display: block; }
   .g { color: #4eba65; } .r { color: #ff5a64; } .d { color: var(--term-dim); } .w { color: #fff; font-weight: 700; } .y { color: #e6c06b; }
   .banner { display: flex; align-items: flex-end; gap: 0; margin-bottom: 14px; }
-  .ace { display: inline-block; white-space: pre; line-height: 1.25; background: #f5f1e8; color: #111; font-weight: 700; flex: none; }
+  /* The art's first row is the card's top edge (underscores), so the face starts at that line, not above it */
+  .ace { display: inline-block; white-space: pre; line-height: 1.25; color: #111; font-weight: 700; flex: none;
+         background: linear-gradient(to bottom, transparent 0 var(--ace-top, 0.94em), #f5f1e8 var(--ace-top, 0.94em)); }
   .banner .info { line-height: 1.25; white-space: pre; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   .rule { display: block; border-top: 1px solid #3a4540; margin: 6px 0; height: 0; }
   .mode { color: #4eba65; font-weight: 700; }
