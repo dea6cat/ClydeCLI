@@ -270,6 +270,7 @@ to do. The session is saved, so `clyde -c` picks the conversation up interactive
 | Context Building | ✅ | Workspace snapshot, git status, a README excerpt, entry points, the code map and memory files go into the prompt: `~/.clyde/CLYDE.md` (user), `CLYDE.md` (project, shared) and `CLYDE.local.md` (project, personal, keep it gitignored). Files written for other agents are read too: `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, `.cursorrules`, `.github/copilot-instructions.md` (one per folder, first found wins) |
 | Permissions | ✅ | Bash asks for any command that is not read-only (dangerous patterns are refused), Write/Edit ask for docs files, Config asks before a change, WebFetch asks per domain. Answer "don't ask again" or add `permissions.allow` / `deny` rules (Claude Code syntax) to `~/.clyde/settings.json` |
 | Sessions | ✅ | Auto-saved after each turn; `/resume` picker per workspace, `clyde -c` / `clyde --resume [id]` |
+| Checkpoints | ✅ | `/rewind` undoes the model's file edits and/or the conversation back to before any of your messages; saved per session, so they survive `/resume` |
 | Cost Tracking | ✅ | `/cost` shows input, output and cache tokens per model with an estimated $ total from catalog prices |
 | Hooks | ✅ | PreToolUse / PostToolUse shell commands from `~/.clyde/settings.json` or `.toml`; also reads Gemini CLI, Cursor and Copilot CLI hook tables |
 | Plugins | ✅ | `clyde plugin install` bundles of tools, skills, hooks and MCP servers (Claude Code layout) into `~/.clyde/plugins/`, enabled only after a yes |
@@ -427,6 +428,7 @@ That's all it takes: clone, configure, run.
 | `/check`     | Run the project's ruff, mypy and pytest |
 | `/debug [path]` | The last turn's model and tool calls, or the trace file path |
 | `/skills scan` / `/skills allow <name>` | Rescan skills with SkillSpector (LLM review when your model allows) and show verdicts; let a held-back skill, plugin or `mcp:<server>` in |
+| `/rewind` | Undo the model's file edits and/or the conversation back to before one of your messages |
 | `/laya` | Laya's status, and how its stuck checks and difficulty scores lined up with how traced turns ended |
 | `/cost`      | Tokens and estimated cost per model |
 | `/context`   | Context window usage and auto-compact threshold |
@@ -619,6 +621,25 @@ It only reads. DuckDB runs sandboxed: files inside the project only, no network,
 installs, settings locked, and only SELECT-type statements (checked with DuckDB's own parser, so
 `COPY ... TO`, `ATTACH` or `CREATE` are refused). SQLite opens read-only behind an authorizer that
 refuses anything but reads. Each call has a 60 s limit and returns at most 1,000 rows.
+
+### Rewind
+
+*Bad hand? Take it back.*
+
+Every message you send opens a checkpoint. The first time the model changes a file in that turn
+(Write, Edit, NotebookEdit), the file is saved as it was, or noted as new. `/rewind` lists your recent
+messages with the files each one changed; pick one and choose:
+
+| Choice | Does |
+|---|---|
+| `c` code and conversation (default) | Files go back to how they were before that message (files the model created are removed), the conversation is cut there, and your message comes back in the prompt to edit or resend |
+| `f` files only | Just the files |
+| `m` conversation only | Just the conversation, files untouched |
+
+Checkpoints live in `~/.clyde/checkpoints/<session>/` (the newest 20 sessions), so they survive
+`/resume`. Changes made by shell commands (`rm`, `mv`, scripts) aren't captured: there's no reliable
+way to know what a command touches, so commit before risky runs. If the conversation was compacted
+or cleared after a checkpoint, only its files can be rewound.
 
 ### Pasting
 
