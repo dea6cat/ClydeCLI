@@ -169,6 +169,34 @@ with their average tool rounds. Loops that keep slipping under 0.80 mean the thr
 down; re-deals that don't help mean it should go up. Difficulty moves out of shadow mode into
 `cardShuffle:house` once harder bands clearly take more rounds.
 
+### SkillSpector
+
+*I check every card before it hits the table.*
+
+ClydeCLI loads skills, plugins and MCP servers written for other agents, and they run with your trust.
+So it ships with [SkillSpector](https://github.com/NVIDIA/SkillSpector) (NVIDIA, Apache 2.0, pinned to
+v2.12.0) and scans each one before the model gets it: 71 patterns across prompt injection, data
+exfiltration, privilege escalation, supply chain, MCP tool poisoning and more.
+
+| What | When | How |
+|---|---|---|
+| Skills (yours, other agents', plugins', the project's) | when ClydeCLI first sees one, and again whenever it changes | static scan, about 2 s; cached by content hash |
+| MCP servers | when they connect | their tool list is scanned (each tool as a skill, so the tool-poisoning checks read its description and parameters) |
+| Plugins | at `clyde plugin install` and `clyde plugin import`, before "Enable it?" | static scan plus the LLM review |
+
+The static stage always runs (`--no-llm`, offline). The LLM review runs when ClydeCLI has a connected
+model SkillSpector can use (Anthropic, or any OpenAI-compatible endpoint: NVIDIA, OpenRouter, OpenAI,
+DeepSeek, Ollama, LM Studio), with your current model (or, from the CLI, your default one). It can take
+minutes, so it never runs at startup: only at plugin installs, on items the static stage flagged, and
+on `/skills scan`. Ctrl+C skips it.
+
+`DO_NOT_INSTALL` keeps an item away from the model until you allow that exact content (`/skills allow
+<name>`, or `mcp:<server>`; a change brings the check back). `CAUTION` loads with a warning, and a scan
+that fails warns and loads, so a broken scanner never locks you out of your own tools. `/skills scan`
+rescans everything and shows each verdict with its findings; `/doctor` shows how many are held back.
+An MCP server has already started by the time its tools are scanned: the scan decides whether the model
+sees them. Turn scanning off with `CLYDE_SKILL_SCAN=off`.
+
 ### Interactive REPL
 
 ```text
@@ -233,6 +261,7 @@ clyde --version                # Check version
 | Compaction | ✅ | `/compact` on demand; runs automatically once history reaches 80% of the context window |
 | cardShuffle | ✅ | A model that deals each turn to an `/eval`-ranked real model (high-roller, house, free, small), with fallback on errors, max tool turns and stuck loops |
 | Local models | ✅ | `/models local` finds ollama.com, Hugging Face GGUF and MLX models that fit this machine, rated relax / balance / hard, confirmed before download through Ollama or LM Studio |
+| SkillSpector | ✅ | Bundled scanner for skills, plugins and MCP servers from other agents: static always, LLM review when a usable model is connected; `DO_NOT_INSTALL` items held back until `/skills allow` |
 | Laya | ✅ | Bundled local decision model: hands a stuck cardShuffle turn to the next card; scores difficulty in shadow mode; `/laya` shows the evidence |
 | Pasting | ✅ | Ctrl+V pastes a copied image, a copied image path becomes the image, long pastes fold to `[Pasted text #N +X lines]` |
 
@@ -263,7 +292,7 @@ clyde --version                # Check version
 - ✅ **Phase 3**: Context, permissions, recovery (context building, saved permission rules, `/resume`, `/doctor`, compaction, hooks)
 - ✅ **Phase 4**: MCP client (stdio), plugins, custom tools/skills/hooks, tracing and `/debug`
 - 🟡 **Phase 5**: Python-native differentiators: the Code Map, check-after-edit with ruff/mypy/pytest/uv and notebook tools are in; data-engineering/ETL tooling is not
-- ✅ **Phase 6**: Model play: cardShuffle routing across `/eval`-ranked models, local models that fit the machine (ollama.com, Hugging Face GGUF and MLX), and Laya bundled for stuck-loop detection
+- ✅ **Phase 6**: Model play: cardShuffle routing across `/eval`-ranked models, local models that fit the machine (ollama.com, Hugging Face GGUF and MLX), Laya bundled for stuck-loop detection, and SkillSpector bundled to scan skills, plugins and MCP servers
 - 🟡 **Next**: promote Laya's difficulty score from shadow mode into `cardShuffle:house` once `/laya` shows it separates easy turns from hard ones
 
 **See [FEATURE_LIST.md](FEATURE_LIST.md) for detailed feature status and PR guidelines.**
@@ -282,7 +311,8 @@ One line (installs uv if needed, then `clyde`, then runs `clyde setup`):
 curl -fsSL https://raw.githubusercontent.com/dea6cat/ClydeCLI/main/install.sh | sh
 ```
 
-It includes Laya, the bundled decision model, so the install is about 700 MB (mostly PyTorch).
+It includes Laya, the bundled decision model, and SkillSpector, the bundled skill scanner, so the
+install is about 850 MB (mostly PyTorch).
 `clyde setup` connects a provider and picks a default model, asks before downloading Laya's model
 (about 800 MB), lists the hooks, MCP servers and plugins you
 already set up for other agents (Claude Code, Cursor, Gemini CLI, Codex, Copilot CLI) and imports
@@ -378,6 +408,7 @@ That's all it takes: clone, configure, run.
 | `/plugins`   | Loaded plugins and what each added |
 | `/check`     | Run the project's ruff, mypy and pytest |
 | `/debug [path]` | The last turn's model and tool calls, or the trace file path |
+| `/skills scan` / `/skills allow <name>` | Rescan skills with SkillSpector (LLM review when your model allows) and show verdicts; let a held-back skill, plugin or `mcp:<server>` in |
 | `/laya` | Laya's status, and how its stuck checks and difficulty scores lined up with how traced turns ended |
 | `/cost`      | Tokens and estimated cost per model |
 | `/context`   | Context window usage and auto-compact threshold |

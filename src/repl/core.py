@@ -1266,6 +1266,8 @@ class ClydeREPL:
 
         elif cmd == '/skill':
             self._handle_skill_command()
+        elif raw.strip().startswith(('/skills scan', '/skills allow')):
+            self._skills_security(raw.strip().split(maxsplit=2)[1:])
 
         elif cmd == '/context':
             # Populate command context config for context analysis
@@ -1374,6 +1376,48 @@ class ClydeREPL:
         """Show help message."""
         help_text = _HELP_TEXT
         self.console.print(Markdown(help_text))
+
+    def _skills_security(self, args: list[str]) -> None:
+        """/skills scan rescans every skill ClydeCLI loads from a folder (user, other agents', plugins',
+        the project's), with the LLM review when the current model allows it, and shows every verdict,
+        MCP servers' and plugins' included; /skills allow <kind:name> lets a held-back item in."""
+        from src import skill_scan
+        from src.skills.loader import get_all_skills, load_skills_from_dir
+        from src.skills.loader import _candidate_user_skills_dirs
+
+        if args[0] == "allow":
+            target = args[1] if len(args) > 1 else ""
+            kind, _, name = target.partition(":") if ":" in target else ("skill", "", target)
+            ok = skill_scan.approve(kind, name)
+            self.console.print(f"Allowed {kind}:{name}; it loads from the next prompt (until its content changes)." if ok
+                               else f"No scan result for {kind}:{name}. Run /skills scan first.")
+            if ok and kind == "skill":
+                get_all_skills(project_root=self.tool_context.cwd or self.tool_context.workspace_root)
+            return
+        env = skill_scan.llm_env(self.provider, self.model)
+        self.console.print("LLM review: " + (f"on, with {model_ref(self.provider, self.model)} (this can take minutes; Ctrl+C stops it)"
+                                             if env else "off (no connected model SkillSpector can use), static scan only"))
+        from src.plugins import skill_dirs
+
+        root = Path(self.tool_context.cwd or self.tool_context.workspace_root)
+        folders = [*_candidate_user_skills_dirs(), *skill_dirs(), root / ".clyde" / "skills", root / ".claude" / "skills"]
+        try:
+            for folder in folders:
+                for s in load_skills_from_dir(folder, loaded_from="user"):
+                    if s.skill_root:
+                        skill_scan.check("skill", s.name, Path(s.skill_root), env=env, rescan=True)
+        except KeyboardInterrupt:
+            self.console.print("Stopped; the static verdicts already cached stay in force.")
+        rows = sorted(skill_scan.cached_verdicts().items())
+        table = Table(box=None, pad_edge=False, header_style=_CARD_DIM, show_edge=False)
+        for col in ("item", "verdict", "risk", "llm", "findings"):
+            table.add_column(col, overflow="fold" if col == "findings" else "ellipsis")
+        style = {skill_scan.SAFE: _CARD_ACCENT, skill_scan.CAUTION: "#e0b341", skill_scan.BLOCK: "#d0202f"}
+        for key, v in rows:
+            label = v.recommendation + (" (allowed)" if v.approved and v.recommendation == skill_scan.BLOCK else "")
+            table.add_row(key, Text(label, style=style.get(v.recommendation, _CARD_DIM)), str(v.score), "yes" if v.llm else "-",
+                          "; ".join(v.findings[:3]) + (f" (+{len(v.findings) - 3} more)" if len(v.findings) > 3 else ""))
+        self.console.print(table if rows else "Nothing scanned yet.")
 
     def _handle_skill_command(self) -> None:
         """Handle /skill command - list all available skills."""
@@ -1518,6 +1562,15 @@ class ClydeREPL:
         if not servers:
             return
         clients, self._mcp_errors = connect_servers(servers, Path.cwd())
+        from src import skill_scan
+        for name in list(clients):
+            verdict = skill_scan.check_mcp(name, clients[name].tools)
+            if verdict.blocked:
+                clients.pop(name)
+                self.console.print(f"[red]MCP server '{name}' held back: SkillSpector says {verdict.recommendation} "
+                                   f"(risk {verdict.score}).[/red] /skills scan shows why; /skills allow mcp:{name} lets it in.")
+            elif verdict.recommendation == skill_scan.CAUTION:
+                self.console.print(f"[yellow]MCP server '{name}': SkillSpector says CAUTION (risk {verdict.score}); /skills scan shows why.[/yellow]")
         self.tool_context.mcp_clients = clients
         for client in clients.values():
             for tool in client.tools:

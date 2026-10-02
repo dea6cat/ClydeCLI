@@ -358,6 +358,27 @@ def handle_hooks_import(console: Console, quiet: bool = False) -> int:
     return 0
 
 
+def _scan_plugin(console: Console, plugin):  # type: ignore[no-untyped-def]
+    """SkillSpector's verdict on a plugin before the user decides to enable it: the static scan, plus
+    the LLM review with the default model when SkillSpector can use it (Ctrl+C skips the review)."""
+    from src import skill_scan
+
+    env = skill_scan.default_llm_env()
+    try:
+        verdict = skill_scan.check("plugin", plugin.name, plugin.root, env=env)
+    except KeyboardInterrupt:
+        console.print("[dim]LLM review skipped; static scan only.[/dim]")
+        verdict = skill_scan.check("plugin", plugin.name, plugin.root)
+    color = {"SAFE": "green", "CAUTION": "yellow", "DO_NOT_INSTALL": "red"}.get(verdict.recommendation, "dim")
+    console.print(f"  SkillSpector: [{color}]{verdict.recommendation}[/{color}] (risk {verdict.score}"
+                  f"{', LLM-reviewed' if verdict.llm else ', static scan'})")
+    for finding in verdict.findings[:5]:
+        console.print(f"    • {finding}", markup=False)
+    if verdict.blocked:
+        console.print("  [red]SkillSpector recommends not installing it.[/red] Enabling it anyway records your approval.")
+    return verdict
+
+
 def handle_plugin(console: Console, action: str, target: str | None, assume_yes: bool = False) -> int:
     """`clyde plugin install|list|remove|enable|disable`. Plugins run code, so enabling needs an explicit yes."""
     from rich.prompt import Confirm
@@ -383,9 +404,13 @@ def handle_plugin(console: Console, action: str, target: str | None, assume_yes:
             console.print(f"Installed [bold]{plugin.name}[/bold] {plugin.version} into {plugin.root}")
             for line in plugins.describe(plugin) or ["(nothing ClydeCLI can load)"]:
                 console.print(f"  {line}", markup=False)
+            verdict = _scan_plugin(console, plugin)
             if not assume_yes and Confirm.ask(
                     "Plugins run code: their tools, hooks and MCP servers run on this machine. Enable it?", default=False):
                 plugins.set_enabled(plugin.name, True)
+                if verdict.blocked:
+                    from src import skill_scan
+                    skill_scan.approve("plugin", plugin.name)
                 console.print(f"[green]✓ Enabled {plugin.name}[/green]; it loads the next time ClydeCLI starts.")
             else:
                 console.print(f"Left disabled. Enable it with [bold]clyde plugin enable {plugin.name}[/bold].")
@@ -430,7 +455,9 @@ def handle_plugin_import(console: Console, assume_yes: bool = False, quiet: bool
             console.print(f"  {f.plugin.description}", markup=False)
         for line in plugins.describe(f.plugin):
             console.print(f"  {line}", markup=False)
-        if Confirm.ask("It will run on this machine (tools, hooks, MCP servers). Import and enable it?", default=f.enabled_there):
+        verdict = _scan_plugin(console, f.plugin)
+        if Confirm.ask("It will run on this machine (tools, hooks, MCP servers). Import and enable it?",
+                       default=f.enabled_there and not verdict.blocked and verdict.recommendation != "CAUTION"):
             try:
                 plugins.set_enabled(plugins.install(str(f.source)).name, True)
             except (OSError, ValueError) as e:
