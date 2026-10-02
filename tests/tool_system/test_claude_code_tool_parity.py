@@ -43,10 +43,8 @@ class TestClaudeCodeToolParity(unittest.TestCase):
             "MCP",
             "NotebookEdit",
             "PowerShell",
-            "REPL",
             "Read",
             "ReadMcpResourceTool",
-            "RemoteTrigger",
             "SendMessage",
             "SendUserMessage",
             "Skill",
@@ -66,6 +64,9 @@ class TestClaudeCodeToolParity(unittest.TestCase):
         ]
         missing = [name for name in expected if self.registry.get(name) is None]
         self.assertEqual(missing, [])
+        # Removed stubs that only ever returned "not implemented" stay out of what the model sees.
+        self.assertIsNone(self.registry.get("RemoteTrigger"))
+        self.assertIsNone(self.registry.get("REPL"))
 
     def test_send_user_message_is_user_visible_fallback(self) -> None:
         conversation = Conversation()
