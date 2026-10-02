@@ -162,6 +162,13 @@ loads it from the local cache, in the background, when a cardShuffle model is in
 before the first turn needs it). Each judgment then takes about 0.1 s. `/doctor` shows whether it's
 downloaded and loaded. Without it, cardShuffle plays exactly as described above.
 
+Both judgments are tuned from evidence, not guesses. Every check is traced next to how its turn
+ended, and `/laya` lines them up: stuck checks by band (below 0.50, up to the 0.80 threshold, above
+it) with how many were re-dealt and how many turns still ran out of tool rounds, and difficulty bands
+with their average tool rounds. Loops that keep slipping under 0.80 mean the threshold should come
+down; re-deals that don't help mean it should go up. Difficulty moves out of shadow mode into
+`cardShuffle:house` once harder bands clearly take more rounds.
+
 ### Interactive REPL
 
 ```text
@@ -224,6 +231,10 @@ clyde --version                # Check version
 | Self-checks | ✅ | After a Python edit, ruff (and mypy if configured) run on the file and new problems go back to the model; `/check` runs ruff, mypy and pytest |
 | Tracing | ✅ | Every session writes `~/.clyde/traces/<session>.jsonl` (model and tool calls, timings, tokens, secrets redacted); `/debug` shows the last turn, `clyde --debug` streams it live |
 | Compaction | ✅ | `/compact` on demand; runs automatically once history reaches 80% of the context window |
+| cardShuffle | ✅ | A model that deals each turn to an `/eval`-ranked real model (high-roller, house, free, small), with fallback on errors, max tool turns and stuck loops |
+| Local models | ✅ | `/models local` finds ollama.com, Hugging Face GGUF and MLX models that fit this machine, rated relax / balance / hard, confirmed before download through Ollama or LM Studio |
+| Laya | ✅ | Bundled local decision model: hands a stuck cardShuffle turn to the next card; scores difficulty in shadow mode; `/laya` shows the evidence |
+| Pasting | ✅ | Ctrl+V pastes a copied image, a copied image path becomes the image, long pastes fold to `[Pasted text #N +X lines]` |
 
 ### Tools
 
@@ -252,6 +263,8 @@ clyde --version                # Check version
 - ✅ **Phase 3**: Context, permissions, recovery (context building, saved permission rules, `/resume`, `/doctor`, compaction, hooks)
 - ✅ **Phase 4**: MCP client (stdio), plugins, custom tools/skills/hooks, tracing and `/debug`
 - 🟡 **Phase 5**: Python-native differentiators: the Code Map, check-after-edit with ruff/mypy/pytest/uv and notebook tools are in; data-engineering/ETL tooling is not
+- ✅ **Phase 6**: Model play: cardShuffle routing across `/eval`-ranked models, local models that fit the machine (ollama.com, Hugging Face GGUF and MLX), and Laya bundled for stuck-loop detection
+- 🟡 **Next**: promote Laya's difficulty score from shadow mode into `cardShuffle:house` once `/laya` shows it separates easy turns from hard ones
 
 **See [FEATURE_LIST.md](FEATURE_LIST.md) for detailed feature status and PR guidelines.**
 
@@ -269,7 +282,9 @@ One line (installs uv if needed, then `clyde`, then runs `clyde setup`):
 curl -fsSL https://raw.githubusercontent.com/dea6cat/ClydeCLI/main/install.sh | sh
 ```
 
-`clyde setup` connects a provider and picks a default model, lists the hooks, MCP servers and plugins you
+It includes Laya, the bundled decision model, so the install is about 700 MB (mostly PyTorch).
+`clyde setup` connects a provider and picks a default model, asks before downloading Laya's model
+(about 800 MB), lists the hooks, MCP servers and plugins you
 already set up for other agents (Claude Code, Cursor, Gemini CLI, Codex, Copilot CLI) and imports
 them only if you say yes, and offers to
 put `clyde` on your PATH. Pass `--yes` for no prompts (hooks, MCP servers and plugins are never imported that way). Run it
@@ -363,6 +378,7 @@ That's all it takes: clone, configure, run.
 | `/plugins`   | Loaded plugins and what each added |
 | `/check`     | Run the project's ruff, mypy and pytest |
 | `/debug [path]` | The last turn's model and tool calls, or the trace file path |
+| `/laya` | Laya's status, and how its stuck checks and difficulty scores lined up with how traced turns ended |
 | `/cost`      | Tokens and estimated cost per model |
 | `/context`   | Context window usage and auto-compact threshold |
 | `/compact`   | Summarize the conversation to free context |
@@ -578,7 +594,8 @@ A plugin is a folder that bundles extensions; Claude Code plugins mostly work as
 ### Tracing and /debug
 
 - Each session writes `~/.clyde/traces/<session_id>.jsonl`: model requests (duration, tokens, stop
-  reason or error), tool calls, hook blocks, permission prompts, compactions and MCP errors. API keys
+  reason or error), tool calls, hook blocks, permission prompts, compactions, MCP errors, Laya's
+  judgments and how each turn ended (tool rounds, and whether it ran out). API keys
   and key-shaped values are redacted and long values cut to 500 characters
 - `/debug` shows the last turn, `/debug path` the trace file, and `clyde --debug` prints events live
 - Off: `CLYDE_TRACE=off` or `"session": {"trace": false}` in `~/.clyde/config.json`; the newest 50
@@ -594,7 +611,7 @@ ClydeCLI/
 │   ├── cli.py              # CLI entry
 │   ├── config.py           # config.json and default model
 │   ├── agent/              # conversation, sessions, agent loop, cost tracking
-│   ├── providers/          # LLM providers and the model catalog
+│   ├── providers/          # LLM providers, the model catalog, cardShuffle, Laya, local model sources and fit
 │   ├── repl/               # Interactive REPL
 │   ├── command_system/     # slash commands (/doctor, /cost, /context, ...)
 │   ├── context_system/     # workspace, git, README and CLYDE.md memory context; token estimation
