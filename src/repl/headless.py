@@ -11,7 +11,9 @@ model, token usage, turns and session id. Exit status: 0 answered, 1 failed or r
 
 from __future__ import annotations
 
+import io
 import json
+import select
 import sys
 from typing import Any, TextIO
 
@@ -22,12 +24,31 @@ from src.providers import model_ref
 
 MODES = ("hold", "plan", "all_in")
 _STDIN_LIMIT = 2_000_000   # characters of piped input taken into the prompt
+_STDIN_WAIT = 0.5          # seconds a prompt waits for piped input to start
+
+
+def _piped(stdin: TextIO, wait: float | None) -> str:
+    """Piped stdin, or "" for a terminal. With `wait`, stdin that stays silent that long is ignored:
+    cron, `ssh` without -n and some CI runners hand over a pipe nobody ever closes, and reading it
+    would hang forever."""
+    if stdin.isatty():
+        return ""
+    try:
+        fd = stdin.fileno()
+    except (OSError, ValueError, io.UnsupportedOperation):
+        return stdin.read(_STDIN_LIMIT)          # an in-memory stream: nothing to wait on
+    if wait is not None and sys.platform != "win32":   # select() can't watch pipes on Windows
+        ready, _, _ = select.select([fd], [], [], wait)
+        if not ready:
+            return ""
+    return stdin.read(_STDIN_LIMIT)
 
 
 def build_prompt(prompt: str, stdin: TextIO) -> str:
-    """The prompt, with piped stdin appended (or used alone when the prompt is empty or "-")."""
-    piped = "" if stdin.isatty() else stdin.read(_STDIN_LIMIT)
+    """The prompt, with piped stdin appended (or used alone when the prompt is empty or "-", in which
+    case stdin is waited for as long as it takes)."""
     prompt = "" if prompt.strip() == "-" else prompt.strip()
+    piped = _piped(stdin, _STDIN_WAIT if prompt else None)
     if piped.strip() and prompt:
         return f"{prompt}\n\n<stdin>\n{piped.rstrip()}\n</stdin>"
     return prompt or piped.strip()
@@ -39,7 +60,7 @@ def run(prompt: str, *, model: str | None = None, mode: str = "hold", output_for
     from src.repl.core import ClydeREPL
 
     out = stdout or sys.stdout
-    err = Console(stderr=True)
+    err = Console(stderr=True, soft_wrap=True)   # one log line per event, never wrapped
     text = build_prompt(prompt, stdin or sys.stdin)
     if not text:
         err.print("[red]Nothing to do:[/red] give a prompt, e.g. clyde -p \"explain src/cli.py\", or pipe input in.")
