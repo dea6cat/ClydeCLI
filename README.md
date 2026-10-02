@@ -279,7 +279,7 @@ clyde --version                # Check version
 | Scheduling | CronCreate/List/Delete | ✅ Session-scoped; due jobs run as a turn while the REPL is idle at the prompt |
 | Team | TeamCreate/Delete | 🟡 Writes a team file; no multi-agent execution |
 | Worktree | EnterWorktree/ExitWorktree | ✅ Creates a git worktree on a new branch; exit keeps or removes it |
-| MCP | MCP, ListMcpResources, ReadMcpResource, `mcp__<server>__<tool>` | ✅ Stdio servers from `~/.clyde/settings.json`; no HTTP/SSE servers yet |
+| MCP | MCP, ListMcpResources, ReadMcpResource, `mcp__<server>__<tool>` | ✅ Stdio, Streamable HTTP and HTTP+SSE servers from `~/.clyde/settings.json`; header auth (no OAuth yet) |
 | Code map | Map | ✅ query / path / explain / affected / god_nodes over a map of the repo, refreshed when ClydeCLI starts |
 | LSP | LSP | ✅ Definition, references, hover, symbols and call hierarchy via a language server on PATH |
 | Not implemented | RemoteTrigger, REPL | ⏳ Stubs that return an error |
@@ -290,7 +290,7 @@ clyde --version                # Check version
 - ✅ **Phase 1**: Core agent experience (REPL, sessions, slash commands)
 - ✅ **Phase 2**: Real tool-calling loop, multi-provider
 - ✅ **Phase 3**: Context, permissions, recovery (context building, saved permission rules, `/resume`, `/doctor`, compaction, hooks)
-- ✅ **Phase 4**: MCP client (stdio), plugins, custom tools/skills/hooks, tracing and `/debug`
+- ✅ **Phase 4**: MCP client (stdio, Streamable HTTP, HTTP+SSE), plugins, custom tools/skills/hooks, tracing and `/debug`
 - 🟡 **Phase 5**: Python-native differentiators: the Code Map, check-after-edit with ruff/mypy/pytest/uv and notebook tools are in; data-engineering/ETL tooling is not
 - ✅ **Phase 6**: Model play: cardShuffle routing across `/eval`-ranked models, local models that fit the machine (ollama.com, Hugging Face GGUF and MLX), Laya bundled for stuck-loop detection, and SkillSpector bundled to scan skills, plugins and MCP servers
 - 🟡 **Next**: promote Laya's difficulty score from shadow mode into `cardShuffle:house` once `/laya` shows it separates easy turns from hard ones
@@ -527,25 +527,39 @@ or `~/.clyde/settings.toml` (both are read and merged), in Claude Code's format:
 
 ### MCP Servers
 
-Add stdio MCP servers under `mcpServers` in `~/.clyde/settings.json` (Claude Code's format):
+Add MCP servers under `mcpServers` in `~/.clyde/settings.json` (Claude Code's format): local ones
+that ClydeCLI starts (stdio), and remote ones it reaches over HTTP:
 
 ```json
 {
   "mcpServers": {
     "dart": {"command": "dart", "args": ["mcp-server"]},
     "github": {"command": "npx", "args": ["-y", "@modelcontextprotocol/server-github"],
-               "env": {"GITHUB_TOKEN": "..."}}
+               "env": {"GITHUB_TOKEN": "..."}},
+    "linear": {"type": "http", "url": "https://mcp.linear.app/mcp",
+               "headers": {"Authorization": "Bearer ${LINEAR_TOKEN}"}},
+    "legacy": {"type": "sse", "url": "https://example.com/sse"}
   }
 }
 ```
 
+| Config | Transport |
+|---|---|
+| `command` (+ `args`, `env`) | stdio: newline-delimited JSON-RPC to a process ClydeCLI starts |
+| `"type": "http"`, or Gemini CLI's `httpUrl` | Streamable HTTP: each message is a POST, replies come back as JSON or an event stream, and the server's `Mcp-Session-Id` rides on every later request |
+| `"type": "sse"` | HTTP+SSE (the 2024-11-05 protocol): a stream stays open, its `endpoint` event names where to POST, replies arrive on the stream |
+| just a `url` (Cursor's form) | Streamable HTTP first, falling back to HTTP+SSE when the server refuses the POST, as the spec advises |
+
+`${VAR}` in a `url` or a header comes from your environment, so tokens can stay out of the file.
+Remote servers sign in with headers (API keys, bearer tokens); OAuth sign-in isn't supported yet.
+
 - They start with the REPL; each tool shows up as `mcp__<server>__<tool>`, and `/mcp` lists them
 - Resources are available through ListMcpResources / ReadMcpResource
-- `clyde mcp import` (also offered by `clyde setup`) copies stdio servers from Claude Code
+- `clyde mcp import` (also offered by `clyde setup`) copies stdio and remote servers from Claude Code
   (`~/.claude.json`), Cursor, Gemini CLI, Codex (`config.toml`) and Copilot CLI after you say yes;
   env values are never printed and the settings file is kept at mode 600
-- Only stdio servers from your user settings for now: HTTP/SSE servers and project `.mcp.json`
-  files are skipped
+- Servers come from your user settings; project `.mcp.json` files are skipped
+- SkillSpector scans every server's tool list when it connects, local or remote (see SkillSpector)
 
 ### Modes
 

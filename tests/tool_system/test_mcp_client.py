@@ -59,7 +59,7 @@ class TestMcpClient(unittest.TestCase):
         script.write_text(FAKE_SERVER)
         self.clients, self.errors = connect_servers(
             {"fake": {"command": sys.executable, "args": [str(script)]},
-             "remote": {"type": "http", "url": "https://example.com/mcp"},
+             "remote": {"type": "websocket"},
              "missing": {"command": str(self.root / "no-such-binary")}},
             self.root,
         )
@@ -74,7 +74,7 @@ class TestMcpClient(unittest.TestCase):
     def test_connects_lists_every_page_and_reports_failures(self) -> None:
         self.assertEqual(self.clients["fake"].list_tools(), ["echo", "fail"])
         self.assertEqual(set(self.errors), {"remote", "missing"})
-        self.assertIn("stdio", self.errors["remote"])
+        self.assertIn("needs a `command` (stdio) or a `url`", self.errors["remote"])
 
     def test_tool_call_through_the_registry(self) -> None:
         spec = self.registry.get("mcp__fake__echo").spec()
@@ -130,7 +130,7 @@ class TestMcpImport(unittest.TestCase):
         codex.write_text('[mcp_servers.docs]\ncommand = "docs-mcp"\nargs = ["--stdio"]\n')
         found = find_foreign_servers((("Claude Code", claude, "mcpServers"), ("Codex", codex, "mcp_servers"),
                                       ("Cursor", self.root / "missing.json", "mcpServers")))
-        self.assertEqual([(agent, list(servers)) for agent, _, servers in found], [("Claude Code", ["gh"]), ("Codex", ["docs"])])
+        self.assertEqual([(agent, list(servers)) for agent, _, servers in found], [("Claude Code", ["gh", "web"]), ("Codex", ["docs"])])
 
     def test_import_keeps_existing_names_and_protects_the_file(self) -> None:
         dest = self.root / "settings.json"

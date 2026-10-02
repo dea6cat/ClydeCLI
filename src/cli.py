@@ -306,7 +306,7 @@ def handle_setup(console: Console, assume_yes: bool = False) -> int:
 
 
 def handle_mcp_import(console: Console, quiet: bool = False) -> int:
-    """Offer each other agent's stdio MCP servers for import; env values are never printed."""
+    """Offer each other agent's MCP servers (stdio and remote) for import; env and header values are never printed."""
     from rich.prompt import Confirm
     from src.tool_system.mcp_client import find_foreign_servers, import_servers
 
@@ -319,9 +319,16 @@ def handle_mcp_import(console: Console, quiet: bool = False) -> int:
     for agent, path, servers in found:
         console.print(f"\n[bold]{agent}[/bold] MCP servers in {path}:")
         for name, cfg in servers.items():
-            env = f"  (env: {', '.join(cfg['env'])})" if cfg.get("env") else ""
-            console.print(f"  {name}: {' '.join([cfg['command'], *map(str, cfg.get('args', []))])}{env}", markup=False)
-        if Confirm.ask("ClydeCLI will start these programs when it launches. Import them?", default=False):
+            if cfg.get("command"):
+                env = f"  (env: {', '.join(cfg['env'])})" if cfg.get("env") else ""
+                console.print(f"  {name}: {' '.join([cfg['command'], *map(str, cfg.get('args', []))])}{env}", markup=False)
+            else:
+                url = cfg.get("httpUrl") or cfg.get("url") or cfg.get("serverUrl")
+                headers = f"  (headers: {', '.join(cfg['headers'])})" if cfg.get("headers") else ""
+                console.print(f"  {name}: {url} [{cfg.get('type') or ('http' if cfg.get('httpUrl') else 'auto')}]{headers}",
+                              markup=False)
+        if Confirm.ask("ClydeCLI will start these programs or connect to these servers when it launches. Import them?",
+                       default=False):
             try:
                 added += import_servers(servers)
             except ValueError as e:
