@@ -6,6 +6,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from .. import sandbox
 from ..context import ToolContext
 from ..errors import ToolInputError, ToolPermissionError
 from ..permission_handler import PermissionResult
@@ -135,7 +136,10 @@ class BashTool:
     def spec(self) -> ToolSpec:
         return ToolSpec(
             name="Bash",
-            description="Execute a shell command.",
+            description=("Execute a shell command. It runs in a sandbox that can read anything and use the network "
+                         "but writes only inside the project, temp folders and package caches. If a command must "
+                         "write elsewhere (a global install, a file in your home folder), set unsandboxed: true; "
+                         "that always asks the user first."),
             input_schema={
                 "type": "object",
                 "additionalProperties": False,
@@ -143,6 +147,7 @@ class BashTool:
                     "command": {"type": "string"},
                     "cwd": {"type": "string"},
                     "timeout_s": {"type": "integer"},
+                    "unsandboxed": {"type": "boolean", "description": "run outside the sandbox; asks the user"},
                 },
                 "required": ["command"],
             },
@@ -157,6 +162,8 @@ class BashTool:
             return PermissionResult.allow()  # Input validation happens in run()
         if any(pat.search(command) for pat in _DANGEROUS_PATTERNS):
             return PermissionResult.deny("refusing to run potentially dangerous command")
+        if tool_input.get("unsandboxed") is True:
+            return PermissionResult.ask(message=f"Run OUTSIDE the sandbox (it can write anywhere you can): {command}")
         if is_read_only_command(command):
             return PermissionResult.allow()
         return PermissionResult.ask(message=f"Run shell command: {command}")
@@ -193,8 +200,11 @@ class BashTool:
         if not isinstance(timeout_s, int) or timeout_s < 1 or timeout_s > 600:
             raise ToolInputError("timeout_s must be an integer between 1 and 600")
 
+        argv, sandboxed = ["bash", "-lc", command], False
+        if tool_input.get("unsandboxed") is not True:
+            argv, sandboxed = sandbox.wrap(argv, context)
         completed = subprocess.run(
-            ["bash", "-lc", command],
+            argv,
             cwd=str(cwd),
             capture_output=True,
             text=True,
@@ -208,6 +218,9 @@ class BashTool:
             "exit_code": completed.returncode,
             "stdout": stdout,
             "stderr": stderr,
+            "sandboxed": sandboxed,
         }
+        if sandboxed and completed.returncode != 0 and "Operation not permitted" in (completed.stderr or "") + (completed.stdout or ""):
+            output["hint"] = sandbox.BLOCKED_HINT
         return ToolResult(name="Bash", output=output, is_error=completed.returncode != 0)
 
