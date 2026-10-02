@@ -578,30 +578,6 @@ class TestBriefAndAgentTools(ToolSystemTests):
 
 
 class TestTeamTools(ToolSystemTests):
-    def test_team_create_roundtrip(self) -> None:
-        """Test creating and deleting a team."""
-        # Create team
-        create_out = TeamCreateTool().run(
-            {"team_name": "test-team", "description": "A test team"},
-            self.ctx,
-        ).output
-        self.assertEqual(create_out["team_name"], "test-team")
-        self.assertIsNotNone(create_out["lead_agent_id"])
-        self.assertEqual(self.ctx.team["team_name"], "test-team")
-
-        # Verify team file was created
-        team_file = self.root / ".clyde" / "team.json"
-        self.assertTrue(team_file.exists())
-
-        # Delete team
-        delete_out = TeamDeleteTool().run({}, self.ctx).output
-        self.assertTrue(delete_out["success"])
-        self.assertEqual(delete_out["team_name"], "test-team")
-        self.assertIsNone(self.ctx.team)
-
-        # Verify team file was deleted
-        self.assertFalse(team_file.exists())
-
     def test_team_delete_no_team(self) -> None:
         """Test deleting when no team exists."""
         out = TeamDeleteTool().run({}, self.ctx).output

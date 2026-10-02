@@ -79,7 +79,6 @@ def build_default_registry(*, include_user_tools: bool = True) -> ToolRegistry:
             TaskListTool(),
             TaskUpdateTool(),
             TaskOutputTool(),
-            TeamCreateTool(),
             TeamDeleteTool(),
             EnterPlanModeTool(),
             ExitPlanModeTool(),
@@ -96,6 +95,7 @@ def build_default_registry(*, include_user_tools: bool = True) -> ToolRegistry:
         ]
     )
     registry.register(AgentTool(registry))
+    registry.register(TeamCreateTool(registry))
     registry.register(ToolSearchTool(registry))
 
     if include_user_tools:

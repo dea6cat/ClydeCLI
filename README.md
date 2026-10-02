@@ -299,9 +299,9 @@ to do. The session is saved, so `clyde -c` picks the conversation up interactive
 | Interaction | AskUserQuestion, SendUserMessage | ✅ Working |
 | Tasks | TodoWrite, TaskCreate/Get/List/Update/Output/Stop | ✅ Working |
 | Planning & config | EnterPlanMode, ExitPlanMode, Config, Skill, ToolSearch, Sleep | ✅ Working |
-| Agent | Agent | ✅ Runs a general-purpose sub-agent on a fresh conversation and returns its final answer; no custom agent types or background runs |
+| Agent | Agent | ✅ Sub-agents on a fresh conversation: general-purpose or custom types (`.clyde/agents/*.md`, Claude Code's format), in the foreground or background (`TaskOutput` collects, `TaskStop` cancels) |
 | Scheduling | CronCreate/List/Delete | ✅ Session-scoped; due jobs run as a turn while the REPL is idle at the prompt |
-| Team | TeamCreate/Delete | 🟡 Writes a team file; no multi-agent execution |
+| Team | TeamCreate/Delete | ✅ Runs several sub-agents in parallel, each on its own prompt and type; `TaskOutput` collects their answers |
 | Worktree | EnterWorktree/ExitWorktree | ✅ Creates a git worktree on a new branch; exit keeps or removes it |
 | MCP | MCP, ListMcpResources, ReadMcpResource, `mcp__<server>__<tool>` | ✅ Stdio, Streamable HTTP and HTTP+SSE servers from `~/.clyde/settings.json`; header auth or OAuth sign-in (`/mcp login`) |
 | Code map | Map | ✅ query / path / explain / affected / god_nodes over a map of the repo, refreshed when ClydeCLI starts |
@@ -649,6 +649,31 @@ Checkpoints live in `~/.clyde/checkpoints/<session>/` (the newest 20 sessions), 
 `/resume`. Changes made by shell commands (`rm`, `mv`, scripts) aren't captured: there's no reliable
 way to know what a command touches, so commit before risky runs. If the conversation was compacted
 or cleared after a checkpoint, only its files can be rewound.
+
+### Sub-agents
+
+*Deal more hands at once.*
+
+The model can hand a self-contained task to a sub-agent with a fresh conversation (the Agent tool),
+and get back only its final answer. Sub-agents come in types: `general-purpose` has every tool; a
+custom type is a Markdown file in Claude Code's format, read from the project's `.clyde/agents/` or
+`.claude/agents/`, then `~/.clyde/agents/` or `~/.claude/agents/`:
+
+```markdown
+---
+name: test-runner
+description: Runs the test suite and reports failures with their likely cause
+tools: Bash, Read, Grep        # optional allow-list
+model: inherit                 # or provider:model
+---
+You run tests. Report each failure with the file, the assertion and the likely cause.
+```
+
+With `run_in_background` a sub-agent returns a task id at once; `TaskOutput` reads its answer
+(`block: true` waits) and `TaskStop` cancels it. `TeamCreate` starts several members in parallel,
+each with its own prompt and type, and `TeamDelete` stops any still running. Background agents can't
+prompt you mid-turn, so anything that would ask is denied; sub-agents can't start agents or teams of
+their own; agents written for other tools pass the same SkillSpector gate as skills.
 
 ### Pasting
 
