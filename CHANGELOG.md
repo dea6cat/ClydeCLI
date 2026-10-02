@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `/login [provider]` in the REPL: connect a provider or replace its key without leaving, then
+  switch to its model
+- Custom providers: `clyde login` / `/login` -> `custom` adds any OpenAI-compatible API by name,
+  base URL and key (saved under `"providers"` in settings.json); it then works like a built-in one
 - `clyde -p "<prompt>"`: one headless turn for scripts and CI; the answer on stdout, piped stdin
   added, permission asks denied and listed, `--output-format json`, `--mode`, `--max-turns`, exit
   status 0/1/2
