@@ -286,6 +286,7 @@ to do. The session is saved, so `clyde -c` picks the conversation up interactive
 | Local models | ✅ | `/models local` finds ollama.com, Hugging Face GGUF and MLX models that fit this machine, rated relax / balance / hard, confirmed before download through Ollama or LM Studio |
 | SkillSpector | ✅ | Bundled scanner for skills, plugins and MCP servers from other agents: static always, LLM review when a usable model is connected; `DO_NOT_INSTALL` items held back until `/skills allow` |
 | Laya | ✅ | Bundled local decision model: hands a stuck cardShuffle turn to the next card; scores difficulty in shadow mode; `/laya` shows the evidence |
+| IDE integration | ⏳ | Pending: a VS Code / JetBrains connection for editor diagnostics, the open file and selection, and diff views of the model's edits |
 | Pasting | ✅ | Ctrl+V pastes a copied image, a copied image path becomes the image, long pastes fold to `[Pasted text #N +X lines]` |
 
 ### Tools
@@ -317,6 +318,7 @@ to do. The session is saved, so `clyde -c` picks the conversation up interactive
 - ✅ **Phase 5**: Python-native differentiators: the Code Map, check-after-edit with ruff/mypy/pytest/uv, notebook tools, and the Data tool for data and ETL work
 - ✅ **Phase 6**: Model play: cardShuffle routing across `/eval`-ranked models, local models that fit the machine (ollama.com, Hugging Face GGUF and MLX), Laya bundled for stuck-loop detection, and SkillSpector bundled to scan skills, plugins and MCP servers
 - 🟡 **Next**: promote Laya's difficulty score from shadow mode into `cardShuffle:house` once `/laya` shows it separates easy turns from hard ones
+- ⏳ **Pending**: IDE integration (VS Code and JetBrains): editor diagnostics, the open file and selection, and diff views
 
 **See [FEATURE_LIST.md](FEATURE_LIST.md) for detailed feature status and PR guidelines.**
 
