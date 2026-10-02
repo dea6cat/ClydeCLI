@@ -105,15 +105,20 @@ class TestCustomProvider(unittest.TestCase):
         keys.load_into_env()
         self.assertEqual(os.environ["CLYDE_TOGETHER_API_KEY"], "tg-key")
 
-    def test_logout_forgets_a_custom_providers_key(self):
+    def test_logout_removes_a_custom_provider_and_its_key(self):
         from src.cli import handle_logout
 
         self.assertIsNone(keys.add_custom("mine", "https://x/v1"))
         keys.connect("mine", "k")
         keys.PROVIDER_KEY_ENV.pop("mine")             # a fresh process hasn't registered it yet
+        keys.add_custom("other", "https://y/v1")
         with patch("src.cli.Console"):
             self.assertEqual(handle_logout("mine"), 0)
         self.assertNotIn("mine", keys.saved_providers())
+        self.assertEqual(keys.custom_providers(), {"other": "https://y/v1"})   # gone from settings.json, the rest kept
+        self.assertNotIn("mine", keys.PROVIDER_KEY_ENV)
+        keys.remove_custom("other")
+        self.assertNotIn("providers", (self.home / ".clyde" / "settings.json").read_text())   # no empty leftover
 
     def test_a_keyless_server_still_connects(self):
         answers = iter(["custom", "vllm", "http://localhost:8000/v1", "qwen3"])

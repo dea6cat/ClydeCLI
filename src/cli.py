@@ -547,16 +547,23 @@ def handle_logout(provider: str) -> int:
 
     console = Console()
     name = _key_name(provider)
-    keys.custom_providers()   # registers custom providers' key names
+    custom = name in keys.custom_providers()   # also registers custom providers' key names
     if name not in keys.PROVIDER_KEY_ENV:
         console.print(f"[red]Unknown provider: {provider}[/red]")
         return 1
+    env = keys.PROVIDER_KEY_ENV[name]
     if keys.disconnect(name):
         console.print(f"[green]✓ Removed the saved {provider} key.[/green]")
     else:
         console.print(f"[yellow]No saved key for {provider}.[/yellow]")
-    if os.environ.get(keys.PROVIDER_KEY_ENV[name]):
-        console.print(f"[dim]{keys.PROVIDER_KEY_ENV[name]} is still set in your shell.[/dim]")
+    if custom:
+        problem = keys.remove_custom(name)
+        if problem:
+            console.print(f"[red]Couldn't remove {provider} from settings.json: {problem}[/red]")
+            return 1
+        console.print(f"[green]✓ Removed the {provider} provider from ~/.clyde/settings.json.[/green]")
+    if os.environ.get(env):
+        console.print(f"[dim]{env} is still set in your shell.[/dim]")
     return 0
 
 
