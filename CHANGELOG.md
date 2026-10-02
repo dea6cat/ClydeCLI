@@ -8,6 +8,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `clyde -p "<prompt>"`: one headless turn for scripts and CI; the answer on stdout, piped stdin
+  added, permission asks denied and listed, `--output-format json`, `--mode`, `--max-turns`, exit
+  status 0/1/2
+- Edit checkpoints and `/rewind`: undo the model's file edits and/or the conversation back to before
+  any message; saved per session, so they survive `/resume`
+- Shell sandbox: the model's commands run under macOS `sandbox-exec` or Linux `bwrap` and write only
+  to the project, temp and package caches; `unsandboxed: true` always asks
+- Sub-agents: custom agent types from `.clyde/agents/` or `.claude/agents/` (Claude Code format),
+  background runs collected with `TaskOutput` (now able to wait) and cancelled with `TaskStop`, and
+  `TeamCreate` running several members in parallel
+- Data tool: profile and read-only SQL over CSV, TSV, Parquet, JSON and SQLite, sandboxed DuckDB
+- MCP over Streamable HTTP and HTTP+SSE (bare `url` tries HTTP, then SSE), OAuth sign-in
+  (`/mcp login`, `clyde mcp login`) and a project's `.mcp.json` behind a yes per exact entry
+- cardShuffle: a model that deals each turn to an `/eval`-ranked real model, with high-roller,
+  house, free and small tiers, and fallback on errors, max tool turns and stuck loops
+- `/eval` plays an 11-task graded hand after the tool-call check; strength ranks cardShuffle's deck
+- `/models local [ollama|hf|mlx]`: find local models that fit this machine, rated relax / balance
+  / hard, confirm their cost, and download through Ollama or LM Studio
+- Laya, bundled: local judgments that stop a looping cardShuffle turn; `/laya` lines them up with
+  how turns ended
+- SkillSpector, bundled: scans skills, plugins, agents and MCP tool lists from other tools;
+  `/skills scan` and `/skills allow`
+- Pasting: Ctrl+V images, image paths become `[Image #N]`, long pastes fold to
+  `[Pasted text #N +X lines]`; images reach every provider and survive `/resume`
+- Re-login: a rejected key offers re-entering it for the same provider, then retries the message
 - Stdlib-only provider layer (no vendor SDKs): Anthropic, OpenAI, Google Gemini, OpenRouter,
   DeepSeek, Mistral, NVIDIA, Cerebras, GLM, MiniMax, Ollama (local, native `/api/chat`) and
   Ollama Cloud
@@ -90,6 +115,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (no questions except major moves such as recursive deletes, pushes or hard resets)
 
 ### Changed
+- Images: models known not to read images get a warning on paste and the text only on send; images
+  over 5 MB are shrunk (macOS `sips`) instead of refused
+- `check_permissions` is an optional tool hook, no longer part of the `Tool` protocol
 - Memory files are now `CLYDE.md` and `CLYDE.local.md` (`/init` writes these). Files made for other agents
   still load: `CLAUDE.md`, `CLAUDE.local.md`, `AGENTS.md`, `GEMINI.md`, `.cursorrules` and
   `.github/copilot-instructions.md`, one per folder with `CLYDE.md` first
@@ -113,7 +141,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   token estimation under `src/context_system/`), and `tests/` mirrors `src/`; run unittest with
   `python -m unittest discover -s tests -t .`
 
+### Removed
+- The RemoteTrigger and REPL tools: stubs that only ever returned "not implemented"
+
 ### Fixed
+- `clyde -p` no longer hangs when stdin is a pipe nobody closes (cron, `ssh` without `-n`, CI)
+- MCP and OAuth requests send ClydeCLI's User-Agent; some servers' bot protection refused Python's
+- SkillSpector's "CAUTION" with no findings now says the scan was partial, and why
+- `/models local` no longer offers embedding or reranker models, draft or F32 helper files, and
+  sizes a quantization by its largest file
+- `/eval`'s hand found no dot-files (`.env`); provider errors no longer count as wrong answers
 - Plan mode was only a flag; tools could still edit files while it was on
 - `/clear` (and `/reset`, `/new`) clears the screen too and redraws the banner
 - The thinking spinner comes back after a permission or question prompt, and when a tool runs after
