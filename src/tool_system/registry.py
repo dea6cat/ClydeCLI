@@ -61,7 +61,8 @@ def _is_major(spec: ToolSpec, tool_input: dict[str, Any], context: ToolContext) 
     name = spec.name.lower()
     if name == "bash":
         from .tools.bash import is_major_command
-        return is_major_command(str(tool_input.get("command", "")))
+        # Leaving the sandbox is always worth a yes, even when everything else plays without asking.
+        return tool_input.get("unsandboxed") is True or is_major_command(str(tool_input.get("command", "")))
     path = tool_input.get("file_path") or tool_input.get("notebook_path")
     if isinstance(path, str) and path:
         from pathlib import Path
