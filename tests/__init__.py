@@ -16,3 +16,5 @@ os.environ.setdefault("CLYDE_MAP", "off")
 os.environ.setdefault("CLYDE_TRACE", "off")
 # Post-edit ruff/mypy checks would run real tools; tests that want them turn them on.
 os.environ.setdefault("CLYDE_CHECKS", "off")
+# SkillSpector scans would run the real scanner on every skill a test loads; its tests turn it on.
+os.environ.setdefault("CLYDE_SKILL_SCAN", "off")
