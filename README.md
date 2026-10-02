@@ -159,19 +159,27 @@ inputs to rules in Clyde's code, never the rules themselves, and it never decide
 | Judgment | Type | What Clyde does with it |
 |---|---|---|
 | Is the dealt model repeating the same tool calls without progress? | yes/no | Acts: from the 6th tool call, every 3rd round; at 0.8 or above, cardShuffle hands the turn to the next card |
-| How hard is this request? | score 0-3 | Shadow mode for `cardShuffle:house`: shown on the `♠ dealt` line and traced in `/debug`, not acted on until it's measured on real turns |
+| How hard is this request? | score 0-3 | Scored on every cardShuffle turn and shown on the `♠ dealt` line. Starts in shadow mode (traced, not acted on); once the evidence below promotes it, `house` starts harder requests on stronger cards and easier ones on faster cards |
 
 Laya's model is about 800 MB: `clyde setup` asks before downloading it, and Clyde itself only ever
-loads it from the local cache, in the background, when a cardShuffle model is in use (about 15 s,
-before the first turn needs it). Each judgment then takes about 0.1 s. `/doctor` shows whether it's
+loads it from the local cache, in the background, when a cardShuffle model is in use (about 15 s).
+The first cardShuffle turn of a session waits for that load (up to 30 s, once), so Laya answers from
+the first turn on, in `clyde -p` too. Each judgment then takes about 0.1 s. `/doctor` shows whether it's
 downloaded and loaded. Without it, cardShuffle plays exactly as described above.
 
 Both judgments are tuned from evidence, not guesses. Every check is traced next to how its turn
 ended, and `/laya` lines them up: stuck checks by band (below 0.50, up to the 0.80 threshold, above
-it) with how many were re-dealt and how many turns still ran out of tool rounds, and difficulty bands
-with their average tool rounds. Loops that keep slipping under 0.80 mean the threshold should come
-down; re-deals that don't help mean it should go up. Difficulty moves out of shadow mode into
-`cardShuffle:house` once harder bands clearly take more rounds.
+it) with how many were re-dealt and how many turns still ran out of tool rounds. Loops that keep
+slipping under 0.80 mean the threshold should come down; re-deals that don't help mean it should go up.
+
+Difficulty promotes itself. Laya's scores sit in a narrow band (about 1.3 to 1.9 for everything from
+"hi" to a large refactor), so `/laya` splits the shadow-scored turns at their median and compares the
+two halves' average tool rounds. Once each half has at least 10 finished turns and the harder half
+takes at least 1.5 times as many rounds, and one round more, difficulty starts acting in
+`cardShuffle:house`: a request's score is placed among past scores, and that share picks how far up
+the deck the first card is (plan mode still gets the strongest). Only shadow turns count as evidence,
+so turns it already steered can't argue for or against it. `/laya` says which state it's in and what
+it still needs.
 
 ### SkillSpector
 
@@ -285,7 +293,7 @@ to do. The session is saved, so `clyde -c` picks the conversation up interactive
 | cardShuffle | ✅ | A model that deals each turn to an `/eval`-ranked real model (high-roller, house, free, small), with fallback on errors, max tool turns and stuck loops |
 | Local models | ✅ | `/models local` finds ollama.com, Hugging Face GGUF and MLX models that fit this machine, rated relax / balance / hard, confirmed before download through Ollama or LM Studio |
 | SkillSpector | ✅ | Bundled scanner for skills, plugins and MCP servers from other agents: static always, LLM review when a usable model is connected; `DO_NOT_INSTALL` items held back until `/skills allow` |
-| Laya | ✅ | Bundled local decision model: hands a stuck cardShuffle turn to the next card; scores difficulty in shadow mode; `/laya` shows the evidence |
+| Laya | ✅ | Bundled local decision model: hands a stuck cardShuffle turn to the next card; scores every turn's difficulty and steers `house` once `/laya`'s evidence shows it separates easy turns from hard ones |
 | IDE integration | ⏳ | Pending: a VS Code / JetBrains connection for editor diagnostics, the open file and selection, and diff views of the model's edits |
 | Pasting | ✅ | Ctrl+V pastes a copied image, a copied image path becomes the image, long pastes fold to `[Pasted text #N +X lines]` |
 
@@ -317,7 +325,7 @@ to do. The session is saved, so `clyde -c` picks the conversation up interactive
 - ✅ **Phase 4**: MCP client (stdio, Streamable HTTP, HTTP+SSE), plugins, custom tools/skills/hooks, tracing and `/debug`
 - ✅ **Phase 5**: Python-native differentiators: the Code Map, check-after-edit with ruff/mypy/pytest/uv, notebook tools, and the Data tool for data and ETL work
 - ✅ **Phase 6**: Model play: cardShuffle routing across `/eval`-ranked models, local models that fit the machine (ollama.com, Hugging Face GGUF and MLX), Laya bundled for stuck-loop detection, and SkillSpector bundled to scan skills, plugins and MCP servers
-- 🟡 **Next**: promote Laya's difficulty score from shadow mode into `cardShuffle:house` once `/laya` shows it separates easy turns from hard ones
+- ✅ **Laya's difficulty in `cardShuffle:house`**: promotes itself from shadow mode once `/laya`'s evidence shows it separates easy turns from hard ones
 - ⏳ **Pending**: IDE integration (VS Code and JetBrains): editor diagnostics, the open file and selection, and diff views
 
 **See [FEATURE_LIST.md](FEATURE_LIST.md) for detailed feature status and PR guidelines.**
