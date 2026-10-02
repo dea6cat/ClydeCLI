@@ -2,6 +2,7 @@
 rich>=13.0.0
 prompt-toolkit>=3.0.0
 tiktoken>=0.7.0
+laya==0.3.23
 
 # Development Dependencies
 build>=1.0.0
