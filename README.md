@@ -2,7 +2,8 @@
 
 # ♠ ClydeCLI
 
-**An AI coding agent for your terminal, written in Python.**
+**A coding-agent harness for your terminal, written in Python.**<br>
+Bring any LLM; Clyde turns it into an agent.
 
 *"Yeah, I can fix that."*
 <br>— Clyde
@@ -20,6 +21,10 @@
 ## 🔥 What This Is
 
 Name's Clyde. I live in your terminal. I read your files, run your commands, pull what I need off the web, and keep at it until the thing works. No speeches. I just fix it.
+
+Strictly, I'm the harness: the agent loop, the tools, the permissions, the sandbox, the sessions.
+The brains are whatever LLM you plug in, cloud or local, and with cardShuffle a different one can
+play every turn. Model plus harness makes the agent.
 
 Under the hood it's a Python rebuild of the Claude Code architecture. Rebuilt a few times. Still runs.
 

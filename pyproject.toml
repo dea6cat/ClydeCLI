@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "clyde-cli"
 version = "0.1.0"
-description = "A complete Python reimplementation of Claude Code CLI - Drop-in replacement experience"
+description = "A coding-agent harness for your terminal: bring any LLM, cloud or local, and Clyde turns it into an agent"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.14"
