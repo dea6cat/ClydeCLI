@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ClydeCLI · an AI coding agent for your terminal</title>
+<meta name="description" content="ClydeCLI is an open-source AI coding agent for your terminal, written in Python. Any model, routed per turn, vetted by its own eval, with undo, a shell sandbox and headless mode.">
+<meta property="og:title" content="ClydeCLI">
+<meta property="og:description" content="An AI coding agent for your terminal, written in Python. Bring any model; Clyde deals the right one each turn.">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>♠</text></svg>">
+<style>
+  :root {
+    --felt: #0f1a14; --felt-2: #15241b; --line: #24382b;
+    --face: #f5f1e8; --ink: #111111; --red: #d0202f; --green: #4eba65;
+    --text: #e8e4dc; --dim: #9aa39c; --code-bg: #0a120d;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --felt: #f3efe6; --felt-2: #ebe5d8; --line: #d6cfbf; --text: #1b1b1b; --dim: #5d5a52; --green: #2f8a45; }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--felt); color: var(--text); font: 16px/1.6 var(--sans); }
+  a { color: var(--green); }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 20px; }
+  nav { display: flex; justify-content: space-between; align-items: center; padding: 18px 0; }
+  nav .brand { font: 700 18px var(--mono); color: var(--text); text-decoration: none; }
+  nav .brand b { color: var(--red); }
+  nav .links a { color: var(--dim); text-decoration: none; margin-left: 20px; font-size: 15px; }
+  nav .links a:hover { color: var(--text); }
+
+  .hero { display: grid; grid-template-columns: 1.05fr 1fr; gap: 48px; align-items: center; padding: 56px 0 72px; }
+  .hero > * { min-width: 0; }
+  h1 { font-size: clamp(34px, 5vw, 54px); line-height: 1.08; margin: 0 0 18px; letter-spacing: -0.02em; }
+  h1 .suit { color: var(--red); }
+  .lede { font-size: 19px; color: var(--dim); margin: 0 0 8px; }
+  .quote { font-style: italic; color: var(--dim); margin: 0 0 28px; }
+  .install { display: flex; align-items: center; gap: 10px; background: #0a120d; color: #e8e4dc; border: 1px solid var(--line);
+             border-radius: 10px; padding: 12px 12px 12px 16px; font: 13.5px var(--mono); }
+  .install code { white-space: nowrap; flex: 1; overflow-x: auto; }
+  .install code::before { content: "$ "; color: #4eba65; }
+  button.copy { flex: none; background: var(--face); color: var(--ink); border: 0; border-radius: 6px; padding: 6px 12px;
+                font: 600 13px var(--sans); cursor: pointer; }
+  button.copy:focus-visible, .btn:focus-visible, a:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+  .cta { display: flex; gap: 12px; margin-top: 18px; flex-wrap: wrap; }
+  .btn { display: inline-block; padding: 11px 18px; border-radius: 8px; font-weight: 600; text-decoration: none; font-size: 15px; }
+  .btn.primary { background: var(--red); color: #fff; }
+  .btn.ghost { border: 1px solid var(--line); color: var(--text); }
+  .note { font-size: 13px; color: var(--dim); margin-top: 12px; }
+
+  .term { background: #0a120d; border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,.35);
+          font: 13px/1.65 var(--mono); color: #e8e4dc; overflow: hidden; }
+  .term .bar { display: flex; gap: 7px; padding: 11px 14px; border-bottom: 1px solid #1d2b22; }
+  .term .bar i { width: 11px; height: 11px; border-radius: 50%; background: #2d3b31; }
+  .term pre { margin: 0; padding: 16px 18px 18px; white-space: pre-wrap; word-break: break-word; }
+  .g { color: #4eba65; } .r { color: #ff5a64; } .d { color: #8a8a8a; } .w { color: #fff; font-weight: 700; }
+
+  section { padding: 64px 0; border-top: 1px solid var(--line); }
+  h2 { font-size: clamp(26px, 3.4vw, 34px); margin: 0 0 8px; letter-spacing: -0.01em; }
+  .sub { color: var(--dim); margin: 0 0 32px; max-width: 680px; }
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
+  .card { position: relative; background: var(--face); color: var(--ink); border-radius: 12px; padding: 30px 20px 22px;
+          box-shadow: 0 1px 0 rgba(0,0,0,.08), 0 8px 24px rgba(0,0,0,.18); }
+  .card::before { content: attr(data-pip); position: absolute; top: 9px; left: 12px; font: 700 14px/1 var(--mono); color: var(--red); }
+  .card.black::before { color: var(--ink); }
+  .card h3 { margin: 0 0 6px; font-size: 17px; }
+  .card p { margin: 0; font-size: 14.5px; color: #3d3a34; }
+  .card code { font: 13px var(--mono); background: #e9e3d6; padding: 1px 5px; border-radius: 4px; }
+
+  .list { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px 32px; }
+  .list div { padding-left: 22px; position: relative; }
+  .list div::before { content: "♠"; position: absolute; left: 0; color: var(--green); }
+  .list b { display: block; }
+  .list span { color: var(--dim); font-size: 14.5px; }
+  code { font-family: var(--mono); font-size: .92em; }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { border: 1px solid var(--line); background: var(--felt-2); border-radius: 999px; padding: 6px 14px; font-size: 14px; }
+  .chip.local { border-color: var(--green); }
+
+  .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+  .step { background: var(--felt-2); border: 1px solid var(--line); border-radius: 12px; padding: 20px; min-width: 0; }
+  .step .n { font: 700 13px var(--mono); color: var(--red); }
+  .step pre { background: #0a120d; color: #e8e4dc; border-radius: 8px; padding: 10px 12px; font: 13px var(--mono);
+              overflow-x: auto; margin: 10px 0 0; }
+
+  .honest { background: var(--felt-2); border: 1px dashed var(--line); border-radius: 12px; padding: 20px 24px; margin-top: 24px; }
+  .honest ul { margin: 8px 0 0; padding-left: 20px; color: var(--dim); }
+  footer { padding: 40px 0 56px; border-top: 1px solid var(--line); color: var(--dim); font-size: 14px;
+           display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+
+  @media (max-width: 860px) {
+    .hero { grid-template-columns: 1fr; gap: 32px; padding-top: 28px; }
+    nav .links a:not(.gh) { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav>
+    <a class="brand" href="#"><b>♠</b> ClydeCLI</a>
+    <div class="links">
+      <a href="#different">Why Clyde</a>
+      <a href="#basics">Features</a>
+      <a href="#start">Get started</a>
+      <a class="gh" href="https://github.com/dea6cat/ClydeCLI">GitHub ↗</a>
+    </div>
+  </nav>
+
+  <header class="hero">
+    <div>
+      <h1>The coding agent that <span class="suit">deals</span> the right model.</h1>
+      <p class="lede">ClydeCLI is an open-source AI coding agent for your terminal, written in Python. Bring any model: cloud, local, or your own endpoint. Clyde reads your code, runs your commands and keeps at it until the thing works.</p>
+      <p class="quote">“Yeah, I can fix that.” — Clyde</p>
+      <div class="install">
+        <code id="cmd">curl -fsSL https://raw.githubusercontent.com/dea6cat/ClydeCLI/main/install.sh | sh</code>
+        <button class="copy" type="button" data-copy="cmd">Copy</button>
+      </div>
+      <div class="cta">
+        <a class="btn primary" href="https://github.com/dea6cat/ClydeCLI">View on GitHub</a>
+        <a class="btn ghost" href="#start">Get started</a>
+      </div>
+      <p class="note">MIT licensed · Python 3.14+ · macOS and Linux</p>
+    </div>
+
+    <div class="term" role="img" aria-label="An example ClydeCLI session fixing a failing test">
+      <div class="bar"><i></i><i></i><i></i></div>
+<pre><span class="d">~/repo $</span> clyde --model cardShuffle:house
+
+<span class="g">&gt;</span> the date parser test fails on leap years, fix it
+
+<span class="d">♠ dealt</span> nvidia:nemotron-3-super
+<span class="g">•</span> Grep <span class="d">"parse_date" src tests</span>
+<span class="g">•</span> Read <span class="d">src/dates.py · lines 1-88</span>
+<span class="g">•</span> Bash <span class="d">pytest tests/test_dates.py -q · exit=1</span>
+<span class="g">•</span> Edit <span class="d">src/dates.py · checkpointed</span>
+<span class="g">•</span> Bash <span class="d">pytest tests/test_dates.py -q · exit=0</span>
+
+February had 28 days hard-coded. It now uses
+<span class="w">calendar.monthrange</span>, and the leap-year test passes.
+
+<span class="r">♠</span> <span class="d">Shuffled for 41s · /rewind undoes the edit</span></pre>
+    </div>
+  </header>
+
+  <section id="different">
+    <h2>What other harnesses don't do</h2>
+    <p class="sub">The big vendor CLIs are built around one company's models. Clyde is built around all of them, and it checks which ones actually work.</p>
+    <div class="cards">
+      <div class="card" data-pip="A♠"><h3>cardShuffle routing</h3><p>A virtual model that deals each turn to a real one, ranked by <code>/eval</code>. If a model errors, stalls or loops, the next card takes over. Tiers: high-roller, house, free, small.</p></div>
+      <div class="card" data-pip="K♥"><h3>Its own model eval</h3><p><code>/eval</code> tests every model you can reach on tool calls, then deals it a hand of 11 graded tasks. Broken models are hidden; results show latency and tokens per second.</p></div>
+      <div class="card black" data-pip="Q♣"><h3>Any provider, any key</h3><p>13 built in, including Anthropic, OpenAI, Google, Mistral, NVIDIA, DeepSeek and OpenRouter, plus local Ollama and LM Studio. Any OpenAI-compatible endpoint joins with <code>/login</code> → custom.</p></div>
+      <div class="card" data-pip="J♦"><h3>Local models that fit</h3><p><code>/models local</code> searches ollama.com, Hugging Face GGUF and MLX, rates each one relax, balance or hard for your machine, and shows the cost before anything downloads.</p></div>
+      <div class="card black" data-pip="10♠"><h3>Supply-chain scanning</h3><p>Bundled SkillSpector scans skills, plugins, agents and MCP tool lists before the model sees them. Anything flagged do-not-install stays out until you allow it.</p></div>
+      <div class="card" data-pip="9♥"><h3>Bring your setup</h3><p>Reads the memory files, skills, hooks, MCP servers and plugins you already made for Claude Code, Cursor, Gemini CLI, Codex and Copilot, and imports them only with a yes.</p></div>
+    </div>
+  </section>
+
+  <section id="basics">
+    <h2>Everything a daily driver needs</h2>
+    <p class="sub">The fundamentals are here too, covered by a suite of nearly 700 tests and a live shakedown against real providers.</p>
+    <div class="list">
+      <div><b>Headless mode</b><span><code>clyde -p</code> for scripts and CI: answer on stdout, JSON output, exit codes, permission asks denied and listed.</span></div>
+      <div><b>Undo with /rewind</b><span>Every message checkpoints the files the model edits; roll back code, conversation, or both.</span></div>
+      <div><b>OS sandbox</b><span>Shell commands write only to the project, temp and caches (sandbox-exec on macOS, bwrap on Linux).</span></div>
+      <div><b>Sub-agents and teams</b><span>Custom agent types in Claude Code's format, background runs, and teams that work in parallel.</span></div>
+      <div><b>MCP, local and remote</b><span>stdio, Streamable HTTP and SSE servers, OAuth sign-in, and a repo's own <code>.mcp.json</code> after approval.</span></div>
+      <div><b>Data tool</b><span>Profile CSV, Parquet, JSON and SQLite files and run read-only SQL across them with sandboxed DuckDB.</span></div>
+      <div><b>Permissions you control</b><span>Hold, plan and all-in modes; allow and deny rules in Claude Code syntax; major moves always ask.</span></div>
+      <div><b>Skills, hooks, plugins</b><span>Markdown skills as slash commands, PreToolUse and PostToolUse hooks, and installable plugin bundles.</span></div>
+      <div><b>Check after edit</b><span>Python edits are checked with ruff (and mypy when configured); new problems go straight back to the model.</span></div>
+      <div><b>Pasting that works</b><span>Paste screenshots with Ctrl+V; long pastes fold into one line and still send in full.</span></div>
+      <div><b>Sessions and compaction</b><span>Auto-saved sessions, <code>/resume</code> per workspace, and automatic compaction near the context limit.</span></div>
+      <div><b>Cost and tracing</b><span><code>/cost</code> per model, and a trace of every model and tool call with secrets redacted.</span></div>
+    </div>
+  </section>
+
+  <section id="providers">
+    <h2>Your models, your keys</h2>
+    <p class="sub">No account with us and no proxy in between. Requests go straight from your machine to the provider you chose.</p>
+    <div class="chips">
+      <span class="chip">Anthropic</span><span class="chip">OpenAI</span><span class="chip">Google Gemini</span><span class="chip">OpenRouter</span>
+      <span class="chip">Mistral</span><span class="chip">NVIDIA</span><span class="chip">DeepSeek</span><span class="chip">Cerebras</span>
+      <span class="chip">GLM</span><span class="chip">MiniMax</span><span class="chip">Ollama Cloud</span>
+      <span class="chip local">Ollama (local)</span><span class="chip local">LM Studio (local)</span><span class="chip">+ any OpenAI-compatible API</span>
+    </div>
+  </section>
+
+  <section id="start">
+    <h2>Up and running in three steps</h2>
+    <p class="sub">The installer sets up uv and Clyde, then <code>clyde setup</code> walks you through the rest.</p>
+    <div class="steps">
+      <div class="step"><span class="n">01 · INSTALL</span>
+<pre>curl -fsSL https://raw.githubusercontent.com/dea6cat/ClydeCLI/main/install.sh | sh</pre></div>
+      <div class="step"><span class="n">02 · CONNECT</span>
+<pre>clyde login      # or export a provider key</pre></div>
+      <div class="step"><span class="n">03 · WORK</span>
+<pre>cd your-project
+clyde</pre></div>
+    </div>
+    <div class="honest">
+      <b>Straight talk</b>
+      <ul>
+        <li>The install is about 850 MB, mostly PyTorch for Laya, the bundled local model that spots stuck loops.</li>
+        <li>It's young: one maintainer, not yet hardened by a big user base. Issues and PRs are welcome.</li>
+        <li>No IDE integration yet. VS Code and JetBrains support is on the roadmap.</li>
+      </ul>
+    </div>
+  </section>
+
+  <footer>
+    <span><b style="color:var(--red)">♠</b> ClydeCLI · MIT License</span>
+    <span><a href="https://github.com/dea6cat/ClydeCLI">GitHub</a> · <a href="https://github.com/dea6cat/ClydeCLI/blob/main/FEATURE_LIST.md">Feature list</a> · <a href="https://github.com/dea6cat/ClydeCLI/blob/main/CHANGELOG.md">Changelog</a></span>
+  </footer>
+</div>
+<script>
+  document.querySelectorAll("button.copy").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var text = document.getElementById(b.dataset.copy).textContent;
+      navigator.clipboard.writeText(text).then(function () {
+        b.textContent = "Copied"; setTimeout(function () { b.textContent = "Copy"; }, 1500);
+      }, function () { b.textContent = "Select it"; });
+    });
+  });
+</script>
+</body>
+</html>
