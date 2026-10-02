@@ -36,6 +36,9 @@ class Tool(Protocol):
     def run(self, tool_input: dict[str, Any], context: ToolContext) -> ToolResult: ...
 
 
+# The file-changing tools and the input field naming their file, for edit checkpoints.
+_EDIT_PATHS = {"Write": "file_path", "Edit": "file_path", "NotebookEdit": "notebook_path"}
+
 # Plan mode still lets the model look around, delegate research and present its plan.
 _PLAN_MODE_ALLOWED = {"exitplanmode", "agent", "task"}
 
@@ -178,6 +181,12 @@ class ToolRegistry:
                     tool_use_id=call.tool_use_id,
                 )
 
+        raw_path = call.input.get(_EDIT_PATHS.get(spec.name, ""))
+        if context.before_edit is not None and isinstance(raw_path, str):
+            try:
+                context.before_edit(context.ensure_allowed_path(raw_path))
+            except Exception:   # a checkpoint must never stop the edit; the tool reports bad paths itself
+                pass
         result = tool.run(call.input, context)
         feedback = run_hooks(
             context.hooks, "PostToolUse",
