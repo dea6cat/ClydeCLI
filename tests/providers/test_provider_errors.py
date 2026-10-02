@@ -60,3 +60,14 @@ class HttpErrorMessage(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestAuthErrorDetection(unittest.TestCase):
+    def test_bad_keys_are_recognised_however_the_provider_says_it(self):
+        from src.providers.base import ProviderError, is_auth_error
+        self.assertTrue(is_auth_error(ProviderError("x", "HTTP 401", status=401)))
+        self.assertTrue(is_auth_error(ProviderError("google", "HTTP 400: API key not valid. Please pass a valid API key.", status=400)))
+        self.assertTrue(is_auth_error(ProviderError("openai", "HTTP 403: Incorrect API key provided", status=403)))
+        self.assertFalse(is_auth_error(ProviderError("x", "HTTP 403: model not enabled for this project", status=403)))
+        self.assertFalse(is_auth_error(ProviderError("x", "HTTP 400: context too long", status=400)))
+        self.assertFalse(is_auth_error(RuntimeError("API key not valid")))
