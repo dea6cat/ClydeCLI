@@ -135,8 +135,10 @@ class TestStreamableHttp(unittest.TestCase):
 
     def test_an_auth_failure_reads_clearly(self):
         _, errors = connect_servers({"remote": {"type": "http", "url": self.server.url + "/locked"}}, self.cwd)
-        self.assertIn("HTTP 401", errors["remote"])
-        self.assertIn("check the server's headers or token", errors["remote"])
+        self.assertEqual(errors["remote"], "MCP server 'remote' needs sign-in: run /mcp login remote")
+        _, errors = connect_servers({"keyed": {"type": "http", "url": self.server.url + "/locked",
+                                               "headers": {"Authorization": "Bearer wrong"}}}, self.cwd)
+        self.assertIn("HTTP 401 (check the server's headers or token)", errors["keyed"])   # your own header: no OAuth
 
 
 class TestLegacySse(unittest.TestCase):
