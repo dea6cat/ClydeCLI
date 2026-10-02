@@ -145,6 +145,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The RemoteTrigger and REPL tools: stubs that only ever returned "not implemented"
 
 ### Fixed
+- A stalled cloud provider no longer holds a turn for 10 minutes: a stream that sends nothing for
+  180 s fails with "no response" (not retried; cardShuffle re-deals). Local servers keep 600 s
 - `clyde -p` no longer hangs when stdin is a pipe nobody closes (cron, `ssh` without `-n`, CI)
 - MCP and OAuth requests send ClydeCLI's User-Agent; some servers' bot protection refused Python's
 - SkillSpector's "CAUTION" with no findings now says the scan was partial, and why
