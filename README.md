@@ -143,6 +143,25 @@ or runs out of tool turns (`[Max tool turns reached]`), the turn goes to the nex
 `♠ dealt <model>` line shows who is playing, and `/cost` counts each real model. No key, no config:
 run `/eval`, then `/model cardShuffle:house`.
 
+### Laya
+
+*I read the table, not just the cards.*
+
+ClydeCLI ships with [Laya](https://github.com/NandhaKishorM/laya), an open-weight (Apache 2.0) decision
+model that runs on your machine: no key, no network, typed answers with probabilities instead of
+prose. It's a required dependency, pinned to a release that pins its own weights. Its answers are
+inputs to rules in Clyde's code, never the rules themselves, and it never decides permissions.
+
+| Judgment | Type | What Clyde does with it |
+|---|---|---|
+| Is the dealt model repeating the same tool calls without progress? | yes/no | Acts: from the 6th tool call, every 3rd round; at 0.8 or above, cardShuffle hands the turn to the next card |
+| How hard is this request? | score 0-3 | Shadow mode for `cardShuffle:house`: shown on the `♠ dealt` line and traced in `/debug`, not acted on until it's measured on real turns |
+
+Laya's model is about 800 MB: `clyde setup` asks before downloading it, and Clyde itself only ever
+loads it from the local cache, in the background, when a cardShuffle model is in use (about 15 s,
+before the first turn needs it). Each judgment then takes about 0.1 s. `/doctor` shows whether it's
+downloaded and loaded. Without it, cardShuffle plays exactly as described above.
+
 ### Interactive REPL
 
 ```text
