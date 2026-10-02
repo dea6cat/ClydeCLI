@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 import uuid
 from typing import Any
 
@@ -257,6 +258,11 @@ class TaskOutputTool:
         task = context.tasks.get(task_id)
         if task is None:
             return ToolResult(name="TaskOutput", output={"retrieval_status": "success", "task": None})
+        if tool_input.get("block") and task.get("status") == "running":   # wait for a background agent
+            timeout = tool_input.get("timeout")
+            deadline = time.monotonic() + (min(float(timeout), 600.0) if isinstance(timeout, (int, float)) else 300.0)
+            while task.get("status") == "running" and time.monotonic() < deadline:
+                time.sleep(0.25)
 
         output = str(task.get("output") or "")
         retrieval_status = "success" if output else "not_ready"

@@ -232,6 +232,7 @@ def run_agent_loop(
     reasoning: str | None = None,
     on_thinking: TextChunkHandler | None = None,
     cancel: threading.Event | None = None,
+    system_extra: str | None = None,
 ) -> AgentLoopResult:
     """Run agent loop: LLM -> tools -> LLM until no more tools or max turns.
 
@@ -265,6 +266,8 @@ def run_agent_loop(
     style_dir = getattr(tool_context, "output_style_dir", None)
     style_prompt = resolve_output_style(style_name, style_dir).prompt
     system_prompt = _build_effective_system_prompt(style_prompt, tool_context)
+    if system_extra:   # a custom sub-agent's own instructions
+        system_prompt += "\n\n" + system_extra
     text_handler = on_text_chunk if (stream and on_text_chunk is not None) else _discard
 
     last_user_visible_message: str | None = None
