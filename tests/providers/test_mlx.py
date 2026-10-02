@@ -24,7 +24,8 @@ class TestMLX(unittest.TestCase):
         def fake_get(url, **_):
             if "/tree/" in url:
                 return SHARDED if "4bit" in url else [{"type": "file", "path": "model.safetensors", "size": 40 * GB}]
-            return [{"id": "mlx-community/Coder-4bit", "downloads": 5}, {"id": "mlx-community/Huge-bf16", "downloads": 9}]
+            return [{"id": "mlx-community/Coder-4bit", "downloads": 5}, {"id": "mlx-community/Huge-bf16", "downloads": 9},
+                    {"id": "mlx-community/Qwen3-Embedding-0.6B-4bit", "downloads": 99}]   # tagged text-generation, can't chat
         with patch.object(huggingface, "get_json", side_effect=fake_get):
             offers = mlx.search("", 12 * GB)
         self.assertEqual([(o.name, o.rating, o.note, o.source) for o in offers],
