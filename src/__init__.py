@@ -1,4 +1,4 @@
-"""ClydeCLI - Python AI coding agent CLI."""
+"""ClydeCLI - a Python coding-agent harness for any LLM."""
 
 __version__ = "0.1.0"
 __author__ = "dea6cat"
