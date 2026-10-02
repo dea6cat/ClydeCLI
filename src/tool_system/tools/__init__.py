@@ -13,6 +13,7 @@ from .code_map import MapTool
 from .lsp import LSPTool
 from .mcp import MCPTool
 from .mcp_resources import ListMcpResourcesTool, ReadMcpResourceTool
+from .data import DataTool
 from .misc import NotebookEditTool, PowerShellTool, SendMessageTool
 from .plan_mode import EnterPlanModeTool, ExitPlanModeTool
 from .read import FileReadTool
@@ -31,6 +32,7 @@ from .worktree import EnterWorktreeTool, ExitWorktreeTool
 from .write import FileWriteTool
 
 __all__ = [
+    "DataTool",
     "AgentTool",
     "AskUserQuestionTool",
     "BashTool",
