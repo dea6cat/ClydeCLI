@@ -280,7 +280,21 @@ def handle_setup(console: Console, assume_yes: bool = False) -> int:
     else:
         console.print("• Install the code map builder later for the Map tool: [bold]uv tool install graphifyy[/bold].")
 
-    # 7) PATH
+    # 7) Laya's weights: a large download, so only after a yes (never with --yes)
+    from src.providers import laya_client
+    if laya_client.cached():
+        console.print("✓ Laya (the bundled decision model) is downloaded.")
+    elif not assume_yes and Confirm.ask(
+            f"Download Laya's model ({laya_client.DOWNLOAD_SIZE}) so cardShuffle can spot a stuck model?", default=True):
+        env = {k: v for k, v in os.environ.items() if k != "HF_HUB_OFFLINE"}
+        script = "from src.providers.laya_client import _WARMUP; import laya; laya.Router().predict(*_WARMUP)"
+        done = subprocess.run([sys.executable, "-c", script], env=env, check=False)
+        console.print("✓ Laya downloaded." if done.returncode == 0 and laya_client.cached()
+                      else "[yellow]Laya's download didn't finish; run clyde setup again to retry.[/yellow]")
+    else:
+        console.print(f"• Laya's model isn't downloaded ({laya_client.DOWNLOAD_SIZE}); run [bold]clyde setup[/bold] to get it.")
+
+    # 8) PATH
     if not _clyde_bin_on_path() and shutil.which("uv"):
         if not assume_yes and Confirm.ask("clyde isn't on your PATH yet. Add uv's tool folder to it (uv tool update-shell)?", default=True):
             subprocess.run(["uv", "tool", "update-shell"], check=False)

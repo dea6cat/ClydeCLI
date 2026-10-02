@@ -613,11 +613,14 @@ def doctor_command_call(args: str, context: CommandContext) -> LocalCommandResul
     else:
         lines.append(_check(True, f"Python {running}" + (f" (requires {spec}, not checked)" if spec else "")))
 
-    for dep in ("rich", "prompt-toolkit", "tiktoken"):
+    for dep in ("rich", "prompt-toolkit", "tiktoken", "laya"):
         try:
             lines.append(_check(True, f"{dep} {version(dep)}"))
         except PackageNotFoundError:
             lines.append(_check(False, f"{dep} not installed", f"pip install {dep}"))
+    from ..providers import laya_client
+    lines.append(_check(laya_client.cached(), f"Laya model {'downloaded' if laya_client.cached() else 'not downloaded'} "
+                        f"({laya_client.status()})", "run clyde setup to download it"))
 
     config_path = get_config_path()
     saved_model = None

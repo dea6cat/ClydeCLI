@@ -25,6 +25,8 @@ dependencies = [
     "rich",
     "prompt-toolkit",
     "tiktoken>=0.7.0",
+    # Bundled local decision model (github.com/NandhaKishorM/laya); pinned, it pins its own weights.
+    "laya==0.3.23",
 ]
 
 [project.optional-dependencies]
