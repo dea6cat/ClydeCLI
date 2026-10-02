@@ -81,6 +81,7 @@ from datetime import datetime
 from typing import Any
 
 from src.agent import Session, trace
+from src.agent.checkpoints import Checkpoints
 from src.agent.conversation import ImageContentBlock
 from src.compact_service.service import auto_compact_threshold, compact_conversation, needs_auto_compact
 from src.context_system.context_analyzer import get_context_window_for_model
@@ -208,6 +209,7 @@ _HELP_TEXT = """
 - `/mcp login <server>` / `/mcp logout <server>` - OAuth sign-in for a remote MCP server (opens your browser), or forget its tokens
 - `/plugins` - Show loaded plugins and what each added
 - `/debug [path]` - Show the last turn's model and tool calls from the trace, or the trace file path
+- `/rewind` - Undo the model's file edits and/or the conversation back to before one of your messages
 - `/check` - Run the project's ruff, mypy and pytest and show a summary
 
 **Usage:**
@@ -317,6 +319,7 @@ class ClydeREPL:
 
         # Create session
         self.session = Session.create(self.provider_name, self.model)
+        self.checkpoints = Checkpoints(self.session.session_id)
         trace.start(self.session.session_id, **self._trace_options)
 
         self.tool_registry = build_default_registry()
@@ -329,6 +332,7 @@ class ClydeREPL:
         self._mcp_servers, self._mcp_errors = servers, {}
         self._connect_mcp_servers(servers)
         self.tool_context.ask_user = self._ask_user_questions
+        self.tool_context.before_edit = lambda path: self.checkpoints.snapshot(path)
         # Session-scoped cron: due jobs are queued here and run only between turns.
         self._cron_checked_at = datetime.now()
         self._cron_queue: list[dict[str, Any]] = []
@@ -350,6 +354,7 @@ class ClydeREPL:
             "/mcp",
             "/plugins",
             "/debug",
+            "/rewind",
             "/laya",
             "/multiline",
             "/stream",
@@ -999,10 +1004,12 @@ class ClydeREPL:
                 self._refresh_completer()
                 # Dynamic prompt based on multiline mode
                 # Using '❯' for a modern feel
+                prefill, self._prefill = getattr(self, "_prefill", ""), ""
                 user_input = self.prompt_session.prompt(
                     self._prompt_message,
                     multiline=self.multiline_mode,
                     pre_run=self._start_cron_watch,
+                    default=prefill,   # /rewind puts the rewound message back for editing
                 )
                 if user_input is _CRON_WAKE:
                     continue
@@ -1274,6 +1281,8 @@ class ClydeREPL:
 
         elif cmd == '/plugins':
             self._print_plugins()
+        elif cmd == '/rewind':
+            self._rewind()
         elif cmd == '/laya':
             self._show_laya()
         elif cmd == '/debug' or cmd.startswith('/debug '):
@@ -1598,6 +1607,54 @@ class ClydeREPL:
             trace.record("mcp_error", server=name, error=error)
             self.console.print(f"[yellow]MCP server '{name}' not connected: {error}[/yellow]", markup=True)
 
+    def _rewind(self) -> None:
+        """Pick a checkpoint and put files and/or the conversation back to before that message."""
+        from rich.prompt import Prompt
+
+        cps = self.checkpoints.list()[-15:]
+        if not cps:
+            self.console.print("Nothing to rewind yet: checkpoints start with your next message.")
+            return
+        table = Table(box=None, pad_edge=False, header_style=_CARD_DIM, show_edge=False)
+        for col in ("#", "time", "files", "your message"):
+            table.add_column(col, overflow="ellipsis", no_wrap=True, justify="right" if col in ("#", "files") else "left")
+        for cp in reversed(cps):
+            table.add_row(str(cp.number), cp.at[11:16], str(len(cp.files)), cp.prompt.replace("\n", " ")[:90])
+        self.console.print(table)
+        with self._esc.paused():
+            pick = Prompt.ask("Rewind to before which # (Enter to cancel)", default="", show_default=False,
+                              console=self.console).strip()
+        cp = next((c for c in cps if str(c.number) == pick), None)
+        if cp is None:
+            self.console.print("Nothing rewound." if not pick else f"No checkpoint {pick}.")
+            return
+        messages = self.session.conversation.messages
+        first = messages[cp.message_index] if cp.message_index < len(messages) else None
+        first_text = first.content if first is not None and isinstance(first.content, str) else \
+            next((b.text for b in (first.content if first is not None else []) if getattr(b, "type", "") == "text"), "")
+        talk_ok = first is not None and first.role == "user" and first_text.startswith(cp.prompt[:100])
+        options = ["c", "f", "m"] if talk_ok else ["f"]
+        if talk_ok:
+            menu = "c = code and conversation, f = files only, m = conversation only"
+        else:
+            menu = "f = files only (the conversation was compacted or cleared since, so it can't be cut there)"
+        with self._esc.paused():
+            what = Prompt.ask(menu, choices=options, default=options[0], console=self.console)
+        if what in ("c", "f"):
+            restored, problems = self.checkpoints.restore(cp.number)
+            for line in restored:
+                self.console.print(f"  [green]↺[/green] {line}", highlight=False)
+            for line in problems:
+                self.console.print(f"  [yellow]✗ {line}[/yellow]", highlight=False)
+            if not restored and not problems:
+                self.console.print("  No files had been edited since then.")
+        if what in ("c", "m"):
+            del messages[cp.message_index:]
+            self._prefill = first_text
+            self.console.print("  Conversation rewound; your message is back in the prompt to edit or resend.")
+        self.console.print(Text("Changes made by shell commands (rm, mv, scripts) aren't covered by /rewind.", style=_CARD_DIM))
+        self._autosave_session()
+
     def _show_laya(self) -> None:
         """Laya's status, and how its judgments lined up with how traced turns ended."""
         from src.providers.card_shuffle import laya_report
@@ -1716,6 +1773,7 @@ class ClydeREPL:
         trace.record("turn", provider=self.provider_name, model=self.model, prompt_chars=len(user_input))
         self._maybe_auto_compact()
         # Add user message
+        self.checkpoints.begin(user_input, len(self.session.conversation.messages))
         self.session.conversation.add_user_message(user_input, self._attached_images(user_input))
         if isinstance(self.provider, CardShuffle):
             self.provider.mode, self.provider.on_deal = self.mode, self._show_deal
@@ -2209,6 +2267,7 @@ class ClydeREPL:
     def _switch_session(self, loaded_session) -> None:
         saved_model = f"{loaded_session.provider}:{loaded_session.model}"
         self.session = loaded_session
+        self.checkpoints = Checkpoints(loaded_session.session_id)   # its checkpoints, for /rewind
         trace.start(loaded_session.session_id, **self._trace_options)
         self.command_context.conversation = loaded_session.conversation   # /clear, /compact act on it
         # Keep the model in use: the saved one may not be connected any more.
