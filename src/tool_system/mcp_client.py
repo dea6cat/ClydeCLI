@@ -16,6 +16,10 @@ Gemini CLI's `httpUrl` means Streamable HTTP. `${VAR}` in a url or header comes 
 Remote servers authenticate with headers, or with OAuth: `/mcp login <server>` signs in once
 (see mcp_oauth.py) and the token rides on every request after that, refreshed as it expires.
 
+A project can ship its own servers in `.mcp.json` at its root (Claude Code's format). They run
+commands from a repository you may not have written, so each one starts only after you say yes, and
+that yes covers that exact entry: a changed command asks again. Your settings win on a name clash.
+
 Each server's tools are registered as `mcp__<server>__<tool>`; resources are reachable through
 ListMcpResourcesTool / ReadMcpResourceTool.
 """
@@ -23,6 +27,7 @@ ListMcpResourcesTool / ReadMcpResourceTool.
 from __future__ import annotations
 
 import atexit
+import hashlib
 import itertools
 import json
 import os
@@ -157,6 +162,66 @@ class McpClient:
 
     def read_resource(self, uri: str) -> dict[str, Any]:
         return self.request("resources/read", {"uri": uri}) or {}
+
+
+_VAR = re.compile(r"\$\{(\w+)(?::-([^}]*))?\}")
+
+
+def _expand_vars(value: Any) -> Any:
+    """${VAR} and ${VAR:-default} from the environment, through strings, lists and dicts (as Claude
+    Code expands .mcp.json); an unset variable without a default is left as written."""
+    if isinstance(value, str):
+        return _VAR.sub(lambda m: os.environ.get(m.group(1), m.group(2) if m.group(2) is not None else m.group(0)), value)
+    if isinstance(value, list):
+        return [_expand_vars(v) for v in value]
+    if isinstance(value, dict):
+        return {k: _expand_vars(v) for k, v in value.items()}
+    return value
+
+
+def project_servers(root: Path) -> dict[str, dict[str, Any]]:
+    """`mcpServers` from <root>/.mcp.json, as written (expansion happens once approved); {} when absent."""
+    return load_servers(Path(root) / ".mcp.json")
+
+
+def _approvals_path() -> Path:
+    return Path.home() / ".clyde" / "mcp_project_approvals.json"
+
+
+def _approval_key(root: Path, name: str, cfg: dict[str, Any]) -> str:
+    digest = hashlib.sha256(json.dumps(cfg, sort_keys=True).encode()).hexdigest()[:16]
+    return f"{Path(root).resolve()}::{name}::{digest}"
+
+
+def project_approval(root: Path, name: str, cfg: dict[str, Any]) -> bool | None:
+    """True or False when this exact entry was answered before; None when it's new or changed."""
+    try:
+        answers = json.loads(_approvals_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    value = answers.get(_approval_key(root, name, cfg)) if isinstance(answers, dict) else None
+    return value if isinstance(value, bool) else None
+
+
+def set_project_approval(root: Path, name: str, cfg: dict[str, Any], allowed: bool) -> None:
+    path = _approvals_path()
+    try:
+        answers = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        answers = {}
+    answers = answers if isinstance(answers, dict) else {}
+    answers[_approval_key(root, name, cfg)] = allowed
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(answers, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def describe_server(cfg: dict[str, Any]) -> str:
+    """One line saying what a server entry runs or reaches; never env or header values."""
+    if cfg.get("command"):
+        env = f"  (env: {', '.join(cfg['env'])})" if cfg.get("env") else ""
+        return " ".join([str(cfg["command"]), *map(str, cfg.get("args", []))]) + env
+    url = cfg.get("httpUrl") or cfg.get("url") or cfg.get("serverUrl")
+    return f"{url}" + (f"  (headers: {', '.join(cfg['headers'])})" if cfg.get("headers") else "")
 
 
 class McpStdioClient(McpClient):
