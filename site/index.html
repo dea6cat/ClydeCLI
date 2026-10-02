@@ -150,7 +150,14 @@
          font: 12.5px/1.7 var(--mono); padding: 10px 14px; min-height: 98px; }
   .log .line { display: block; animation: rise .3s var(--ease) both; }
   @keyframes rise { from { opacity: 0; transform: translateY(4px); } }
-  .illus { font-size: 12.5px; color: var(--dim); margin: 14px 0 0; }
+  .illus { font-size: 14px; color: var(--dim); margin: 14px 0 0; }
+  .laya { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 40px; margin-top: 56px; align-items: start; }
+  .laya > * { min-width: 0; }
+  .laya h3 { margin: 0 0 8px; font-size: var(--t-1); font-weight: 700; letter-spacing: -0.015em; line-height: 1.2; }
+  .laya p { margin: 0; color: var(--dim); }
+  .laya .state { display: inline-block; margin-top: 12px; font-size: 14px; font-weight: 600; border-radius: 999px; padding: 3px 12px; border: 1px solid var(--line); }
+  .laya .state.on { color: var(--green); border-color: var(--green); }
+  @media (max-width: 960px) { .laya { grid-template-columns: 1fr; gap: 28px; } }
 
   /* Bento: five tiles, varied sizes and surfaces */
   .bento { display: grid; grid-template-columns: repeat(6, 1fr); gap: 16px; }
@@ -307,6 +314,23 @@
       </div>
     </div>
     <p class="illus">An illustration with example models and scores; your table is ranked from your own <code>/eval</code> results.</p>
+
+    <div class="laya">
+      <div>
+        <h3>Laya keeps the table honest</h3>
+        <p>Laya is a small decision model bundled with Clyde. It runs on your machine, with no key and no network, and answers in about a tenth of a second.</p>
+      </div>
+      <div>
+        <h3>Is the model going in circles?</h3>
+        <p>From the sixth tool call, every third round, Laya checks whether the dealt model keeps repeating itself. A confident yes hands the turn to the next card.</p>
+        <span class="state on">Acting</span>
+      </div>
+      <div>
+        <h3>How hard is this request?</h3>
+        <p>Every turn gets a difficulty score. It starts in shadow, and steers <code>house</code> only after your own turns show harder-scored requests really take more work. <code>/laya</code> shows the evidence.</p>
+        <span class="state">Shadow until proven</span>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -556,7 +580,7 @@ the assertion and the likely cause.
     line('<span class="g">❯</span> ' + esc(ASK));
     line("");
     await wait(400);
-    line('<span class="g">♠ dealt </span>nvidia:nemotron-3-super<span class="d">  house: the middle card</span>');
+    line('<span class="g">♠ dealt </span>glm:glm-5<span class="d">  house · laya difficulty 1.5/3 (shadow)</span>');
     for (var i = 0; i < TOOLS.length; i++) {
       var t = TOOLS[i]; if (!alive()) return;
       var head = '<span class="d">•</span> <span class="g">' + t.name + '</span> <span class="d">(' + esc(t.arg) + ")</span>";
@@ -588,7 +612,8 @@ the assertion and the likely cause.
     free:  [["5♣", "ollama:qwen3:14b", "7/11 · local"], ["4♦", "lmstudio:gemma-4-12b", "6/11 · local"], ["3♠", "ollama:llama3.2:3b", "3/11 · local"]],
     small: [["2♥", "mistral:ministral-3b", "3/11 · 0.9s"], ["3♣", "ollama:llama3.2:3b", "3/11 · local"], ["4♠", "nvidia:nemotron-nano", "5/11 · 1.4s"]]
   };
-  var REASONS = ["HTTP 429 rate limited", "no response for 180 s; the endpoint stalled", "stuck: same tool call 3 times (Laya)"];
+  var REASONS = ["failed: HTTP 429 rate limited", "looked stuck (laya 0.91)", "failed: no response for 180 s; the endpoint stalled"];
+  var LAYA = { high: "1.8", house: "1.5", free: "1.4", small: "0.8" };   // example difficulty scores
   var deck = document.getElementById("deck"), log = document.getElementById("log");
   var dealBtn = document.getElementById("deal"), failBtn = document.getElementById("fail");
   var hand = [], pos = 0, busy = false;
@@ -624,13 +649,15 @@ the assertion and the likely cause.
     if (busy) return; busy = true; dealBtn.disabled = true; failBtn.disabled = true;
     log.innerHTML = ""; hand = DECK[tier()]; pos = 0;
     say('<span class="d">♠ shuffling the</span> ' + tier() + ' <span class="d">tier…</span>');
-    await shuffle(); await flip(0);
+    await shuffle();
+    say('<span class="d">laya difficulty</span> ' + LAYA[tier()] + '/3 <span class="d">(shadow)</span>');
+    await flip(0);
     busy = false; dealBtn.disabled = false; failBtn.disabled = false;
   });
   failBtn.addEventListener("click", async function () {
     if (busy || !hand.length) return; busy = true; failBtn.disabled = true; dealBtn.disabled = true;
     var cur = deck.lastElementChild;
-    say('<span class="r">✗</span> ' + esc(hand[pos][1]) + ' <span class="d">failed: ' + REASONS[pos % REASONS.length] + "</span>");
+    say('<span class="r">✗</span> ' + esc(hand[pos][1]) + ' <span class="d">' + REASONS[pos % REASONS.length] + "</span>");
     if (cur) { cur.classList.add("burn"); await wait(420); cur.remove(); }
     pos++;
     if (pos < hand.length) {
