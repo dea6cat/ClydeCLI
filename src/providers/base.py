@@ -127,7 +127,7 @@ def http_error_message(code: int, body: str, reason: str) -> str:
     """One readable line for a provider HTTP error: `HTTP <code> — <cause>: <provider message>`."""
     msg = _error_text(body) if body.strip() else (reason or "")
     low = msg.lower()
-    if code == 401:
+    if code == 401 or (code in (400, 403) and any(w in low for w in _AUTH_WORDS)):
         hint = "authentication failed, check the API key (clyde login)"
     elif code == 402 or any(w in low for w in _CREDIT_WORDS):
         hint = "out of credits or billing not set up on this account"
@@ -146,8 +146,16 @@ def http_error_message(code: int, body: str, reason: str) -> str:
     return f"HTTP {code} — {hint}: {msg}" if hint else f"HTTP {code}: {msg}"
 
 
+# How providers that don't answer 401 say the key itself is wrong (Google: 400 "API key not valid").
+_AUTH_WORDS = ("api key not valid", "invalid api key", "invalid_api_key", "incorrect api key", "invalid x-api-key",
+               "api key expired", "api_key_invalid", "invalid authentication", "invalid token", "unauthenticated")
+
+
 def is_auth_error(exc: BaseException) -> bool:
-    return isinstance(exc, ProviderError) and exc.status == 401
+    """A rejected key: any 401, or a 400/403 whose message says the key or token is bad."""
+    if not isinstance(exc, ProviderError):
+        return False
+    return exc.status == 401 or (exc.status in (400, 403) and any(w in str(exc).lower() for w in _AUTH_WORDS))
 
 
 def _http_error(e: urllib.error.HTTPError, provider: str) -> ProviderError:

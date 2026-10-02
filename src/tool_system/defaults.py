@@ -27,9 +27,7 @@ from .tools import (
     MCPTool,
     NotebookEditTool,
     PowerShellTool,
-    REPLTool,
     ReadMcpResourceTool,
-    RemoteTriggerTool,
     SendMessageTool,
     SendUserMessageTool,
     SkillTool,
@@ -90,10 +88,8 @@ def build_default_registry(*, include_user_tools: bool = True) -> ToolRegistry:
             CronDeleteTool(),
             SendMessageTool(),
             StructuredOutputTool(),
-            RemoteTriggerTool(),
             PowerShellTool(),
             NotebookEditTool(),
-            REPLTool(),
             MapTool(),
         ]
     )

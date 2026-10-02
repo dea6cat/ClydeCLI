@@ -70,6 +70,7 @@ except ModuleNotFoundError:  # pragma: no cover
 from pathlib import Path
 import asyncio
 import base64
+import os
 import random
 import time
 from contextlib import contextmanager
@@ -1694,7 +1695,7 @@ class ClydeREPL:
             return
         self.console.print(f"[green]{result.user_display_message}[/green]")
 
-    def chat(self, user_input: str, max_turns: int = 20):
+    def chat(self, user_input: str, max_turns: int = 20, _auth_retry: bool = False):
         """Send message to LLM and display response.
 
         Args:
@@ -1863,17 +1864,8 @@ class ClydeREPL:
             self._current_status = None
             if is_auth_error(e):
                 self.console.print(f"\n[red]❌ {e}[/red]")
-                from rich.prompt import Prompt
-                self._esc.stop()
-                choice = Prompt.ask(
-                    "\nWould you like to reconfigure your API key now?",
-                    choices=["y", "n"],
-                    default="y"
-                )
-                if choice == "y":
-                    self._handle_relogin()
-                else:
-                    self.console.print("\n[dim]You can run [bold]clyde login[/bold] later to update your API key.[/dim]")
+                if self._recover_auth() and not _auth_retry:
+                    self._retry_last(user_input, max_turns)
             elif isinstance(e, ProviderError):
                 self.console.print(f"\n[red]❌ {e}[/red]")
             else:
@@ -2069,6 +2061,68 @@ class ClydeREPL:
         supports = getattr(self.provider, "supports_reasoning", None)
         if self.reasoning and callable(supports) and not supports(self.model):
             self.console.print(f"[dim]{self.model} doesn't expose a reasoning control; the setting is ignored.[/dim]")
+
+    def _recover_auth(self) -> bool:
+        """After a rejected key: re-enter just this provider's key (k), switch provider or model (s), or
+        leave it (n). True when a new key or model is in place."""
+        from rich.prompt import Prompt
+
+        key_name = "ollama" if self.provider_name == "ollama-cloud" else self.provider_name
+        can_rekey = key_name in keys.PROVIDER_KEY_ENV
+        options = (["k"] if can_rekey else []) + ["s", "n"]
+        menu = (f"k = new {self.provider_name} key, " if can_rekey else "") + "s = switch provider or model, n = not now"
+        self._esc.stop()
+        choice = Prompt.ask(f"\nFix it now? ({menu})", choices=options, default=options[0], console=self.console)
+        if choice == "n":
+            self.console.print("\n[dim]Run [bold]clyde login[/bold] or /model later to fix it.[/dim]")
+            return False
+        if choice == "s":
+            before = (self.provider_name, self.model)
+            self._handle_relogin()
+            return (self.provider_name, self.model) != before
+        return self._rekey(key_name)
+
+    def _rekey(self, key_name: str) -> bool:
+        """Ask for the current provider's key only, save it, and keep the same model."""
+        from src.cli import prompt_secret
+
+        env = keys.PROVIDER_KEY_ENV[key_name]
+        try:
+            saved = keys._load().get(key_name)
+        except keys.KeysFileError:
+            saved = None
+        from_shell = bool(os.environ.get(env)) and os.environ.get(env) != saved
+        key = prompt_secret(f"New {self.provider_name} API key")
+        if not key:
+            self.console.print("[dim]No key entered; nothing changed.[/dim]")
+            return False
+        keys.connect(key_name, key)
+        ref = model_ref(self.provider, self.model)
+        self.registry = build_registry()
+        resolved = resolve(self.registry, ref)
+        if resolved is None:
+            self.console.print(f"[yellow]Saved the key, but {ref} isn't available with it.[/yellow] Pick another with /model.")
+            return False
+        self.provider, self.model = resolved
+        self.provider_name = self.provider.name
+        self.console.print(f"[green]✓ New {self.provider_name} key saved.[/green]")
+        if from_shell:
+            self.console.print(f"[yellow]Your shell exports {env} with the old key, and it overrides the saved one when "
+                               f"ClydeCLI starts.[/yellow] Update or remove it in your shell profile.")
+        return True
+
+    def _retry_last(self, user_input: str, max_turns: int) -> None:
+        """Send the message that hit the rejected key once more, with the fixed key or model."""
+        messages = self.session.conversation.messages
+        last = messages[-1] if messages else None
+        text = last.content if last is not None and isinstance(last.content, str) else \
+            next((b.text for b in (last.content if last is not None else []) if getattr(b, "type", "") == "text"), None)
+        if last is None or last.role != "user" or text != user_input:
+            self.console.print("[dim]Fixed. Send your message again to continue.[/dim]")
+            return
+        messages.pop()   # chat() adds it again
+        self.console.print(Text("Retrying your message…", style=_CARD_DIM))
+        self.chat(user_input, max_turns, _auth_retry=True)
 
     def _handle_relogin(self):
         """Handle re-authentication when an API key fails."""

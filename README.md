@@ -282,7 +282,6 @@ clyde --version                # Check version
 | MCP | MCP, ListMcpResources, ReadMcpResource, `mcp__<server>__<tool>` | ✅ Stdio, Streamable HTTP and HTTP+SSE servers from `~/.clyde/settings.json`; header auth or OAuth sign-in (`/mcp login`) |
 | Code map | Map | ✅ query / path / explain / affected / god_nodes over a map of the repo, refreshed when ClydeCLI starts |
 | LSP | LSP | ✅ Definition, references, hover, symbols and call hierarchy via a language server on PATH |
-| Not implemented | RemoteTrigger, REPL | ⏳ Stubs that return an error |
 
 ### Roadmap
 
