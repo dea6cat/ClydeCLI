@@ -273,6 +273,7 @@ to do. The session is saved, so `clyde -c` picks the conversation up interactive
 | Skill System | ✅ | SKILL.md slash-command skills with args + tool limits |
 | Context Building | ✅ | Workspace snapshot, git status, a README excerpt, entry points, the code map and memory files go into the prompt: `~/.clyde/CLYDE.md` (user), `CLYDE.md` (project, shared) and `CLYDE.local.md` (project, personal, keep it gitignored). Files written for other agents are read too: `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, `.cursorrules`, `.github/copilot-instructions.md` (one per folder, first found wins) |
 | Permissions | ✅ | Bash asks for any command that is not read-only (dangerous patterns are refused), Write/Edit ask for docs files, Config asks before a change, WebFetch asks per domain. Answer "don't ask again" or add `permissions.allow` / `deny` rules (Claude Code syntax) to `~/.clyde/settings.json` |
+| Sandbox | ✅ | Shell commands write only to the project, temp and package caches (macOS `sandbox-exec`, Linux `bwrap`); `unsandboxed: true` always asks |
 | Sessions | ✅ | Auto-saved after each turn; `/resume` picker per workspace, `clyde -c` / `clyde --resume [id]` |
 | Checkpoints | ✅ | `/rewind` undoes the model's file edits and/or the conversation back to before any of your messages; saved per session, so they survive `/resume` |
 | Cost Tracking | ✅ | `/cost` shows input, output and cache tokens per model with an estimated $ total from catalog prices |
@@ -293,7 +294,7 @@ to do. The session is saved, so `clyde -c` picks the conversation up interactive
 |----------|-------|--------|
 | Files | Read, Write, Edit, NotebookEdit, Glob, Grep | ✅ Working; Edit also lands a unique match that is off only by trailing whitespace or indentation |
 | Data | Data | ✅ Profile CSV, TSV, Parquet, JSON and SQLite files (types, nulls, distinct counts, min/max, samples) and run read-only SQL across them with DuckDB, sandboxed to the workspace |
-| System | Bash | ✅ Working; asks before commands that are not read-only |
+| System | Bash | ✅ Working; asks before commands that are not read-only, and runs in the OS sandbox |
 | Web | WebFetch, WebSearch | ✅ Working |
 | Interaction | AskUserQuestion, SendUserMessage | ✅ Working |
 | Tasks | TodoWrite, TaskCreate/Get/List/Update/Output/Stop | ✅ Working |
@@ -667,6 +668,26 @@ elsewhere it's refused). When the model can't read images (the catalog says so, 
 list vision), pasting says so, and sending drops the image with a note instead of failing; models
 the catalog doesn't know get the image. Clipboard images use `osascript` on macOS and `wl-paste` or
 `xclip` on Linux.
+
+### Sandbox
+
+*You can look at the whole table. You only touch your own chips.*
+
+Every shell command the model runs goes through an OS sandbox: it can read anything and use the
+network, but it can **write only** inside the project (and extra working directories), temp folders
+and package caches (`~/.cache`, `~/Library/Caches`, npm, pnpm, yarn, bun, cargo, gradle, maven, Go,
+Dart/Flutter pub). macOS uses the built-in `sandbox-exec`; Linux uses `bwrap` (install bubblewrap);
+elsewhere commands run unsandboxed and `/doctor` says so. Your hooks aren't sandboxed: they're yours.
+
+A blocked write fails with "Operation not permitted" plus a hint, so the model knows why. A command
+that really has to write elsewhere (a global install, a dotfile) can ask to run with
+`unsandboxed: true`, and that **always asks you**, even in all-in mode (`clyde -p` denies it).
+
+```json
+{"sandbox": {"enabled": true, "network": true, "allow_write": ["~/.local/bin"]}}
+```
+
+`network: false` blocks everything but localhost; `allow_write` adds folders; `enabled: false` turns it off.
 
 ### Permission Rules
 
