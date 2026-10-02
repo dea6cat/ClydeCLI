@@ -10,6 +10,7 @@ import json
 import threading
 import time as _time
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from typing import Callable, Protocol
@@ -175,14 +176,34 @@ def _request(url: str, payload: dict, headers: dict | None) -> urllib.request.Re
     return urllib.request.Request(url, data=json.dumps(payload).encode(), headers=hdrs, method="POST")
 
 
+# A remote stream that sends nothing for this long has stalled: give up instead of holding the turn
+# for the full read timeout. Local servers keep 600 s, since loading a model can be that slow.
+# ponytail: one fixed value; a per-provider setting if some endpoint legitimately idles longer.
+STALL_TIMEOUT = 180
+_LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1", "0.0.0.0")
+
+
+def _stall_timeout(url: str) -> int:
+    return 600 if urllib.parse.urlsplit(url).hostname in _LOCAL_HOSTS else STALL_TIMEOUT
+
+
+def _stalled(provider: str, timeout) -> ProviderError:
+    # Not retried: a stalled endpoint usually stalls again, and cardShuffle re-deals on any error.
+    return ProviderError(provider, f"no response for {timeout} s; the endpoint stalled. Try again or switch model")
+
+
 def _open(req, timeout, provider, cancel):
     try:
         return urllib.request.urlopen(req, timeout=timeout)
+    except TimeoutError as e:                                       # waiting for the response headers
+        raise _stalled(provider, timeout) from e
     except urllib.error.HTTPError as e:
         raise _http_error(e, provider) from e
     except urllib.error.URLError as e:
         if cancel is not None and cancel.is_set():
             raise _Cancelled() from e
+        if isinstance(e.reason, TimeoutError):
+            raise _stalled(provider, timeout) from e
         raise ProviderError(provider, f"connection failed: {e.reason}", retryable=True) from e
 
 
@@ -205,12 +226,14 @@ def post_json(url: str, payload: dict, headers: dict | None = None, timeout: int
         _unregister(resp)
 
 
-def post_stream(url: str, payload: dict, headers: dict | None = None, timeout: int = 600,
+def post_stream(url: str, payload: dict, headers: dict | None = None, timeout: int | None = None,
                 provider: str = "http", cancel=None):
     """POST JSON and yield decoded response lines as they arrive (NDJSON / SSE). Raises
-    ProviderError on connection/HTTP failure, or _Cancelled when the cancel Event is set."""
+    ProviderError on connection/HTTP failure or a stall (no bytes for `timeout`, by default
+    STALL_TIMEOUT for remote hosts), or _Cancelled when the cancel Event is set."""
     if cancel is not None and cancel.is_set():
         raise _Cancelled()
+    timeout = timeout or _stall_timeout(url)
     resp = _open(_request(url, payload, headers), timeout, provider, cancel)
     _register(resp)
     try:
@@ -222,6 +245,8 @@ def post_stream(url: str, payload: dict, headers: dict | None = None, timeout: i
     except (OSError, ValueError) as e:
         if cancel is not None and cancel.is_set():
             raise _Cancelled() from e
+        if isinstance(e, TimeoutError):
+            raise _stalled(provider, timeout) from e
         raise ProviderError(provider, f"stream read failed: {e}", retryable=True) from e
     finally:
         _unregister(resp)
