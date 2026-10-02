@@ -27,6 +27,7 @@ class ModelInfo:
     output_per_mtok: float | None = None
     cache_read_per_mtok: float | None = None
     cache_write_per_mtok: float | None = None
+    supports_images: bool | None = None   # None: the catalog doesn't say
 
 
 _PRICE_FIELDS = ("input_per_mtok", "output_per_mtok", "cache_read_per_mtok", "cache_write_per_mtok")
@@ -46,6 +47,7 @@ def _load() -> dict[str, ModelInfo]:
                 context_window=int(v["context_window"]),
                 default_max_tokens=int(v["default_max_tokens"]),
                 **{f: float(v[f]) for f in _PRICE_FIELDS if v.get(f) is not None},
+                supports_images=v["supports_images"] if isinstance(v.get("supports_images"), bool) else None,
             )
     except Exception:
         table = {}

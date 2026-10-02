@@ -98,7 +98,7 @@ from src.tool_system.context import ToolContext
 from src.plugins import apply_plugins
 from src.tool_system.hooks import load_hooks
 from src.repl.esc import EscWatcher
-from src.repl.images import IMAGE_TYPES, MAX_IMAGE_BYTES, clipboard_image, image_path
+from src.repl.images import IMAGE_TYPES, MAX_IMAGE_BYTES, clipboard_image, image_path, shrink
 from src.tool_system.permission_rules import load_rules, save_allow_rule
 from src.tool_system.tools.code_map import start_background_refresh
 from src.tool_system.mcp_client import McpServerTool, connect_servers, load_servers
@@ -439,16 +439,43 @@ class ClydeREPL:
         self._add_rule_under_input()
 
     def _insert_image(self, buffer, data: bytes | None, media_type: str) -> None:  # type: ignore[no-untyped-def]
-        """Keep a pasted image and type its [Image #N] marker at the cursor, or say why there is none."""
-        if not data or len(data) > MAX_IMAGE_BYTES:
-            from prompt_toolkit.application import run_in_terminal
+        """Keep a pasted image and type its [Image #N] marker at the cursor, or say why there is none.
+        An image over the size cap is shrunk when it can be; a model that can't read images is named."""
+        from prompt_toolkit.application import run_in_terminal
 
-            note = "No image on the clipboard." if not data else f"Image is over {MAX_IMAGE_BYTES // 2**20} MB, not attached."
-            run_in_terminal(lambda: self.console.print(Text(note, style=_CARD_DIM)))
-            return
-        number = len(self._pastes) + 1
-        self._pastes[number] = ImageContentBlock(media_type=media_type, data=base64.b64encode(data).decode("ascii"))
-        buffer.insert_text(f"[Image #{number}]")
+        notes = []
+        if data and len(data) > MAX_IMAGE_BYTES:
+            small = shrink(data)
+            if small is None:
+                data = None
+                notes.append(f"Image is over {MAX_IMAGE_BYTES // 2**20} MB and couldn't be shrunk, not attached.")
+            else:
+                notes.append(f"Image was over {MAX_IMAGE_BYTES // 2**20} MB; shrank it to {len(small) / 2**20:.1f} MB.")
+                data, media_type = small, "image/jpeg"
+        elif not data:
+            notes.append("No image on the clipboard.")
+        if data:
+            number = len(self._pastes) + 1
+            self._pastes[number] = ImageContentBlock(media_type=media_type, data=base64.b64encode(data).decode("ascii"))
+            buffer.insert_text(f"[Image #{number}]")
+            if self._reads_images() is False:
+                notes.append(f"{model_ref(self.provider, self.model)} can't read images: it would get the text only. "
+                             "Switch with /model before sending to include it.")
+        for note in notes:
+            run_in_terminal(lambda note=note: self.console.print(Text(note, style=_CARD_DIM)))
+
+    def _reads_images(self) -> bool | None:
+        """Whether the current model takes images: Ollama asks the server, others the catalog; None when unknown."""
+        if isinstance(self.provider, CardShuffle):
+            return None
+        ask = getattr(self.provider, "reads_images", None)
+        if callable(ask):
+            try:
+                return ask(self.model)
+            except Exception:
+                return None
+        info = catalog.lookup(self.model.rsplit("/", 1)[-1])
+        return info.supports_images if info is not None else None
 
     def _collapse_text(self, text: str) -> str:
         """A long paste as a [Pasted text #N +X lines] marker (kept, expanded on send); short ones as is."""
@@ -1803,7 +1830,12 @@ class ClydeREPL:
         self._maybe_auto_compact()
         # Add user message
         self.checkpoints.begin(user_input, len(self.session.conversation.messages))
-        self.session.conversation.add_user_message(user_input, self._attached_images(user_input))
+        images = self._attached_images(user_input)
+        if images and self._reads_images() is False:
+            self.console.print(Text(f"Sent without the image{'s' if len(images) > 1 else ''}: "
+                                    f"{model_ref(self.provider, self.model)} can't read images.", style=_CARD_DIM))
+            images = []
+        self.session.conversation.add_user_message(user_input, images)
         if isinstance(self.provider, CardShuffle):
             self.provider.mode, self.provider.on_deal = self.mode, self._show_deal
             laya_client.warm()

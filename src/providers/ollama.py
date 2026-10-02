@@ -109,6 +109,11 @@ class OllamaProvider:
                 self._show_cache[model] = {}
         return self._show_cache[model]
 
+    def reads_images(self, model: str) -> bool | None:
+        """Whether the model takes images ("vision" in its capabilities); None when Ollama doesn't say."""
+        caps = self._show(model).get("capabilities")
+        return "vision" in caps if isinstance(caps, list) else None
+
     def supports_reasoning(self, model: str) -> bool:
         """True if the model advertises the 'thinking' capability (from /api/show)."""
         return "thinking" in (self._show(model).get("capabilities") or [])
