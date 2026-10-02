@@ -324,6 +324,7 @@ class ClydeREPL:
 
         self.tool_registry = build_default_registry()
         hooks, servers = load_hooks(), load_servers()
+        servers = {**self._project_mcp_servers(Path.cwd(), set(servers)), **servers}   # yours win a clash
         self.plugins = apply_plugins(self.tool_registry, hooks, servers)
         for loaded in self.plugins:
             for warning in loaded.warnings:
@@ -1580,6 +1581,34 @@ class ClydeREPL:
         self.console.print(Markdown(text))
         self.console.print()
         return True
+
+    def _project_mcp_servers(self, root: Path, taken: set[str]) -> dict[str, dict[str, Any]]:
+        """The project's .mcp.json servers you've said yes to, asking about any new or changed entry."""
+        from rich.prompt import Confirm
+        from src.tool_system.mcp_client import (_expand_vars, describe_server, project_approval, project_servers,
+                                                set_project_approval)
+
+        approved = {}
+        for name, cfg in project_servers(root).items():
+            if name in taken:
+                continue
+            allowed = project_approval(root, name, cfg)
+            if allowed is None and self.headless:
+                self.console.print(f"[yellow]Skipping MCP server '{name}' from this project's .mcp.json:[/yellow] "
+                                   "it hasn't been approved; start clyde here interactively once to answer.")
+                continue
+            if allowed is None:
+                self.console.print(f"\nThis project's .mcp.json wants to start MCP server [bold]{name}[/bold]:",
+                                   highlight=False)
+                self.console.print(f"  {describe_server(cfg)}", markup=False, highlight=False)
+                allowed = Confirm.ask("It comes from the repository and runs on this machine. Start it?",
+                                      default=False, console=self.console)
+                set_project_approval(root, name, cfg, allowed)
+                if not allowed:
+                    self.console.print("[dim]Remembered; you won't be asked again unless that entry changes.[/dim]")
+            if allowed:
+                approved[name] = _expand_vars(cfg)
+        return approved
 
     def _connect_mcp_servers(self, servers: dict[str, dict[str, Any]]) -> None:
         """Start the MCP servers from settings and plugins, registering their tools as mcp__<server>__<tool>."""
