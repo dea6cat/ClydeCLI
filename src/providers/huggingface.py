@@ -17,6 +17,8 @@ API = "https://huggingface.co/api/models"
 _REPOS = 15     # repos looked at per search
 _QUANT = re.compile(r"[-_.]((?:I?Q\d(?:_[A-Z0-9]+)*)|F16|BF16)\.gguf$", re.I)
 _SPLIT = re.compile(r"-\d{5}-of-\d{5}\.gguf$")
+# Repos tagged text-generation that can't chat: embedding and reranker models (seen live: Qwen3-Embedding).
+_NOT_CHAT = re.compile(r"embed|rerank", re.I)
 
 
 def _quants(files: list[dict]) -> list[tuple[str, int]]:
@@ -61,6 +63,7 @@ def offers(fmt: str, query: str, offer: Callable[[dict], Offer | None]) -> list[
         return []
     if not isinstance(repos, list):
         return []
+    repos = [r for r in repos if isinstance(r, dict) and not _NOT_CHAT.search(str(r.get("id", "")))]
     with ThreadPoolExecutor(max_workers=8) as pool:
         found = [o for o in pool.map(offer, repos) if o is not None]
     return sorted(found, key=lambda o: o.popularity, reverse=True)

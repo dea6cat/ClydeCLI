@@ -122,6 +122,13 @@ class TestReport(unittest.TestCase):
         self.assertEqual([(v.name, v.recommendation, v.findings, v.llm) for v in multi][1],
                          ("b", BLOCK, ["TP1 HIGH: hidden instruction"], True))
 
+    def test_a_caution_with_no_findings_says_the_scan_was_partial(self):
+        partial = {"skill": {"name": "long"}, "risk_assessment": {"score": 0, "recommendation": "CAUTION"}, "issues": [],
+                   "metadata": {}, "analysis_completeness": {"status": "partial", "ledger_exceptions": [
+                       {"message": "A security-relevant expression exceeded a bounded static parser's span limit."}]}}
+        self.assertEqual(skill_scan._verdicts(partial)[0].findings,
+                         ["partial scan: A security-relevant expression exceeded a bounded static parser's span limit."])
+
 
 if __name__ == "__main__":
     unittest.main()

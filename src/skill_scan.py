@@ -140,6 +140,11 @@ def _verdicts(report: dict[str, Any]) -> list[Verdict]:
         name = skill.get("name") if isinstance(skill, dict) else str(skill or "")
         findings = [f"{i.get('id')} {i.get('severity')}: {str(i.get('finding') or i.get('explanation') or '')[:120]}"
                     for i in s.get("issues") or []]
+        done = s.get("analysis_completeness") or report.get("analysis_completeness") or {}
+        if not findings and isinstance(done, dict) and done.get("status") not in (None, "complete"):
+            # CAUTION with nothing found means SkillSpector couldn't inspect everything: say what it couldn't.
+            reasons = sorted({str(x.get("message") or x.get("reason_code")) for x in done.get("ledger_exceptions") or []})
+            findings = [f"partial scan: {r[:120]}" for r in reasons] or [f"partial scan ({done.get('status')})"]
         out.append(Verdict(name, str(risk.get("recommendation") or ERROR), int(risk.get("score") or 0),
                            str(risk.get("severity") or ""), findings, bool(meta.get("meta_analysis_applied"))))
     return out

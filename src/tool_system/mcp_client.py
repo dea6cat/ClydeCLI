@@ -214,6 +214,15 @@ def _sse_events(lines: Any) -> Iterator[tuple[str, str]]:
         yield event, "\n".join(data)
 
 
+def _with_agent(headers: dict[str, str] | None) -> dict[str, str]:
+    """The configured headers, plus ClydeCLI's User-Agent unless they set one: some servers' bot
+    protection refuses Python's default `Python-urllib` agent (gitmcp.io answers 403)."""
+    from src.providers.base import _USER_AGENT
+
+    headers = dict(headers or {})
+    return headers if any(k.lower() == "user-agent" for k in headers) else {"User-Agent": _USER_AGENT, **headers}
+
+
 def _oauth_headers(url: str, headers: dict[str, str]) -> dict[str, str]:
     """The configured headers plus a stored OAuth token, unless the config sets its own Authorization."""
     if any(k.lower() == "authorization" for k in headers):
@@ -260,7 +269,7 @@ class McpHttpClient(McpClient):
 
     def __init__(self, name: str, url: str, headers: dict[str, str] | None = None, cwd: Path | None = None) -> None:
         super().__init__(name, cwd)
-        self.url, self._headers = url, dict(headers or {})
+        self.url, self._headers = url, _with_agent(headers)
         self._session: str | None = None
 
     def _send(self, message: dict[str, Any]) -> None:
@@ -311,7 +320,7 @@ class McpSseClient(McpClient):
 
     def __init__(self, name: str, url: str, headers: dict[str, str] | None = None, cwd: Path | None = None) -> None:
         super().__init__(name, cwd)
-        self.url, self._headers = url, dict(headers or {})
+        self.url, self._headers = url, _with_agent(headers)
         self._endpoint: str | None = None
         self._ready = threading.Event()
         self._error: McpError | None = None
