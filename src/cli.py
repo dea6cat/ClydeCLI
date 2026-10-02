@@ -132,9 +132,10 @@ def prompt_secret(label: str) -> str:
 
 
 def _login_choices(registry: dict) -> list[str]:
-    """Provider names offered by login. Ollama Cloud is offered even before its key exists."""
+    """Provider names offered by login. Ollama Cloud is offered even before its key exists;
+    `custom` adds an OpenAI-compatible service that isn't built in."""
     names = sorted(n for n in registry if n != "ollama-cloud")
-    return names + ["ollama-cloud"]
+    return names + ["ollama-cloud", "custom"]
 
 
 def _key_name(provider: str) -> str:
@@ -157,23 +158,48 @@ def _suggest_local_models(console: Console) -> None:
         console.print(f"  ollama pull {tag}  [dim](~{est}GB)[/dim]")
 
 
-def run_login_flow(console: Console, registry: dict, default_provider: str = "anthropic") -> str | None:
+def _add_custom_provider(console: Console) -> str | None:
+    """Ask for an OpenAI-compatible service's name and base URL and save it; its name, or None."""
+    from src.providers import keys
+
+    console.print("[dim]Any OpenAI-compatible API (Together, Fireworks, Groq, vLLM, LiteLLM...). "
+                  "The base URL is the part before /chat/completions.[/dim]")
+    name = Prompt.ask("Name (e.g. together)").strip().lower()
+    base_url = Prompt.ask("Base URL (e.g. https://api.together.xyz/v1)").strip()
+    problem = keys.add_custom(name, base_url)
+    if problem:
+        console.print(f"[red]Can't add {name or 'it'}: {problem}.[/red]")
+        return None
+    console.print(f"[green]✓ Added {name}[/green] [dim](saved in ~/.clyde/settings.json)[/dim]")
+    return name
+
+
+def run_login_flow(console: Console, registry: dict, default_provider: str = "anthropic",
+                   provider: str | None = None) -> str | None:
     """Connect a provider and choose its model. Saves the key and the default model, and returns
-    the `provider:model` string, or None if the user bailed or the provider isn't usable."""
+    the `provider:model` string, or None if the user bailed or the provider isn't usable.
+    `provider` (a login choice) skips the provider question."""
     from rich.prompt import Confirm
     from src.config import set_default_model
     from src.providers import build_registry, keys
     from src.providers.registry import SUGGESTED_MODELS
 
     choices = _login_choices(registry)
-    provider_name = Prompt.ask(
+    provider_name = provider if provider in choices else Prompt.ask(
         "Select provider",
         choices=choices,
         default=default_provider if default_provider in choices else "anthropic",
     )
 
+    custom = provider_name == "custom" or provider_name in keys.custom_providers()
+    if provider_name == "custom":
+        provider_name = _add_custom_provider(console)
+        if provider_name is None:
+            return None
+
     if provider_name not in ("ollama", "lmstudio", "cardShuffle"):  # local servers and cardShuffle need no key
-        key = prompt_secret(f"Enter {provider_name} API key")
+        key = prompt_secret(f"Enter {provider_name} API key" + (" (empty if it needs none)" if custom else ""))
+        key = key or ("none" if custom else "")   # a keyless server (vLLM, a local proxy) still gets a Bearer header
         if not key:
             console.print("\n[red]Error: API key cannot be empty[/red]")
             return None
@@ -521,6 +547,7 @@ def handle_logout(provider: str) -> int:
 
     console = Console()
     name = _key_name(provider)
+    keys.custom_providers()   # registers custom providers' key names
     if name not in keys.PROVIDER_KEY_ENV:
         console.print(f"[red]Unknown provider: {provider}[/red]")
         return 1
@@ -542,6 +569,8 @@ def _print_provider_table(console: Console, registry: dict) -> None:
     table.add_column("Key", style="#e8e4dc")
     table.add_column("Status", style="green")
     for name in _login_choices(registry):
+        if name == "custom":
+            continue
         if name == "ollama":
             table.add_row(name, "none (local)", "")
             continue

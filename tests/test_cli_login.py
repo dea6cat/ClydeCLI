@@ -64,8 +64,86 @@ class TestRunLoginFlow(unittest.TestCase):
     def test_unlisted_models_still_accept_typed_id(self):
         self.assertEqual(self._run("openai", "sk-test", "gpt-5.4", models=()), "openai:gpt-5.4")
 
-    def test_ollama_cloud_is_always_offered(self):
-        self.assertEqual(_login_choices({"openai": None, "ollama": None})[-1], "ollama-cloud")
+    def test_ollama_cloud_and_custom_are_always_offered(self):
+        self.assertEqual(_login_choices({"openai": None, "ollama": None})[-2:], ["ollama-cloud", "custom"])
+
+    def test_a_given_provider_skips_the_question(self):
+        provider = FakeProvider(name="openai", models=("gpt-5.4",))
+        with patch("src.cli.prompt_secret", return_value="sk-test"), \
+                patch("src.cli.Prompt.ask", side_effect=["gpt-5.4"]) as ask, \
+                patch("src.providers.build_registry", return_value={"openai": provider}):
+            ref = run_login_flow(Console(file=io.StringIO()), {"openai": provider}, provider="openai")
+        self.assertEqual((ref, ask.call_count), ("openai:gpt-5.4", 1))       # only the model was asked
+
+
+class TestCustomProvider(unittest.TestCase):
+    """`custom` adds an OpenAI-compatible service: saved in settings.json, its key like any other."""
+
+    def setUp(self):
+        self.home = Path(tempfile.mkdtemp())
+        self._patches = [patch.object(Path, "home", return_value=self.home), patch.dict(os.environ, _KEY_VARS),
+                         patch.dict(keys.PROVIDER_KEY_ENV)]
+        for p in self._patches:
+            p.start()
+            self.addCleanup(p.stop)
+
+    def test_login_adds_it_saves_its_key_and_the_registry_builds_it(self):
+        from src.providers import build_registry
+
+        answers = iter(["custom", "together", "https://api.together.xyz/v1/", "meta-llama/Llama-4"])
+        with patch("src.cli.prompt_secret", return_value="tg-key"), \
+                patch("src.cli.Prompt.ask", side_effect=lambda *a, **k: next(answers)), \
+                patch("src.providers.openai_compat.OpenAICompatProvider.list_models", return_value=["meta-llama/Llama-4"]):
+            ref = run_login_flow(Console(file=io.StringIO()), {})
+        self.assertEqual(ref, "together:meta-llama/Llama-4")
+        self.assertEqual(keys.custom_providers(), {"together": "https://api.together.xyz/v1"})
+        self.assertEqual(os.environ["CLYDE_TOGETHER_API_KEY"], "tg-key")
+        provider = build_registry()["together"]
+        self.assertEqual((provider.base_url, provider.api_key), ("https://api.together.xyz/v1", "tg-key"))
+
+        os.environ.pop("CLYDE_TOGETHER_API_KEY")      # a new run: the saved key loads like a built-in one
+        keys.load_into_env()
+        self.assertEqual(os.environ["CLYDE_TOGETHER_API_KEY"], "tg-key")
+
+    def test_logout_forgets_a_custom_providers_key(self):
+        from src.cli import handle_logout
+
+        self.assertIsNone(keys.add_custom("mine", "https://x/v1"))
+        keys.connect("mine", "k")
+        keys.PROVIDER_KEY_ENV.pop("mine")             # a fresh process hasn't registered it yet
+        with patch("src.cli.Console"):
+            self.assertEqual(handle_logout("mine"), 0)
+        self.assertNotIn("mine", keys.saved_providers())
+
+    def test_a_keyless_server_still_connects(self):
+        answers = iter(["custom", "vllm", "http://localhost:8000/v1", "qwen3"])
+        with patch("src.cli.prompt_secret", return_value=""), \
+                patch("src.cli.Prompt.ask", side_effect=lambda *a, **k: next(answers)), \
+                patch("src.providers.openai_compat.OpenAICompatProvider.list_models", return_value=["qwen3"]):
+            self.assertEqual(run_login_flow(Console(file=io.StringIO()), {}), "vllm:qwen3")
+
+    def test_bad_names_and_urls_are_refused_and_built_ins_cant_be_replaced(self):
+        self.assertIn("built-in", keys.add_custom("openai", "https://x/v1"))
+        self.assertIn("lowercase", keys.add_custom("Bad Name", "https://x/v1"))
+        self.assertIn("http", keys.add_custom("mine", "ftp://x"))
+        settings = self.home / ".clyde" / "settings.json"
+        settings.parent.mkdir()
+        settings.write_text('{"permissions": {"allow": ["Read"]}, "providers": {"openai": {"base_url": "https://evil"}}}')
+        self.assertIsNone(keys.add_custom("mine", "https://x/v1"))
+        self.assertEqual(keys.custom_providers(), {"mine": "https://x/v1"})           # a hand-added "openai" is ignored
+        self.assertIn("permissions", settings.read_text())                            # other settings kept
+
+
+class TestReplLogin(unittest.TestCase):
+    def test_login_command_passes_the_provider(self):
+        from src.repl.core import ClydeREPL
+
+        repl = ClydeREPL.__new__(ClydeREPL)
+        repl._built_in_commands = ["/login"]
+        for line, expected in (("/login nvidia", "nvidia"), ("/login", None)):
+            with patch.object(ClydeREPL, "_handle_relogin") as relogin:
+                repl.handle_command(line)
+            relogin.assert_called_once_with(expected, title="Connect a provider")
 
 
 if __name__ == "__main__":

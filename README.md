@@ -383,6 +383,16 @@ This flow will:
 For Ollama there's no key: it checks the server is up, and if you have no models yet it
 suggests tool-capable ones that fit your RAM.
 
+Inside the REPL, `/login` runs the same flow and switches to the model you pick (`/login nvidia`
+skips the provider question, handy for replacing a key).
+
+**A provider that isn't built in:** pick `custom` and give it a name, the base URL of any
+OpenAI-compatible API (the part before `/chat/completions`, e.g. `https://api.together.xyz/v1`)
+and its key (leave it empty for a keyless local server such as vLLM). It's saved under
+`"providers"` in `~/.clyde/settings.json`, its key in `keys.json` (or export
+`CLYDE_<NAME>_API_KEY`), and from then on it works like a built-in one: `/models`, `/eval`,
+`<name>:<model>`, cardShuffle and `clyde logout <name>`.
+
 #### Option 3: Pick the model per session
 
 `clyde --model openai:gpt-5.4` overrides the default for one session. A key exported in your
@@ -424,6 +434,7 @@ That's all it takes: clone, configure, run.
 | `/resume [id]` | Pick a recent session of this workspace to continue |
 | `/multiline` | Toggle multiline mode |
 | `/model [provider:model]` | Show or switch the model |
+| `/login [provider]` | Connect a provider or replace its key (`custom` adds any OpenAI-compatible API), then switch to its model |
 | `/models [all\|refresh]` | List models from every connected provider; hides ones `/eval` found broken (`all` shows them, `refresh` re-fetches the lists) |
 | `/models local [ollama\|hf\|mlx] [words]` | Find local models on ollama.com and Hugging Face (GGUF, and MLX on Apple Silicon) that fit this machine, rated relax / balance / hard, and download one |
 | `/eval [filter]` | Test listed models on a tool call and a round trip, then a hand of 11 graded tasks for those that pass; shows pass/fail, hand score, latency and tok/s, and remembers which ones don't work |
