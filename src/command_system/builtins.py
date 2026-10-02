@@ -621,6 +621,9 @@ def doctor_command_call(args: str, context: CommandContext) -> LocalCommandResul
     from ..providers import laya_client
     lines.append(_check(laya_client.cached(), f"Laya model {'downloaded' if laya_client.cached() else 'not downloaded'} "
                         f"({laya_client.status()})", "run clyde setup to download it"))
+    from ..tool_system import sandbox
+    lines.append(_check(sandbox.engine() is not None, f"Sandbox: {sandbox.describe()}",
+                        "install bubblewrap (Linux), or set sandbox.enabled in ~/.clyde/settings.json"))
     from .. import skill_scan
     held = [k for k, v in skill_scan.cached_verdicts().items() if v.blocked]
     caution = [k for k, v in skill_scan.cached_verdicts().items() if v.recommendation == skill_scan.CAUTION]
