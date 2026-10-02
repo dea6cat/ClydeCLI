@@ -6,8 +6,9 @@ import unittest
 from unittest.mock import patch
 
 from src.providers.base import ProviderError
-from src.providers.card_shuffle import CardShuffle, deck
-from src.providers.types import Conversation, Message, ToolResult
+from src.providers import laya_client
+from src.providers.card_shuffle import CardShuffle, deck, turn_tool_calls
+from src.providers.types import Conversation, Message, ToolCall, ToolResult
 from tests.fakes import FakeProvider, reply
 
 OPUS, HAIKU, LOCAL = "anthropic:claude-opus-4-5", "anthropic:claude-haiku-4-5", "ollama:qwen3:8b"
@@ -77,6 +78,80 @@ class TestDealing(unittest.TestCase):
         self.assertTrue(self.card.redeal("stuck"))
         self.assertFalse(self.card.redeal("stuck"))
         self.assertEqual(self.deals, [OPUS, HAIKU, LOCAL])
+
+
+def _looping_turn(rounds: int) -> Conversation:
+    conv = Conversation("sys", [Message.user("find onError")])
+    for i in range(rounds):
+        call = ToolCall(f"c{i}", "Grep", {"pattern": "onError"})
+        conv.messages += [Message.assistant(tool_calls=[call]), Message.results([ToolResult(f"c{i}", "0 files")])]
+    return conv
+
+
+class TestLaya(unittest.TestCase):
+    def setUp(self):
+        patcher = patch("src.providers.card_shuffle.load_results", return_value=EVALS)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.anthropic, self.ollama = FakeProvider(name="anthropic"), FakeProvider(name="ollama")
+        self.asked: list[dict] = []
+        self.stuck = 0.9
+
+        def ask(state, questions):
+            self.asked.append(state)
+            if "stuck" in questions:
+                return {"stuck": {"noul": self.stuck}}
+            return {"difficulty": {"score": 2.6, "confidence": 0.3}}
+        self.card = CardShuffle({"anthropic": self.anthropic, "ollama": self.ollama}, ask=ask)
+        self.deals: list[str] = []
+        self.card.on_deal = lambda ref, why: self.deals.append(f"{ref} | {why}")
+
+    def test_a_confident_loop_hands_the_turn_to_the_next_card(self):
+        self.ollama._responses = [reply("first")]
+        self.card.stream(Conversation("sys", [Message.user("find onError")]), "small", (), lambda _: None)
+        self.anthropic._responses = [reply("fresh eyes")]
+        self.card.stream(_looping_turn(6), "small", (), lambda _: None)
+        self.assertEqual([d.split(" | ")[0] for d in self.deals], [LOCAL, HAIKU])
+        self.assertIn("looked stuck (laya 0.90)", self.deals[-1])
+        self.assertIn("Grep", self.asked[-1]["recent_tool_calls"][0])
+
+    def test_an_unsure_answer_keeps_the_card(self):
+        self.stuck = 0.5
+        self.ollama._responses = [reply("first"), reply("still going")]
+        self.card.stream(Conversation("sys", [Message.user("find onError")]), "small", (), lambda _: None)
+        self.card.stream(_looping_turn(6), "small", (), lambda _: None)
+        self.assertEqual(len(self.deals), 1)
+
+    def test_laya_only_looks_after_enough_calls_and_every_few_rounds(self):
+        self.card.dealt = LOCAL
+        self.assertIsNone(self.card._stuck(_looping_turn(5)))     # fewer than STUCK_AFTER calls
+        self.assertIsNone(self.card._stuck(_looping_turn(7)))     # not a STUCK_EVERY round
+        self.assertEqual(self.card._stuck(_looping_turn(9)), 0.9)
+
+    def test_difficulty_is_shown_but_does_not_change_the_deal(self):
+        self.card.mode = "hold"
+        self.card.shuffle("house", "redesign the auth system")
+        self.assertEqual(self.card.dealt, HAIKU)                  # the middle card, as without Laya
+        self.assertIn("laya difficulty 2.6/3 (shadow)", self.deals[-1])
+
+    def test_turn_tool_calls_cover_only_this_turn(self):
+        conv = _looping_turn(2)
+        conv.messages += [Message.assistant(text="done"), Message.user("next task")]
+        self.assertEqual(turn_tool_calls(conv), [])
+        self.assertEqual(turn_tool_calls(_looping_turn(2))[0], 'Grep {"pattern": "onError"} -> 0 files')
+
+
+class TestLayaClient(unittest.TestCase):
+    def test_without_a_loaded_model_there_is_no_answer(self):
+        with patch.object(laya_client, "_router", None):
+            self.assertIsNone(laya_client.ask({"request": "hi"}, {}))
+
+    def test_nothing_loads_when_the_weights_are_not_downloaded(self):
+        with patch.object(laya_client, "cached", return_value=False), patch.object(laya_client, "_thread", None), \
+                patch.object(laya_client, "_router", None), patch.object(laya_client, "_error", ""):
+            laya_client.warm()
+            self.assertIsNone(laya_client._thread)
+            self.assertEqual(laya_client.status(), "not downloaded")
 
 
 if __name__ == "__main__":

@@ -89,6 +89,7 @@ from src.providers import build_registry, keys, model_ref, pick_default_model, r
 from src.providers import catalog
 from src.providers.model_eval import hidden_refs
 from src.providers.base import ProviderError, is_auth_error
+from src.providers import laya_client
 from src.providers.card_shuffle import CardShuffle
 from src.providers.convert import append_response, to_canonical
 from src.tool_system.context import ToolContext
@@ -967,6 +968,8 @@ class ClydeREPL:
         """Run the REPL."""
         self._print_startup_header()
         start_background_refresh(self.tool_context.workspace_root)
+        if isinstance(self.provider, CardShuffle):
+            laya_client.warm()   # ~17 s cold load in the background, ready before the first turn needs it
         if self._continue_last:
             self.resume_session(latest=True)
         elif self._startup_resume is not None:
@@ -1597,6 +1600,7 @@ class ClydeREPL:
         self.session.conversation.add_user_message(user_input, self._attached_images(user_input))
         if isinstance(self.provider, CardShuffle):
             self.provider.mode, self.provider.on_deal = self.mode, self._show_deal
+            laya_client.warm()
 
         turn_started = time.monotonic()
         word, past = random.choice(_THINKING_WORDS)
