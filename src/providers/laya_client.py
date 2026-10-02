@@ -3,8 +3,9 @@ score and noul judgments computed on this machine, no key, no network.
 
 Laya's answers are inputs to policy that lives in Clyde's code, never the policy itself. Only a
 judgment measured to separate cleanly acts: the stuck check (a noul) re-deals a cardShuffle turn.
-Difficulty (a score, upstream's weaker area) runs in shadow mode: shown and traced, not acted on,
-until it has been measured on real turns. Laya never decides permissions.
+Difficulty (a score, upstream's weaker area) starts in shadow mode: shown and traced, not acted on,
+until traced turns show it separates easy turns from hard ones (card_shuffle.difficulty_verdict).
+Laya never decides permissions.
 
 Weights load only from the local cache (Laya pins their revision; about 800 MB, fetched by
 `clyde setup` after a yes), in a background thread so no turn waits for the ~17 s cold load.
@@ -60,6 +61,15 @@ def warm() -> None:
             return
         _thread = threading.Thread(target=_load, name="laya-warm", daemon=True)
         _thread.start()
+
+
+def wait_ready(timeout: float) -> bool:
+    """Start loading if needed and wait up to `timeout` seconds; whether Laya can answer now."""
+    warm()
+    thread = _thread
+    if _router is None and thread is not None:
+        thread.join(timeout)
+    return _router is not None
 
 
 def status() -> str:

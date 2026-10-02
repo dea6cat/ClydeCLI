@@ -11,12 +11,14 @@ Strength is how many of /eval's hard tasks a model solved; ties go to the faster
 
 Laya (the bundled decision model) watches each turn: every few tool rounds it judges whether the
 dealt model is repeating itself without progress, and a confident yes hands the turn to the next
-card. For house it also scores the request's difficulty, in shadow mode: shown on the deal line
-and traced, not yet acted on.
+card. It also scores every request's difficulty. That score starts in shadow mode (shown on the
+deal line and traced, not acted on) and is promoted into house on its own once traced turns show
+it separates easy turns from hard ones; from then on harder requests start house on stronger cards.
 """
 from __future__ import annotations
 
 import json
+import statistics
 from typing import Callable, Iterable
 
 from ..agent import trace
@@ -34,6 +36,13 @@ STUCK_EVERY = 3     # tool rounds between looks
 STUCK_AT = 0.8      # ponytail: from one replayed loop (0.95) vs normal progress (0.38); tune from traces
 _STUCK = {"type": "noul", "instructions": "Is the agent repeating the same tool calls in `recent_tool_calls`, "
                                           "with the same or empty results, without making progress?"}
+LAYA_WAIT = 30      # seconds a turn waits, once per session, for Laya to finish its cold load
+# Promotion: split the shadow-scored turns at their median score; the harder half must take clearly
+# more tool rounds. Laya's scores sit in a narrow band (about 1.3 to 1.9 of 3), so the test is relative.
+# ponytail: one fixed bar; revisit with more traced turns
+PROMOTE_MIN_TURNS = 10      # in each half
+PROMOTE_RATIO = 1.5         # harder half's average rounds over the easier half's
+PROMOTE_MIN_GAP = 1.0       # and at least this many rounds more
 _DIFFICULTY = {"type": "score", "instructions": "How hard is `request` for an AI coding agent working in the user's repository?",
                "criteria": ["Trivial: a greeting, a quick question, or a one-line lookup or change",
                             "Simple: a small, well-specified change confined to one file",
@@ -66,16 +75,18 @@ def by_strength(results: dict[str, dict]) -> list[str]:
     return sorted(results, key=key)
 
 
-def deck(tier: str, results: dict[str, dict], mode: str = "hold") -> list[str]:
-    """The order a tier deals in: first card first, then the fallbacks."""
+def deck(tier: str, results: dict[str, dict], mode: str = "hold", difficulty: float | None = None) -> list[str]:
+    """The order a tier deals in: first card first, then the fallbacks. For house, `difficulty` (0 to 1,
+    how hard this request is relative to past ones) moves the first card from the middle toward the
+    strongest; None keeps the middle card."""
     ranked = by_strength(results)
     if tier == "small":
         return ranked
     if tier == "free":
         ranked = [r for r in ranked if r.partition(":")[0] in LOCAL]
     if tier == "house" and mode != "plan" and ranked:
-        # The middle card, then stronger ones, then weaker ones.
-        mid = len(ranked) // 2
+        # The starting card, then stronger ones, then weaker ones.
+        mid = len(ranked) // 2 if difficulty is None else round(difficulty * (len(ranked) - 1))
         return ranked[mid:] + ranked[:mid][::-1]
     return ranked[::-1]
 
@@ -85,9 +96,14 @@ class CardShuffle:
 
     name = NAME
 
-    def __init__(self, registry: dict, ask: Callable[[object, dict], dict | None] = laya_client.ask) -> None:
+    def __init__(self, registry: dict, ask: Callable[[object, dict], dict | None] = laya_client.ask,
+                 wait: Callable[[float], bool] | None = None, verdict: "Verdict | None" = None) -> None:
         self.registry = registry
         self.ask = ask
+        # The real Laya needs a cold load; an injected ask (tests) answers at once.
+        self.wait = wait if wait is not None else (laya_client.wait_ready if ask is laya_client.ask else (lambda _t: True))
+        self._waited = False
+        self._verdict = verdict                 # None: read from traced turns on first use
         self.mode = "hold"                      # the REPL keeps this in step with Shift+Tab
         self.on_deal: Callable[[str, str], None] | None = None
         self.dealt: str | None = None
@@ -131,19 +147,31 @@ class CardShuffle:
         """Build this turn's deck and deal its first card."""
         if tier not in TIERS:
             raise ProviderError(NAME, f"unknown tier '{tier}' (one of {', '.join(TIERS)})")
-        self._deck, self._burned = deck(tier, self._candidates(), self.mode), set()
-        return self._deal(tier + self._shadow_difficulty(tier, request))
+        score = self._difficulty(request)
+        verdict = self.verdict()
+        acts = score is not None and tier == "house" and self.mode != "plan" and verdict.promoted
+        relative = verdict.relative(score) if acts and score is not None else None
+        self._deck, self._burned = deck(tier, self._candidates(), self.mode, relative), set()
+        if score is not None:
+            trace.record("laya", question="difficulty", score=round(score, 2), acted=acts, tier=tier)
+        note = "" if score is None else f" · laya difficulty {score:.1f}/3" + ("" if acts else " (shadow)")
+        return self._deal(tier + note)
 
-    def _shadow_difficulty(self, tier: str, request: str) -> str:
-        """Laya's difficulty score for a house turn, traced and returned for the deal line; not acted on."""
-        answers = self.ask({"request": request[-4000:], "mode": self.mode}, {"difficulty": _DIFFICULTY}) \
-            if tier == "house" and request.strip() else None
-        if not answers:
-            return ""
-        d = answers["difficulty"]
-        trace.record("laya", question="difficulty", score=round(d["score"], 2), confidence=round(d["confidence"], 2),
-                     acted=False)
-        return f" · laya difficulty {d['score']:.1f}/3 (shadow)"
+    def verdict(self) -> "Verdict":
+        if self._verdict is None:
+            self._verdict = difficulty_verdict(_traced_lines())
+        return self._verdict
+
+    def _difficulty(self, request: str) -> float | None:
+        """Laya's difficulty score (0 to 3) for this request, on every tier; None without Laya.
+        The first turn of a session waits for Laya's cold load, so Laya actually gets to answer."""
+        if not request.strip():
+            return None
+        if not self._waited:
+            self._waited = True
+            self.wait(LAYA_WAIT)
+        answers = self.ask({"request": request[-4000:], "mode": self.mode}, {"difficulty": _DIFFICULTY})
+        return float(answers["difficulty"]["score"]) if answers else None
 
     def _stuck(self, conversation: Conversation) -> float | None:
         """Laya's probability that this turn is looping, checked every STUCK_EVERY rounds once the
@@ -192,12 +220,20 @@ class CardShuffle:
             return response
 
 
-def laya_report(lines: Iterable[str]) -> str:
-    """How Laya's judgments lined up with how turns ended, from trace JSON lines (one session's
-    lines in order, sessions one after another): the evidence for tuning STUCK_AT, and for
-    promoting difficulty out of shadow mode."""
-    stuck: list[tuple[float, bool, bool]] = []      # (noul, re-dealt, turn ran out of rounds anyway)
-    difficulty: list[tuple[float, int, bool]] = []  # (score, tool rounds, ran out)
+def _traced_lines() -> list[str]:
+    """Every traced session's lines, oldest session first."""
+    try:
+        files = sorted(trace.traces_dir().glob("*.jsonl"), key=lambda p: p.stat().st_mtime)
+        return [line for p in files for line in p.read_text(encoding="utf-8", errors="replace").splitlines()]
+    except OSError:
+        return []
+
+
+def _judgments(lines: Iterable[str]) -> tuple[list[tuple[float, bool, bool]], list[tuple[float, int, bool, bool]]]:
+    """(stuck, difficulty) judgments lined up with how their turn ended: stuck as (noul, re-dealt,
+    ran out), difficulty as (score, tool rounds, ran out, acted). Turns that never ended are skipped."""
+    stuck: list[tuple[float, bool, bool]] = []
+    difficulty: list[tuple[float, int, bool, bool]] = []
     pending: list[dict] = []
     for line in lines:
         try:
@@ -215,18 +251,71 @@ def laya_report(lines: Iterable[str]) -> str:
                 if e.get("question") == "stuck":
                     stuck.append((float(e.get("noul", 0)), bool(e.get("acted")), ran_out))
                 elif e.get("question") == "difficulty":
-                    difficulty.append((float(e.get("score", 0)), rounds, ran_out))
+                    difficulty.append((float(e.get("score", 0)), rounds, ran_out, bool(e.get("acted"))))
             pending = []
+    return stuck, difficulty
+
+
+class Verdict:
+    """Whether Laya's difficulty score has earned a say in house, from shadow-scored turns only (turns
+    it already steered would bias the evidence), plus where a new score falls among the past ones."""
+
+    def __init__(self, shadow: list[tuple[float, int]]) -> None:
+        self.scores = sorted(s for s, _ in shadow)
+        self.median = statistics.median(self.scores) if self.scores else 0.0
+        easy = [r for s, r in shadow if s < self.median]
+        hard = [r for s, r in shadow if s >= self.median]
+        self.easy_n, self.hard_n = len(easy), len(hard)
+        self.easy_rounds = sum(easy) / len(easy) if easy else 0.0
+        self.hard_rounds = sum(hard) / len(hard) if hard else 0.0
+        self.promoted = (min(self.easy_n, self.hard_n) >= PROMOTE_MIN_TURNS
+                         and self.hard_rounds >= self.easy_rounds * PROMOTE_RATIO
+                         and self.hard_rounds - self.easy_rounds >= PROMOTE_MIN_GAP)
+
+    def relative(self, score: float) -> float:
+        """0 to 1: the share of past shadow scores below this one."""
+        if not self.scores:
+            return 0.5
+        below = sum(1 for s in self.scores if s < score)
+        return below / len(self.scores)
+
+    def summary(self) -> str:
+        rounds = (f"the harder half took {self.hard_rounds:.1f} tool rounds on average, the easier half "
+                  f"{self.easy_rounds:.1f}") if self.easy_n and self.hard_n else "no scored turns have finished yet"
+        if self.promoted:
+            return f"Difficulty acts in house: {rounds}, so harder requests start on stronger cards."
+        need = max(0, PROMOTE_MIN_TURNS - min(self.easy_n, self.hard_n))
+        wait = (f"needs {need} more scored turn(s) in the smaller half" if need else
+                f"needs the harder half to take at least {PROMOTE_RATIO:g}x and {PROMOTE_MIN_GAP:g} more rounds")
+        return f"Difficulty stays in shadow: {rounds}; it {wait}."
+
+
+def difficulty_verdict(lines: Iterable[str]) -> Verdict:
+    _, difficulty = _judgments(lines)
+    return Verdict([(score, rounds) for score, rounds, _, acted in difficulty if not acted])
+
+
+def laya_report(lines: Iterable[str]) -> str:
+    """How Laya's judgments lined up with how turns ended, from trace JSON lines (one session's
+    lines in order, sessions one after another): the evidence for tuning STUCK_AT, and the
+    verdict on promoting difficulty into house."""
+    lines = list(lines)
+    stuck, difficulty = _judgments(lines)
     out = [f"Stuck checks (re-deal at {STUCK_AT:.2f})   checks  re-dealt  turn ran out anyway"]
     for label, low, high in (("below 0.50", 0.0, 0.5), (f"0.50 to {STUCK_AT:.2f}", 0.5, STUCK_AT), (f"{STUCK_AT:.2f} and up", STUCK_AT, 1.01)):
         band = [s for s in stuck if low <= s[0] < high]
         out.append(f"  {label:32}{len(band):>6}  {sum(s[1] for s in band):>8}  {sum(s[2] for s in band):>19}")
     out.append("  Loops that ran out under the threshold argue for lowering it; re-dealt turns that"
                " ran out anyway, or many re-deals, argue for raising it.")
-    out.append("\nDifficulty (shadow)   turns  avg tool rounds  ran out")
-    for label, low, high in (("0 to 1", 0, 1), ("1 to 2", 1, 2), ("2 to 3", 2, 3.01)):
-        band = [d for d in difficulty if low <= d[0] < high]
-        avg = f"{sum(d[1] for d in band) / len(band):.1f}" if band else "-"
-        out.append(f"  {label:20}{len(band):>6}  {avg:>15}  {sum(d[2] for d in band):>7}")
-    out.append("  Promote it into house once harder bands clearly take more rounds.")
+    verdict = difficulty_verdict(lines)
+    shadow = [d for d in difficulty if not d[3]]
+    out.append(f"\nDifficulty (shadow turns, split at score {verdict.median:.2f})   turns  avg tool rounds  ran out")
+    for label, half in (("easier half", [d for d in shadow if d[0] < verdict.median]),
+                        ("harder half", [d for d in shadow if d[0] >= verdict.median])):
+        avg = f"{sum(d[1] for d in half) / len(half):.1f}" if half else "-"
+        out.append(f"  {label:40}{len(half):>6}  {avg:>15}  {sum(d[2] for d in half):>7}")
+    acted = len(difficulty) - len(shadow)
+    if acted:
+        out.append(f"  {acted} house turn(s) were steered by it.")
+    out.append("  " + verdict.summary())
     return "\n".join(out)
