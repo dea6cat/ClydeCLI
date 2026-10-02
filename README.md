@@ -589,7 +589,11 @@ keeps using that header.
 - `clyde mcp import` (also offered by `clyde setup`) copies stdio and remote servers from Claude Code
   (`~/.claude.json`), Cursor, Gemini CLI, Codex (`config.toml`) and Copilot CLI after you say yes;
   env values are never printed and the settings file is kept at mode 600
-- Servers come from your user settings; project `.mcp.json` files are skipped
+- A project's own `.mcp.json` (Claude Code's format, at the repo root) adds its servers. A repository
+  can put anything there, so each server starts only after you say yes, and the answer covers that
+  exact entry: a changed command asks again. `${VAR}` and `${VAR:-default}` expand from your
+  environment; your own settings win a name clash; `clyde -p` skips entries you haven't answered yet.
+  Answers live in `~/.clyde/mcp_project_approvals.json`
 - SkillSpector scans every server's tool list when it connects, local or remote (see SkillSpector)
 
 ### Modes
