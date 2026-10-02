@@ -17,7 +17,7 @@ and traced, not yet acted on.
 from __future__ import annotations
 
 import json
-from typing import Callable
+from typing import Callable, Iterable
 
 from ..agent import trace
 from . import laya_client
@@ -189,3 +189,43 @@ class CardShuffle:
             if response.usage:
                 self.spent.append((self.dealt, response.usage))
             return response
+
+
+def laya_report(lines: Iterable[str]) -> str:
+    """How Laya's judgments lined up with how turns ended, from trace JSON lines (one session's
+    lines in order, sessions one after another): the evidence for tuning STUCK_AT, and for
+    promoting difficulty out of shadow mode."""
+    stuck: list[tuple[float, bool, bool]] = []      # (noul, re-dealt, turn ran out of rounds anyway)
+    difficulty: list[tuple[float, int, bool]] = []  # (score, tool rounds, ran out)
+    pending: list[dict] = []
+    for line in lines:
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        kind = event.get("event")
+        if kind == "turn":
+            pending = []
+        elif kind == "laya":
+            pending.append(event)
+        elif kind == "turn_end":
+            ran_out, rounds = bool(event.get("ran_out")), int(event.get("rounds") or 0)
+            for e in pending:
+                if e.get("question") == "stuck":
+                    stuck.append((float(e.get("noul", 0)), bool(e.get("acted")), ran_out))
+                elif e.get("question") == "difficulty":
+                    difficulty.append((float(e.get("score", 0)), rounds, ran_out))
+            pending = []
+    out = [f"Stuck checks (re-deal at {STUCK_AT:.2f})   checks  re-dealt  turn ran out anyway"]
+    for label, low, high in (("below 0.50", 0.0, 0.5), (f"0.50 to {STUCK_AT:.2f}", 0.5, STUCK_AT), (f"{STUCK_AT:.2f} and up", STUCK_AT, 1.01)):
+        band = [s for s in stuck if low <= s[0] < high]
+        out.append(f"  {label:32}{len(band):>6}  {sum(s[1] for s in band):>8}  {sum(s[2] for s in band):>19}")
+    out.append("  Loops that ran out under the threshold argue for lowering it; re-dealt turns that"
+               " ran out anyway, or many re-deals, argue for raising it.")
+    out.append("\nDifficulty (shadow)   turns  avg tool rounds  ran out")
+    for label, low, high in (("0 to 1", 0, 1), ("1 to 2", 1, 2), ("2 to 3", 2, 3.01)):
+        band = [d for d in difficulty if low <= d[0] < high]
+        avg = f"{sum(d[1] for d in band) / len(band):.1f}" if band else "-"
+        out.append(f"  {label:20}{len(band):>6}  {avg:>15}  {sum(d[2] for d in band):>7}")
+    out.append("  Promote it into house once harder bands clearly take more rounds.")
+    return "\n".join(out)

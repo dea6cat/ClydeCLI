@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from src.providers.base import ProviderError
 from src.providers import laya_client
-from src.providers.card_shuffle import CardShuffle, deck, turn_tool_calls
+from src.providers.card_shuffle import CardShuffle, deck, laya_report, turn_tool_calls
 from src.providers.types import Conversation, Message, ToolCall, ToolResult
 from tests.fakes import FakeProvider, reply
 
@@ -139,6 +139,27 @@ class TestLaya(unittest.TestCase):
         conv.messages += [Message.assistant(text="done"), Message.user("next task")]
         self.assertEqual(turn_tool_calls(conv), [])
         self.assertEqual(turn_tool_calls(_looping_turn(2))[0], 'Grep {"pattern": "onError"} -> 0 files')
+
+
+class TestLayaReport(unittest.TestCase):
+    def test_lines_up_judgments_with_how_each_turn_ended(self):
+        import json
+        events = [
+            {"event": "turn"}, {"event": "laya", "question": "stuck", "noul": 0.9, "acted": True},
+            {"event": "turn_end", "ran_out": False, "rounds": 9},
+            {"event": "turn"}, {"event": "laya", "question": "stuck", "noul": 0.6, "acted": False},
+            {"event": "turn_end", "ran_out": True, "rounds": 20},
+            {"event": "turn"}, {"event": "laya", "question": "difficulty", "score": 2.4},
+            {"event": "turn_end", "ran_out": False, "rounds": 7},
+            {"event": "turn"}, {"event": "laya", "question": "stuck", "noul": 0.95},   # never ended: ignored
+            {"event": "turn"}, {"event": "turn_end", "ran_out": False, "rounds": 1},
+        ]
+        report = laya_report([json.dumps(e) for e in events] + ["not json"])
+        rows = {line.split()[0] + line.split()[1]: line.split()[-3:] for line in report.splitlines()
+                if line.startswith("  ") and line.split()[-1].isdigit()}
+        self.assertEqual(rows["0.50to"], ["1", "0", "1"])        # one loop slipped under the threshold
+        self.assertEqual(rows["0.80and"], ["1", "1", "0"])       # one re-deal, and that turn finished
+        self.assertEqual(rows["2to"], ["1", "7.0", "0"])         # difficulty 2.4 took 7 rounds
 
 
 class TestLayaClient(unittest.TestCase):
