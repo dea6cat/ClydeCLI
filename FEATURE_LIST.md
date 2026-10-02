@@ -104,7 +104,7 @@
 | Worktree | WorktreeTool | `worktree.py` | ✅ Real git worktree on a `worktree-<name>` branch; exit can keep or remove it |
 | Miscellaneous | SleepTool | `sleep.py` | ✅ Implemented |
 | Miscellaneous | StructuredOutputTool | `structured_output.py` | ✅ Implemented |
-| Miscellaneous | MiscTools | `misc.py` | 🟡 SendMessage, PowerShell, NotebookEdit work; RemoteTrigger, REPL are stubs |
+| Miscellaneous | MiscTools | `misc.py` | ✅ SendMessage, PowerShell, NotebookEdit (the RemoteTrigger and REPL stubs were removed) |
 
 ---
 

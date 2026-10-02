@@ -44,20 +44,6 @@ class SendMessageTool:
         return ToolResult(name="SendMessage", output={"success": True, "message": f"Message queued for {to}"})
 
 
-class RemoteTriggerTool:
-    def spec(self) -> ToolSpec:
-        return ToolSpec(
-            name="RemoteTrigger",
-            description="Trigger a remote action (not implemented).",
-            input_schema={"type": "object", "additionalProperties": True},
-            is_read_only=True,
-            max_result_size_chars=100_000,
-        )
-
-    def run(self, tool_input: dict[str, Any], context: ToolContext) -> ToolResult:
-        return ToolResult(name="RemoteTrigger", output={"error": "RemoteTrigger is not implemented"}, is_error=True)
-
-
 class PowerShellTool:
     def spec(self) -> ToolSpec:
         return ToolSpec(
@@ -193,17 +179,3 @@ def _find_cell_index(cells: list[Any], cell_id: str) -> int:
     if match and int(match.group(1)) < len(cells):
         return int(match.group(1))
     raise ToolInputError(f"cell not found: {cell_id}")
-
-
-class REPLTool:
-    def spec(self) -> ToolSpec:
-        return ToolSpec(
-            name="REPL",
-            description="Interact with the REPL UI (not implemented).",
-            input_schema={"type": "object", "additionalProperties": True},
-            is_read_only=True,
-            max_result_size_chars=100_000,
-        )
-
-    def run(self, tool_input: dict[str, Any], context: ToolContext) -> ToolResult:
-        return ToolResult(name="REPL", output={"error": "REPL tool is not implemented"}, is_error=True)

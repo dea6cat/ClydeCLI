@@ -13,7 +13,7 @@ from .code_map import MapTool
 from .lsp import LSPTool
 from .mcp import MCPTool
 from .mcp_resources import ListMcpResourcesTool, ReadMcpResourceTool
-from .misc import NotebookEditTool, PowerShellTool, REPLTool, RemoteTriggerTool, SendMessageTool
+from .misc import NotebookEditTool, PowerShellTool, SendMessageTool
 from .plan_mode import EnterPlanModeTool, ExitPlanModeTool
 from .read import FileReadTool
 from .send_user_message import SendUserMessageTool
@@ -55,8 +55,6 @@ __all__ = [
     "ReadMcpResourceTool",
     "NotebookEditTool",
     "PowerShellTool",
-    "REPLTool",
-    "RemoteTriggerTool",
     "SendMessageTool",
     "SendUserMessageTool",
     "SkillTool",
