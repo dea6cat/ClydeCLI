@@ -1936,7 +1936,8 @@ class ClydeREPL:
             self._current_status = None
             self.last_error = str(e) or type(e).__name__
             if self.headless:
-                self.console.print(f"[red]❌ {e}[/red]" + (" (fix the key with clyde login)" if is_auth_error(e) else ""))
+                hint = " (fix the key with clyde login)" if is_auth_error(e) and "clyde login" not in str(e) else ""
+                self.console.print(f"[red]❌ {e}[/red]{hint}")
             elif is_auth_error(e):
                 self.console.print(f"\n[red]❌ {e}[/red]")
                 if self._recover_auth() and not _auth_retry:

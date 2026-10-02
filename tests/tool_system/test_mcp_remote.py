@@ -169,6 +169,14 @@ class TestLegacySse(unittest.TestCase):
         self.assertIn("HTTP 405", errors["strict"])
 
 
+class TestUserAgent(unittest.TestCase):
+    def test_clyde_identifies_itself_unless_the_config_says_otherwise(self):
+        from src.providers.base import _USER_AGENT
+        from src.tool_system.mcp_client import _with_agent
+        self.assertEqual(_with_agent({"Authorization": "x"}), {"User-Agent": _USER_AGENT, "Authorization": "x"})
+        self.assertEqual(_with_agent({"user-agent": "mine"}), {"user-agent": "mine"})
+
+
 class TestConfig(unittest.TestCase):
     def test_remote_spec_reads_each_agents_format(self):
         self.assertEqual(remote_spec({"type": "http", "url": "https://a/mcp"})[0], "http")
