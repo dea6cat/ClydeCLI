@@ -281,6 +281,61 @@ class TestREPL(unittest.TestCase):
                         repl.chat("hi there")
                     mock_agent_loop.assert_not_called()
 
+    def _relogin_repl(self, *responses):
+        from src.providers.base import ProviderError
+        conversation = Conversation()
+        ctx = _fake_provider_env(ProviderError("glm", "HTTP 401 — authentication failed", status=401), *responses)
+        return conversation, ctx
+
+    def test_a_rejected_key_can_be_replaced_and_the_message_retried(self):
+        with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"), \
+                patch('src.repl.core.Session.create') as mock_session_factory:
+            conversation, ctx = self._relogin_repl(reply("hello again"))
+            mock_session_factory.return_value = Mock(conversation=conversation)
+            with ctx as provider:
+                repl = ClydeREPL(model="glm:glm-4.5")
+                repl.console.print = Mock()
+                with patch('rich.prompt.Prompt.ask', return_value="k") as ask, \
+                        patch('src.cli.prompt_secret', return_value="new-key"), \
+                        patch('src.repl.core.keys.connect') as connect, \
+                        patch('src.repl.core.build_registry', return_value={"glm": provider}):
+                    repl.chat("hi there")
+                self.assertIn("k = new glm key", ask.call_args.args[0])
+                connect.assert_called_once_with("glm", "new-key")
+                self.assertEqual(len(provider.requests), 2)                       # the same message, sent again
+                users = [m for m in conversation.messages if m.role == "user"]
+                self.assertEqual(len(users), 1)                                  # not duplicated
+                self.assertEqual(conversation.messages[-1].content, "hello again")
+
+    def test_declining_leaves_the_message_unanswered_without_retrying(self):
+        with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"), \
+                patch('src.repl.core.Session.create') as mock_session_factory:
+            conversation, ctx = self._relogin_repl()
+            mock_session_factory.return_value = Mock(conversation=conversation)
+            with ctx as provider:
+                repl = ClydeREPL(model="glm:glm-4.5")
+                repl.console.print = Mock()
+                with patch('rich.prompt.Prompt.ask', return_value="n"), patch('src.cli.prompt_secret') as secret:
+                    repl.chat("hi there")
+                secret.assert_not_called()
+                self.assertEqual(len(provider.requests), 1)
+
+    def test_a_second_rejection_does_not_loop(self):
+        from src.providers.base import ProviderError
+        with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"), \
+                patch('src.repl.core.Session.create') as mock_session_factory:
+            conversation, ctx = self._relogin_repl(ProviderError("glm", "HTTP 401 — still wrong", status=401))
+            mock_session_factory.return_value = Mock(conversation=conversation)
+            with ctx as provider:
+                repl = ClydeREPL(model="glm:glm-4.5")
+                repl.console.print = Mock()
+                with patch('rich.prompt.Prompt.ask', return_value="k") as ask, \
+                        patch('src.cli.prompt_secret', return_value="new-key"), patch('src.repl.core.keys.connect'), \
+                        patch('src.repl.core.build_registry', return_value={"glm": provider}):
+                    repl.chat("hi there")
+                self.assertEqual(len(provider.requests), 2)    # one retry only
+                self.assertEqual(ask.call_count, 2)            # it asks again, but doesn't resend by itself
+
     def test_provider_error_prints_one_line_without_traceback(self):
         from src.providers.base import ProviderError
         with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
