@@ -8,200 +8,462 @@
 <meta property="og:title" content="ClydeCLI">
 <meta property="og:description" content="An AI coding agent for your terminal, written in Python. Bring any model; Clyde deals the right one each turn.">
 <meta property="og:type" content="website">
+<meta name="theme-color" content="#0f1a14">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>♠</text></svg>">
 <style>
   :root {
-    --felt: #0f1a14; --felt-2: #15241b; --line: #24382b;
-    --face: #f5f1e8; --ink: #111111; --red: #d0202f; --green: #4eba65;
-    --text: #e8e4dc; --dim: #9aa39c; --code-bg: #0a120d;
+    --felt: #0f1a14; --felt-2: #15241b; --felt-3: #1b2e22; --line: #24382b;
+    --face: #f5f1e8; --face-2: #e9e3d6; --ink: #111111; --ink-2: #3d3a34;
+    --red: #d0202f; --green: #4eba65; --text: #e8e4dc; --dim: #9aa39c;
+    --term: #0a120d; --term-line: #1d2b22; --term-text: #e8e4dc; --term-dim: #8a8a8a;
     --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
     --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+    --r-sm: 6px; --r-md: 10px; --r-lg: 14px;
+    --ease: cubic-bezier(.2, .7, .2, 1);
   }
   @media (prefers-color-scheme: light) {
-    :root { --felt: #f3efe6; --felt-2: #ebe5d8; --line: #d6cfbf; --text: #1b1b1b; --dim: #5d5a52; --green: #2f8a45; }
+    :root { --felt: #f3efe6; --felt-2: #ebe5d8; --felt-3: #e2dbcb; --line: #d6cfbf; --text: #1b1b1b; --dim: #5d5a52; --green: #2f8a45; }
   }
   * { box-sizing: border-box; }
-  html { scroll-behavior: smooth; }
-  body { margin: 0; background: var(--felt); color: var(--text); font: 16px/1.6 var(--sans); }
+  html { scroll-behavior: smooth; scroll-padding-top: 72px; }
+  body { margin: 0; background: var(--felt); color: var(--text); font: 16px/1.6 var(--sans); -webkit-font-smoothing: antialiased; }
   a { color: var(--green); }
-  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 20px; }
-  nav { display: flex; justify-content: space-between; align-items: center; padding: 18px 0; }
-  nav .brand { font: 700 18px var(--mono); color: var(--text); text-decoration: none; }
-  nav .brand b { color: var(--red); }
-  nav .links a { color: var(--dim); text-decoration: none; margin-left: 20px; font-size: 15px; }
-  nav .links a:hover { color: var(--text); }
-
-  .hero { display: grid; grid-template-columns: 1.05fr 1fr; gap: 48px; align-items: center; padding: 56px 0 72px; }
-  .hero > * { min-width: 0; }
-  h1 { font-size: clamp(34px, 5vw, 54px); line-height: 1.08; margin: 0 0 18px; letter-spacing: -0.02em; }
-  h1 .suit { color: var(--red); }
-  .lede { font-size: 19px; color: var(--dim); margin: 0 0 8px; }
-  .quote { font-style: italic; color: var(--dim); margin: 0 0 28px; }
-  .install { display: flex; align-items: center; gap: 10px; background: #0a120d; color: #e8e4dc; border: 1px solid var(--line);
-             border-radius: 10px; padding: 12px 12px 12px 16px; font: 13.5px var(--mono); }
-  .install code { white-space: nowrap; flex: 1; overflow-x: auto; }
-  .install code::before { content: "$ "; color: #4eba65; }
-  button.copy { flex: none; background: var(--face); color: var(--ink); border: 0; border-radius: 6px; padding: 6px 12px;
-                font: 600 13px var(--sans); cursor: pointer; }
-  button.copy:focus-visible, .btn:focus-visible, a:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
-  .cta { display: flex; gap: 12px; margin-top: 18px; flex-wrap: wrap; }
-  .btn { display: inline-block; padding: 11px 18px; border-radius: 8px; font-weight: 600; text-decoration: none; font-size: 15px; }
-  .btn.primary { background: var(--red); color: #fff; }
-  .btn.ghost { border: 1px solid var(--line); color: var(--text); }
-  .note { font-size: 13px; color: var(--dim); margin-top: 12px; }
-
-  .term { background: #0a120d; border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,.35);
-          font: 13px/1.65 var(--mono); color: #e8e4dc; overflow: hidden; }
-  .term .bar { display: flex; gap: 7px; padding: 11px 14px; border-bottom: 1px solid #1d2b22; }
-  .term .bar i { width: 11px; height: 11px; border-radius: 50%; background: #2d3b31; }
-  .term pre { margin: 0; padding: 16px 18px 18px; white-space: pre-wrap; word-break: break-word; }
-  .g { color: #4eba65; } .r { color: #ff5a64; } .d { color: #8a8a8a; } .w { color: #fff; font-weight: 700; }
-
-  section { padding: 64px 0; border-top: 1px solid var(--line); }
-  h2 { font-size: clamp(26px, 3.4vw, 34px); margin: 0 0 8px; letter-spacing: -0.01em; }
-  .sub { color: var(--dim); margin: 0 0 32px; max-width: 680px; }
-
-  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
-  .card { position: relative; background: var(--face); color: var(--ink); border-radius: 12px; padding: 30px 20px 22px;
-          box-shadow: 0 1px 0 rgba(0,0,0,.08), 0 8px 24px rgba(0,0,0,.18); }
-  .card::before { content: attr(data-pip); position: absolute; top: 9px; left: 12px; font: 700 14px/1 var(--mono); color: var(--red); }
-  .card.black::before { color: var(--ink); }
-  .card h3 { margin: 0 0 6px; font-size: 17px; }
-  .card p { margin: 0; font-size: 14.5px; color: #3d3a34; }
-  .card code { font: 13px var(--mono); background: #e9e3d6; padding: 1px 5px; border-radius: 4px; }
-
-  .list { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px 32px; }
-  .list div { padding-left: 22px; position: relative; }
-  .list div::before { content: "♠"; position: absolute; left: 0; color: var(--green); }
-  .list b { display: block; }
-  .list span { color: var(--dim); font-size: 14.5px; }
+  :focus-visible { outline: 2px solid var(--green); outline-offset: 3px; border-radius: 4px; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 20px; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   code { font-family: var(--mono); font-size: .92em; }
 
+  /* Nav: sticks, blurs, marks the section in view */
+  .nav { position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, var(--felt) 82%, transparent);
+         backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-bottom: 1px solid transparent; transition: border-color .2s; }
+  .nav.scrolled { border-bottom-color: var(--line); }
+  .nav .wrap { display: flex; justify-content: space-between; align-items: center; height: 60px; }
+  .brand { font: 700 17px var(--mono); color: var(--text); text-decoration: none; display: flex; gap: 8px; align-items: center; }
+  .brand b { color: var(--red); font-size: 20px; display: inline-block; transition: transform .5s var(--ease); }
+  .brand:hover b { transform: rotate(-12deg) scale(1.1); }
+  .nav .links { display: flex; gap: 4px; align-items: center; }
+  .nav .links a { color: var(--dim); text-decoration: none; font-size: 14.5px; padding: 6px 10px; border-radius: var(--r-sm); transition: color .15s, background .15s; }
+  .nav .links a:hover, .nav .links a.active { color: var(--text); background: var(--felt-2); }
+  .nav .links a.gh { border: 1px solid var(--line); margin-left: 6px; }
+
+  /* Hero */
+  .hero { display: grid; grid-template-columns: 1fr 1.05fr; gap: 56px; align-items: center; padding: 64px 0 88px; position: relative; }
+  .hero > * { min-width: 0; }
+  h1 { font-size: clamp(36px, 4.4vw, 52px); line-height: 1.05; margin: 0 0 20px; letter-spacing: -0.025em; }
+  h1 .deal { color: var(--red); display: inline-block; }
+  .lede { font-size: 18.5px; color: var(--dim); margin: 0 0 28px; max-width: 46ch; }
+  .install { display: flex; align-items: center; gap: 10px; background: var(--term); color: var(--term-text); border: 1px solid var(--line);
+             border-radius: var(--r-md); padding: 10px 10px 10px 16px; font: 13.5px var(--mono); }
+  .install code { white-space: nowrap; flex: 1; overflow-x: auto; scrollbar-width: none; }
+  .install code::before { content: "$ "; color: #4eba65; }
+  .copy { flex: none; background: var(--face); color: var(--ink); border: 0; border-radius: var(--r-sm); padding: 7px 12px;
+          font: 600 13px var(--sans); cursor: pointer; transition: transform .15s var(--ease), background .15s; min-width: 64px; }
+  .copy:hover { background: #fff; }
+  .copy:active { transform: scale(.96); }
+  .copy.done { background: #4eba65; color: #06120a; }
+  .cta { display: flex; gap: 12px; margin-top: 18px; flex-wrap: wrap; }
+  .btn { display: inline-flex; align-items: center; gap: 8px; padding: 11px 18px; border-radius: var(--r-md); font-weight: 600;
+         text-decoration: none; font-size: 15px; transition: transform .15s var(--ease), background .15s, border-color .15s; }
+  .btn:hover { transform: translateY(-1px); }
+  .btn.primary { background: var(--red); color: #fff; }
+  .btn.primary:hover { background: #b51a28; }
+  .btn.ghost { border: 1px solid var(--line); color: var(--text); }
+  .btn.ghost:hover { border-color: var(--dim); }
+
+  /* Terminals */
+  .term { background: var(--term); border: 1px solid var(--line); border-radius: var(--r-lg); color: var(--term-text);
+          font: 13px/1.7 var(--mono); overflow: hidden; box-shadow: 0 24px 60px -20px rgba(0,0,0,.5); }
+  .term .bar { display: flex; gap: 7px; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--term-line); }
+  .term .bar i { width: 11px; height: 11px; border-radius: 50%; background: #2d3b31; }
+  .term .bar span { margin-left: auto; color: var(--term-dim); font-size: 12px; }
+  .term .replay { margin-left: 10px; background: transparent; color: var(--term-dim); border: 1px solid var(--term-line); border-radius: var(--r-sm);
+                  font: 12px var(--mono); padding: 2px 8px; cursor: pointer; }
+  .term .replay:hover { color: var(--term-text); border-color: #3a4d40; }
+  .term pre { margin: 0; padding: 16px 18px 18px; white-space: pre-wrap; word-break: break-word; min-height: 360px; }
+  #hero-term { min-height: 520px; font-size: 12.5px; }
+  .term .line { display: block; }
+  .g { color: #4eba65; } .r { color: #ff5a64; } .d { color: var(--term-dim); } .w { color: #fff; font-weight: 700; } .y { color: #e6c06b; }
+  .banner { display: flex; align-items: flex-end; gap: 0; margin-bottom: 14px; }
+  .ace { display: inline-block; white-space: pre; line-height: 1.25; background: #f5f1e8; color: #111; font-weight: 700; flex: none; }
+  .banner .info { line-height: 1.25; white-space: pre; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .rule { display: block; border-top: 1px solid #3a4540; margin: 6px 0; height: 0; }
+  .mode { color: #4eba65; font-weight: 700; }
+  .caret { display: inline-block; width: .6em; height: 1.1em; background: #4eba65; vertical-align: -0.2em; animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .spin::before { content: "⠋"; color: #4eba65; animation: spin .8s steps(8) infinite; display: inline-block; }
+  @keyframes spin { 0% { content: "⠋"; } 12% { content: "⠙"; } 25% { content: "⠹"; } 37% { content: "⠸"; } 50% { content: "⠼"; } 62% { content: "⠴"; } 75% { content: "⠦"; } 87% { content: "⠧"; } }
+
+  /* Sections */
+  section { padding: 88px 0; border-top: 1px solid var(--line); }
+  .kicker { font: 700 12.5px var(--mono); color: var(--red); letter-spacing: .08em; text-transform: uppercase; margin: 0 0 10px; }
+  .nav-sentinel { position: absolute; top: 0; height: 8px; width: 1px; }
+  h2 { font-size: clamp(28px, 3.6vw, 40px); line-height: 1.12; margin: 0 0 12px; letter-spacing: -0.02em; }
+  .sub { color: var(--dim); margin: 0 0 40px; max-width: 640px; font-size: 17px; }
+
+  /* cardShuffle table */
+  .table { display: grid; grid-template-columns: 320px 1fr; gap: 32px; background: var(--felt-2); border: 1px solid var(--line);
+           border-radius: var(--r-lg); padding: 28px; }
+  .table > * { min-width: 0; }
+  .tiers { display: grid; gap: 8px; margin: 0; padding: 0; border: 0; }
+  .tiers legend { font: 600 13px var(--mono); color: var(--dim); margin-bottom: 10px; padding: 0; }
+  .tier { display: block; position: relative; }
+  .tier input { position: absolute; opacity: 0; }
+  .tier label { display: block; cursor: pointer; border: 1px solid var(--line); border-radius: var(--r-md); padding: 10px 14px; background: var(--felt);
+                transition: border-color .15s, background .15s; }
+  .tier label b { font-family: var(--mono); font-size: 14px; }
+  .tier label span { display: block; color: var(--dim); font-size: 13.5px; }
+  .tier input:checked + label { border-color: var(--red); background: var(--felt-3); }
+  .tier input:focus-visible + label { outline: 2px solid var(--green); outline-offset: 2px; }
+  .deal-actions { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+  .deal-actions button { font: 600 14px var(--sans); border-radius: var(--r-md); padding: 10px 14px; cursor: pointer; border: 1px solid var(--line);
+                         background: var(--felt); color: var(--text); transition: transform .15s var(--ease), border-color .15s; }
+  .deal-actions button:hover:not(:disabled) { border-color: var(--dim); }
+  .deal-actions button:active:not(:disabled) { transform: scale(.97); }
+  .deal-actions button.primary { background: var(--red); color: #fff; border-color: var(--red); }
+  .deal-actions button:disabled { opacity: .45; cursor: not-allowed; }
+  .felt { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; min-height: 330px; }
+  .deck { position: relative; width: 300px; height: 210px; }
+  .pc { position: absolute; top: 0; left: 50%; width: 142px; height: 200px; margin-left: -71px; perspective: 900px;
+        transition: transform .55s var(--ease), opacity .4s; }
+  .pc .inner { position: relative; width: 100%; height: 100%; transform-style: preserve-3d; transition: transform .6s var(--ease); }
+  .pc.up .inner { transform: rotateY(180deg); }
+  .pc .back, .pc .front { position: absolute; inset: 0; border-radius: var(--r-md); backface-visibility: hidden; -webkit-backface-visibility: hidden;
+                          box-shadow: 0 10px 24px -8px rgba(0,0,0,.45); }
+  .pc .back { background: var(--red); border: 6px solid var(--face);
+              background-image: repeating-linear-gradient(45deg, transparent 0 6px, rgba(255,255,255,.14) 6px 7px), repeating-linear-gradient(-45deg, transparent 0 6px, rgba(255,255,255,.14) 6px 7px); }
+  .pc .front { background: var(--face); color: var(--ink); transform: rotateY(180deg); padding: 12px; display: flex; flex-direction: column; }
+  .pc .front .pip { font: 700 15px/1 var(--mono); }
+  .pc .front .pip.red { color: var(--red); }
+  .pc .front .name { margin: auto 0; font: 700 14px/1.3 var(--mono); text-align: center; word-break: break-word; }
+  .pc .front .meta { font: 11.5px var(--mono); color: var(--ink-2); text-align: center; }
+  .pc.burn { opacity: 0; transform: translate(-160px, 30px) rotate(-25deg) !important; }
+  .log { width: 100%; max-width: 520px; background: var(--term); color: var(--term-text); border: 1px solid var(--line); border-radius: var(--r-md);
+         font: 12.5px/1.7 var(--mono); padding: 10px 14px; min-height: 98px; }
+  .log .line { display: block; animation: rise .3s var(--ease) both; }
+  @keyframes rise { from { opacity: 0; transform: translateY(4px); } }
+  .illus { font-size: 12.5px; color: var(--dim); margin: 14px 0 0; }
+
+  /* Bento: five tiles, varied sizes and surfaces */
+  .bento { display: grid; grid-template-columns: repeat(6, 1fr); gap: 16px; }
+  .tile { position: relative; border-radius: var(--r-lg); padding: 34px 24px 26px; min-width: 0; overflow: hidden;
+          transition: transform .3s var(--ease); }
+  .tile:hover { transform: translateY(-3px); }
+  .tile::before { content: attr(data-pip); position: absolute; top: 12px; left: 14px; font: 700 14px/1 var(--mono); }
+  .tile h3 { margin: 0 0 8px; font-size: 19px; letter-spacing: -0.01em; }
+  .tile p { margin: 0; font-size: 15px; max-width: 52ch; }
+  .tile code { font: 12.5px var(--mono); padding: 1px 5px; border-radius: 4px; }
+  .tile.face { background: var(--face); color: var(--ink); box-shadow: 0 10px 26px -16px rgba(15, 26, 20, .5); }
+  .tile.face p { color: var(--ink-2); } .tile.face code { background: var(--face-2); }
+  .tile.face::before { color: var(--red); } .tile.face.black::before { color: var(--ink); }
+  .tile.dark { background: var(--term); color: var(--term-text); border: 1px solid var(--line); }
+  .tile.dark p { color: #b9bfb9; } .tile.dark code { background: #17241b; }
+  .tile.dark::before { color: #4eba65; }
+  .tile.back { background: var(--red); color: #fff;
+               background-image: repeating-linear-gradient(45deg, transparent 0 9px, rgba(255,255,255,.08) 9px 10px), repeating-linear-gradient(-45deg, transparent 0 9px, rgba(255,255,255,.08) 9px 10px); }
+  .tile.back p { color: #ffe3e5; } .tile.back code { background: rgba(0,0,0,.18); color: #fff; } .tile.back::before { color: #fff; }
+  .t-eval { grid-column: span 4; } .t-prov { grid-column: span 2; grid-row: span 2; }
+  .t-local, .t-scan { grid-column: span 2; } .t-setup { grid-column: span 6; }
+  .scores { display: grid; gap: 6px; margin-top: 18px; font: 12.5px var(--mono); }
+  .scores div { display: grid; grid-template-columns: 1fr auto auto; gap: 14px; align-items: baseline; }
+  .scores b { font-weight: 600; color: #e8e4dc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .scores .ok { color: #4eba65; } .scores .bad { color: #ff5a64; } .scores span { color: var(--term-dim); }
+  .tile .chips { margin-top: 16px; }
+  .tile .chip { background: var(--face-2); border-color: transparent; color: var(--ink); font-size: 13px; padding: 5px 12px; }
+  .tile .chip.local { border-color: #2f8a45; }
+  .fit { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
+  .fit span { font: 600 12.5px var(--mono); padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); }
+  .fit .relax { color: #2f8a45; border-color: #2f8a45; } .fit .balance { color: #9a6b00; border-color: #c99a2e; } .fit .hard { color: var(--red); border-color: var(--red); }
+  .tools { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+  .tools span { font: 13px var(--mono); color: var(--ink-2); background: var(--face-2); border-radius: var(--r-sm); padding: 4px 10px; }
+
+  /* Tabs */
+  .showcase { display: grid; grid-template-columns: 300px 1fr; gap: 28px; align-items: start; }
+  .showcase > * { min-width: 0; }
+  [role="tablist"] { display: grid; gap: 6px; }
+  [role="tab"] { text-align: left; background: transparent; border: 1px solid transparent; border-radius: var(--r-md); padding: 12px 14px;
+                 color: var(--text); cursor: pointer; font: inherit; transition: background .15s, border-color .15s; }
+  [role="tab"] b { display: block; font-size: 15.5px; }
+  [role="tab"] span { display: block; color: var(--dim); font-size: 13.5px; line-height: 1.45; }
+  [role="tab"]:hover { background: var(--felt-2); }
+  [role="tab"][aria-selected="true"] { background: var(--felt-2); border-color: var(--line); box-shadow: inset 3px 0 0 var(--red); }
+  [role="tabpanel"] pre { min-height: 300px; }
+  [role="tabpanel"][hidden] { display: none; }
+  .panel-in { animation: rise .35s var(--ease) both; }
+
+  .groups { display: grid; grid-template-columns: repeat(3, 1fr); gap: 40px; margin-top: 64px; }
+  .groups h3 { font-size: 15px; margin: 0 0 14px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+  .groups dl { margin: 0; display: grid; gap: 14px; }
+  .groups dt { font-weight: 600; }
+  .groups dd { margin: 2px 0 0; color: var(--dim); font-size: 14.5px; }
+
   .chips { display: flex; flex-wrap: wrap; gap: 8px; }
-  .chip { border: 1px solid var(--line); background: var(--felt-2); border-radius: 999px; padding: 6px 14px; font-size: 14px; }
+  .chip { border: 1px solid var(--line); background: var(--felt-2); border-radius: 999px; padding: 7px 15px; font-size: 14px;
+          transition: transform .2s var(--ease), border-color .2s; }
+  .chip:hover { transform: translateY(-2px); border-color: var(--dim); }
   .chip.local { border-color: var(--green); }
+  .chip.local::before { content: "● "; color: var(--green); font-size: 10px; vertical-align: 2px; }
 
-  .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
-  .step { background: var(--felt-2); border: 1px solid var(--line); border-radius: 12px; padding: 20px; min-width: 0; }
-  .step .n { font: 700 13px var(--mono); color: var(--red); }
-  .step pre { background: #0a120d; color: #e8e4dc; border-radius: 8px; padding: 10px 12px; font: 13px var(--mono);
-              overflow-x: auto; margin: 10px 0 0; }
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; counter-reset: step; }
+  .step { background: var(--felt-2); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 20px; min-width: 0; }
+  .step h3 { margin: 0; font-size: 17px; }
+  .step p { margin: 6px 0 0; color: var(--dim); font-size: 14.5px; }
+  .step .install { margin-top: 12px; }
 
-  .honest { background: var(--felt-2); border: 1px dashed var(--line); border-radius: 12px; padding: 20px 24px; margin-top: 24px; }
+  .honest { background: transparent; border: 1px dashed var(--line); border-radius: var(--r-lg); padding: 20px 24px; margin-top: 24px; }
   .honest ul { margin: 8px 0 0; padding-left: 20px; color: var(--dim); }
-  footer { padding: 40px 0 56px; border-top: 1px solid var(--line); color: var(--dim); font-size: 14px;
+
+  .flinks { display: flex; gap: 18px; flex-wrap: wrap; }
+  footer { padding: 36px 0 56px; border-top: 1px solid var(--line); color: var(--dim); font-size: 14px;
            display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
 
-  @media (max-width: 860px) {
-    .hero { grid-template-columns: 1fr; gap: 32px; padding-top: 28px; }
-    nav .links a:not(.gh) { display: none; }
+  /* Scroll reveal: only when JS runs and motion is welcome */
+  .js .reveal { opacity: 0; transform: translateY(16px); transition: opacity .6s var(--ease), transform .6s var(--ease); transition-delay: var(--delay, 0s); }
+  .js .reveal.in { opacity: 1; transform: none; }
+
+  @media (max-width: 960px) {
+    .hero { grid-template-columns: 1fr; gap: 36px; padding-top: 36px; }
+    .table, .showcase { grid-template-columns: 1fr; }
+    .groups, .steps { grid-template-columns: 1fr; gap: 28px; }
+    .bento { grid-template-columns: repeat(2, 1fr); }
+    .t-eval, .t-setup { grid-column: span 2; } .t-prov { grid-column: span 2; grid-row: auto; } .t-local, .t-scan { grid-column: span 1; }
+    [role="tablist"] { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (max-width: 640px) {
+    .nav .links a:not(.gh) { display: none; }
+    .bento { grid-template-columns: 1fr; }
+    .t-eval, .t-prov, .t-local, .t-scan, .t-setup { grid-column: auto; }
+    section { padding: 64px 0; }
+    .table { padding: 18px; }
+    .deck { transform: scale(.9); }
+    .term pre { min-height: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+    .js .reveal { opacity: 1; transform: none; }
   }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <nav>
-    <a class="brand" href="#"><b>♠</b> ClydeCLI</a>
-    <div class="links">
+<span class="nav-sentinel" id="top-sentinel"></span>
+<header class="nav" id="nav">
+  <div class="wrap">
+    <a class="brand" href="#top" aria-label="ClydeCLI home"><b aria-hidden="true">♠</b> ClydeCLI</a>
+    <nav class="links" aria-label="Sections">
+      <a href="#shuffle">cardShuffle</a>
       <a href="#different">Why Clyde</a>
       <a href="#basics">Features</a>
       <a href="#start">Get started</a>
       <a class="gh" href="https://github.com/dea6cat/ClydeCLI">GitHub ↗</a>
-    </div>
-  </nav>
+    </nav>
+  </div>
+</header>
 
-  <header class="hero">
+<main id="top">
+<div class="wrap">
+  <div class="hero">
     <div>
-      <h1>The coding agent that <span class="suit">deals</span> the right model.</h1>
-      <p class="lede">ClydeCLI is an open-source AI coding agent for your terminal, written in Python. Bring any model: cloud, local, or your own endpoint. Clyde reads your code, runs your commands and keeps at it until the thing works.</p>
-      <p class="quote">“Yeah, I can fix that.” — Clyde</p>
+      <h1>The coding agent that <span class="deal">deals</span> the right model.</h1>
+      <p class="lede">An open-source coding agent for your terminal. Any model, cloud or local, and it keeps going until the thing works.</p>
       <div class="install">
-        <code id="cmd">curl -fsSL https://raw.githubusercontent.com/dea6cat/ClydeCLI/main/install.sh | sh</code>
-        <button class="copy" type="button" data-copy="cmd">Copy</button>
+        <code id="cmd-hero">curl -fsSL https://raw.githubusercontent.com/dea6cat/ClydeCLI/main/install.sh | sh</code>
+        <button class="copy" type="button" data-copy="cmd-hero">Copy</button>
       </div>
       <div class="cta">
         <a class="btn primary" href="https://github.com/dea6cat/ClydeCLI">View on GitHub</a>
-        <a class="btn ghost" href="#start">Get started</a>
+        <a class="btn ghost" href="#shuffle">Try a deal ↓</a>
       </div>
-      <p class="note">MIT licensed · Python 3.14+ · macOS and Linux</p>
     </div>
 
-    <div class="term" role="img" aria-label="An example ClydeCLI session fixing a failing test">
-      <div class="bar"><i></i><i></i><i></i></div>
-<pre><span class="d">~/repo $</span> clyde --model cardShuffle:house
+    <figure class="term" style="margin:0" aria-labelledby="hero-cap">
+      <div class="bar"><i></i><i></i><i></i><span>~/repo</span><button class="replay" type="button" id="replay">↻ Replay</button></div>
+      <pre id="hero-term" aria-hidden="true"></pre>
+      <figcaption id="hero-cap" class="sr">An example ClydeCLI session: the ace-of-spades banner, then a request to fix a failing leap-year test. cardShuffle deals a model, which searches, reads the file, runs the failing test, edits the file, reruns the test and explains the fix.</figcaption>
+    </figure>
+  </div>
+</div>
 
-<span class="g">&gt;</span> the date parser test fails on leap years, fix it
+<section id="shuffle">
+  <div class="wrap">
+    <p class="kicker reveal">cardShuffle</p>
+    <h2 class="reveal">One model name. The whole table behind it.</h2>
+    <p class="sub reveal">Pick <code>cardShuffle</code> as your model and Clyde deals every turn to a real one, ranked by its own <code>/eval</code>. If that model errors, stalls or loops, the next card takes over mid-turn. Go on, deal a hand.</p>
 
-<span class="d">♠ dealt</span> nvidia:nemotron-3-super
-<span class="g">•</span> Grep <span class="d">"parse_date" src tests</span>
-<span class="g">•</span> Read <span class="d">src/dates.py · lines 1-88</span>
-<span class="g">•</span> Bash <span class="d">pytest tests/test_dates.py -q · exit=1</span>
-<span class="g">•</span> Edit <span class="d">src/dates.py · checkpointed</span>
-<span class="g">•</span> Bash <span class="d">pytest tests/test_dates.py -q · exit=0</span>
-
-February had 28 days hard-coded. It now uses
-<span class="w">calendar.monthrange</span>, and the leap-year test passes.
-
-<span class="r">♠</span> <span class="d">Shuffled for 41s · /rewind undoes the edit</span></pre>
+    <div class="table reveal">
+      <div>
+        <fieldset class="tiers" id="tiers">
+          <legend>Choose a tier</legend>
+          <div class="tier"><input type="radio" name="tier" id="t-high" value="high"><label for="t-high"><b>high-roller</b><span>The strongest model first</span></label></div>
+          <div class="tier"><input type="radio" name="tier" id="t-house" value="house" checked><label for="t-house"><b>house</b><span>The middle card: strong enough, not the priciest</span></label></div>
+          <div class="tier"><input type="radio" name="tier" id="t-free" value="free"><label for="t-free"><b>free</b><span>Local Ollama and LM Studio models only</span></label></div>
+          <div class="tier"><input type="radio" name="tier" id="t-small" value="small"><label for="t-small"><b>small</b><span>The weakest, fastest model first</span></label></div>
+        </fieldset>
+        <div class="deal-actions">
+          <button type="button" class="primary" id="deal">♠ Deal</button>
+          <button type="button" id="fail" disabled>Make it fail</button>
+        </div>
+      </div>
+      <div class="felt">
+        <div class="deck" id="deck" aria-hidden="true"></div>
+        <div class="log" id="log" role="log" aria-live="polite" aria-label="Dealer log"><span class="line d">Press Deal to start a turn.</span></div>
+      </div>
     </div>
-  </header>
+    <p class="illus">An illustration with example models and scores; your table is ranked from your own <code>/eval</code> results.</p>
+  </div>
+</section>
 
-  <section id="different">
-    <h2>What other harnesses don't do</h2>
-    <p class="sub">The big vendor CLIs are built around one company's models. Clyde is built around all of them, and it checks which ones actually work.</p>
-    <div class="cards">
-      <div class="card" data-pip="A♠"><h3>cardShuffle routing</h3><p>A virtual model that deals each turn to a real one, ranked by <code>/eval</code>. If a model errors, stalls or loops, the next card takes over. Tiers: high-roller, house, free, small.</p></div>
-      <div class="card" data-pip="K♥"><h3>Its own model eval</h3><p><code>/eval</code> tests every model you can reach on tool calls, then deals it a hand of 11 graded tasks. Broken models are hidden; results show latency and tokens per second.</p></div>
-      <div class="card black" data-pip="Q♣"><h3>Any provider, any key</h3><p>13 built in, including Anthropic, OpenAI, Google, Mistral, NVIDIA, DeepSeek and OpenRouter, plus local Ollama and LM Studio. Any OpenAI-compatible endpoint joins with <code>/login</code> → custom.</p></div>
-      <div class="card" data-pip="J♦"><h3>Local models that fit</h3><p><code>/models local</code> searches ollama.com, Hugging Face GGUF and MLX, rates each one relax, balance or hard for your machine, and shows the cost before anything downloads.</p></div>
-      <div class="card black" data-pip="10♠"><h3>Supply-chain scanning</h3><p>Bundled SkillSpector scans skills, plugins, agents and MCP tool lists before the model sees them. Anything flagged do-not-install stays out until you allow it.</p></div>
-      <div class="card" data-pip="9♥"><h3>Bring your setup</h3><p>Reads the memory files, skills, hooks, MCP servers and plugins you already made for Claude Code, Cursor, Gemini CLI, Codex and Copilot, and imports them only with a yes.</p></div>
+<section id="different">
+  <div class="wrap">
+    <h2 class="reveal">What other harnesses don't do</h2>
+    <p class="sub reveal">Vendor CLIs are built around one company's models. Clyde is built around all of them, and it checks which ones actually work.</p>
+    <div class="bento">
+      <article class="tile dark t-eval reveal" data-pip="K♥">
+        <h3>It grades your models</h3>
+        <p><code>/eval</code> tests every model you can reach on a tool call, then deals it a hand of 11 graded tasks. Broken models drop out of <code>/models</code>.</p>
+        <div class="scores" aria-label="Example /eval results">
+          <div><span>example results</span><span></span><span></span></div>
+          <div><b>nvidia:nemotron-3-super</b><span class="ok">11/11</span><span>9.8s</span></div>
+          <div><b>glm:glm-5</b><span class="ok">9/11</span><span>7.2s</span></div>
+          <div><b>mistral:ministral-3b</b><span>3/11</span><span>0.9s</span></div>
+          <div><b>openrouter:llama-3.1-8b:free</b><span class="bad">no tool calls</span><span>hidden</span></div>
+        </div>
+      </article>
+      <article class="tile face black t-prov reveal" data-pip="Q♣">
+        <h3>Any provider, your keys</h3>
+        <p>13 built in, local servers included. Any OpenAI-compatible API joins with <code>/login</code>. No account with us, no proxy in between.</p>
+        <div class="chips">
+          <span class="chip">Anthropic</span><span class="chip">OpenAI</span><span class="chip">Gemini</span><span class="chip">OpenRouter</span>
+          <span class="chip">Mistral</span><span class="chip">NVIDIA</span><span class="chip">DeepSeek</span><span class="chip">Cerebras</span>
+          <span class="chip">GLM</span><span class="chip">MiniMax</span><span class="chip">Ollama Cloud</span>
+          <span class="chip local">Ollama</span><span class="chip local">LM Studio</span><span class="chip">your endpoint</span>
+        </div>
+      </article>
+      <article class="tile face t-local reveal" data-pip="J♦">
+        <h3>Local models that fit</h3>
+        <p><code>/models local</code> searches ollama.com, Hugging Face and MLX, and rates each for your machine before anything downloads.</p>
+        <div class="fit"><span class="relax">relax</span><span class="balance">balance</span><span class="hard">hard</span></div>
+      </article>
+      <article class="tile back t-scan reveal" data-pip="10♠">
+        <h3>Scanned before it loads</h3>
+        <p>Bundled SkillSpector checks skills, plugins, agents and MCP tool lists. Anything flagged stays out until you allow it.</p>
+      </article>
+      <article class="tile face t-setup reveal" data-pip="9♥">
+        <h3>Brings your setup with it</h3>
+        <p>Reads the memory files, skills, hooks, MCP servers and plugins you made for other agents, and imports them only with a yes.</p>
+        <div class="tools"><span>Claude Code</span><span>Cursor</span><span>Gemini CLI</span><span>Codex</span><span>Copilot CLI</span></div>
+      </article>
     </div>
-  </section>
+  </div>
+</section>
 
-  <section id="basics">
-    <h2>Everything a daily driver needs</h2>
-    <p class="sub">The fundamentals are here too, covered by a suite of nearly 700 tests and a live shakedown against real providers.</p>
-    <div class="list">
-      <div><b>Headless mode</b><span><code>clyde -p</code> for scripts and CI: answer on stdout, JSON output, exit codes, permission asks denied and listed.</span></div>
-      <div><b>Undo with /rewind</b><span>Every message checkpoints the files the model edits; roll back code, conversation, or both.</span></div>
-      <div><b>OS sandbox</b><span>Shell commands write only to the project, temp and caches (sandbox-exec on macOS, bwrap on Linux).</span></div>
-      <div><b>Sub-agents and teams</b><span>Custom agent types in Claude Code's format, background runs, and teams that work in parallel.</span></div>
-      <div><b>MCP, local and remote</b><span>stdio, Streamable HTTP and SSE servers, OAuth sign-in, and a repo's own <code>.mcp.json</code> after approval.</span></div>
-      <div><b>Data tool</b><span>Profile CSV, Parquet, JSON and SQLite files and run read-only SQL across them with sandboxed DuckDB.</span></div>
-      <div><b>Permissions you control</b><span>Hold, plan and all-in modes; allow and deny rules in Claude Code syntax; major moves always ask.</span></div>
-      <div><b>Skills, hooks, plugins</b><span>Markdown skills as slash commands, PreToolUse and PostToolUse hooks, and installable plugin bundles.</span></div>
-      <div><b>Check after edit</b><span>Python edits are checked with ruff (and mypy when configured); new problems go straight back to the model.</span></div>
-      <div><b>Pasting that works</b><span>Paste screenshots with Ctrl+V; long pastes fold into one line and still send in full.</span></div>
-      <div><b>Sessions and compaction</b><span>Auto-saved sessions, <code>/resume</code> per workspace, and automatic compaction near the context limit.</span></div>
-      <div><b>Cost and tracing</b><span><code>/cost</code> per model, and a trace of every model and tool call with secrets redacted.</span></div>
+<section id="basics">
+  <div class="wrap">
+    <h2 class="reveal">Everything you'd expect, done properly</h2>
+    <p class="sub reveal">The fundamentals are covered by nearly 700 tests and a live shakedown against real providers.</p>
+
+    <div class="showcase reveal">
+      <div role="tablist" aria-label="Feature demos" aria-orientation="vertical" id="tabs">
+        <button role="tab" id="tab-p" aria-controls="panel-p" aria-selected="true"><b>Headless mode</b><span>Scripts and CI with <code>clyde -p</code></span></button>
+        <button role="tab" id="tab-r" aria-controls="panel-r" aria-selected="false" tabindex="-1"><b>Undo with /rewind</b><span>Every message is a checkpoint</span></button>
+        <button role="tab" id="tab-s" aria-controls="panel-s" aria-selected="false" tabindex="-1"><b>OS sandbox</b><span>Shell writes stay in the project</span></button>
+        <button role="tab" id="tab-t" aria-controls="panel-t" aria-selected="false" tabindex="-1"><b>Sub-agents and teams</b><span>Parallel work, custom agent types</span></button>
+      </div>
+      <div>
+        <div role="tabpanel" id="panel-p" aria-labelledby="tab-p" tabindex="0" class="term"><div class="bar"><i></i><i></i><i></i><span>ci.sh</span></div>
+<pre><span class="d">$</span> git diff | clyde -p "review this" --output-format json
+<span class="d">{</span>
+  <span class="y">"result"</span>: "One issue: parse_date swallows ValueError…",
+  <span class="y">"is_error"</span>: false,
+  <span class="y">"model"</span>: "cardShuffle:house",
+  <span class="y">"num_turns"</span>: 3,
+  <span class="y">"usage"</span>: {"input_tokens": 4120, "output_tokens": 388},
+  <span class="y">"denied"</span>: [],
+  <span class="y">"session_id"</span>: "a41c…"
+<span class="d">}</span>
+<span class="d">$</span> echo $?
+<span class="g">0</span>
+
+<span class="d"># Only the answer goes to stdout; progress goes to stderr.
+# Anything that would ask permission is denied and listed.</span></pre></div>
+
+        <div role="tabpanel" id="panel-r" aria-labelledby="tab-r" tabindex="0" class="term" hidden><div class="bar"><i></i><i></i><i></i><span>clyde</span></div>
+<pre><span class="g">&gt;</span> /rewind
+<span class="d"> #  message                                  files</span>
+ 3  rename the config loader                    4
+ 2  add retries to the http client              2
+ 1  fix the leap-year test                      1
+Rewind to before which # (Enter to cancel): <span class="w">3</span>
+c = code and conversation, f = files only, m = conversation only: <span class="w">c</span>
+  <span class="g">↺</span> src/config.py restored
+  <span class="g">↺</span> src/loader.py restored
+  <span class="g">↺</span> tests/test_config.py restored
+  <span class="g">↺</span> src/settings.py deleted (the model created it)
+
+<span class="d">Your message is back in the prompt to edit or resend.</span></pre></div>
+
+        <div role="tabpanel" id="panel-s" aria-labelledby="tab-s" tabindex="0" class="term" hidden><div class="bar"><i></i><i></i><i></i><span>clyde</span></div>
+<pre><span class="g">•</span> Bash <span class="d">echo 'export X=1' &gt;&gt; ~/.zshrc</span>
+  <span class="r">✗ exit=1</span> <span class="d">· operation not permitted</span>
+  <span class="d">The sandbox blocked a write outside the project. If the
+  command really needs it, run it again with unsandboxed: true;
+  that asks the user first.</span>
+
+<span class="w">♠ Allow Bash to run unsandboxed?</span>
+  echo 'export X=1' &gt;&gt; ~/.zshrc
+  <span class="d">y = yes · n = no</span>
+
+<span class="d"># Writes go only to the project, temp and package caches.
+# macOS uses sandbox-exec; Linux uses bwrap.</span></pre></div>
+
+        <div role="tabpanel" id="panel-t" aria-labelledby="tab-t" tabindex="0" class="term" hidden><div class="bar"><i></i><i></i><i></i><span>.clyde/agents/test-runner.md</span></div>
+<pre><span class="d">---</span>
+<span class="y">name</span>: test-runner
+<span class="y">description</span>: Runs the suite and explains each failure
+<span class="y">tools</span>: Bash, Read, Grep
+<span class="y">model</span>: inherit
+<span class="d">---</span>
+You run tests. Report each failure with the file,
+the assertion and the likely cause.
+
+<span class="g">•</span> TeamCreate <span class="d">3 members, in parallel</span>
+  <span class="g">✓</span> test-runner     <span class="d">2 failures, both in dates.py</span>
+  <span class="g">✓</span> general-purpose <span class="d">docs mention the old flag in 3 places</span>
+  <span class="g">✓</span> general-purpose <span class="d">no other callers of parse_date</span></pre></div>
+      </div>
     </div>
-  </section>
 
-  <section id="providers">
-    <h2>Your models, your keys</h2>
-    <p class="sub">No account with us and no proxy in between. Requests go straight from your machine to the provider you chose.</p>
-    <div class="chips">
-      <span class="chip">Anthropic</span><span class="chip">OpenAI</span><span class="chip">Google Gemini</span><span class="chip">OpenRouter</span>
-      <span class="chip">Mistral</span><span class="chip">NVIDIA</span><span class="chip">DeepSeek</span><span class="chip">Cerebras</span>
-      <span class="chip">GLM</span><span class="chip">MiniMax</span><span class="chip">Ollama Cloud</span>
-      <span class="chip local">Ollama (local)</span><span class="chip local">LM Studio (local)</span><span class="chip">+ any OpenAI-compatible API</span>
+    <div class="groups">
+      <div class="reveal"><h3>Connect</h3><dl>
+        <dt>MCP, local and remote</dt><dd>stdio, HTTP and SSE servers, OAuth sign-in, and a repo's <code>.mcp.json</code> after approval.</dd>
+        <dt>Skills, hooks, plugins</dt><dd>Markdown skills as slash commands, tool hooks, and plugin bundles.</dd>
+        <dt>Data tool</dt><dd>Read-only SQL across CSV, Parquet, JSON and SQLite with sandboxed DuckDB.</dd>
+      </dl></div>
+      <div class="reveal"><h3>Stay in control</h3><dl>
+        <dt>Permission modes</dt><dd>Hold, plan and all-in, with allow and deny rules. Major moves always ask.</dd>
+        <dt>Check after edit</dt><dd>Python edits run through ruff, and new problems go back to the model.</dd>
+        <dt>Stalls end cleanly</dt><dd>A cloud model silent for 180 s ends the turn, and cardShuffle deals again.</dd>
+      </dl></div>
+      <div class="reveal"><h3>Work comfortably</h3><dl>
+        <dt>Pasting that works</dt><dd>Screenshots with Ctrl+V, and long pastes fold into one line.</dd>
+        <dt>Sessions</dt><dd>Auto-saved, resumable per workspace, compacted near the context limit.</dd>
+        <dt>Cost and tracing</dt><dd><code>/cost</code> per model, and a trace of every call with secrets redacted.</dd>
+      </dl></div>
     </div>
-  </section>
+  </div>
+</section>
 
-  <section id="start">
-    <h2>Up and running in three steps</h2>
-    <p class="sub">The installer sets up uv and Clyde, then <code>clyde setup</code> walks you through the rest.</p>
+<section id="start">
+  <div class="wrap">
+    <h2 class="reveal">Up and running in three steps</h2>
+    <p class="sub reveal">Python 3.14+ on macOS or Linux, and a key for any provider you like.</p>
     <div class="steps">
-      <div class="step"><span class="n">01 · INSTALL</span>
-<pre>curl -fsSL https://raw.githubusercontent.com/dea6cat/ClydeCLI/main/install.sh | sh</pre></div>
-      <div class="step"><span class="n">02 · CONNECT</span>
-<pre>clyde login      # or export a provider key</pre></div>
-      <div class="step"><span class="n">03 · WORK</span>
-<pre>cd your-project
-clyde</pre></div>
+      <div class="step reveal"><h3>Install</h3><p>Sets up uv if needed, then Clyde, then runs <code>clyde setup</code>.</p>
+        <div class="install"><code id="cmd-1">curl -fsSL https://raw.githubusercontent.com/dea6cat/ClydeCLI/main/install.sh | sh</code><button class="copy" type="button" data-copy="cmd-1">Copy</button></div></div>
+      <div class="step reveal"><h3>Connect</h3><p>Pick a provider and paste its key, or export one.</p>
+        <div class="install"><code id="cmd-2">clyde login</code><button class="copy" type="button" data-copy="cmd-2">Copy</button></div></div>
+      <div class="step reveal"><h3>Work</h3><p>Start it in your project and say what's broken.</p>
+        <div class="install"><code id="cmd-3">clyde</code><button class="copy" type="button" data-copy="cmd-3">Copy</button></div></div>
     </div>
-    <div class="honest">
+    <div class="honest reveal">
       <b>Straight talk</b>
       <ul>
         <li>The install is about 850 MB, mostly PyTorch for Laya, the bundled local model that spots stuck loops.</li>
@@ -209,22 +471,209 @@ clyde</pre></div>
         <li>No IDE integration yet. VS Code and JetBrains support is on the roadmap.</li>
       </ul>
     </div>
-  </section>
+  </div>
+</section>
 
+</main>
+
+<div class="wrap">
   <footer>
-    <span><b style="color:var(--red)">♠</b> ClydeCLI · MIT License</span>
-    <span><a href="https://github.com/dea6cat/ClydeCLI">GitHub</a> · <a href="https://github.com/dea6cat/ClydeCLI/blob/main/FEATURE_LIST.md">Feature list</a> · <a href="https://github.com/dea6cat/ClydeCLI/blob/main/CHANGELOG.md">Changelog</a></span>
+    <span><b style="color:var(--red)">♠</b> ClydeCLI, MIT License</span>
+    <span class="flinks"><a href="https://github.com/dea6cat/ClydeCLI">GitHub</a><a href="https://github.com/dea6cat/ClydeCLI/blob/main/FEATURE_LIST.md">Feature list</a><a href="https://github.com/dea6cat/ClydeCLI/blob/main/CHANGELOG.md">Changelog</a><a href="https://github.com/dea6cat/ClydeCLI/issues">Issues</a></span>
   </footer>
 </div>
+
 <script>
-  document.querySelectorAll("button.copy").forEach(function (b) {
+(function () {
+  "use strict";
+  document.documentElement.classList.add("js");
+  var still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var wait = function (ms) { return still ? Promise.resolve() : new Promise(function (r) { setTimeout(r, ms); }); };
+  var esc = function (s) { return s.replace(/[&<>]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]; }); };
+
+  /* Copy buttons */
+  document.querySelectorAll(".copy").forEach(function (b) {
     b.addEventListener("click", function () {
       var text = document.getElementById(b.dataset.copy).textContent;
-      navigator.clipboard.writeText(text).then(function () {
-        b.textContent = "Copied"; setTimeout(function () { b.textContent = "Copy"; }, 1500);
-      }, function () { b.textContent = "Select it"; });
+      var done = function (label, ok) { b.textContent = label; b.classList.toggle("done", ok); setTimeout(function () { b.textContent = "Copy"; b.classList.remove("done"); }, 1600); };
+      if (!navigator.clipboard) return done("Select it", false);
+      navigator.clipboard.writeText(text).then(function () { done("Copied", true); }, function () { done("Select it", false); });
     });
   });
+
+  /* Nav: border once scrolled, highlight the section in view */
+  var nav = document.getElementById("nav");
+  if ("IntersectionObserver" in window) {
+    new IntersectionObserver(function (e) { nav.classList.toggle("scrolled", !e[0].isIntersecting); }).observe(document.getElementById("top-sentinel"));
+  }
+  var links = {};
+  document.querySelectorAll(".nav .links a[href^='#']").forEach(function (a) { links[a.getAttribute("href").slice(1)] = a; });
+  if ("IntersectionObserver" in window) {
+    var spy = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (!e.isIntersecting || !links[e.target.id]) return;
+        Object.keys(links).forEach(function (k) { links[k].classList.toggle("active", k === e.target.id); });
+      });
+    }, { rootMargin: "-45% 0px -50% 0px" });
+    Object.keys(links).forEach(function (id) { var s = document.getElementById(id); if (s) spy.observe(s); });
+
+    /* Scroll reveal, staggered within a group */
+    var reveal = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add("in"); reveal.unobserve(e.target); } });
+    }, { rootMargin: "0px 0px -8% 0px" });
+    document.querySelectorAll(".reveal").forEach(function (el) {
+      var sibs = Array.prototype.filter.call(el.parentNode.children, function (c) { return c.classList.contains("reveal"); });
+      el.style.setProperty("--delay", Math.min(sibs.indexOf(el), 8) * 0.06 + "s");
+      reveal.observe(el);
+    });
+  } else {
+    document.querySelectorAll(".reveal").forEach(function (el) { el.classList.add("in"); });
+  }
+
+  /* Hero terminal: replays a turn */
+  var term = document.getElementById("hero-term");
+  var run = 0;
+  var ACE = [" ______ ", "|A /\\  |", "| /  \\ |", "|(    )|", "|  )(  |", "|_____V|"];
+  var INFO = '  <span class="w">ClydeCLI</span> <span class="g">v0.1.0</span>  <span class="d">·</span>  <span class="w">house</span>  <span class="d">·</span>  <span class="g">cardShuffle</span>  <span class="d">·</span>  <span class="d">~/repo</span>';
+  var ASK = "the date parser test fails on leap years, fix it";
+  var TOOLS = [
+    { name: "Grep", arg: '"parse_date" src tests', result: "mode=files_with_matches · files=2 · 0.1s", ms: 500 },
+    { name: "Read", arg: "src/dates.py", result: "src/dates.py · lines=1-88/88 · 0.0s", ms: 450 },
+    { name: "Bash", arg: "pytest tests/test_dates.py -q", result: "exit=1 · FAILED tests/test_dates.py::test_leap_year · 1.2s", err: true, ms: 1200 },
+    { name: "Edit", arg: "src/dates.py", result: "src/dates.py · replaceAll=False · 0.0s", ms: 550 },
+    { name: "Bash", arg: "pytest tests/test_dates.py -q", result: "exit=0 · 12 passed in 0.31s · 1.1s", ms: 1100 }
+  ];
+  var ANSWER = "February had 28 days hard-coded. It now uses calendar.monthrange, so leap years get 29 and the test passes.";
+  function line(html, parent) { var s = document.createElement("span"); s.className = "line"; s.innerHTML = html || "&#8203;"; (parent || term).appendChild(s); return s; }
+  function banner() {
+    var b = document.createElement("span"); b.className = "banner";
+    b.innerHTML = '<span class="ace">' + esc(ACE.join("\n")) + '</span><span class="info">' + INFO + "</span>";
+    term.appendChild(b);
+  }
+  function promptBox() {   // the live prompt between two rules, with the mode footer
+    var box = document.createElement("span"); box.className = "line"; term.appendChild(box);
+    box.innerHTML = '<span class="rule"></span><span class="g">❯</span> <span class="typed"></span><span class="caret"></span><span class="rule"></span>' +
+                    '  <span class="g">♠</span> <span class="mode">hold</span>  <span class="d">(shift+tab to cycle)</span>';
+    return box;
+  }
+  async function play() {
+    var me = ++run; term.innerHTML = "";
+    var alive = function () { return me === run; };
+    banner();
+    var box = promptBox(), typed = box.querySelector(".typed");
+    await wait(700);
+    for (var k = 1; k <= ASK.length; k++) { if (!alive()) return; typed.textContent = ASK.slice(0, k); await wait(24 + Math.random() * 30); }
+    await wait(450); if (!alive()) return;
+    box.remove();
+    line('<span class="g">❯</span> ' + esc(ASK));
+    line("");
+    await wait(400);
+    line('<span class="g">♠ dealt </span>nvidia:nemotron-3-super<span class="d">  house: the middle card</span>');
+    for (var i = 0; i < TOOLS.length; i++) {
+      var t = TOOLS[i]; if (!alive()) return;
+      var head = '<span class="d">•</span> <span class="g">' + t.name + '</span> <span class="d">(' + esc(t.arg) + ")</span>";
+      var l = line(head + ' <span class="spin"></span> <span class="d">running...</span>');
+      await wait(t.ms); if (!alive()) return;
+      l.innerHTML = head;
+      line('  <span class="' + (t.err ? "r" : "d") + '">↳ ' + esc(t.result) + "</span>");
+      await wait(140);
+    }
+    line("");
+    var a = line(""), words = ANSWER.split(" ");
+    for (var w = 0; w < words.length; w++) { if (!alive()) return; a.textContent += (w ? " " : "") + words[w]; await wait(45); }
+    a.innerHTML = esc(a.textContent).replace("calendar.monthrange", '<span class="w">calendar.monthrange</span>');
+    line("");
+    line('<span class="g">♠</span> <span class="d">Shuffled for 41s · 3:42 PM</span>');
+    line("");
+    promptBox();
+  }
+  document.getElementById("replay").addEventListener("click", play);
+  if ("IntersectionObserver" in window && !still) {
+    var started = false;
+    new IntersectionObserver(function (e) { if (e[0].isIntersecting && !started) { started = true; play(); } }).observe(term);
+  } else { play(); }
+
+  /* cardShuffle table */
+  var DECK = {   // example ranking; strongest first
+    high:  [["A♠", "nvidia:nemotron-3-super", "11/11 · 9.8s"], ["K♥", "nvidia:kimi-k3", "11/11 · 12.4s"], ["Q♣", "google:gemini-3-flash", "10/11 · 6.1s"]],
+    house: [["8♦", "glm:glm-5", "9/11 · 7.2s"], ["7♠", "nvidia:gemma-4-31b-it", "8/11 · 5.3s"], ["6♥", "mistral:mistral-medium", "7/11 · 3.9s"]],
+    free:  [["5♣", "ollama:qwen3:14b", "7/11 · local"], ["4♦", "lmstudio:gemma-4-12b", "6/11 · local"], ["3♠", "ollama:llama3.2:3b", "3/11 · local"]],
+    small: [["2♥", "mistral:ministral-3b", "3/11 · 0.9s"], ["3♣", "ollama:llama3.2:3b", "3/11 · local"], ["4♠", "nvidia:nemotron-nano", "5/11 · 1.4s"]]
+  };
+  var REASONS = ["HTTP 429 rate limited", "no response for 180 s; the endpoint stalled", "stuck: same tool call 3 times (Laya)"];
+  var deck = document.getElementById("deck"), log = document.getElementById("log");
+  var dealBtn = document.getElementById("deal"), failBtn = document.getElementById("fail");
+  var hand = [], pos = 0, busy = false;
+  function tier() { return document.querySelector('input[name="tier"]:checked').value; }
+  function say(html) { var s = document.createElement("span"); s.className = "line"; s.innerHTML = html; log.appendChild(s); while (log.children.length > 4) log.removeChild(log.firstChild); }
+  function card(c) {
+    var red = /[♥♦]/.test(c[0]);
+    var el = document.createElement("div"); el.className = "pc";
+    el.innerHTML = '<div class="inner"><div class="back"></div><div class="front"><span class="pip' + (red ? " red" : "") + '">' + c[0] +
+      '</span><span class="name">' + esc(c[1].replace(":", ":​")) + '</span><span class="meta">/eval ' + esc(c[2]) + "</span></div></div>";
+    return el;
+  }
+  async function shuffle() {
+    deck.innerHTML = "";
+    var backs = [];
+    for (var i = 0; i < 5; i++) { var b = card(["", "", ""]); deck.appendChild(b); backs.push(b); }
+    for (var round = 0; round < 3; round++) {
+      backs.forEach(function (b, j) { var x = (j - 2) * (still ? 0 : 26) * (round % 2 ? -1 : 1); b.style.transform = "translateX(" + x + "px) rotate(" + (j - 2) * 4 + "deg)"; });
+      await wait(220);
+      backs.forEach(function (b) { b.style.transform = ""; });
+      await wait(180);
+    }
+    deck.innerHTML = "";
+  }
+  async function flip(i) {
+    var el = card(hand[i]); el.style.transform = "translateY(-30px)"; el.style.opacity = "0"; deck.appendChild(el);
+    await wait(30); el.style.transform = ""; el.style.opacity = "1";
+    await wait(250); el.classList.add("up");
+    await wait(450);
+    say('<span class="d">♠ dealt</span> ' + esc(hand[i][1]) + ' <span class="d">· ' + esc(hand[i][2]) + "</span>");
+  }
+  dealBtn.addEventListener("click", async function () {
+    if (busy) return; busy = true; dealBtn.disabled = true; failBtn.disabled = true;
+    log.innerHTML = ""; hand = DECK[tier()]; pos = 0;
+    say('<span class="d">♠ shuffling the</span> ' + tier() + ' <span class="d">tier…</span>');
+    await shuffle(); await flip(0);
+    busy = false; dealBtn.disabled = false; failBtn.disabled = false;
+  });
+  failBtn.addEventListener("click", async function () {
+    if (busy || !hand.length) return; busy = true; failBtn.disabled = true; dealBtn.disabled = true;
+    var cur = deck.lastElementChild;
+    say('<span class="r">✗</span> ' + esc(hand[pos][1]) + ' <span class="d">failed: ' + REASONS[pos % REASONS.length] + "</span>");
+    if (cur) { cur.classList.add("burn"); await wait(420); cur.remove(); }
+    pos++;
+    if (pos < hand.length) {
+      say('<span class="d">♠ re-dealing mid-turn, the conversation carries over</span>');
+      await flip(pos);
+      failBtn.disabled = pos >= hand.length - 1;
+    } else {
+      say('<span class="d">no cards left; the error is shown to you</span>');
+    }
+    busy = false; dealBtn.disabled = false;
+  });
+
+  /* Tabs: arrows, Home, End; vertical list */
+  var tabs = Array.prototype.slice.call(document.querySelectorAll('[role="tab"]'));
+  function select(t, focus) {
+    tabs.forEach(function (x) {
+      var on = x === t, p = document.getElementById(x.getAttribute("aria-controls"));
+      x.setAttribute("aria-selected", on); x.tabIndex = on ? 0 : -1; p.hidden = !on;
+      if (on) { p.classList.remove("panel-in"); void p.offsetWidth; p.classList.add("panel-in"); }
+    });
+    if (focus) t.focus();
+  }
+  tabs.forEach(function (t, i) {
+    t.addEventListener("click", function () { select(t, false); });
+    t.addEventListener("keydown", function (e) {
+      var n = { ArrowDown: i + 1, ArrowRight: i + 1, ArrowUp: i - 1, ArrowLeft: i - 1, Home: 0, End: tabs.length - 1 }[e.key];
+      if (n === undefined) return;
+      e.preventDefault(); select(tabs[(n + tabs.length) % tabs.length], true);
+    });
+  });
+})();
 </script>
 </body>
 </html>
