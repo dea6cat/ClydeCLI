@@ -3,6 +3,7 @@ rich>=13.0.0
 prompt-toolkit>=3.0.0
 tiktoken>=0.7.0
 laya==0.3.23
+skillspector @ git+https://github.com/NVIDIA/SkillSpector@v2.12.0
 
 # Development Dependencies
 build>=1.0.0
