@@ -29,6 +29,8 @@ dependencies = [
     "laya==0.3.23",
     # Bundled security scanner for skills, plugins and MCP servers from other agents (not on PyPI).
     "skillspector @ git+https://github.com/NVIDIA/SkillSpector@v2.12.0",
+    # The Data tool's engine: profile and query CSV, Parquet and JSON files with read-only SQL.
+    "duckdb>=1.5,<2",
 ]
 
 [project.optional-dependencies]

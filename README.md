@@ -270,6 +270,7 @@ clyde --version                # Check version
 | Category | Tools | Status |
 |----------|-------|--------|
 | Files | Read, Write, Edit, NotebookEdit, Glob, Grep | ✅ Working; Edit also lands a unique match that is off only by trailing whitespace or indentation |
+| Data | Data | ✅ Profile CSV, TSV, Parquet, JSON and SQLite files (types, nulls, distinct counts, min/max, samples) and run read-only SQL across them with DuckDB, sandboxed to the workspace |
 | System | Bash | ✅ Working; asks before commands that are not read-only |
 | Web | WebFetch, WebSearch | ✅ Working |
 | Interaction | AskUserQuestion, SendUserMessage | ✅ Working |
@@ -290,7 +291,7 @@ clyde --version                # Check version
 - ✅ **Phase 2**: Real tool-calling loop, multi-provider
 - ✅ **Phase 3**: Context, permissions, recovery (context building, saved permission rules, `/resume`, `/doctor`, compaction, hooks)
 - ✅ **Phase 4**: MCP client (stdio, Streamable HTTP, HTTP+SSE), plugins, custom tools/skills/hooks, tracing and `/debug`
-- 🟡 **Phase 5**: Python-native differentiators: the Code Map, check-after-edit with ruff/mypy/pytest/uv and notebook tools are in; data-engineering/ETL tooling is not
+- ✅ **Phase 5**: Python-native differentiators: the Code Map, check-after-edit with ruff/mypy/pytest/uv, notebook tools, and the Data tool for data and ETL work
 - ✅ **Phase 6**: Model play: cardShuffle routing across `/eval`-ranked models, local models that fit the machine (ollama.com, Hugging Face GGUF and MLX), Laya bundled for stuck-loop detection, and SkillSpector bundled to scan skills, plugins and MCP servers
 - 🟡 **Next**: promote Laya's difficulty score from shadow mode into `cardShuffle:house` once `/laya` shows it separates easy turns from hard ones
 
@@ -582,6 +583,25 @@ Shift+Tab cycles the mode, shown under the prompt:
 
 Deny rules and the always-refused commands (like `sudo`) apply in every mode, and writes outside the
 project are refused in every mode.
+
+### Data Files
+
+*Let me look at the numbers before you build the pipeline.*
+
+The Data tool lets any model look at data the way a data engineer would, instead of reading a
+50 MB CSV line by line:
+
+- `profile` a file: row count, columns and types, null percentage, approximate distinct counts,
+  min/max/mean, and five sample rows. CSV, TSV, Parquet, JSON and JSONL go through DuckDB; a SQLite
+  database shows its tables, columns and row counts
+- `query` with SQL: `SELECT region, sum(amount) FROM 'sales/*.parquet' JOIN 'regions.csv' USING (id)
+  GROUP BY 1`. Files are referenced by path (relative to the project, globs work) and can be joined;
+  pass `database` to query a SQLite file instead
+
+It only reads. DuckDB runs sandboxed: files inside the project only, no network, no extension
+installs, settings locked, and only SELECT-type statements (checked with DuckDB's own parser, so
+`COPY ... TO`, `ATTACH` or `CREATE` are refused). SQLite opens read-only behind an authorizer that
+refuses anything but reads. Each call has a 60 s limit and returns at most 1,000 rows.
 
 ### Pasting
 
