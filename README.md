@@ -391,7 +391,8 @@ OpenAI-compatible API (the part before `/chat/completions`, e.g. `https://api.to
 and its key (leave it empty for a keyless local server such as vLLM). It's saved under
 `"providers"` in `~/.clyde/settings.json`, its key in `keys.json` (or export
 `CLYDE_<NAME>_API_KEY`), and from then on it works like a built-in one: `/models`, `/eval`,
-`<name>:<model>`, cardShuffle and `clyde logout <name>`.
+`<name>:<model>` and cardShuffle. `clyde logout <name>` removes both its key and its entry in
+`settings.json`.
 
 #### Option 3: Pick the model per session
 
