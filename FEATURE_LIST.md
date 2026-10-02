@@ -57,7 +57,7 @@
 | cardShuffle | ✅ | A model that deals each turn to an `/eval`-ranked real model (high-roller, house, free, small); re-deals on errors, max tool turns and Laya-detected loops |
 | Model evaluation | ✅ | `/eval`: a tool-call check, then an 11-task graded hand calibrated on live models; provider errors mid-hand don't count against a model |
 | Local models | ✅ | `/models local [ollama\|hf\|mlx]`: models that fit this machine, rated relax / balance / hard, confirmed with their cost before downloading through Ollama or LM Studio |
-| Laya (bundled) | ✅ | Local decision model: stops stuck cardShuffle turns; difficulty scored in shadow mode; `/laya` shows the evidence |
+| Laya (bundled) | ✅ | Local decision model: stops stuck cardShuffle turns; scores every turn's difficulty and steers `house` once the evidence promotes it; `/laya` shows the evidence and the verdict |
 | SkillSpector (bundled) | ✅ | Scans skills, plugins, agents and MCP tool lists from other tools; `DO_NOT_INSTALL` items held back until `/skills allow` |
 | Pasting | ✅ | Ctrl+V images, image paths, long text folded to `[Pasted text #N +X lines]`; text-only models warned; images over 5 MB shrunk |
 
