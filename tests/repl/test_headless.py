@@ -26,6 +26,24 @@ class _Tty(io.StringIO):
 
 
 class TestBuildPrompt(unittest.TestCase):
+    def test_a_pipe_that_never_closes_does_not_hang_a_prompted_run(self):
+        import os
+        import time
+        read_end, write_end = os.pipe()                     # stays open and silent, like cron's or ssh's stdin
+        self.addCleanup(os.close, write_end)
+        with os.fdopen(read_end) as silent:
+            start = time.monotonic()
+            self.assertEqual(headless.build_prompt("hello", silent), "hello")
+            self.assertLess(time.monotonic() - start, 3)
+
+    def test_piped_data_on_a_real_pipe_is_still_read(self):
+        import os
+        read_end, write_end = os.pipe()
+        os.write(write_end, b"from the pipe\n")
+        os.close(write_end)
+        with os.fdopen(read_end) as piped:
+            self.assertEqual(headless.build_prompt("summarize", piped), "summarize\n\n<stdin>\nfrom the pipe\n</stdin>")
+
     def test_piped_input_is_added_to_the_prompt(self):
         self.assertEqual(headless.build_prompt("review this", _Pipe("diff --git a b\n")),
                          "review this\n\n<stdin>\ndiff --git a b\n</stdin>")
