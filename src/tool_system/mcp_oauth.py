@@ -37,6 +37,11 @@ class OAuthError(Exception):
     pass
 
 
+def _agent() -> dict[str, str]:
+    from src.providers.base import _USER_AGENT   # bot protection refuses Python's default agent
+    return {"User-Agent": _USER_AGENT}
+
+
 # --- token store -------------------------------------------------------------
 
 def store_path() -> Path:
@@ -116,7 +121,7 @@ def refresh(url: str) -> str | None:
 
 def _get_json(url: str) -> dict[str, Any] | None:
     try:
-        with urllib.request.urlopen(urllib.request.Request(url, headers={"Accept": "application/json"}), timeout=15) as r:
+        with urllib.request.urlopen(urllib.request.Request(url, headers={**_agent(), "Accept": "application/json"}), timeout=15) as r:
             data = json.loads(r.read() or b"null")
     except (urllib.error.URLError, OSError, ValueError):
         return None
@@ -125,7 +130,7 @@ def _get_json(url: str) -> dict[str, Any] | None:
 
 def _post(url: str, body: bytes, content_type: str) -> dict[str, Any]:
     req = urllib.request.Request(url, data=body, method="POST",
-                                 headers={"Content-Type": content_type, "Accept": "application/json"})
+                                 headers={**_agent(), "Content-Type": content_type, "Accept": "application/json"})
     try:
         with urllib.request.urlopen(req, timeout=30) as r:
             data = json.loads(r.read() or b"null")
@@ -157,8 +162,8 @@ def _challenge_metadata_url(url: str) -> str | None:
     """resource_metadata from the server's 401 WWW-Authenticate header ("" when the 401 names none),
     probing with an unauthenticated request; None when the server answers without credentials."""
     probes = [urllib.request.Request(url, method="POST", data=json.dumps({"jsonrpc": "2.0", "id": 0, "method": "ping"}).encode(),
-                                     headers={"Content-Type": "application/json", "Accept": "application/json, text/event-stream"}),
-              urllib.request.Request(url, headers={"Accept": "text/event-stream"})]
+                                     headers={**_agent(), "Content-Type": "application/json", "Accept": "application/json, text/event-stream"}),
+              urllib.request.Request(url, headers={**_agent(), "Accept": "text/event-stream"})]
     for req in probes:
         try:
             urllib.request.urlopen(req, timeout=15).close()
