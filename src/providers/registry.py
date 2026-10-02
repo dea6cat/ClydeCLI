@@ -5,11 +5,12 @@ Builds every adapter ClydeCLI knows about; `usable()` filters to those actually 
 explicit `provider:model`, or a bare name matched across usable providers (ambiguity
 requires the explicit form).
 
-Adding an OpenAI-compatible service is data, not code: append to _OPENAI_COMPAT.
+Adding an OpenAI-compatible service is data, not code: append to _OPENAI_COMPAT. Users add
+their own with `clyde login` / `/login` -> custom (saved under "providers" in settings.json).
 """
 from __future__ import annotations
 
-from . import ollama
+from . import keys, ollama
 from .anthropic import AnthropicProvider
 from .base import Provider
 from .card_shuffle import CardShuffle
@@ -71,6 +72,8 @@ def build_registry() -> dict[str, Provider]:
     reg["minimax"] = AnthropicProvider(name="minimax", base_url="https://api.minimaxi.com/anthropic",
                                        key_env="MINIMAX_API_KEY", models=_MINIMAX_MODELS)
     reg["google"] = GoogleProvider()
+    for name, base in keys.custom_providers().items():
+        reg[name] = OpenAICompatProvider(name, base, keys.PROVIDER_KEY_ENV[name], dynamic_models=True)
     reg[CardShuffle.name] = CardShuffle(reg)   # deals from the providers above
     return reg
 
