@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- The status line under the prompt shows the model in use in its right corner (`provider:model`); with cardShuffle it reads
+  `cardShuffle:house → provider:model`, following the model the latest turn was dealt to.
 - Two new providers, both over their OpenAI-compatible endpoints: Cloudflare Workers AI (`cloudflare`: an API token plus
   your account id, which `/login` asks for and saves in settings.json) and Pollinations (`pollinations`: one `sk_` key). Each lists
   only tool-calling text models; Pollinations leaves out community models, which run on their owners' servers.

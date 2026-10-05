@@ -456,6 +456,8 @@ class ClydeREPL:
                 'rule': '#5a5a5a',
                 'mode': f'bold {_CARD_ACCENT}',
                 'mode-note': _CARD_DIM,
+                'model': _CARD_DIM,
+                'model-dealt': _CARD_ACCENT,
                 # A plain list like Claude Code's: no grey block, green for the selected row.
                 'completion-menu': 'bg:default',
                 'completion-menu.completion': 'bg:default #d8d4cc',
@@ -591,9 +593,24 @@ class ClydeREPL:
     def _cycle_mode(self) -> None:
         self._set_mode(self._MODES[(self._MODES.index(self.mode) + 1) % len(self._MODES)])
 
+    def _model_parts(self) -> tuple[str, str]:
+        """The model in use for the corner of the status line: (`provider:model`, `→ dealt` when it is
+        cardShuffle, which says which real model got the latest turn)."""
+        dealt = self.provider.dealt if isinstance(self.provider, CardShuffle) else None
+        return model_ref(self.provider, self.model), f" → {dealt}" if dealt else ""
+
     def _mode_line(self):  # type: ignore[no-untyped-def]
         label, note = self._MODE_LABELS[self.mode]
-        return [("class:mode", f"  {label}"), ("class:mode-note", note), ("class:rule", "  (shift+tab to cycle)")]
+        left = [("class:mode", f"  {label}"), ("class:mode-note", note), ("class:rule", "  (shift+tab to cycle)")]
+        room = self._rule_width() - 1 - sum(len(text) for _, text in left) - 2   # a column of margin, two before the model
+        ref, dealt = self._model_parts()
+        shown = (ref + dealt)[-room:] if room > 8 else ""
+        if not shown:
+            return left
+        if len(shown) < len(ref + dealt):
+            shown = "…" + shown[1:]   # too long for the row: keep the end, which names the model
+        cut = max(0, len(shown) - len(dealt)) if dealt else len(shown)
+        return [*left, ("", " " * (room - len(shown) + 2)), ("class:model", shown[:cut]), ("class:model-dealt", shown[cut:])]
 
     @staticmethod
     def _rule_width() -> int:
