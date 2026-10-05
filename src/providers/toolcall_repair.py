@@ -64,7 +64,9 @@ def coerce_tool_args(name: str, args, known: tuple[str, ...] = ()) -> tuple[str,
     eff_name = name
     if wrapped_name and (not name or (known and name not in known)):
         eff_name = wrapped_name
-    if eff_name in _UNWRAP_TOOLS:
+    # A wrapper that repeats the called tool's own name is the model echoing the call it is making (seen from
+    # Qwen2.5-Coder GGUF), so any tool can be unwrapped then: no real schema has a `name` equal to its tool.
+    if eff_name in _UNWRAP_TOOLS or (name and wrapped_name == name):
         return eff_name, inner
     return name, args
 
