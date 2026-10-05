@@ -28,7 +28,15 @@ PROVIDER_KEY_ENV = {
     "cerebras": "CEREBRAS_API_KEY",
     "glm": "GLM_API_KEY",
     "minimax": "MINIMAX_API_KEY",
+    "cloudflare": "CLOUDFLARE_API_TOKEN",
+    "pollinations": "POLLINATIONS_API_KEY",
     "ollama": "OLLAMA_API_KEY",
+}
+
+# Settings a provider needs besides its key: provider -> (env var, what to ask for). Not secret, so they
+# live in settings.json under "providerSettings" rather than in keys.json.
+PROVIDER_EXTRA_ENV = {
+    "cloudflare": ("CLOUDFLARE_ACCOUNT_ID", "Cloudflare account ID (`wrangler whoami` shows it)"),
 }
 
 
@@ -90,6 +98,11 @@ def remove_custom(name: str) -> str | None:
 
 def _edit_providers(change) -> str | None:
     """Apply `change` to the "providers" object in settings.json, keeping every other key."""
+    return _edit_object("providers", change)
+
+
+def _edit_object(name: str, change) -> str | None:
+    """Apply `change` to the `name` object in settings.json (dropped again when left empty)."""
     path = _settings_file()
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -99,12 +112,12 @@ def _edit_providers(change) -> str | None:
         return f"can't read {path}: {e}"
     if not isinstance(data, dict):
         return f"{path} is not a JSON object"
-    providers = data.setdefault("providers", {})
-    if not isinstance(providers, dict):
-        return f'"providers" in {path} is not a JSON object'
-    change(providers)
-    if not providers:
-        del data["providers"]
+    section = data.setdefault(name, {})
+    if not isinstance(section, dict):
+        return f'"{name}" in {path} is not a JSON object'
+    change(section)
+    if not section:
+        del data[name]
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
     path.chmod(0o600)  # settings may hold MCP tokens
@@ -163,6 +176,25 @@ def load_into_env() -> None:
         env = PROVIDER_KEY_ENV.get(provider)
         if env and key:
             os.environ.setdefault(env, key)
+    for settings in _provider_settings().values():
+        for env, value in settings.items():
+            if value and isinstance(value, str):
+                os.environ.setdefault(env, value)
+
+
+def _provider_settings() -> dict[str, dict]:
+    try:
+        raw = json.loads(_settings_file().read_text(encoding="utf-8")).get("providerSettings", {})
+    except (OSError, ValueError, AttributeError):
+        return {}
+    return {p: v for p, v in raw.items() if isinstance(v, dict)} if isinstance(raw, dict) else {}
+
+
+def connect_setting(provider: str, value: str) -> str | None:
+    """Set and persist the extra setting `provider` needs (see PROVIDER_EXTRA_ENV); why it failed, or None."""
+    env = PROVIDER_EXTRA_ENV[provider][0]
+    os.environ[env] = value
+    return _edit_object("providerSettings", lambda settings: settings.setdefault(provider, {}).__setitem__(env, value))
 
 
 def connect(provider: str, key: str) -> None:

@@ -14,9 +14,11 @@ from . import keys, ollama
 from .anthropic import AnthropicProvider
 from .base import Provider
 from .card_shuffle import CardShuffle
+from .cloudflare import CloudflareProvider
 from .google import GoogleProvider
 from .lmstudio import LMStudioProvider
 from .openai_compat import OpenAICompatProvider
+from .pollinations import PollinationsProvider
 
 # name, base_url, key_env, dynamic_models, static models (only for dynamic_models=False; a
 # dynamic provider lists live via /models and never falls back to a hardcoded guess), extra
@@ -52,12 +54,14 @@ SUGGESTED_MODELS = {
     "mistral": "mistral-medium-latest",
     "glm": "glm-5",
     "minimax": "MiniMax-M2.7",
+    "cloudflare": "@cf/moonshotai/kimi-k2.6",
+    "pollinations": "openai/gpt-5.4-nano",
     "cardShuffle": "house",
 }
 
 # Order automatic selection tries connected cloud providers in, after local Ollama.
 _AUTO_ORDER = ("anthropic", "openai", "google", "openrouter", "deepseek", "mistral", "glm",
-               "minimax", "cerebras", "nvidia", "ollama-cloud")
+               "minimax", "cerebras", "nvidia", "cloudflare", "pollinations", "ollama-cloud")
 
 
 def build_registry() -> dict[str, Provider]:
@@ -72,6 +76,8 @@ def build_registry() -> dict[str, Provider]:
     reg["minimax"] = AnthropicProvider(name="minimax", base_url="https://api.minimaxi.com/anthropic",
                                        key_env="MINIMAX_API_KEY", models=_MINIMAX_MODELS)
     reg["google"] = GoogleProvider()
+    reg["cloudflare"] = CloudflareProvider()
+    reg["pollinations"] = PollinationsProvider()
     for name, base in keys.custom_providers().items():
         env = keys.PROVIDER_KEY_ENV[name]
         reg[name] = (AnthropicProvider(name=name, base_url=base, key_env=env) if keys.protocol(name) == "anthropic"
