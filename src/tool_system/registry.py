@@ -56,6 +56,18 @@ def _changes_things(spec: ToolSpec, tool_input: dict[str, Any]) -> bool:
 _SECRET_NAMES = re.compile(r"(^|/)(\.env(\..*)?|\.ssh/.*|.*\.(pem|key)|id_(rsa|ed25519).*|\.netrc|credentials.*)$")
 
 
+def _read_target(tool_input: dict[str, Any]) -> str:
+    return str(tool_input.get("file_path") or tool_input.get("path") or "")
+
+
+def _reads_secret(spec: ToolSpec, tool_input: dict[str, Any]) -> bool:
+    """A Read, or a Grep aimed at one file, of a key, .env, .ssh or credentials file."""
+    if spec.name.lower() not in ("read", "grep") or not _read_target(tool_input):
+        return False
+    from pathlib import Path
+    return bool(_SECRET_NAMES.search(Path(_read_target(tool_input)).expanduser().resolve().as_posix()))
+
+
 def _is_major(spec: ToolSpec, tool_input: dict[str, Any], context: ToolContext) -> bool:
     """What "all in" mode still asks about: hard to undo, outside the project, or touching secrets."""
     name = spec.name.lower()
@@ -63,7 +75,7 @@ def _is_major(spec: ToolSpec, tool_input: dict[str, Any], context: ToolContext) 
         from .tools.bash import is_major_command
         # Leaving the sandbox is always worth a yes, even when everything else plays without asking.
         return tool_input.get("unsandboxed") is True or is_major_command(str(tool_input.get("command", "")))
-    path = tool_input.get("file_path") or tool_input.get("notebook_path")
+    path = tool_input.get("file_path") or tool_input.get("notebook_path") or (tool_input.get("path") if name == "grep" else None)
     if isinstance(path, str) and path:
         from pathlib import Path
         target = Path(path).expanduser().resolve()
@@ -140,6 +152,9 @@ class ToolRegistry:
             )
         check = getattr(tool, "check_permissions", None)   # optional hook (see Tool)
         permission_result = check(call.input, context) if check is not None else PermissionResult.allow()
+        if ruling != "allow" and permission_result.behavior.value == "allow" and _reads_secret(spec, call.input):
+            # Keys and .env files reach the model only with a yes (or an allow rule); _is_major keeps all-in asking too.
+            permission_result = PermissionResult.ask(f"{spec.name} wants to read a secret file: {_read_target(call.input)}")
         auto = context.auto_approve and not _is_major(spec, call.input, context)
         if permission_result.behavior.value == "ask" and (ruling == "allow" or auto):
             if auto and ruling != "allow":
