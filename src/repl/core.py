@@ -141,6 +141,12 @@ def _preview(text: str) -> str:
     return line if len(line) <= _PREVIEW_CHARS else line[:_PREVIEW_CHARS - 1] + "…"
 
 
+def _one_line(text: str, limit: int) -> str:
+    """`text` on one line, cut to `limit` characters with an ellipsis."""
+    text = " ".join(text.split())
+    return text if len(text) <= limit else text[:limit - 1].rstrip() + "…"
+
+
 def _first_prompt(session) -> str:
     for message in session.conversation.messages:
         if message.role == "user" and (text := _message_text(message)):
@@ -1151,7 +1157,7 @@ class ClydeREPL:
                 'help', 'tools', 'tool',
                 'save', 'load', 'resume', 'multiline', 'stream', 'render-last',
                 'model', 'models', 'think', 'eval',
-                'skill', 'mcp', 'debug', 'laya',
+                'skill', 'skills', 'mcp', 'debug', 'laya',
                 'context', 'compact',  # These need special handling
                 'clear', 'reset', 'new',  # also clears the screen and redraws the banner
                 ''
@@ -1350,10 +1356,10 @@ class ClydeREPL:
         elif cmd == '/debug' or cmd.startswith('/debug '):
             self._show_debug(raw.split(maxsplit=1)[1].strip().lower() if " " in raw else "")
 
-        elif cmd == '/skill':
-            self._handle_skill_command()
         elif raw.strip().startswith(('/skills scan', '/skills allow')):
             self._skills_security(raw.strip().split(maxsplit=2)[1:])
+        elif cmd in ('/skill', '/skills') or cmd.startswith('/skills '):
+            self._handle_skill_command()
 
         elif cmd == '/context':
             # Populate command context config for context analysis
@@ -1506,41 +1512,24 @@ class ClydeREPL:
         self.console.print(table if rows else "Nothing scanned yet.")
 
     def _handle_skill_command(self) -> None:
-        """Handle /skill command - list all available skills."""
+        """/skills and /skill: choose a skill with the arrow keys; Enter runs it (as typing /<name> would)."""
+        from src.skills.loader import get_all_skills
+
         try:
-            from src.skills.loader import get_all_skills
-
-            cwd = self.tool_context.cwd or self.tool_context.workspace_root
-            skills = list(get_all_skills(project_root=cwd))
-            skills.sort(key=lambda s: s.name.lower())
-
-            if not skills:
-                self.console.print("\n[bold]Available Skills:[/bold]")
-                self.console.print("[dim]No skills found.[/dim]")
-                self.console.print("[dim]Create skills in ~/.clyde/skills/ or ~/.claude/skills/ or .clyde/skills/ in your project.[/dim]")
-                return
-
-            # Group skills by source
-            from collections import defaultdict
-            by_source: dict[str, list] = defaultdict(list)
-            for s in skills:
-                loaded = getattr(s, "loaded_from", "") or "unknown"
-                by_source[loaded].append(s)
-
-            self.console.print(f"\n[bold]Available Skills ({len(skills)}):[/bold]")
-            for source in sorted(by_source.keys()):
-                source_skills = by_source[source]
-                self.console.print(Text(f"\n{source.title()} Skills:", style=_CARD_ACCENT))
-                for s in source_skills:
-                    desc = (getattr(s, "description", None) or "").strip()
-                    user_invocable = getattr(s, "user_invocable", True)
-                    inv_str = "" if user_invocable else " [dim](not user-invocable)[/dim]"
-                    self.console.print(f"  [green]/{s.name}[/green]{inv_str}")
-                    if desc:
-                        self.console.print(f"    [dim]{desc}[/dim]")
-            self.console.print()
+            skills = sorted(get_all_skills(project_root=self.tool_context.cwd or self.tool_context.workspace_root),
+                            key=lambda s: s.name.lower())
         except Exception as e:
             self.console.print(f"[red]Error loading skills: {e}[/red]")
+            return
+        runnable = [s for s in skills if getattr(s, "user_invocable", True)]
+        if not runnable:
+            self.console.print("[dim]No skills found. Create them in ~/.clyde/skills/, ~/.claude/skills/ or .clyde/skills/ in your project.[/dim]")
+            return
+        choices = [Choice(s.name, s.name, _one_line(getattr(s, "description", None) or "", 110)) for s in runnable]
+        note = f" {len(skills) - len(runnable)} more are for the model only." if len(skills) > len(runnable) else ""
+        name = pick(self.console, "Run a skill", choices, description="Enter runs it; type to filter, Esc cancels." + note)
+        if name:
+            self.handle_command(f"/{name}")
 
     def _is_recoverable_tool_error(self, tool_name: str, tool_output) -> bool:
         if not isinstance(tool_name, str):
