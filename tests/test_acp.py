@@ -64,6 +64,8 @@ class TestAcp(unittest.TestCase):
         self.assertEqual(self.updates[kinds.index("tool_call_update")]["status"], "completed")
         self.assertIn("Made hello.txt.", "".join(u["content"]["text"] for u in self.updates if u["sessionUpdate"] == "agent_message_chunk"))
         self.assertEqual((self.ws / "hello.txt").read_text(), "hi\n")
+        self.to_agent.write(json.dumps({"jsonrpc": "2.0", "method": "session/cancel", "params": {"sessionId": sid}}) + "\n")
+        self.assertEqual(self.call(5, "initialize", {})["result"]["protocolVersion"], 1)   # an idle cancel doesn't kill it
         unknown = self.call(4, "session/load", {})
         self.assertEqual(unknown["error"]["code"], -32601)
         self.to_agent.close()
