@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import json as _json
 import os
+import urllib.error
+import urllib.request
 from typing import Callable
 
 from .base import ProviderError, ProviderResponse, get_json, post_json, post_stream
@@ -199,8 +201,21 @@ class OllamaProvider:
             return False
 
     def list_models(self) -> list[str]:
+        return list(self.installed())
+
+    def installed(self) -> dict[str, int]:
+        """Downloaded model name -> size in bytes."""
         data = get_json(f"{self.host}/api/tags", headers=self._headers(), provider=self.name)
-        return [m["name"] for m in data.get("models", [])]
+        return {m["name"]: int(m.get("size") or 0) for m in data.get("models", [])}
+
+    def delete_model(self, name: str) -> None:
+        """Remove a downloaded model from disk."""
+        req = urllib.request.Request(f"{self.host}/api/delete", data=_json.dumps({"model": name}).encode(),
+                                     headers={"Content-Type": "application/json", **self._headers()}, method="DELETE")
+        try:
+            urllib.request.urlopen(req, timeout=30).close()
+        except (urllib.error.URLError, OSError) as e:
+            raise ProviderError(self.name, str(e)) from e
 
     def _messages(self, conv: Conversation) -> list[dict]:
         out = [{"role": "system", "content": conv.system_prompt}]

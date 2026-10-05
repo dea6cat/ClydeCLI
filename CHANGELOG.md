@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `/purge [name]`: delete local models (Ollama and LM Studio) from disk, all of them or only those whose
+  name matches; lists what goes and the space freed, and asks first (default no).
 - `clyde --acp`: Clyde as an Agent Client Protocol agent on stdio, so ACP editors (Zed, JetBrains
   through an adapter) can run it, with streamed replies, tool calls and permission asks
 - The footer after each reply shows the turn's tokens in and out, the estimated cost when the model
