@@ -198,6 +198,7 @@ _HELP_TEXT = """
 - `/models [all|refresh]` - List models from every connected provider (hides ones /eval showed don't work; refresh re-fetches)
 - `/models local [ollama|hf|mlx] [words]` - Find local models on ollama.com and Hugging Face (GGUF, MLX on Apple Silicon) that fit this machine, rated relax / balance / hard, and download one
 - `/laya` - Laya's status, and how its stuck checks and difficulty scores lined up with how traced turns ended
+- `/purge [name]` - Delete local models (Ollama and LM Studio) from disk, all of them or only those matching name; asks first
 - `/eval [filter]` - Test the listed models (or those matching filter) on a tool call and a round trip
 - `/think [off|low|medium|high|on|default]` - Set the reasoning level
 - `/tools` - List available built-in tools
@@ -388,6 +389,7 @@ class ClydeREPL:
             "/render-last",
             "/model",
             "/models",
+            "/purge",
             "/eval",
             "/think",
             "/tools",
@@ -1304,6 +1306,10 @@ class ClydeREPL:
 
         elif cmd == '/models' or cmd.startswith('/models '):
             self._show_models(raw.split(maxsplit=1)[1].strip().lower() if " " in raw.strip() else "")
+
+        elif cmd == '/purge' or cmd.startswith('/purge '):
+            from src.repl import local_models
+            local_models.purge(self, raw.split(maxsplit=1)[1] if " " in raw.strip() else "")
 
         elif cmd == '/eval' or cmd.startswith('/eval '):
             self._eval_models(raw.split(maxsplit=1)[1].strip() if " " in raw.strip() else "")

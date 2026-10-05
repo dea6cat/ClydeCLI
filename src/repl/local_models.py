@@ -7,7 +7,9 @@ nothing heavy lands by surprise; /eval runs afterwards only when asked, so cardS
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
+from dataclasses import dataclass
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable
 
@@ -17,7 +19,7 @@ from rich.text import Text
 
 from src.providers import discover, fit, huggingface, mlx
 from src.providers.base import ProviderError, post_stream
-from src.providers.lmstudio import _lms
+from src.providers.lmstudio import _lms, model_files
 from src.providers.model_eval import HAND, evaluate, save_results
 
 # Each source: search(query, budget) -> list[fit.Offer]. Add one by adding a module and a line here.
@@ -224,3 +226,79 @@ def _offer_eval(repl: Any, provider: Any, model: str, rating: str) -> None:
     else:
         repl.console.print(f"[yellow]{ref} is installed but failed /eval ({score.short_note or score.error}),[/yellow] "
                            "so cardShuffle won't deal it.")
+
+
+@dataclass(frozen=True)
+class Installed:
+    """A model on disk. `remove` is None when it can't be deleted from here, with `why` saying so."""
+    provider: str
+    name: str
+    size: int
+    remove: Callable[[], None] | None
+    why: str = ""
+
+    @property
+    def ref(self) -> str:
+        return f"{self.provider}:{self.name}"
+
+
+def _remove_files(path: Any) -> None:
+    """Delete a model folder, or a single file plus its folder once nothing else is left in it."""
+    if path.is_dir():
+        shutil.rmtree(path)
+        return
+    path.unlink()
+    for folder in (path.parent, path.parent.parent):   # ponytail: stray non-model files keep the folder; fine
+        try:
+            folder.rmdir()
+        except OSError:
+            return
+
+
+def installed(repl: Any) -> list[Installed]:
+    """Every model Ollama and LM Studio have on this machine."""
+    found: list[Installed] = []
+    ollama = repl.registry.get("ollama")
+    if ollama is not None and ollama.is_available():
+        found += [Installed("ollama", name, size, lambda n=name: ollama.delete_model(n)) for name, size in ollama.installed().items()]
+    lmstudio = repl.registry.get("lmstudio")
+    if lmstudio is not None:
+        for entry in lmstudio.downloaded():
+            files = model_files(entry)
+            found.append(Installed("lmstudio", entry["modelKey"], int(entry.get("sizeBytes") or 0),
+                                   (lambda f=files: _remove_files(f)) if files else None,
+                                   "" if files else "its folder can't be found; remove it in LM Studio's My Models"))
+    return found
+
+
+def purge(repl: Any, arg: str) -> None:
+    """/purge deletes every local model; /purge <name> only those whose name (or provider:name) contains it.
+    Always confirmed with the space it frees, defaulting to no."""
+    query = arg.strip().lower()
+    models = [m for m in installed(repl) if query in m.ref.lower()]
+    if not models:
+        repl.console.print(f"No local model matches '{arg.strip()}'." if query else "No local models found in Ollama or LM Studio.")
+        return
+    removable = [m for m in models if m.remove]
+    for m in models:
+        repl.console.print(f"  {m.ref}  [dim]{_gb(m.size)}" + (f" · skipped: {m.why}" if not m.remove else "") + "[/dim]")
+    if not removable:
+        return
+    freed = sum(m.size for m in removable)
+    with repl._esc.paused():
+        if not Confirm.ask(f"Delete {len(removable)} model(s) from disk, freeing {_gb(freed)}? This can't be undone",
+                           default=False, console=repl.console):
+            return
+    current = f"{repl.provider.name}:{repl.model}"
+    for m in removable:
+        try:
+            m.remove()
+        except Exception as e:
+            repl.console.print(f"[red]Couldn't delete {m.ref}:[/red] {e}")
+            continue
+        repl.console.print(f"[green]✓ Deleted {m.ref}[/green]")
+        if m.ref == current:
+            repl.console.print("[yellow]That was the active model; pick another with /model.[/yellow]")
+    for name in ("ollama", "lmstudio"):
+        if (provider := repl.registry.get(name)) is not None:
+            provider.__dict__.pop("_models_cache", None)
