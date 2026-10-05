@@ -51,6 +51,28 @@ class TestHuggingFace(unittest.TestCase):
         self.assertEqual([o.name for o in offers], ["u/tools", "u/unknown"])
         self.assertIn("expand%5B%5D=gguf", urls[0])
 
+    def test_a_quant_of_a_base_model_with_an_instruct_sibling_is_dropped(self):
+        def repo(name, base):
+            return {"id": name, "downloads": 1, "cardData": {"base_model": base}}
+        listing = [repo("u/Coder-7B-GGUF", "Qwen/Coder-7B"),                # base: Coder-7B-Instruct exists
+                   repo("u/Hybrid-8B-GGUF", "Qwen/Hybrid-8B"),              # no -Instruct sibling: stays
+                   repo("u/Coder-7B-Instruct-GGUF", "Qwen/Coder-7B-Instruct"),   # already chat-tuned: not even probed
+                   repo("u/Listed-GGUF", ["Org/Listed"])]                   # base_model as a list; no sibling
+
+        def fake_get(url, **_):
+            if "/tree/" in url:
+                return [{"type": "file", "path": "M-Q4_K_M.gguf", "size": GB}]
+            if url.endswith("Qwen/Coder-7B-Instruct") and "tree" not in url:
+                return {"id": "Qwen/Coder-7B-Instruct"}
+            if "-Instruct" in url:
+                raise huggingface.ProviderError("huggingface", "HTTP 401")
+            return listing
+        with patch.object(huggingface, "get_json", side_effect=fake_get) as get:
+            names = [o.name for o in huggingface.search("", 12 * GB)]
+        self.assertEqual(sorted(names), ["u/Coder-7B-Instruct-GGUF", "u/Hybrid-8B-GGUF", "u/Listed-GGUF"])
+        probed = [c.args[0] for c in get.call_args_list if c.args[0].endswith("-Instruct")]
+        self.assertNotIn("https://huggingface.co/api/models/Qwen/Coder-7B-Instruct-Instruct", probed)
+
     def test_mlx_template_lives_under_the_tokenizer_config(self):
         self.assertTrue(huggingface._lacks_tools({"config": {"tokenizer_config": {"chat_template": "hi"}}}, "mlx"))
         self.assertFalse(huggingface._lacks_tools({"config": {"tokenizer_config": {"chat_template": "x tool_call y"}}}, "mlx"))
