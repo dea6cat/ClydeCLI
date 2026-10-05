@@ -196,7 +196,7 @@ _HELP_TEXT = """
 - `/stream [on|off|toggle]` - Toggle live response rendering
 - `/render-last` - Re-render the last assistant reply as Markdown
 - `/model [provider:model]` - Pick a model with the arrow keys (type to filter), or switch to the one named; saved as default
-- `/models [all|refresh]` - List models from every connected provider (hides ones /eval showed don't work; refresh re-fetches)
+- `/models [all|refresh]` - Same picker as /model (hides ones /eval showed don't work; all shows them, refresh re-fetches the lists)
 - `/models local [ollama|hf|mlx] [words]` - Find local models on ollama.com and Hugging Face (GGUF, MLX on Apple Silicon) that fit this machine, rated relax / balance / hard, and download one
 - `/laya` - Laya's status, and how its stuck checks and difficulty scores lined up with how traced turns ended
 - `/purge [name]` - Delete local models (Ollama and LM Studio) from disk, all of them or only those matching name; asks first
@@ -2180,60 +2180,40 @@ class ClydeREPL:
         if hidden:
             self.console.print(Text(f"/models now hides the {hidden} that don't work · /models all shows them", style=_CARD_DIM))
 
-    def _pick_model(self) -> None:
-        """/model: choose from every connected provider's models with the arrow keys; Enter switches."""
+    def _pick_model(self, show_all: bool = False, refresh: bool = False) -> None:
+        """/model and /models: choose from every connected provider's models with the arrow keys; Enter
+        switches. Models /eval showed don't work are left out unless `show_all`; `refresh` fetches
+        fresh lists first."""
         live = usable(self.registry)
         if not live:
             self.console.print("[yellow]No providers connected.[/yellow] Run [bold]clyde login[/bold], "
                                "or start Ollama or LM Studio for local models.")
             return
-        current, hide = model_ref(self.provider, self.model), hidden_refs()
+        if refresh:
+            for p in live.values():
+                p.__dict__.pop("_models_cache", None)
+        current, hide = model_ref(self.provider, self.model), set() if show_all else hidden_refs()
         with self.console.status(f"[{_CARD_DIM}]Fetching model lists…[/{_CARD_DIM}]", spinner="dots", spinner_style=_CARD_ACCENT):
             listings = {name: p.list_models() for name, p in live.items()}
+        for name in (n for n, models in listings.items() if not models):
+            self.console.print(Text(f"{name}: couldn't list models; check the key or connection.", style=_CARD_DIM))
         refs = [f"{name}:{m}" for name, models in listings.items() for m in models]
-        choices = [Choice(ref, ref) for ref in refs if ref not in hide or ref == current]
-        chosen = pick(self.console, "Select model", choices, current=current,
-                      description="Your pick becomes the default. Type to filter; /models all also lists the ones /eval hid.")
+        shown = [ref for ref in refs if ref not in hide or ref == current]
+        description = "Your pick becomes the default. Type to filter." + (
+            f" {len(refs) - len(shown)} hidden because /eval showed they don't work; /models all lists them."
+            if len(shown) < len(refs) else "")
+        chosen = pick(self.console, "Select model", [Choice(ref, ref) for ref in shown], current=current, description=description)
         if chosen and chosen != current:
             self._switch_model(chosen)
 
     def _show_models(self, arg: str = "") -> None:
-        """List models from every connected provider, minus those /eval showed don't work.
-        `/models all` includes them; `/models refresh` fetches fresh lists first; `/models local ...`
-        finds downloadable local models that fit this machine."""
+        """/models [all|refresh]: the model picker; `/models local ...` finds downloadable local models
+        that fit this machine."""
         if arg.split(" ", 1)[0] == "local":
             from src.repl import local_models
             local_models.show(self, arg[len("local"):])
             return
-        live = usable(self.registry)
-        if not live:
-            self.console.print("[yellow]No providers connected.[/yellow] Run [bold]clyde login[/bold], "
-                               "or start Ollama or LM Studio for local models.")
-            return
-        if arg == "refresh":
-            for p in live.values():
-                p.__dict__.pop("_models_cache", None)
-        hide = set() if arg == "all" else hidden_refs()
-        current = model_ref(self.provider, self.model)
-        with self.console.status(f"[{_CARD_DIM}]Fetching model lists…[/{_CARD_DIM}]", spinner="dots", spinner_style=_CARD_ACCENT):
-            listings = {name: p.list_models() for name, p in live.items()}
-        skipped = 0
-        for name, models in listings.items():
-            self.console.print(Text(f"\n{name}", style=f"bold {_CARD_TEXT}"))
-            if not models:
-                self.console.print(Text("  (couldn't list models; check the key or connection)", style=_CARD_DIM))
-                continue
-            for m in models:
-                ref = f"{name}:{m}"
-                if ref in hide and ref != current:
-                    skipped += 1
-                    continue
-                marker = Text("● ", style=_CARD_ACCENT) if ref == current else Text("  ")
-                self.console.print(Text.assemble("  ", marker, (ref, _CARD_TEXT)))
-        if skipped:
-            self.console.print(Text(f"\n{skipped} model(s) hidden because /eval showed they don't work · /models all shows them",
-                                    style=_CARD_DIM))
-        self.console.print()
+        self._pick_model(show_all=arg == "all", refresh=arg == "refresh")
 
     _THINK_LEVELS = ("off", "low", "medium", "high", "on")
 

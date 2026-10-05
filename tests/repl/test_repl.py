@@ -372,6 +372,43 @@ class TestREPL(unittest.TestCase):
                     save.assert_called_once_with("glm:glm-4.5-air")
                     self.assertEqual(repl.model, "glm-4.5-air")
 
+    def test_models_command_opens_the_same_picker_with_all_refresh_and_hidden_models(self):
+        with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
+            with patch('src.repl.core.Session.create'):
+                with _fake_provider_env() as provider:
+                    provider._models = ["glm-4.5", "glm-bad", "glm-ok"]
+                    repl = ClydeREPL(model="glm:glm-4.5")
+                    repl.console.print = Mock()
+
+                    def listed(*args, **kwargs):
+                        with patch('src.repl.core.hidden_refs', return_value={"glm:glm-bad"}), \
+                                patch('src.repl.core.pick', return_value=None) as pick:
+                            repl.handle_command(*args)
+                        return [c.value for c in pick.call_args.args[2]], pick.call_args.kwargs["description"]
+
+                    refs, note = listed("/models")
+                    self.assertEqual(refs, ["glm:glm-4.5", "glm:glm-ok"])          # the one /eval hid is left out
+                    self.assertIn("1 hidden", note)
+                    refs, note = listed("/models all")
+                    self.assertEqual(refs, ["glm:glm-4.5", "glm:glm-bad", "glm:glm-ok"])
+                    self.assertNotIn("hidden", note)
+                    provider.__dict__["_models_cache"] = ["stale"]
+                    listed("/models refresh")
+                    self.assertNotIn("_models_cache", provider.__dict__)           # fetched fresh
+
+    def test_a_provider_that_cant_list_models_is_named_not_offered(self):
+        with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
+            with patch('src.repl.core.Session.create'):
+                with _fake_provider_env() as provider:
+                    repl = ClydeREPL(model="glm:glm-4.5")
+                    repl.console.print = Mock()
+                    provider._models = []
+                    with patch('src.repl.core.pick', return_value=None) as pick:
+                        repl.handle_command("/models")
+                    self.assertEqual([c.value for c in pick.call_args.args[2]], [])
+                    self.assertTrue(any("glm: couldn't list models" in str(a[0].plain if hasattr(a[0], "plain") else a[0])
+                                        for a, _k in repl.console.print.call_args_list if a))
+
     def test_model_command_rejects_unknown_provider(self):
         with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
             with patch('src.repl.core.Session.create'):

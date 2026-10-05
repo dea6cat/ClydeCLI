@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Every choose-one-from-a-list question is now an arrow-key picker (Up/Down, PageUp/PageDown, Home/End, type to
   filter, Enter to pick, Esc to cancel, the current choice marked ✔): `/login` (provider, protocol, model),
-  `/model` with no argument, `/models local`, `/resume`, `/rewind` and the rejected-key menu. Without a terminal
+  `/model` and `/models` (same picker; `/models all` and `/models refresh` still work), `/models local`, `/resume`, `/rewind` and the rejected-key menu. Without a terminal
   (pipes, ACP) they fall back to a numbered question.
 - `/models local` offers to install Ollama (Homebrew on macOS, ollama.com script on Linux) or LM Studio
   (Homebrew cask) when the chosen model needs one that isn't there, or to start Ollama when it isn't
