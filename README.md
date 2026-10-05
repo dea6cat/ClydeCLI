@@ -87,6 +87,8 @@ Explain the code in $path. Start with an analogy, then draw a diagram.
 | Mistral | `MISTRAL_API_KEY` | |
 | NVIDIA | `NVIDIA_API_KEY` | |
 | Cerebras | `CEREBRAS_API_KEY` | |
+| Cloudflare Workers AI | `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` | OpenAI-compatible route; login asks for both, lists only tool-calling text models |
+| Pollinations | `POLLINATIONS_API_KEY` | OpenAI-compatible; official tool-calling text models only (community models run on third-party servers) |
 | GLM (Zhipu) | `GLM_API_KEY` | |
 | MiniMax | `MINIMAX_API_KEY` | via its Anthropic-compatible endpoint |
 | Ollama (local) | none | native `/api/chat`, context sized to your RAM |

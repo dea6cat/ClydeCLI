@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Two new providers, both over their OpenAI-compatible endpoints: Cloudflare Workers AI (`cloudflare`: an API token plus
+  your account id, which `/login` asks for and saves in settings.json) and Pollinations (`pollinations`: one `sk_` key). Each lists
+  only tool-calling text models; Pollinations leaves out community models, which run on their owners' servers.
 - Every choose-one-from-a-list question is now an arrow-key picker (Up/Down, PageUp/PageDown, Home/End, type to
   filter, Enter to pick, Esc to cancel, the current choice marked ✔): `/login` (provider, protocol, model),
   `/model` and `/models` (same picker; `/models all` and `/models refresh` still work), `/models local`, `/resume`, `/rewind` and the rejected-key menu. Without a terminal
