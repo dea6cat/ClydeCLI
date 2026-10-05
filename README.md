@@ -115,6 +115,9 @@ memory it takes when loaded:
 | balance | ≤ 80% | comfortable, but close other heavy apps while it runs |
 | hard | ≤ 100% | barely fits: short context, other apps slow down, macOS may swap |
 
+`/purge` deletes local models from Ollama and LM Studio to free disk: bare, it removes all of them; `/purge qwen` only those
+whose name matches. It lists what goes and the space freed, and asks first.
+
 Models that don't fit aren't shown. Each row also has a rough speed (from the chip's memory bandwidth;
 mixture-of-experts names like `30B-A3B` count only the active weights). Picking a row shows what the pull
 costs before anything downloads: the download size against free disk, the memory it takes against the

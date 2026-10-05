@@ -119,3 +119,80 @@ class TestRouting(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class _FakeOllama:
+    name = "ollama"
+
+    def __init__(self, sizes):
+        self.sizes, self.deleted = sizes, []
+
+    def is_available(self):
+        return True
+
+    def installed(self):
+        return dict(self.sizes)
+
+    def delete_model(self, name):
+        self.deleted.append(name)
+
+
+class _FakeLMStudio:
+    name = "lmstudio"
+
+    def __init__(self, entries):
+        self.entries = entries
+
+    def downloaded(self):
+        return self.entries
+
+
+class TestPurge(unittest.TestCase):
+    def setUp(self):
+        self.repl = _Repl()
+        self.ollama = _FakeOllama({"qwen3:8b": 5 * GB, "llama3:8b": 4 * GB})
+        self.repl.registry = {"ollama": self.ollama, "lmstudio": _FakeLMStudio([])}
+        self.repl.provider, self.repl.model = self.ollama, "llama3:8b"
+
+    def _purge(self, arg, answer=True):
+        with patch.object(local_models.Confirm, "ask", return_value=answer) as ask:
+            local_models.purge(self.repl, arg)
+        return ask
+
+    def test_no_name_deletes_every_model(self):
+        self._purge("")
+        self.assertEqual(sorted(self.ollama.deleted), ["llama3:8b", "qwen3:8b"])
+        self.assertIn("active model", self.repl.console.export_text())
+
+    def test_a_name_deletes_only_matches(self):
+        self._purge(" QWEN")
+        self.assertEqual(self.ollama.deleted, ["qwen3:8b"])
+
+    def test_declining_deletes_nothing_and_defaults_to_no(self):
+        ask = self._purge("", answer=False)
+        self.assertEqual(self.ollama.deleted, [])
+        self.assertFalse(ask.call_args.kwargs["default"])
+
+    def test_no_match_asks_nothing(self):
+        ask = self._purge("mistral")
+        ask.assert_not_called()
+        self.assertIn("No local model matches", self.repl.console.export_text())
+
+    def test_lmstudio_files_are_removed_and_unlocatable_models_skipped(self):
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve()
+            (root / "pub" / "repo").mkdir(parents=True)
+            (root / "pub" / "repo" / "m.gguf").write_text("x")
+            self.repl.registry["lmstudio"] = _FakeLMStudio([
+                {"modelKey": "repo", "path": "pub/repo", "sizeBytes": GB},
+                {"modelKey": "alias", "path": "qwen/alias", "sizeBytes": GB},
+                {"modelKey": "escape", "path": "../outside", "sizeBytes": GB},
+            ])
+            with patch("src.providers.lmstudio.MODELS_DIR", root):
+                self._purge("lmstudio")
+            self.assertFalse((root / "pub" / "repo").exists())
+        shown = self.repl.console.export_text()
+        self.assertIn("Deleted lmstudio:repo", shown)
+        self.assertEqual(shown.count("skipped"), 2)
