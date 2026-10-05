@@ -127,7 +127,8 @@ def _try_extract_cd(command: str) -> Path | None:
         parts = shlex.split(stripped, posix=True)
     except ValueError:
         return None
-    if len(parts) >= 2 and parts[0] == "cd":
+    # Only a bare `cd <dir>` changes the session's directory; `cd x && make` runs as a whole command.
+    if len(parts) == 2 and parts[0] == "cd":
         return Path(parts[1])
     return None
 
