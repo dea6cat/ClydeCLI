@@ -282,3 +282,17 @@ class TestSetUpRunner(unittest.TestCase):
             local_models.show(self.repl, " ollama")
         setup.assert_called_once()
         pull.assert_called_once()
+
+
+class TestFailedEvalHidden(unittest.TestCase):
+    def test_a_model_that_failed_eval_is_not_listed_again(self):
+        repl = _Repl()
+        with patch.object(local_models.fit, "chip", return_value="Apple M3"), \
+                patch.object(local_models.fit, "budget_bytes", return_value=12 * GB), \
+                patch.object(local_models, "SOURCES", {"ollama": lambda q, b: [RELAX, HARD]}), \
+                patch.object(local_models, "hidden_refs", return_value={"ollama:small:3b"}), \
+                patch.object(local_models, "_table") as table, \
+                patch.object(local_models.Prompt, "ask", return_value=""):
+            local_models.show(repl, " ollama")
+        self.assertEqual([o.pull_tag for o in table.call_args.args[0]], ["big:30b"])
+        self.assertIn("1 hidden", repl.console.export_text())

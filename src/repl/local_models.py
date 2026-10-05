@@ -23,7 +23,7 @@ from rich.text import Text
 from src.providers import discover, fit, huggingface, mlx
 from src.providers.base import ProviderError, post_stream
 from src.providers.lmstudio import _lms, model_files
-from src.providers.model_eval import HAND, evaluate, save_results
+from src.providers.model_eval import HAND, evaluate, hidden_refs, save_results
 
 # Each source: search(query, budget) -> list[fit.Offer]. Add one by adding a module and a line here.
 SOURCES: dict[str, Callable[[str, int], list[fit.Offer]]] = {
@@ -198,6 +198,11 @@ def show(repl: Any, arg: str) -> None:
         with ThreadPoolExecutor(max_workers=len(names)) as pool:
             found = pool.map(lambda name: SOURCES[name](query, budget)[:shown], names)
             offers = [o for rows in found for o in rows]
+    failed = hidden_refs()   # ollama.com's tool tag isn't proof: /eval already showed some of these don't work
+    shown_offers = [o for o in offers if f"ollama:{o.pull_tag}" not in failed]
+    if len(shown_offers) < len(offers):
+        repl.console.print(f"[dim]{len(offers) - len(shown_offers)} hidden: they failed /eval here before, e.g. no tool calling.[/dim]")
+    offers = shown_offers
     if not offers:
         repl.console.print(f"Nothing from {' or '.join(names)} fits {budget / fit.GB:.0f} GB" + (f" for '{query}'." if query else ".")
                            + " Try other search words.")
