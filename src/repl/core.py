@@ -100,6 +100,7 @@ from src.tool_system.context import ToolContext
 from src.plugins import apply_plugins
 from src.tool_system.hooks import load_hooks
 from src.picker import Choice, pick
+from src.tool_system.deferral import advertised
 from src.repl.esc import WATCHER
 from src.repl.images import IMAGE_TYPES, MAX_IMAGE_BYTES, clipboard_image, image_path, shrink
 from src.tool_system.permission_rules import load_rules, save_allow_rule
@@ -1388,7 +1389,7 @@ class ClydeREPL:
                     "description": spec.description,
                     "input_schema": dict(spec.input_schema) if hasattr(spec.input_schema, "keys") else spec.input_schema,
                 }
-                for spec in self.tool_registry.list_specs()
+                for spec in advertised(self.tool_registry.list_specs(), self.tool_context.loaded_tools)   # what a request carries
             ]
             self.command_context.config["system_prompt"] = ""
             self.command_context.config["auto_compact_threshold"] = auto_compact_threshold(self._context_window())

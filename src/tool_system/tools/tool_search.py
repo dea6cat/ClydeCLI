@@ -5,6 +5,7 @@ from typing import Any
 from ..context import ToolContext
 from ..errors import ToolInputError
 from ..protocol import ToolResult
+from ..deferral import hint, is_deferred
 from ..registry import ToolRegistry, ToolSpec
 
 
@@ -15,7 +16,8 @@ class ToolSearchTool:
     def spec(self) -> ToolSpec:
         return ToolSpec(
             name="ToolSearch",
-            description="Search for available tools by name or keywords.",
+            description=("Find tools by name or keywords and load the ones that aren't loaded yet. Use `select:Name` "
+                         "(or `select:A,B`) for exact names; loaded tools are ready on your next step."),
             input_schema={
                 "type": "object",
                 "additionalProperties": False,
@@ -41,29 +43,30 @@ class ToolSearchTool:
         q = query.strip()
         lowered = q.lower()
         if lowered.startswith("select:"):
-            name = q.split(":", 1)[1].strip()
-            tool = self._registry.get(name)
-            matches = [tool.spec().name] if tool else []
-            return ToolResult(
-                name="ToolSearch",
-                output={
-                    "matches": matches,
-                    "query": query,
-                    "total_deferred_tools": 0,
-                },
-            )
+            wanted = [n.strip() for n in q.split(":", 1)[1].split(",") if n.strip()]
+            found = [tool.spec() for name in wanted if (tool := self._registry.get(name))]
+            missing = [n for n in wanted if self._registry.get(n) is None]
+            return self._result(query, found, context, missing)
 
-        scored: list[tuple[int, str]] = []
+        scored: list[tuple[int, ToolSpec]] = []
         for spec in self._registry.list_specs():
             hay = f"{spec.name}\n{spec.description}".lower()
             if lowered in spec.name.lower():
-                scored.append((0, spec.name))
+                scored.append((0, spec))
             elif lowered in hay:
-                scored.append((1, spec.name))
-        scored.sort(key=lambda t: (t[0], t[1].lower()))
-        matches = [name for _, name in scored[:max_results]]
-        return ToolResult(
-            name="ToolSearch",
-            output={"matches": matches, "query": query, "total_deferred_tools": 0},
-        )
+                scored.append((1, spec))
+        scored.sort(key=lambda t: (t[0], t[1].name.lower()))
+        return self._result(query, [spec for _, spec in scored[:max_results]], context, [])
 
+    def _result(self, query: str, found: list[ToolSpec], context: ToolContext, missing: list[str]) -> ToolResult:
+        """The matches, with the deferred ones loaded so the model's next request carries their definitions."""
+        loaded = [s.name for s in found if is_deferred(s.name)]
+        context.loaded_tools.update(name.lower() for name in loaded)
+        output: dict[str, Any] = {
+            "matches": [s.name for s in found], "query": query, "loaded": loaded,
+            "details": {s.name: hint(s) for s in found},
+            "total_deferred_tools": sum(1 for s in self._registry.list_specs() if is_deferred(s.name)),
+        }
+        if missing:
+            output["not_found"] = missing
+        return ToolResult(name="ToolSearch", output=output)
