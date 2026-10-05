@@ -173,12 +173,10 @@ class TestModelsListing(unittest.TestCase):
         repl.console = Console(file=io.StringIO(), width=120)
         provider = FakeProvider(name="p", models=("good", "bad"))
         repl.registry, repl.provider, repl.model = {"p": provider}, provider, "good"
-        with patch("src.repl.core.hidden_refs", return_value={"p:bad"}):
+        with patch("src.repl.core.hidden_refs", return_value={"p:bad"}), \
+                patch("src.repl.core.pick", return_value=None) as pick:
             repl._show_models("")
-            out = repl.console.file.getvalue()
-            self.assertIn("p:good", out)
-            self.assertNotIn("p:bad", out)
-            self.assertIn("1 model(s) hidden", out)
-            repl.console.file = io.StringIO()
+            self.assertEqual([c.value for c in pick.call_args.args[2]], ["p:good"])
+            self.assertIn("1 hidden", pick.call_args.kwargs["description"])
             repl._show_models("all")
-            self.assertIn("p:bad", repl.console.file.getvalue())
+            self.assertEqual([c.value for c in pick.call_args.args[2]], ["p:good", "p:bad"])
