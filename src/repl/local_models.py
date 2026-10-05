@@ -16,10 +16,10 @@ from dataclasses import dataclass
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable
 
-from rich.prompt import Confirm, Prompt
-from rich.table import Table
+from rich.prompt import Confirm
 from rich.text import Text
 
+from src.picker import Choice, pick
 from src.providers import discover, fit, huggingface, mlx
 from src.providers.base import ProviderError, post_stream
 from src.providers.lmstudio import _lms, model_files
@@ -80,20 +80,14 @@ def _count(n: int) -> str:
     return f"{n / 1e6:.1f}M" if n >= 1e6 else f"{n / 1e3:.0f}K" if n >= 1e3 else str(n)
 
 
-def _table(offers: list[fit.Offer], chip: str) -> Table:
-    table = Table(box=None, pad_edge=False, show_edge=False, header_style="dim")
-    table.add_column("#", justify="right")
-    table.add_column("fit", no_wrap=True)
-    table.add_column("from", style="dim", no_wrap=True)
-    table.add_column("model", overflow="fold")
-    for col in ("size", "~tok/s", "pulls"):
-        table.add_column(col, justify="right", no_wrap=True)
-    table.add_column("note", style="dim", no_wrap=True)
-    for i, o in enumerate(offers, 1):
+def _choices(offers: list[fit.Offer], chip: str) -> list[Choice]:
+    """One picker row per offer; the value is its index in `offers`."""
+    rows = []
+    for i, o in enumerate(offers):
         speed = fit.tokens_per_s(o.size_bytes, chip, o.name)
-        table.add_row(str(i), Text(o.rating, style=_RATING_STYLE[o.rating]), o.source, o.pull_tag, f"{o.size_bytes / fit.GB:.1f} GB",
-                      str(speed) if speed else "-", _count(o.popularity), o.note)
-    return table
+        rows.append(Choice(str(i), o.name, f"{o.rating} · {o.source} · {o.size_bytes / fit.GB:.1f} GB · "
+                                           + (f"~{speed} tok/s · " if speed else "") + f"{_count(o.popularity)} pulls · {o.note}"))
+    return rows
 
 
 def _runner(repl: Any, offer: fit.Offer) -> str | None:
@@ -207,15 +201,11 @@ def show(repl: Any, arg: str) -> None:
         repl.console.print(f"Nothing from {' or '.join(names)} fits {budget / fit.GB:.0f} GB" + (f" for '{query}'." if query else ".")
                            + " Try other search words.")
         return
-    repl.console.print(_table(offers, chip))
-    with repl._esc.paused():
-        choice = Prompt.ask("Download which # (Enter to skip)", default="", show_default=False, console=repl.console).strip()
-    if not choice:
+    choice = pick(repl.console, "Download which model?", _choices(offers, chip), visible=10,
+                  description="Enter picks it (you confirm what it costs first); type to filter.")
+    if choice is None:
         return
-    if not choice.isdigit() or not 1 <= int(choice) <= len(offers):
-        repl.console.print(f"No row {choice}.")
-        return
-    offer = offers[int(choice) - 1]
+    offer = offers[int(choice)]
     runner = _runner(repl, offer)
     runner = runner or _set_up_runner(repl, offer)
     if runner is None:

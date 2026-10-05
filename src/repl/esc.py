@@ -106,3 +106,6 @@ class EscWatcher:
         finally:
             if was_running:
                 self.start()
+
+
+WATCHER = EscWatcher()   # the one the REPL runs commands under; prompts pause it through this
