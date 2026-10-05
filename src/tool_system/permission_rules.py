@@ -10,6 +10,8 @@ take a path glob relative to the workspace; a bare tool name matches every use. 
 
 from __future__ import annotations
 
+from src.config import clyde_home
+
 import json
 import re
 import shlex
@@ -18,12 +20,12 @@ from pathlib import Path, PurePath
 from typing import Any
 
 _RULE_RE = re.compile(r"^([^()]+?)\s*(?:\((.*)\))?$", re.DOTALL)
-_PATH_TOOLS = ("Edit", "Write")
+_PATH_TOOLS = ("Edit", "Write", "Read", "Grep")
 
 
 # ponytail: user-level settings only; project rules need a workspace trust prompt first
 def settings_path() -> Path:
-    return Path.home() / ".clyde" / "settings.json"
+    return clyde_home() / "settings.json"
 
 
 def load_rules(path: Path | None = None) -> dict[str, list[str]]:
@@ -69,7 +71,7 @@ def _bash_matches(spec: str, words: list[str]) -> bool:
 
 
 def _file_path(tool_input: dict[str, Any], context: Any) -> Path | None:
-    raw = tool_input.get("file_path")
+    raw = tool_input.get("file_path") or tool_input.get("path")
     if not isinstance(raw, str):
         return None
     p = Path(raw).expanduser()

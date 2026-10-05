@@ -14,9 +14,20 @@ from pathlib import Path
 from typing import Any, Optional
 
 
+def clyde_home() -> Path:
+    """Clyde's own folder: ~/.clyde, or $XDG_CONFIG_HOME/clyde when that is set and either already exists or
+    no ~/.clyde predates it, so an existing install never loses its keys and sessions."""
+    legacy = Path.home() / ".clyde"
+    xdg = os.environ.get("XDG_CONFIG_HOME", "")
+    # ponytail: one folder for config, data and state; split into XDG_DATA_HOME/XDG_STATE_HOME if asked
+    if xdg and Path(xdg).is_absolute() and ((Path(xdg) / "clyde").exists() or not legacy.exists()):
+        return Path(xdg) / "clyde"
+    return legacy
+
+
 def get_config_path() -> Path:
     """Get the path to the configuration file."""
-    config_dir = Path.home() / ".clyde"
+    config_dir = clyde_home()
     config_dir.mkdir(parents=True, exist_ok=True)
     return config_dir / "config.json"
 

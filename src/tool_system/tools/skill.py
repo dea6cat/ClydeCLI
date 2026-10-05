@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from src.config import clyde_home
+
 import importlib.util
 import os
 import types
@@ -113,12 +115,12 @@ class SkillTool:
         if clyde_skills_dir:
             skill_dir = Path(clyde_skills_dir).expanduser().resolve()
         else:
-            for d in (Path.home() / ".clyde" / "skills", Path.home() / ".claude" / "skills"):
+            for d in (clyde_home() / "skills", Path.home() / ".claude" / "skills"):
                 if d.exists() and d.is_dir():
                     skill_dir = d
                     break
             else:
-                skill_dir = Path.home() / ".clyde" / "skills"
+                skill_dir = clyde_home() / "skills"
         file_path = (skill_dir / f"{name}.py").resolve()
         if not file_path.exists():
             return ToolResult(name="Skill", output={"error": f"skill not found: {name}"}, is_error=True)

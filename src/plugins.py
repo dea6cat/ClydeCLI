@@ -14,6 +14,8 @@ plugins run code, so installing one never enables it without an explicit yes.
 
 from __future__ import annotations
 
+from src.config import clyde_home
+
 import json
 import re
 import shutil
@@ -52,7 +54,7 @@ class Loaded:
 
 
 def plugins_dir() -> Path:
-    return Path.home() / ".clyde" / "plugins"
+    return clyde_home() / "plugins"
 
 
 def read_manifest(root: Path) -> Plugin:

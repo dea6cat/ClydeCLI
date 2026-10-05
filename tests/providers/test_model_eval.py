@@ -85,6 +85,19 @@ class TestModelEval(unittest.TestCase):
             save_results([score])
             self.assertEqual(load_results()["good:m"]["strength"], 3)
 
+    def test_a_grade_that_drops_is_reported(self):
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        from src.providers.model_eval import HAND, ModelScore, save_results
+        with patch.object(Path, "home", return_value=Path(tempfile.mkdtemp())):
+            (Path.home() / ".clyde").mkdir()
+            (Path.home() / ".clyde" / "model_evals.json").write_text(
+                '{"a:m": {"passed": true, "strength": 4, "hand": 4, "at": "2026-09-12T10:00:00+00:00"}}')
+            worse = ModelScore("a:m", tool_call=True, round_trip=True, strength=5)            # 5/11 < 4/4
+            self.assertEqual(save_results([worse]), [f"a:m: 4/4 → 5/{len(HAND)} since 2026-09-12"])
+            self.assertEqual(save_results([ModelScore("a:m", tool_call=True, round_trip=True, strength=7)]), [])
+
     def test_dot_files_are_found_by_the_hand(self):
         from src.providers.model_eval import _task_path
         self.assertEqual([_task_path(p) for p in (".env", "./.env", "/overrides/prod.env", "./README.md")],

@@ -90,7 +90,7 @@ class TestCustomProvider(unittest.TestCase):
     def test_login_adds_it_saves_its_key_and_the_registry_builds_it(self):
         from src.providers import build_registry
 
-        answers = iter(["custom", "together", "https://api.together.xyz/v1/", "meta-llama/Llama-4"])
+        answers = iter(["custom", "together", "openai", "https://api.together.xyz/v1/", "meta-llama/Llama-4"])
         with patch("src.cli.prompt_secret", return_value="tg-key"), \
                 patch("src.cli.Prompt.ask", side_effect=lambda *a, **k: next(answers)), \
                 patch("src.providers.openai_compat.OpenAICompatProvider.list_models", return_value=["meta-llama/Llama-4"]):
@@ -121,11 +121,21 @@ class TestCustomProvider(unittest.TestCase):
         self.assertNotIn("providers", (self.home / ".clyde" / "settings.json").read_text())   # no empty leftover
 
     def test_a_keyless_server_still_connects(self):
-        answers = iter(["custom", "vllm", "http://localhost:8000/v1", "qwen3"])
+        answers = iter(["custom", "vllm", "openai", "http://localhost:8000/v1", "qwen3"])
         with patch("src.cli.prompt_secret", return_value=""), \
                 patch("src.cli.Prompt.ask", side_effect=lambda *a, **k: next(answers)), \
                 patch("src.providers.openai_compat.OpenAICompatProvider.list_models", return_value=["qwen3"]):
             self.assertEqual(run_login_flow(Console(file=io.StringIO()), {}), "vllm:qwen3")
+
+    def test_an_anthropic_compatible_provider_gets_the_anthropic_adapter(self):
+        from src.providers import build_registry
+        from src.providers.anthropic import AnthropicProvider
+
+        self.assertIsNone(keys.add_custom("work", "https://api.anthropic.com/", "anthropic"))
+        provider = build_registry()["work"]
+        self.assertIsInstance(provider, AnthropicProvider)
+        self.assertEqual((provider.base_url, provider.key_env), ("https://api.anthropic.com", "CLYDE_WORK_API_KEY"))
+        self.assertIn("protocol", keys.add_custom("odd", "https://x/v1", "grpc"))
 
     def test_bad_names_and_urls_are_refused_and_built_ins_cant_be_replaced(self):
         self.assertIn("built-in", keys.add_custom("openai", "https://x/v1"))

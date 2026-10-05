@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pathlib import Path
+from src.config import clyde_home
 
 from .loader import load_tools_from_dir
 from .registry import ToolRegistry
@@ -99,7 +99,7 @@ def build_default_registry(*, include_user_tools: bool = True) -> ToolRegistry:
     registry.register(ToolSearchTool(registry))
 
     if include_user_tools:
-        user_dir = Path.home() / ".clyde" / "tools"
+        user_dir = clyde_home() / "tools"
         for tool in load_tools_from_dir(user_dir):
             registry.register(tool)
 

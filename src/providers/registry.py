@@ -73,7 +73,9 @@ def build_registry() -> dict[str, Provider]:
                                        key_env="MINIMAX_API_KEY", models=_MINIMAX_MODELS)
     reg["google"] = GoogleProvider()
     for name, base in keys.custom_providers().items():
-        reg[name] = OpenAICompatProvider(name, base, keys.PROVIDER_KEY_ENV[name], dynamic_models=True)
+        env = keys.PROVIDER_KEY_ENV[name]
+        reg[name] = (AnthropicProvider(name=name, base_url=base, key_env=env) if keys.protocol(name) == "anthropic"
+                     else OpenAICompatProvider(name, base, env, dynamic_models=True))
     reg[CardShuffle.name] = CardShuffle(reg)   # deals from the providers above
     return reg
 

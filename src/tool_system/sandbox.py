@@ -11,6 +11,8 @@ Settings, under "sandbox" in ~/.clyde/settings.json:
 """
 from __future__ import annotations
 
+from src.config import clyde_home
+
 import json
 import os
 import shutil
@@ -29,7 +31,7 @@ BLOCKED_HINT = ("The sandbox blocked a write outside the project. If the command
 
 def settings() -> dict[str, Any]:
     try:
-        data = json.loads((Path.home() / ".clyde" / "settings.json").read_text(encoding="utf-8")).get("sandbox", {})
+        data = json.loads((clyde_home() / "settings.json").read_text(encoding="utf-8")).get("sandbox", {})
     except (OSError, ValueError, AttributeError):
         return {}
     return data if isinstance(data, dict) else {}

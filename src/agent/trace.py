@@ -7,6 +7,8 @@ OSError is swallowed. Secrets are redacted and long strings truncated before any
 """
 from __future__ import annotations
 
+from src.config import clyde_home
+
 import json
 import os
 import re
@@ -18,6 +20,7 @@ from typing import Any, Callable
 
 MAX_CHARS = 500     # longer strings are truncated in the trace
 KEEP_FILES = 50     # newest trace files kept; older ones are pruned at start()
+MAX_BYTES = 20_000_000   # one session's trace stops growing here (a marker line says so)
 _REDACTED = "[redacted]"
 _SECRET_NAME = re.compile(r"api[_-]?key|(access|auth|refresh|bearer|session)[_-]?token|^token$|secret|password|passwd|"
                           r"authorization|credential|cookie", re.I)
@@ -30,7 +33,7 @@ _live = False
 
 
 def traces_dir() -> Path:
-    return Path.home() / ".clyde" / "traces"
+    return clyde_home() / "traces"
 
 
 def trace_path(session_id: str | None = None) -> Path | None:
@@ -96,8 +99,12 @@ def record(event: str, **fields: Any) -> None:
     try:
         path = traces_dir() / f"{_session_id}.jsonl"
         path.parent.mkdir(parents=True, exist_ok=True)
+        if path.exists() and path.stat().st_size >= MAX_BYTES:
+            return
         with open(path, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+            if f.tell() >= MAX_BYTES:
+                f.write(json.dumps({"ts": entry["ts"], "event": "truncated", "max_bytes": MAX_BYTES}) + "\n")
     except OSError:
         pass
 
