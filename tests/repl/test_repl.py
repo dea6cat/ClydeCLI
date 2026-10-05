@@ -409,6 +409,42 @@ class TestREPL(unittest.TestCase):
                     self.assertTrue(any("glm: couldn't list models" in str(a[0].plain if hasattr(a[0], "plain") else a[0])
                                         for a, _k in repl.console.print.call_args_list if a))
 
+    def _status_line(self, repl, width=100):
+        with patch.object(ClydeREPL, "_rule_width", staticmethod(lambda: width)):
+            fragments = repl._mode_line()
+        return "".join(text for _, text in fragments), fragments
+
+    def test_the_status_line_shows_the_model_in_the_right_corner(self):
+        with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
+            with patch('src.repl.core.Session.create'):
+                with _fake_provider_env():
+                    repl = ClydeREPL(model="glm:glm-4.5")
+                    text, _ = self._status_line(repl)
+                    self.assertTrue(text.startswith("  ♠ hold") and "(shift+tab to cycle)" in text)
+                    self.assertTrue(text.endswith("glm:glm-4.5"))
+                    self.assertEqual(len(text), 100 - 1)                      # flush right, one column of margin
+                    narrow, _ = self._status_line(repl, width=40)
+                    self.assertNotIn("glm:glm-4.5", narrow)                   # no room: the model gives way
+                    self.assertLess(len(narrow), 40)
+
+    def test_with_cardshuffle_the_corner_follows_the_model_it_dealt(self):
+        from src.providers.card_shuffle import CardShuffle
+        with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
+            with patch('src.repl.core.Session.create'):
+                with _fake_provider_env():
+                    repl = ClydeREPL(model="glm:glm-4.5")
+                    repl.provider, repl.model = CardShuffle({}), "house"
+                    text, _ = self._status_line(repl)
+                    self.assertTrue(text.endswith("cardShuffle:house"))      # nothing dealt yet
+                    repl.provider.dealt = "ollama:qwen3:8b"
+                    text, fragments = self._status_line(repl)
+                    self.assertTrue(text.endswith("cardShuffle:house → ollama:qwen3:8b"))
+                    self.assertEqual([t for c, t in fragments if c == "class:model-dealt"], [" → ollama:qwen3:8b"])
+                    repl.provider.dealt = "ollama:hf.co/Qwen/Qwen2.5-Coder-3B-Instruct-GGUF:Q8_0"
+                    text, _ = self._status_line(repl, width=90)
+                    self.assertTrue(text.endswith("Q8_0") and "…" in text)   # too long: the end, which names the model, is kept
+                    self.assertLess(len(text), 90)
+
     def _skills_repl(self):
         from types import SimpleNamespace
         skills = [SimpleNamespace(name="zeta", description="Last one.\n  Second line.", user_invocable=True),
