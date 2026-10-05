@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `/models local` offers to install Ollama (Homebrew on macOS, ollama.com script on Linux) or LM Studio
+  (Homebrew cask) when the chosen model needs one that isn't there, or to start Ollama when it isn't
+  running. It shows the exact command and asks first (default no), then goes on with the download.
 - `/purge [name]`: delete local models (Ollama and LM Studio) from disk, all of them or only those whose
   name matches; lists what goes and the space freed, and asks first (default no).
 - `clyde --acp`: Clyde as an Agent Client Protocol agent on stdio, so ACP editors (Zed, JetBrains

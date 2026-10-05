@@ -7,8 +7,11 @@ nothing heavy lands by surprise; /eval runs afterwards only when asked, so cardS
 from __future__ import annotations
 
 import json
+import shlex
 import shutil
 import subprocess
+import sys
+import time
 from dataclasses import dataclass
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable
@@ -111,6 +114,74 @@ _NO_RUNNER = {
 }
 
 
+# How each app is installed per platform. Only routes that need no sign-in are listed; anything else
+# falls back to the "install it yourself" message. ponytail: no Windows route until someone can test it.
+_INSTALL: dict[str, dict[str, list[str]]] = {
+    "ollama": {"darwin": ["brew", "install", "ollama"], "linux": ["sh", "-c", "curl -fsSL https://ollama.com/install.sh | sh"]},
+    "lmstudio": {"darwin": ["brew", "install", "--cask", "lm-studio"]},
+}
+_APP_NAME = {"ollama": "Ollama", "lmstudio": "LM Studio"}
+_START_WAIT = 30   # seconds to wait for a freshly started app to answer
+
+
+def _start_ollama(repl: Any) -> bool:
+    """Start `ollama serve` in the background and wait until it answers."""
+    exe = shutil.which("ollama")
+    if exe is None:
+        return False
+    subprocess.Popen([exe, "serve"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    for _ in range(_START_WAIT * 2):
+        if repl.registry["ollama"].is_available():
+            return True
+        time.sleep(0.5)
+    return False
+
+
+def _start_lmstudio() -> bool:
+    """Open LM Studio once so it puts its `lms` CLI on disk, then wait for it."""
+    subprocess.run(["open", "-a", "LM Studio"], capture_output=True)
+    for _ in range(_START_WAIT * 2):
+        if _lms():
+            return True
+        time.sleep(0.5)
+    return False
+
+
+def _set_up_runner(repl: Any, offer: fit.Offer) -> str | None:
+    """No app can run `offer`: say what Clyde would install or start, and only after a yes do it.
+    Returns the runner ("ollama" or "lmstudio") once it works, else None."""
+    app = "lmstudio" if offer.source == "mlx" else "ollama"
+    name = _APP_NAME[app]
+    present = bool(shutil.which("ollama")) if app == "ollama" else bool(_lms())
+    cmd = None if present else _INSTALL[app].get(sys.platform)
+    if not present and (cmd is None or shutil.which(cmd[0]) is None):
+        repl.console.print(_NO_RUNNER[offer.source])
+        return None
+    action = "start it with `ollama serve`" if present else f"install it with `{shlex.join(cmd)}`"
+    with repl._esc.paused():
+        agreed = Confirm.ask(f"{name} isn't {'running' if present else 'installed'}, and {offer.name} needs it. "
+                             f"Clyde can {action}, then download the model. Go ahead?", default=False, console=repl.console)
+    if not agreed:
+        repl.console.print(_NO_RUNNER[offer.source])
+        return None
+    if cmd is not None:
+        try:
+            with repl._esc.paused():
+                done = subprocess.run(cmd)
+        except KeyboardInterrupt:
+            repl.console.print("Install stopped.")
+            return None
+        if done.returncode != 0:
+            repl.console.print(f"[red]Installing {name} failed[/red] (exit {done.returncode}).")
+            return None
+    with repl.console.status(f"[dim]Starting {name}…[/dim]", spinner="dots"):
+        started = _start_ollama(repl) if app == "ollama" else _start_lmstudio()
+    if not started:
+        repl.console.print(f"[yellow]{name} is installed but didn't come up.[/yellow] Open it yourself, then try again.")
+        return None
+    return _runner(repl, offer)
+
+
 def show(repl: Any, arg: str) -> None:
     """List what fits, then offer to download a row. A first word naming a source searches only it;
     otherwise every source this machine can run is searched, with the whole argument (possibly
@@ -141,8 +212,8 @@ def show(repl: Any, arg: str) -> None:
         return
     offer = offers[int(choice) - 1]
     runner = _runner(repl, offer)
+    runner = runner or _set_up_runner(repl, offer)
     if runner is None:
-        repl.console.print(_NO_RUNNER[offer.source])
         return
     if not _confirm(repl, offer, budget, chip):
         return
