@@ -134,3 +134,18 @@ def set_default_model(model_ref: Optional[str]) -> None:
     config = load_config()
     config["model"] = model_ref
     save_config(config)
+
+
+def get_output_style() -> Optional[str]:
+    """The saved output style name (see src/output_styles), or None for the default."""
+    return load_config().get("output_style") or None
+
+
+def set_output_style(name: Optional[str]) -> None:
+    """Persist the output style; None clears it."""
+    config = load_config()
+    if name:
+        config["output_style"] = name
+    else:
+        config.pop("output_style", None)
+    save_config(config)

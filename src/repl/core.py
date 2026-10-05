@@ -87,7 +87,7 @@ from src.agent.checkpoints import Checkpoints
 from src.agent.conversation import ImageContentBlock
 from src.compact_service.service import auto_compact_threshold, compact_conversation, needs_auto_compact
 from src.context_system.context_analyzer import get_context_window_for_model
-from src.config import get_default_model, load_config, set_default_model
+from src.config import get_default_model, get_output_style, load_config, set_default_model, set_output_style
 from src.output_styles import resolve_output_style
 from src.providers import build_registry, keys, model_ref, pick_default_model, resolve, usable
 from src.providers import catalog
@@ -206,6 +206,7 @@ _HELP_TEXT = """
 - `/models [all|refresh]` - Same picker as /model (hides ones /eval showed don't work; all shows them, refresh re-fetches the lists)
 - `/models local [ollama|hf|mlx] [words]` - Find local models on ollama.com and Hugging Face (GGUF, MLX on Apple Silicon) that fit this machine, rated relax / balance / hard, and download one
 - `/laya` - Laya's status, and how its stuck checks and difficulty scores lined up with how traced turns ended
+- `/terse [on|off]` - Shorter replies (fewer tokens, quicker on local models); bare opens a picker; saved
 - `/purge [name]` - Delete local models (Ollama and LM Studio) from disk, all of them or only those matching name; asks first
 - `/eval [filter]` - Test the listed models (or those matching filter) on a tool call and a round trip
 - `/think [off|low|medium|high|on|default]` - Set the reasoning level
@@ -363,7 +364,8 @@ class ClydeREPL:
         for loaded in self.plugins:
             for warning in loaded.warnings:
                 self.console.print(warning, style="yellow", markup=False)
-        self.tool_context = ToolContext(workspace_root=Path.cwd(), hooks=hooks, permission_rules=load_rules())
+        self.tool_context = ToolContext(workspace_root=Path.cwd(), hooks=hooks, permission_rules=load_rules(),
+                                        output_style_name=get_output_style())
         self._mcp_servers, self._mcp_errors = servers, {}
         self._connect_mcp_servers(servers)
         self.tool_context.ask_user = self._ask_user_questions
@@ -398,6 +400,7 @@ class ClydeREPL:
             "/model",
             "/models",
             "/purge",
+            "/terse",
             "/eval",
             "/think",
             "/tools",
@@ -1331,6 +1334,9 @@ class ClydeREPL:
         elif cmd == '/models' or cmd.startswith('/models '):
             self._show_models(raw.split(maxsplit=1)[1].strip().lower() if " " in raw.strip() else "")
 
+        elif cmd == '/terse' or cmd.startswith('/terse '):
+            self._handle_terse(cmd[len('/terse'):].strip())
+
         elif cmd == '/purge' or cmd.startswith('/purge '):
             from src.repl import local_models
             local_models.purge(self, raw.split(maxsplit=1)[1] if " " in raw.strip() else "")
@@ -2186,6 +2192,21 @@ class ClydeREPL:
         hidden = kinds["tools"] + kinds["unavailable"] + kinds["answer"]
         if hidden:
             self.console.print(Text(f"/models now hides the {hidden} that don't work · /models all shows them", style=_CARD_DIM))
+
+    def _handle_terse(self, arg: str) -> None:
+        """/terse [on|off]: shorter replies. Bare opens a picker. Saved, and in effect from the next message."""
+        on = self.tool_context.output_style_name == "terse"
+        if arg not in ("", "on", "off"):
+            self.console.print("[red]Usage: /terse [on|off][/red]")
+            return
+        choice = arg or pick(self.console, "Terse replies", [
+            Choice("on", "On", "short answers: fewer tokens, quicker on local models"),
+            Choice("off", "Off", "Clyde's usual replies")], current="on" if on else "off")
+        if choice is None:
+            return
+        self.tool_context.output_style_name = "terse" if choice == "on" else None
+        set_output_style(self.tool_context.output_style_name)
+        self.console.print(f"[green]Terse replies: {choice}[/green] [dim](saved; applies from your next message)[/dim]")
 
     def _pick_model(self, show_all: bool = False, refresh: bool = False) -> None:
         """/model and /models: choose from every connected provider's models with the arrow keys; Enter

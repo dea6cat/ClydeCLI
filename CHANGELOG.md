@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `/terse [on|off]` (a picker when bare): a built-in `terse` output style that asks for shorter replies, saved and applied to
+  new sessions. On a local Qwen2.5-Coder 3B it cut output tokens by about 55% and reply time by about a third on three
+  prompts; answers stay correct but briefer. Off by default.
 - Lower per-request overhead: only 17 core tools (Bash, Read, Write, Edit, Glob, Grep, web, todo, Agent, Skill, plan mode...)
   are sent with every request; the other 39, MCP tools included, are listed by name in a short "More tools" section of the
   system prompt and loaded when the model calls `ToolSearch` (or calls the tool by name). A first request in a Dart/Flutter
