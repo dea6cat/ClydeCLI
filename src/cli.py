@@ -10,7 +10,8 @@ from rich.console import Console
 from rich.prompt import Prompt
 from rich.table import Table
 
-_MODELS_SHOWN = 30   # longer live lists (e.g. OpenRouter) are truncated in the login prompt
+from src.picker import Choice, pick
+
 
 
 def main():
@@ -173,7 +174,9 @@ def _add_custom_provider(console: Console) -> str | None:
                   "one (a second Anthropic account, MiniMax, a proxy). The base URL is the part before "
                   "/chat/completions (OpenAI) or /v1/messages (Anthropic).[/dim]")
     name = Prompt.ask("Name (e.g. together)").strip().lower()
-    protocol = Prompt.ask("Protocol", choices=list(keys.PROTOCOLS), default="openai")
+    protocol = pick(console, "Protocol", [Choice(p, p) for p in keys.PROTOCOLS], current="openai")
+    if protocol is None:
+        return None
     base_url = Prompt.ask("Base URL (e.g. https://api.together.xyz/v1)").strip()
     problem = keys.add_custom(name, base_url, protocol)
     if problem:
@@ -194,11 +197,11 @@ def run_login_flow(console: Console, registry: dict, default_provider: str = "an
     from src.providers.registry import SUGGESTED_MODELS
 
     choices = _login_choices(registry)
-    provider_name = provider if provider in choices else Prompt.ask(
-        "Select provider",
-        choices=choices,
-        default=default_provider if default_provider in choices else "anthropic",
-    )
+    provider_name = provider if provider in choices else pick(
+        console, "Connect a provider", _provider_choices(registry), current=default_provider if default_provider in choices else None,
+        description="Pick one, then enter its key. Type to filter.")
+    if provider_name is None:
+        return None
 
     custom = provider_name == "custom" or provider_name in keys.custom_providers()
     if provider_name == "custom":
@@ -237,25 +240,25 @@ def run_login_flow(console: Console, registry: dict, default_provider: str = "an
         _suggest_local_models(console)
         return None
 
+    suggested = SUGGESTED_MODELS.get(provider_name)
     if models:
-        shown = models[:_MODELS_SHOWN]
-        console.print(f"\n[dim]Models:[/dim] {', '.join(shown)}"
-                      + (f" [dim](+{len(models) - len(shown)} more, see /models)[/dim]" if len(models) > len(shown) else ""))
-        suggested = SUGGESTED_MODELS.get(provider_name)
         default_model = suggested if suggested in models else models[0]
+        model = pick(console, f"Select {provider_name} model", [Choice(m, m) for m in models], current=default_model,
+                     allow_custom=True, description="Your pick becomes the default. Type to filter, or type any model id.")
+        if model is None:
+            return None
+        if model not in models and not Confirm.ask(
+            f"'{model}' isn't in {provider_name}'s model list. Use it anyway?", default=False
+        ):
+            model = default_model
     else:
         console.print(f"[yellow]Couldn't list {provider_name} models; check the key. You can still type a model id.[/yellow]")
-        default_model = SUGGESTED_MODELS.get(provider_name, "")
-
-    answer = Prompt.ask("Default model", default=default_model) if default_model else Prompt.ask("Default model")
-    model = (answer or "").strip()
-    if not model:
-        console.print("\n[red]Error: a model is required[/red]")
-        return None
-    if models and model not in models and not Confirm.ask(
-        f"'{model}' isn't in {provider_name}'s model list. Use it anyway?", default=False
-    ):
-        model = default_model
+        default_model = suggested or ""
+        answer = Prompt.ask("Default model", default=default_model) if default_model else Prompt.ask("Default model")
+        model = (answer or "").strip()
+        if not model:
+            console.print("\n[red]Error: a model is required[/red]")
+            return None
 
     ref = f"{provider_name}:{model}"
     set_default_model(ref)
@@ -272,7 +275,6 @@ def handle_login():
     console.print("\n[bold #4eba65]ClydeCLI - Connect a provider[/bold #4eba65]\n")
     keys.load_into_env()
     registry = build_registry()
-    _print_provider_table(console, registry)
     return 0 if run_login_flow(console, registry) else 1
 
 
@@ -302,7 +304,6 @@ def handle_setup(console: Console, assume_yes: bool = False) -> int:
     elif assume_yes:
         console.print("• No default model yet: run [bold]clyde login[/bold] (or export a provider key).")
     else:
-        _print_provider_table(console, registry)
         if not run_login_flow(console, registry):
             console.print("[yellow]Skipped connecting a provider; run clyde login later.[/yellow]")
 
@@ -576,6 +577,30 @@ def handle_logout(provider: str) -> int:
     return 0
 
 
+def _provider_status(name: str, saved: set[str]) -> tuple[str, str]:
+    """(key env var, status text) for a login choice."""
+    from src.providers import keys
+
+    if name == "ollama":
+        return "none (local)", ""
+    if name == "custom":
+        return "", "an OpenAI- or Anthropic-compatible service that isn't built in"
+    key_name = _key_name(name)
+    env = keys.PROVIDER_KEY_ENV.get(key_name, "")
+    value = os.environ.get(env, "")
+    if not value:
+        return env, "not connected"
+    return env, f"{keys.mask(value)} ({'saved' if key_name in saved else 'env'})"
+
+
+def _provider_choices(registry: dict) -> list[Choice]:
+    """The login picker's rows: each provider with its key status."""
+    from src.providers import keys
+
+    saved = keys.saved_providers()
+    return [Choice(name, name, _provider_status(name, saved)[1]) for name in _login_choices(registry)]
+
+
 def _print_provider_table(console: Console, registry: dict) -> None:
     from src.providers import keys
 
@@ -585,19 +610,8 @@ def _print_provider_table(console: Console, registry: dict) -> None:
     table.add_column("Key", style="#e8e4dc")
     table.add_column("Status", style="green")
     for name in _login_choices(registry):
-        if name == "custom":
-            continue
-        if name == "ollama":
-            table.add_row(name, "none (local)", "")
-            continue
-        key_name = _key_name(name)
-        env = keys.PROVIDER_KEY_ENV.get(key_name, "")
-        value = os.environ.get(env, "")
-        if value:
-            status = f"{keys.mask(value)} ({'saved' if key_name in saved else 'env'})"
-        else:
-            status = "not connected"
-        table.add_row(name, env, status)
+        if name != "custom":
+            table.add_row(name, *_provider_status(name, saved))
     console.print(table)
     console.print()
 

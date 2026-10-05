@@ -38,6 +38,7 @@ class TestRunLoginFlow(unittest.TestCase):
         registry = {name: provider, "ollama": FakeProvider(name="ollama")}
         answers = iter([provider_choice, model_answer])
         with patch("src.cli.prompt_secret", return_value=key), \
+                patch("src.cli.pick", side_effect=lambda *a, **k: next(answers)), \
                 patch("src.cli.Prompt.ask", side_effect=lambda *a, **k: next(answers)), \
                 patch("rich.prompt.Confirm.ask", return_value=confirm), \
                 patch("src.providers.build_registry", return_value=registry):
@@ -70,7 +71,7 @@ class TestRunLoginFlow(unittest.TestCase):
     def test_a_given_provider_skips_the_question(self):
         provider = FakeProvider(name="openai", models=("gpt-5.4",))
         with patch("src.cli.prompt_secret", return_value="sk-test"), \
-                patch("src.cli.Prompt.ask", side_effect=["gpt-5.4"]) as ask, \
+                patch("src.cli.pick", side_effect=["gpt-5.4"]) as ask, \
                 patch("src.providers.build_registry", return_value={"openai": provider}):
             ref = run_login_flow(Console(file=io.StringIO()), {"openai": provider}, provider="openai")
         self.assertEqual((ref, ask.call_count), ("openai:gpt-5.4", 1))       # only the model was asked
@@ -92,6 +93,7 @@ class TestCustomProvider(unittest.TestCase):
 
         answers = iter(["custom", "together", "openai", "https://api.together.xyz/v1/", "meta-llama/Llama-4"])
         with patch("src.cli.prompt_secret", return_value="tg-key"), \
+                patch("src.cli.pick", side_effect=lambda *a, **k: next(answers)), \
                 patch("src.cli.Prompt.ask", side_effect=lambda *a, **k: next(answers)), \
                 patch("src.providers.openai_compat.OpenAICompatProvider.list_models", return_value=["meta-llama/Llama-4"]):
             ref = run_login_flow(Console(file=io.StringIO()), {})
@@ -123,6 +125,7 @@ class TestCustomProvider(unittest.TestCase):
     def test_a_keyless_server_still_connects(self):
         answers = iter(["custom", "vllm", "openai", "http://localhost:8000/v1", "qwen3"])
         with patch("src.cli.prompt_secret", return_value=""), \
+                patch("src.cli.pick", side_effect=lambda *a, **k: next(answers)), \
                 patch("src.cli.Prompt.ask", side_effect=lambda *a, **k: next(answers)), \
                 patch("src.providers.openai_compat.OpenAICompatProvider.list_models", return_value=["qwen3"]):
             self.assertEqual(run_login_flow(Console(file=io.StringIO()), {}), "vllm:qwen3")

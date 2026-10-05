@@ -64,7 +64,7 @@ class TestConfirm(unittest.TestCase):
 
     def test_declining_pulls_nothing(self):
         with patch.object(local_models, "SOURCES", {"ollama": lambda q, b: [HARD]}), \
-                patch.object(local_models.Prompt, "ask", return_value="1"), \
+                patch.object(local_models, "pick", return_value="0"), \
                 patch.object(local_models.Confirm, "ask", return_value=False), \
                 patch.object(local_models, "_runner", return_value="ollama"), \
                 patch.object(local_models, "_pull_ollama") as pull_ollama, \
@@ -274,7 +274,7 @@ class TestSetUpRunner(unittest.TestCase):
         with patch.object(local_models.fit, "chip", return_value="Apple M3"), \
                 patch.object(local_models.fit, "budget_bytes", return_value=12 * GB), \
                 patch.object(local_models, "SOURCES", {"ollama": lambda q, b: [RELAX]}), \
-                patch.object(local_models.Prompt, "ask", return_value="1"), \
+                patch.object(local_models, "pick", return_value="0"), \
                 patch.object(local_models, "_runner", return_value=None), \
                 patch.object(local_models, "_set_up_runner", return_value="ollama") as setup, \
                 patch.object(local_models, "_confirm", return_value=True), \
@@ -291,8 +291,7 @@ class TestFailedEvalHidden(unittest.TestCase):
                 patch.object(local_models.fit, "budget_bytes", return_value=12 * GB), \
                 patch.object(local_models, "SOURCES", {"ollama": lambda q, b: [RELAX, HARD]}), \
                 patch.object(local_models, "hidden_refs", return_value={"ollama:small:3b"}), \
-                patch.object(local_models, "_table") as table, \
-                patch.object(local_models.Prompt, "ask", return_value=""):
+                patch.object(local_models, "pick", return_value=None) as pick:
             local_models.show(repl, " ollama")
-        self.assertEqual([o.pull_tag for o in table.call_args.args[0]], ["big:30b"])
+        self.assertEqual([c.label for c in pick.call_args.args[2]], ["big"])
         self.assertIn("1 hidden", repl.console.export_text())
