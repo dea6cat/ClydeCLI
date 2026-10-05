@@ -51,6 +51,32 @@ class TestSkillCreate(SkillSystemTests):
         self.assertEqual(parsed.frontmatter["arguments"], ["name"])
         self.assertEqual(parsed.frontmatter["allowed-tools"], ["Read", "Grep"])
 
+    def test_block_scalars_are_read_not_left_as_a_bare_marker(self) -> None:
+        parsed = parse_frontmatter(
+            "---\n"
+            "name: caveman-commit\n"
+            "description: >\n"
+            "  Write a Conventional Commits message compressed to intent only. Use for\n"
+            '  "write a commit", /commit: terse.\n'
+            "when_to_use: |\n"
+            "  line one\n"
+            "    indented\n"
+            "  line two\n"
+            "version: 3\n"
+            "---\n"
+            "Body\n"
+        )
+        self.assertEqual(parsed.frontmatter["description"],
+                         'Write a Conventional Commits message compressed to intent only. Use for "write a commit", /commit: terse.')
+        self.assertEqual(parsed.frontmatter["when_to_use"], "line one\n  indented\nline two")
+        self.assertEqual((parsed.frontmatter["name"], parsed.frontmatter["version"]), ("caveman-commit", 3))   # keys after it still parse
+        self.assertEqual(parsed.body.strip(), "Body")
+
+    def test_a_block_scalar_marker_with_chomping_and_an_empty_block(self) -> None:
+        parsed = parse_frontmatter("---\ndescription: >-\n  folded\n  text\nnext: |\nafter: x\n---\nB\n")
+        self.assertEqual(parsed.frontmatter["description"], "folded text")
+        self.assertEqual((parsed.frontmatter["next"], parsed.frontmatter["after"]), ("", "x"))
+
 
 class TestSkillRegister(SkillSystemTests):
     def test_register_loads_skill_from_dir(self) -> None:
