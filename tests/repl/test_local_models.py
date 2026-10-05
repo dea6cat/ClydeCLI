@@ -196,3 +196,89 @@ class TestPurge(unittest.TestCase):
         shown = self.repl.console.export_text()
         self.assertIn("Deleted lmstudio:repo", shown)
         self.assertEqual(shown.count("skipped"), 2)
+
+
+class TestSetUpRunner(unittest.TestCase):
+    """A missing Ollama or LM Studio is installed only after a yes, then the download goes on."""
+
+    def setUp(self):
+        self.repl = _Repl()
+        self.repl.registry = {"ollama": _Ollama(False)}
+        self.run = self._patch(local_models.subprocess, "run", return_value=type("Done", (), {"returncode": 0})())
+        self._patch(local_models.sys, "platform", "darwin")
+        self._patch(local_models, "_lms", return_value=None)
+
+    def _patch(self, target, name, *args, **kwargs):
+        patcher = patch.object(target, name, *args, **kwargs) if args or kwargs else patch.object(target, name)
+        mock = patcher.start()
+        self.addCleanup(patcher.stop)
+        return mock
+
+    def _which(self, installed):
+        return self._patch(local_models.shutil, "which", side_effect=lambda exe: f"/bin/{exe}" if exe in installed else None)
+
+    def test_declining_installs_nothing(self):
+        self._which({"brew"})
+        with patch.object(local_models.Confirm, "ask", return_value=False) as ask:
+            self.assertIsNone(local_models._set_up_runner(self.repl, RELAX))
+        self.run.assert_not_called()
+        self.assertFalse(ask.call_args.kwargs["default"])
+        self.assertIn("brew install ollama", ask.call_args.args[0])
+        self.assertIn("need Ollama", self.repl.console.export_text())
+
+    def test_yes_installs_starts_and_returns_the_runner(self):
+        self._which({"brew"})
+        up = self._patch(local_models, "_start_ollama", return_value=True)
+        with patch.object(local_models.Confirm, "ask", return_value=True), \
+                patch.object(local_models, "_runner", return_value="ollama"):
+            self.assertEqual(local_models._set_up_runner(self.repl, RELAX), "ollama")
+        self.assertEqual(self.run.call_args.args[0], ["brew", "install", "ollama"])
+        up.assert_called_once()
+
+    def test_a_failed_install_stops_there(self):
+        self._which({"brew"})
+        self.run.return_value.returncode = 1
+        up = self._patch(local_models, "_start_ollama")
+        with patch.object(local_models.Confirm, "ask", return_value=True):
+            self.assertIsNone(local_models._set_up_runner(self.repl, RELAX))
+        up.assert_not_called()
+        self.assertIn("failed", self.repl.console.export_text())
+
+    def test_installed_but_not_running_only_starts_it(self):
+        self._which({"ollama"})
+        up = self._patch(local_models, "_start_ollama", return_value=True)
+        with patch.object(local_models.Confirm, "ask", return_value=True) as ask, \
+                patch.object(local_models, "_runner", return_value="ollama"):
+            self.assertEqual(local_models._set_up_runner(self.repl, RELAX), "ollama")
+        self.run.assert_not_called()
+        self.assertIn("ollama serve", ask.call_args.args[0])
+        up.assert_called_once()
+
+    def test_mlx_installs_lm_studio_as_a_cask(self):
+        self._which({"brew"})
+        self._patch(local_models, "_start_lmstudio", return_value=True)
+        with patch.object(local_models.Confirm, "ask", return_value=True), \
+                patch.object(local_models, "_runner", return_value="lmstudio"):
+            self.assertEqual(local_models._set_up_runner(self.repl, MLX), "lmstudio")
+        self.assertEqual(self.run.call_args.args[0], ["brew", "install", "--cask", "lm-studio"])
+
+    def test_no_way_to_install_asks_nothing(self):
+        self._which(set())   # no brew
+        with patch.object(local_models.Confirm, "ask") as ask:
+            self.assertIsNone(local_models._set_up_runner(self.repl, RELAX))
+        ask.assert_not_called()
+        self.run.assert_not_called()
+        self.assertIn("need Ollama", self.repl.console.export_text())
+
+    def test_show_sets_up_a_missing_runner_then_downloads(self):
+        with patch.object(local_models.fit, "chip", return_value="Apple M3"), \
+                patch.object(local_models.fit, "budget_bytes", return_value=12 * GB), \
+                patch.object(local_models, "SOURCES", {"ollama": lambda q, b: [RELAX]}), \
+                patch.object(local_models.Prompt, "ask", return_value="1"), \
+                patch.object(local_models, "_runner", return_value=None), \
+                patch.object(local_models, "_set_up_runner", return_value="ollama") as setup, \
+                patch.object(local_models, "_confirm", return_value=True), \
+                patch.object(local_models, "_pull_ollama") as pull:
+            local_models.show(self.repl, " ollama")
+        setup.assert_called_once()
+        pull.assert_called_once()
