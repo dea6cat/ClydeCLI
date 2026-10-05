@@ -409,6 +409,47 @@ class TestREPL(unittest.TestCase):
                     self.assertTrue(any("glm: couldn't list models" in str(a[0].plain if hasattr(a[0], "plain") else a[0])
                                         for a, _k in repl.console.print.call_args_list if a))
 
+    def test_terse_command_switches_the_style_saves_it_and_new_sessions_start_with_it(self):
+        from src.config import get_output_style
+        with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
+            with patch('src.repl.core.Session.create'):
+                with _fake_provider_env():
+                    repl = ClydeREPL(model="glm:glm-4.5")
+                    repl.console.print = Mock()
+                    self.assertIsNone(repl.tool_context.output_style_name)
+                    repl.handle_command("/terse on")
+                    self.assertEqual((repl.tool_context.output_style_name, get_output_style()), ("terse", "terse"))
+                    self.assertEqual(ClydeREPL(model="glm:glm-4.5").tool_context.output_style_name, "terse")   # a new session
+                    repl.handle_command("/terse off")
+                    self.assertEqual((repl.tool_context.output_style_name, get_output_style()), (None, None))
+                    with patch('src.repl.core.pick', return_value="on") as pick:
+                        repl.handle_command("/terse")
+                    self.assertEqual((pick.call_args.kwargs["current"], repl.tool_context.output_style_name), ("off", "terse"))
+                    with patch('src.repl.core.pick', return_value=None):
+                        repl.handle_command("/terse")                                  # cancelled: unchanged
+                    self.assertEqual(repl.tool_context.output_style_name, "terse")
+                    repl.handle_command("/terse sideways")
+                    self.assertEqual(repl.tool_context.output_style_name, "terse")
+                    self.assertTrue(any("Usage: /terse" in str(a[0]) for a, _k in repl.console.print.call_args_list if a))
+
+    def test_the_terse_style_reaches_the_system_prompt_only_when_on(self):
+        from src.agent.agent_loop import run_agent_loop
+        from src.output_styles.styles import TERSE_RULE
+        with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
+            with patch('src.repl.core.Session.create'):
+                with _fake_provider_env(reply("ok"), reply("ok")) as provider:
+                    repl = ClydeREPL(model="glm:glm-4.5")
+                    for style in (None, "terse"):
+                        repl.tool_context.output_style_name = style
+                        conversation = Conversation()
+                        conversation.add_user_message("hi")
+                        run_agent_loop(conversation=conversation, provider=provider, model="glm-4.5",
+                                       tool_registry=repl.tool_registry, tool_context=repl.tool_context, verbose=False)
+                    off, on = (r["conversation"].system_prompt for r in provider.requests)
+                    self.assertNotIn(TERSE_RULE, off)
+                    self.assertIn(TERSE_RULE, on)
+                    self.assertIn("You are Clyde", on)                                  # still Clyde, only shorter
+
     def _status_line(self, repl, width=100):
         with patch.object(ClydeREPL, "_rule_width", staticmethod(lambda: width)):
             fragments = repl._mode_line()
