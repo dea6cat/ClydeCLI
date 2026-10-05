@@ -22,6 +22,13 @@ CLYDE_PERSONA = (
     "Don't open with agreement or praise; if the user is wrong, say so and say why."
 )
 
+# Fewer output tokens for the same answer: cheaper, and quicker on a local model that writes ~12 tokens a second.
+TERSE_RULE = (
+    "Answer in as few words as accuracy allows. Lead with the answer or the action. No greetings, no restating "
+    "the question, no closing offers or recaps. Skip filler and hedges; fragments are fine. Keep code, commands, "
+    "paths, numbers and error text exact. Be fully clear for warnings, destructive actions and multi-step instructions."
+)
+
 BUILTIN_OUTPUT_STYLES: dict[str, OutputStyle] = {
     "default": OutputStyle(
         name="default",
@@ -31,5 +38,5 @@ BUILTIN_OUTPUT_STYLES: dict[str, OutputStyle] = {
         name="explanatory",
         prompt=f"{CLYDE_PERSONA}\n\nRespond with concise implementation details plus short educational notes when they improve understanding.",
     ),
+    "terse": OutputStyle(name="terse", prompt=f"{CLYDE_PERSONA}\n\n{TERSE_RULE}"),
 }
-
