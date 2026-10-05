@@ -210,3 +210,15 @@ class TestDebugCommand(TraceTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestTraceSizeCap(TraceTestCase):
+    def test_a_trace_stops_growing_at_the_cap_with_one_marker(self):
+        trace.start("s1")
+        with patch.object(trace, "MAX_BYTES", 2000):
+            for i in range(200):
+                trace.record("tool_call", tool="Read", n=i)
+        lines = self.trace_file().read_text().splitlines()
+        self.assertEqual([json.loads(line)["event"] for line in lines].count("truncated"), 1)
+        self.assertEqual(json.loads(lines[-1])["event"], "truncated")
+        self.assertLess(self.trace_file().stat().st_size, 2400)
