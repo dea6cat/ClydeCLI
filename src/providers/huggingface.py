@@ -24,13 +24,29 @@ _NOT_CHAT = re.compile(r"embed|rerank", re.I)
 # A chat template that never mentions tools can't render a tool call. No template at all (it can live in a
 # separate file) proves nothing, so only a template that is present and silent drops the repo.
 _TOOLS = re.compile(r"\btools?\b|tool_call", re.I)
-_EXPAND = {"gguf": ["gguf", "downloads"], "mlx": ["config", "downloads"]}
+_EXPAND = {"gguf": ["gguf", "downloads", "cardData"], "mlx": ["config", "downloads", "cardData"]}
+_CHAT_NAME = re.compile(r"instruct|chat|[-_]it\b|assistant|thinking|\bsft\b|dpo", re.I)
 
 
 def _lacks_tools(repo: dict, fmt: str) -> bool:
     meta = repo.get("gguf") if fmt == "gguf" else (repo.get("config") or {}).get("tokenizer_config")
     template = meta.get("chat_template") if isinstance(meta, dict) else None
     return bool(template) and not _TOOLS.search(str(template))
+
+
+def _is_base(repo: dict) -> bool:
+    """A quant of a base (pretrained, not chat-tuned) model: it writes tool calls as prose and ignores tool
+    results. Its card names the base model; that model is a base when an `-Instruct` sibling is published
+    (Qwen2.5-Coder-7B has one, a hybrid like Qwen3-8B doesn't). HF answers 200 only for repos that exist,
+    so any other reply keeps the repo. ponytail: only the `-Instruct` suffix is probed, not `-it` or `-Chat`."""
+    base = (repo.get("cardData") or {}).get("base_model")
+    base = base[0] if isinstance(base, list) and base else base
+    if not isinstance(base, str) or "/" not in base or _CHAT_NAME.search(base) or _CHAT_NAME.search(str(repo.get("id", ""))):
+        return False
+    try:
+        return isinstance(get_json(f"{API}/{base}-Instruct", provider="huggingface", timeout=10), dict)
+    except ProviderError:
+        return False
 
 
 def _quants(files: list[dict]) -> list[tuple[str, int]]:
@@ -77,6 +93,7 @@ def offers(fmt: str, query: str, offer: Callable[[dict], Offer | None]) -> list[
         return []
     repos = [r for r in repos if isinstance(r, dict) and not _NOT_CHAT.search(str(r.get("id", ""))) and not _lacks_tools(r, fmt)]
     with ThreadPoolExecutor(max_workers=8) as pool:
+        repos = [r for r, base in zip(repos, pool.map(_is_base, repos)) if not base]
         found = [o for o in pool.map(offer, repos) if o is not None]
     return sorted(found, key=lambda o: o.popularity, reverse=True)
 
