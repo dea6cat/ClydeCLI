@@ -35,6 +35,12 @@ class TestModelEval(unittest.TestCase):
         self.assertTrue(ignored.tool_call)
         self.assertFalse(ignored.round_trip)
 
+    def test_a_call_echoed_inside_its_own_arguments_is_unwrapped(self):
+        # What Qwen2.5-Coder GGUF sends through Ollama: the whole call as the arguments.
+        wrapped = {"name": "add_numbers", "arguments": {"a": 17, "b": 25}}
+        score = evaluate(FakeProvider(reply(tool_calls=[("add_numbers", wrapped)]), reply("It is 42.")), "m", "x:m")
+        self.assertTrue(score.passed)
+
     def test_errors_are_reported_not_raised(self):
         score = evaluate(FakeProvider(ProviderError("fake", "HTTP 404 — model not found")), "m", "x:m")
         self.assertFalse(score.passed)

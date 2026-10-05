@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .base import ProviderError, stream_with_retry
+from .toolcall_repair import coerce_tool_args
 from .toolspec import ToolSpec
 from .types import Conversation, Message, ToolResult
 
@@ -210,7 +211,7 @@ def evaluate(provider: Any, model: str, ref: str) -> ModelScore:
         if call is None:
             score.error = "answered without calling the tool"
             return score
-        args = call.arguments or {}
+        _, args = coerce_tool_args(call.name, call.arguments, (EVAL_TOOL.name,))   # same repair the agent loop applies
         score.tool_call = {_as_int(args.get("a")), _as_int(args.get("b"))} == {17, 25}
         if not score.tool_call:
             score.error = f"called the tool with {args}"
