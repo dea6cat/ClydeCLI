@@ -53,9 +53,9 @@
 </header>
 <main>
   <h1>ClydeCLI</h1>
-  <p>A coding-agent harness for the terminal, written in Python and MIT licensed. You bring the model: one of 13 providers, a local model through Ollama or LM Studio, or any OpenAI- or Anthropic-compatible endpoint. Clyde gives it the tools, permissions, shell sandbox, undo and sessions to work on a real repository.</p>
+  <p>A coding-agent harness for the terminal. Bring any LLM; Clyde gives it tools, permissions, a sandbox, undo and sessions.</p>
   <div class="install"><code id="cmd">curl -fsSL https://raw.githubusercontent.com/dea6cat/ClydeCLI/main/install.sh | sh</code><button type="button" id="copy">Copy</button></div>
-  <p class="dim">Python 3.14+, macOS or Linux. The install is about 850 MB, mostly PyTorch for the bundled Laya model.</p>
+  <p>The model can be one of 13 providers, a local model through Ollama or LM Studio, or any OpenAI- or Anthropic-compatible endpoint. Written in Python, MIT licensed.</p>
 
   <h2>A real session</h2>
   <p>A three-file project with a leap-year bug, NVIDIA's <code>muse-glimmer-30b</code> in all-in mode, then <code>/rewind</code> to undo the fix. The dim italic lines are the model's own thinking.</p>
@@ -153,7 +153,7 @@ c = code and conversation, f = files only, m = conversation only <span style="co
 `test_dates.py` has 3 tests. `test_february_in_a_leap_year` fails.
 
 <span style="color: #4eba65; text-decoration-color: #4eba65">♠ </span><span style="color: #8a8a8a; text-decoration-color: #8a8a8a">Pondered for 14s · 10:45 AM · 18.1k in, 68 out</span></pre>
-  <figcaption>Recorded 2026-10-05, same project. The 503 is real; it wasn't staged.</figcaption></figure>
+  <figcaption>Recorded 2026-10-05, same project. Google returned the 503 during the recording.</figcaption></figure>
 
   <h2>Checking which models work</h2>
   <p><code>/eval</code> runs a tool call, a round trip and a hand of 11 graded tasks against every model your keys reach. Broken ones disappear from <code>/models</code>. The red line is a model that scored lower than at its last run.</p>
@@ -192,22 +192,20 @@ Difficulty (shadow turns, split at score 1.62)   turns  avg tool rounds  ran out
 1.0; it needs 9 more scored turn(s) in the smaller half.</pre>
   <figcaption>Recorded 2026-10-05 on the maintainer's machine, which so far has only a handful of scored turns.</figcaption></figure>
 
-  <h2>Also in the box</h2>
+  <h2>What else it does</h2>
   <ul>
-    <li><code>clyde -p</code> for scripts and CI, with JSON output and exit codes.</li>
-    <li>A shell sandbox: commands can only write inside the project, temp folders and package caches.</li>
-    <li>Reading a <code>.env</code>, key or credentials file asks first, even in all-in mode.</li>
-    <li>MCP servers over stdio, HTTP and SSE, with OAuth sign-in.</li>
-    <li>Sub-agents, background tasks and teams that run in parallel.</li>
-    <li>Reads the memory files, skills, hooks and MCP servers you set up for Claude Code, Codex, Cursor and Gemini CLI.</li>
-    <li><code>clyde --acp</code> for editors that speak the Agent Client Protocol.</li>
-    <li>A read-only SQL tool over CSV, Parquet, JSON and SQLite files.</li>
+    <li><code>clyde -p</code> runs one turn for scripts and CI, with JSON output and exit codes.</li>
+    <li>Shell commands run in a sandbox that writes only inside the project, and reading a <code>.env</code> or key file asks first.</li>
+    <li>MCP servers work over stdio, HTTP and SSE, with OAuth sign-in.</li>
+    <li>Sub-agents and teams run in parallel, in the background if you like.</li>
+    <li>It reads the memory files, skills, hooks and MCP servers you already set up for Claude Code, Codex, Cursor or Gemini CLI.</li>
   </ul>
-  <p>The <a href="https://github.com/dea6cat/ClydeCLI#readme">README</a> covers the rest.</p>
+  <p>Editor support over the Agent Client Protocol, a read-only SQL tool and the rest are in the <a href="https://github.com/dea6cat/ClydeCLI#readme">README</a>.</p>
 
   <h2>Limits</h2>
   <ul>
     <li>One maintainer, and few users so far. Expect rough edges.</li>
+    <li>Needs Python 3.14+ on macOS or Linux. The install is about 850 MB, mostly PyTorch for the bundled Laya model.</li>
     <li>Editor support through ACP is new and hasn't been tried in a real editor yet. Android Studio doesn't support ACP agents.</li>
     <li>The Linux sandbox (bubblewrap) has only been tested through its arguments, not on a Linux machine.</li>
     <li>Some providers don't report token usage, so cost tracking can't count them.</li>
