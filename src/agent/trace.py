@@ -7,6 +7,8 @@ OSError is swallowed. Secrets are redacted and long strings truncated before any
 """
 from __future__ import annotations
 
+from src.config import clyde_home
+
 import json
 import os
 import re
@@ -31,7 +33,7 @@ _live = False
 
 
 def traces_dir() -> Path:
-    return Path.home() / ".clyde" / "traces"
+    return clyde_home() / "traces"
 
 
 def trace_path(session_id: str | None = None) -> Path | None:

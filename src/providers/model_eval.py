@@ -10,6 +10,8 @@ which cardShuffle ranks models by.
 
 from __future__ import annotations
 
+from src.config import clyde_home
+
 import json
 import re
 import time
@@ -259,7 +261,7 @@ def evaluate_all(targets: list[tuple[Any, str, str]], on_done: Callable[[ModelSc
 
 
 def results_path() -> Path:
-    return Path.home() / ".clyde" / "model_evals.json"
+    return clyde_home() / "model_evals.json"
 
 
 def load_results() -> dict[str, dict[str, Any]]:

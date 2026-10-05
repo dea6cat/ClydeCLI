@@ -16,6 +16,8 @@ any other outcome carries on.
 
 from __future__ import annotations
 
+from src.config import clyde_home
+
 import json
 import re
 import subprocess
@@ -25,7 +27,7 @@ from typing import Any
 
 # ponytail: user-level settings only; project .clyde/settings.json hooks need a workspace trust prompt first
 def settings_paths() -> tuple[Path, Path]:
-    return (Path.home() / ".clyde" / "settings.json", Path.home() / ".clyde" / "settings.toml")
+    return (clyde_home() / "settings.json", clyde_home() / "settings.toml")
 
 DEFAULT_TIMEOUT = 60
 

@@ -26,6 +26,8 @@ ListMcpResourcesTool / ReadMcpResourceTool.
 
 from __future__ import annotations
 
+from src.config import clyde_home
+
 import atexit
 import hashlib
 import itertools
@@ -60,7 +62,7 @@ class McpAuthRequired(McpError):
 
 def load_servers(path: Path | None = None) -> dict[str, dict[str, Any]]:
     """`mcpServers` from the user settings file; {} when missing or unreadable."""
-    path = path or Path.home() / ".clyde" / "settings.json"
+    path = path or clyde_home() / "settings.json"
     try:
         servers = json.loads(path.read_text(encoding="utf-8")).get("mcpServers", {})
     except (OSError, ValueError, AttributeError):
@@ -185,7 +187,7 @@ def project_servers(root: Path) -> dict[str, dict[str, Any]]:
 
 
 def _approvals_path() -> Path:
-    return Path.home() / ".clyde" / "mcp_project_approvals.json"
+    return clyde_home() / "mcp_project_approvals.json"
 
 
 def _approval_key(root: Path, name: str, cfg: dict[str, Any]) -> str:
@@ -593,7 +595,7 @@ def find_foreign_servers(sources: tuple[tuple[str, Path, str], ...] | None = Non
 
 def import_servers(servers: dict[str, dict[str, Any]], dest: Path | None = None) -> list[str]:
     """Add servers to `mcpServers` in the settings file, keeping any with the same name; return the added names."""
-    dest = dest or Path.home() / ".clyde" / "settings.json"
+    dest = dest or clyde_home() / "settings.json"
     try:
         data = json.loads(dest.read_text(encoding="utf-8"))
     except FileNotFoundError:

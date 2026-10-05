@@ -14,6 +14,8 @@ pass the same SkillSpector gate as skills before the model can use them.
 """
 from __future__ import annotations
 
+from src.config import clyde_home
+
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -37,7 +39,7 @@ _BUILT_IN = AgentType(GENERAL, "General-purpose agent for research and multi-ste
 
 def agent_dirs(project_root: Path) -> list[Path]:
     root, home = Path(project_root), Path.home()
-    return [root / ".clyde" / "agents", root / ".claude" / "agents", home / ".clyde" / "agents", home / ".claude" / "agents"]
+    return [root / ".clyde" / "agents", root / ".claude" / "agents", clyde_home() / "agents", home / ".claude" / "agents"]
 
 
 def _parse(path: Path) -> AgentType | None:

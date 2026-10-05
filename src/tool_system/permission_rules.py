@@ -10,6 +10,8 @@ take a path glob relative to the workspace; a bare tool name matches every use. 
 
 from __future__ import annotations
 
+from src.config import clyde_home
+
 import json
 import re
 import shlex
@@ -23,7 +25,7 @@ _PATH_TOOLS = ("Edit", "Write", "Read", "Grep")
 
 # ponytail: user-level settings only; project rules need a workspace trust prompt first
 def settings_path() -> Path:
-    return Path.home() / ".clyde" / "settings.json"
+    return clyde_home() / "settings.json"
 
 
 def load_rules(path: Path | None = None) -> dict[str, list[str]]:
