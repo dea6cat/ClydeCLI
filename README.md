@@ -240,6 +240,7 @@ clyde --model openai:gpt-5.4   # Start with a specific model
 clyde -c                       # Continue the latest session in this directory
 clyde --resume [id]            # Pick a recent session, or resume one by id
 clyde -p "explain src/cli.py"  # One turn, no prompt: the answer on stdout, for scripts and CI
+clyde --acp                    # Agent Client Protocol on stdio, for editors such as Zed
 git diff | clyde -p "review"   # Piped input is added to the prompt
 clyde setup                    # First-run onboarding (provider, other agents' hooks, PATH)
 clyde login                    # Connect a provider, pick a default model
@@ -299,7 +300,7 @@ to do. The session is saved, so `clyde -c` picks the conversation up interactive
 | Local models | ✅ | `/models local` finds ollama.com, Hugging Face GGUF and MLX models that fit this machine, rated relax / balance / hard, confirmed before download through Ollama or LM Studio |
 | SkillSpector | ✅ | Bundled scanner for skills, plugins and MCP servers from other agents: static always, LLM review when a usable model is connected; `DO_NOT_INSTALL` items held back until `/skills allow` |
 | Laya | ✅ | Bundled local decision model: hands a stuck cardShuffle turn to the next card; scores every turn's difficulty and steers `house` once `/laya`'s evidence shows it separates easy turns from hard ones |
-| IDE integration | ⏳ | Pending: a VS Code / JetBrains connection for editor diagnostics, the open file and selection, and diff views of the model's edits |
+| IDE integration | ✅ | `clyde --acp` speaks the Agent Client Protocol, so editors that support it (Zed, JetBrains through an ACP adapter) run Clyde as their agent: streamed replies, tool calls and permission asks in the editor |
 | Pasting | ✅ | Ctrl+V pastes a copied image, a copied image path becomes the image, long pastes fold to `[Pasted text #N +X lines]` |
 
 ### Tools
@@ -331,7 +332,7 @@ to do. The session is saved, so `clyde -c` picks the conversation up interactive
 - ✅ **Phase 5**: Python-native differentiators: the Code Map, check-after-edit with ruff/mypy/pytest/uv, notebook tools, and the Data tool for data and ETL work
 - ✅ **Phase 6**: Model play: cardShuffle routing across `/eval`-ranked models, local models that fit the machine (ollama.com, Hugging Face GGUF and MLX), Laya bundled for stuck-loop detection, and SkillSpector bundled to scan skills, plugins and MCP servers
 - ✅ **Laya's difficulty in `cardShuffle:house`**: promotes itself from shadow mode once `/laya`'s evidence shows it separates easy turns from hard ones
-- ⏳ **Pending**: IDE integration (VS Code and JetBrains): editor diagnostics, the open file and selection, and diff views
+- ✅ **IDE integration** through the Agent Client Protocol (`clyde --acp`)
 
 **See [FEATURE_LIST.md](FEATURE_LIST.md) for detailed feature status and PR guidelines.**
 
