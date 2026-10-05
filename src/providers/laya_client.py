@@ -15,10 +15,13 @@ from __future__ import annotations
 
 import os
 import threading
+import warnings
 from typing import Any
 
 # Never download from inside Clyde: a missing model is reported, and `clyde setup` fetches it.
 os.environ.setdefault("HF_HUB_OFFLINE", "1")
+# Laya's own calibration warnings would print into the middle of a turn; its answers are advisory anyway.
+warnings.filterwarnings("ignore", module=r"laya(\.|$)")
 
 REPO = "convaiinnovations/laya"
 DOWNLOAD_SIZE = "about 800 MB"
