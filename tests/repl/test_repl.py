@@ -409,6 +409,52 @@ class TestREPL(unittest.TestCase):
                     self.assertTrue(any("glm: couldn't list models" in str(a[0].plain if hasattr(a[0], "plain") else a[0])
                                         for a, _k in repl.console.print.call_args_list if a))
 
+    def _skills_repl(self):
+        from types import SimpleNamespace
+        skills = [SimpleNamespace(name="zeta", description="Last one.\n  Second line.", user_invocable=True),
+                  SimpleNamespace(name="alpha", description="x" * 300, user_invocable=True),
+                  SimpleNamespace(name="model-only", description="hidden from users", user_invocable=False)]
+        return skills
+
+    def test_skills_command_is_a_picker_that_runs_the_chosen_skill(self):
+        with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
+            with patch('src.repl.core.Session.create'):
+                with _fake_provider_env():
+                    repl = ClydeREPL(model="glm:glm-4.5")
+                    repl.console.print = Mock()
+                    with patch('src.skills.loader.get_all_skills', return_value=self._skills_repl()), \
+                            patch('src.repl.core.pick', return_value="zeta") as pick, \
+                            patch.object(repl, "handle_command", wraps=repl.handle_command) as handle:
+                        repl.handle_command("/skills")
+                    choices = pick.call_args.args[2]
+                    self.assertEqual([c.value for c in choices], ["alpha", "zeta"])            # sorted, runnable only
+                    self.assertEqual(choices[1].hint, "Last one. Second line.")               # one line
+                    self.assertTrue(choices[0].hint.endswith("…") and len(choices[0].hint) <= 110)
+                    self.assertIn("1 more are for the model only", pick.call_args.kwargs["description"])
+                    self.assertEqual(handle.call_args_list[-1].args[0], "/zeta")              # Enter runs it
+
+    def test_cancelling_the_skills_picker_runs_nothing(self):
+        with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
+            with patch('src.repl.core.Session.create'):
+                with _fake_provider_env():
+                    repl = ClydeREPL(model="glm:glm-4.5")
+                    repl.console.print = Mock()
+                    with patch('src.skills.loader.get_all_skills', return_value=self._skills_repl()), \
+                            patch('src.repl.core.pick', return_value=None), \
+                            patch.object(repl, "handle_command", wraps=repl.handle_command) as handle:
+                        repl.handle_command("/skills")
+                    self.assertEqual(handle.call_count, 1)                                      # only the /skills itself
+
+    def test_skills_scan_still_reaches_the_security_scan(self):
+        with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
+            with patch('src.repl.core.Session.create'):
+                with _fake_provider_env():
+                    repl = ClydeREPL(model="glm:glm-4.5")
+                    with patch.object(repl, "_skills_security") as scan, patch('src.repl.core.pick') as pick:
+                        repl.handle_command("/skills scan")
+                    scan.assert_called_once_with(["scan"])
+                    pick.assert_not_called()
+
     def test_model_command_rejects_unknown_provider(self):
         with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
             with patch('src.repl.core.Session.create'):
