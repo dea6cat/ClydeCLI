@@ -2115,7 +2115,7 @@ class ClydeREPL:
                 done[0] += 1
                 status.update(f"[{_CARD_DIM}]Tested {done[0]}/{len(targets)} · {score.ref}[/{_CARD_DIM}]")
             scores = evaluate_all(targets, on_done=progress)
-        save_results(scores)
+        drops = save_results(scores)
         width = getattr(self.console, "width", 100)
         table = Table(box=None, pad_edge=False, header_style=_CARD_DIM, show_edge=False)
         table.add_column("", no_wrap=True, width=1)
@@ -2136,6 +2136,8 @@ class ClydeREPL:
                 Text(sc.short_note, style=_CARD_DIM),
             )
         self.console.print(table)
+        for line in drops:   # a model that got worse since its last grade; cardShuffle now ranks it lower
+            self.console.print(Text(f"↓ {line}", style="#d0202f"))
         kinds = {k: sum(sc.kind == k for sc in scores) for k in ("ok", "tools", "unavailable", "answer", "transient")}
         parts = [(f"{kinds['ok']}/{len(scores)} passed", f"bold {_CARD_ACCENT}")]
         for key, label in (("tools", "no tool calling"), ("unavailable", "not available"), ("answer", "wrong answer"),
