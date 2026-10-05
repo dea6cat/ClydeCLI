@@ -216,6 +216,18 @@ def run_login_flow(console: Console, registry: dict, default_provider: str = "an
             console.print("\n[red]Error: API key cannot be empty[/red]")
             return None
         keys.connect(_key_name(provider_name), key)
+        extra = keys.PROVIDER_EXTRA_ENV.get(provider_name)   # e.g. Cloudflare's account id, which its URL contains
+        if extra:
+            env, label = extra
+            current = os.environ.get(env, "")
+            value = (Prompt.ask(label, default=current, show_default=bool(current)) or "").strip()
+            if not value:
+                console.print("\n[red]Error: that setting cannot be empty[/red]")
+                return None
+            problem = keys.connect_setting(provider_name, value)
+            if problem:
+                console.print(f"[red]Couldn't save it: {problem}[/red]")
+                return None
         registry = build_registry()   # Ollama Cloud only registers once its key is set
 
     provider = registry.get(provider_name)
