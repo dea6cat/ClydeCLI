@@ -1917,6 +1917,8 @@ class ClydeREPL:
                         msg = ""
                         if isinstance(ev.tool_output, dict) and isinstance(ev.tool_output.get("error"), str):
                             msg = ev.tool_output["error"]
+                        if not msg:   # e.g. a command that exited non-zero: show its exit code and last line
+                            msg = str(summarize_tool_result(ev.tool_name, ev.tool_output) or "").removeprefix(f"{ev.tool_name} · ")
                         self.console.print(Text(f"  ↳ {msg or 'Error'}{took}", style="#d0202f"))
                         return
                     msg = summarize_tool_result(ev.tool_name, ev.tool_output)
