@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from src.config import clyde_home
+
 import json
 from pathlib import Path
 from datetime import datetime
@@ -94,4 +96,4 @@ class Session:
 
 
 def _sessions_dir() -> Path:
-    return Path.home() / ".clyde" / "sessions"
+    return clyde_home() / "sessions"

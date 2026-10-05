@@ -11,6 +11,8 @@ they survive /resume. The newest 20 sessions' checkpoints are kept.
 """
 from __future__ import annotations
 
+from src.config import clyde_home
+
 import json
 import shutil
 from dataclasses import dataclass, field
@@ -31,7 +33,7 @@ class Checkpoint:
 
 
 def root() -> Path:
-    return Path.home() / ".clyde" / "checkpoints"
+    return clyde_home() / "checkpoints"
 
 
 class Checkpoints:

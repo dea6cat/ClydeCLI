@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from src.config import clyde_home
+
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -30,7 +32,7 @@ def _candidate_user_skills_dirs() -> list[Path]:
         if p not in dirs:
             dirs.append(p)
     # Defaults
-    for d in (Path.home() / name / "skills" for name in (".clyde", ".claude", ".agents", ".codex", ".copilot", ".gemini")):
+    for d in (clyde_home() / "skills", *(Path.home() / name / "skills" for name in (".claude", ".agents", ".codex", ".copilot", ".gemini"))):
         p = d.expanduser().resolve()
         if p not in dirs:
             dirs.append(p)

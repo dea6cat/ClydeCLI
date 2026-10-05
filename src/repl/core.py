@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from src.config import clyde_home
+
 try:
     from prompt_toolkit import PromptSession
     from prompt_toolkit.history import FileHistory
@@ -384,7 +386,7 @@ class ClydeREPL:
     def _setup_prompt(self) -> None:
         """The interactive prompt: history, completion, key bindings (paste, Shift+Tab) and the frame."""
         # Prompt toolkit with tab completion
-        history_file = Path.home() / ".clyde" / "history"
+        history_file = clyde_home() / "history"
         history_file.parent.mkdir(parents=True, exist_ok=True)
 
         self.completer = self._make_completer()

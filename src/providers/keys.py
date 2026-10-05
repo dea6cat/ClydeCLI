@@ -6,6 +6,8 @@ setting the right env var and, to make it stick, writing it to ~/.clyde/keys.jso
 """
 from __future__ import annotations
 
+from src.config import clyde_home
+
 import json
 import os
 import re
@@ -37,7 +39,7 @@ _NAME = re.compile(r"^[a-z][a-z0-9-]{1,30}$")
 
 
 def _settings_file() -> Path:
-    return Path.home() / ".clyde" / "settings.json"
+    return clyde_home() / "settings.json"
 
 
 def custom_providers() -> dict[str, str]:
@@ -110,7 +112,7 @@ def _edit_providers(change) -> str | None:
 
 
 def keys_file() -> Path:
-    return Path.home() / ".clyde" / "keys.json"
+    return clyde_home() / "keys.json"
 
 
 class KeysFileError(RuntimeError):

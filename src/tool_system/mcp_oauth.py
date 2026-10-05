@@ -14,6 +14,8 @@ Sign-in only ever starts from `/mcp login <server>` or `clyde mcp login <server>
 """
 from __future__ import annotations
 
+from src.config import clyde_home
+
 import base64
 import hashlib
 import json
@@ -45,7 +47,7 @@ def _agent() -> dict[str, str]:
 # --- token store -------------------------------------------------------------
 
 def store_path() -> Path:
-    return Path.home() / ".clyde" / "mcp_oauth.json"
+    return clyde_home() / "mcp_oauth.json"
 
 
 def _load() -> dict[str, Any]:
