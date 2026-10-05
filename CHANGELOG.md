@@ -169,6 +169,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The RemoteTrigger and REPL tools: stubs that only ever returned "not implemented"
 
 ### Fixed
+- A tool call whose arguments repeat the call itself (`{'name': 'add_numbers', 'arguments': {...}}`, as Qwen2.5-Coder
+  GGUF sends through Ollama) is now unwrapped for every tool, not only the built-in ones, and `/eval` applies the
+  same repair, so such models are no longer marked as failing.
 - `/models local` no longer lists models without tool calling: Hugging Face GGUF and MLX repos whose chat
   template never mentions tools are dropped, and models that already failed `/eval` here are hidden
   (ollama.com's tool tag alone let `command-r7b` through).

@@ -16,7 +16,7 @@ from src.agent.conversation import (
 )
 from src.providers import anthropic as an, google as g, openai_compat as oc, registry
 from src.providers.convert import append_response, to_canonical
-from src.providers.toolcall_repair import recover_toolcalls
+from src.providers.toolcall_repair import coerce_tool_args, recover_toolcalls
 from src.providers.toolspec import ToolSpec
 from src.providers.types import Conversation, Message, Role, ToolCall
 from tests.fakes import FakeProvider
@@ -264,6 +264,17 @@ class TestToolCallRepair(unittest.TestCase):
     def test_ignores_unknown_tools_and_prose(self):
         self.assertEqual(recover_toolcalls('```json\n{"name": "Nope"}\n```', ["Read"]), [])
         self.assertEqual(recover_toolcalls("just talking about Read", ["Read"]), [])
+
+    def test_a_wrapper_repeating_the_tool_name_unwraps_for_any_tool(self):
+        echoed = {"name": "add_numbers", "arguments": {"a": 1, "b": 2}}
+        self.assertEqual(coerce_tool_args("add_numbers", echoed), ("add_numbers", {"a": 1, "b": 2}))
+
+    def test_other_wrappers_stay_for_tools_outside_the_builtin_list(self):
+        # An MCP tool may really take a sole `input` object; only an echo of its own name is unwrapped.
+        sole = {"input": {"q": "x"}}
+        self.assertEqual(coerce_tool_args("mcp__x__search", sole), ("mcp__x__search", sole))
+        other = {"name": "something_else", "arguments": {"q": "x"}}
+        self.assertEqual(coerce_tool_args("mcp__x__search", other), ("mcp__x__search", other))
 
 
 if __name__ == "__main__":
