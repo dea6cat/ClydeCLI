@@ -310,6 +310,10 @@ if Completer is not None:
 class ClydeREPL:
     """Interactive REPL for ClydeCLI."""
 
+    # Listeners for a turn's streamed text and tool events (used by --acp); None in the terminal.
+    on_text_hook = None
+    on_event_hook = None
+
     # Esc cancels a running turn or command; prompts pause it (see src/repl/esc.py).
     _esc = EscWatcher()
 
@@ -1893,6 +1897,8 @@ class ClydeREPL:
                     stream_started = False
 
             def on_event(ev: ToolEvent) -> None:
+                if self.on_event_hook is not None:
+                    self.on_event_hook(ev)
                 if ev.kind == "tool_use":
                     _resume_status()
                     tool_started[ev.tool_use_id or ev.tool_name] = time.monotonic()
@@ -1942,6 +1948,8 @@ class ClydeREPL:
                 nonlocal thinking_open
                 if not chunk:
                     return
+                if self.on_text_hook is not None:
+                    self.on_text_hook(chunk)
                 _stop_status_once()
                 if thinking_open:
                     self.console.print("\n")
