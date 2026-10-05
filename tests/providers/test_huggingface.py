@@ -35,6 +35,27 @@ class TestHuggingFace(unittest.TestCase):
             offers = huggingface.search("coder", 12 * GB)
         self.assertEqual([(o.pull_tag, o.rating) for o in offers], [("hf.co/u/fits:Q8_0", "balance")])
 
+    def test_repos_whose_chat_template_has_no_tools_are_dropped_unknown_templates_stay(self):
+        listing = [
+            {"id": "u/tools", "downloads": 3, "gguf": {"chat_template": "{% if tools %}{{ tools }}{% endif %}"}},
+            {"id": "u/chatonly", "downloads": 2, "gguf": {"chat_template": "{{ messages }}"}},
+            {"id": "u/unknown", "downloads": 1, "gguf": {}},
+        ]
+        urls = []
+
+        def fake_get(url, **_):
+            urls.append(url)
+            return [{"type": "file", "path": "M-Q4_K_M.gguf", "size": GB}] if "/tree/" in url else listing
+        with patch.object(huggingface, "get_json", side_effect=fake_get):
+            offers = huggingface.search("", 12 * GB)
+        self.assertEqual([o.name for o in offers], ["u/tools", "u/unknown"])
+        self.assertIn("expand%5B%5D=gguf", urls[0])
+
+    def test_mlx_template_lives_under_the_tokenizer_config(self):
+        self.assertTrue(huggingface._lacks_tools({"config": {"tokenizer_config": {"chat_template": "hi"}}}, "mlx"))
+        self.assertFalse(huggingface._lacks_tools({"config": {"tokenizer_config": {"chat_template": "x tool_call y"}}}, "mlx"))
+        self.assertFalse(huggingface._lacks_tools({"config": {}}, "mlx"))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -21,6 +21,18 @@ _SPLIT = re.compile(r"-\d{5}-of-\d{5}\.gguf$")
 _NOT_CHAT = re.compile(r"embed|rerank", re.I)
 
 
+# A chat template that never mentions tools can't render a tool call. No template at all (it can live in a
+# separate file) proves nothing, so only a template that is present and silent drops the repo.
+_TOOLS = re.compile(r"\btools?\b|tool_call", re.I)
+_EXPAND = {"gguf": ["gguf", "downloads"], "mlx": ["config", "downloads"]}
+
+
+def _lacks_tools(repo: dict, fmt: str) -> bool:
+    meta = repo.get("gguf") if fmt == "gguf" else (repo.get("config") or {}).get("tokenizer_config")
+    template = meta.get("chat_template") if isinstance(meta, dict) else None
+    return bool(template) and not _TOOLS.search(str(template))
+
+
 def _quants(files: list[dict]) -> list[tuple[str, int]]:
     """(quant, bytes) for the single-file GGUFs at the repo root. Split files, vision projectors
     (mmproj) and speculative-decoding drafts are skipped. When several files share a quant (a
@@ -50,20 +62,20 @@ def files(repo_id: str) -> list[dict]:
 
 def offers(fmt: str, query: str, offer: Callable[[dict], Offer | None]) -> list[Offer]:
     """Text-generation repos in format `fmt` (gguf, mlx) matching `query` (the most downloaded when
-    empty), each turned into an Offer by `offer` (None drops it), ranked by downloads."""
+    empty) whose chat template can call tools, each turned into an Offer by `offer` (None drops it), ranked by downloads."""
     if os.environ.get("CLYDE_NO_MODEL_FETCH"):
         return []
     params = {"filter": fmt, "pipeline_tag": "text-generation", "sort": "downloads", "direction": "-1",
-              "limit": str(_REPOS)}
+              "limit": str(_REPOS), "expand[]": _EXPAND[fmt]}
     if query:
         params["search"] = query
     try:
-        repos = get_json(f"{API}?{urllib.parse.urlencode(params)}", provider="huggingface", timeout=10)
+        repos = get_json(f"{API}?{urllib.parse.urlencode(params, doseq=True)}", provider="huggingface", timeout=10)
     except ProviderError:
         return []
     if not isinstance(repos, list):
         return []
-    repos = [r for r in repos if isinstance(r, dict) and not _NOT_CHAT.search(str(r.get("id", "")))]
+    repos = [r for r in repos if isinstance(r, dict) and not _NOT_CHAT.search(str(r.get("id", ""))) and not _lacks_tools(r, fmt)]
     with ThreadPoolExecutor(max_workers=8) as pool:
         found = [o for o in pool.map(offer, repos) if o is not None]
     return sorted(found, key=lambda o: o.popularity, reverse=True)
