@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `clyde --acp`: Clyde as an Agent Client Protocol agent on stdio, so ACP editors (Zed, JetBrains
+  through an adapter) can run it, with streamed replies, tool calls and permission asks
+- The footer after each reply shows the turn's tokens in and out, the estimated cost when the model
+  is priced, and the provider's remaining quota when its responses carry rate-limit headers
+- `/eval` warns in red when a model solves a smaller share of the hand than at its last grade
+- Custom providers can speak the Anthropic API (`/login` -> custom asks for the protocol), which
+  also covers a second Anthropic account under its own name
+- `$XDG_CONFIG_HOME/clyde` is used when that variable is set and no `~/.clyde` predates it
 - Laya's difficulty score promotes itself into `cardShuffle:house`: it's scored on every cardShuffle
   turn, and once shadow turns show the harder half (split at the median score) takes at least 1.5x
   and one more tool round than the easier half, with 10+ turns each, house starts harder requests on
@@ -123,6 +131,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (no questions except major moves such as recursive deletes, pushes or hard resets)
 
 ### Changed
+- Reading a secret file (`.env`, keys, `.ssh`, credentials) asks first, even in all-in mode, as editing
+  one already did; allow and deny rules now cover Read and Grep
+- Clyde's persona tells it not to open with agreement and to say when the user is wrong
 - Images: models known not to read images get a warning on paste and the text only on send; images
   over 5 MB are shrunk (macOS `sips`) instead of refused
 - `check_permissions` is an optional tool hook, no longer part of the `Tool` protocol
@@ -153,6 +164,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The RemoteTrigger and REPL tools: stubs that only ever returned "not implemented"
 
 ### Fixed
+- A single trace file stops growing at 20 MB (with a `truncated` marker), so a long session can't fill the disk
 - Laya never answered the first turns of a session, and never in `clyde -p`: its 15 s cold load
   started with the turn that needed it. The first cardShuffle turn now waits for it, once, up to 30 s
 - A stalled cloud provider no longer holds a turn for 10 minutes: a stream that sends nothing for

@@ -6,6 +6,8 @@ setting the right env var and, to make it stick, writing it to ~/.clyde/keys.jso
 """
 from __future__ import annotations
 
+from src.config import clyde_home
+
 import json
 import os
 import re
@@ -31,15 +33,17 @@ PROVIDER_KEY_ENV = {
 
 
 _BUILT_IN = frozenset(PROVIDER_KEY_ENV)
+PROTOCOLS = ("openai", "anthropic")
+_PROTOCOL: dict[str, str] = {}   # custom provider -> the API it speaks, filled by custom_providers()
 _NAME = re.compile(r"^[a-z][a-z0-9-]{1,30}$")
 
 
 def _settings_file() -> Path:
-    return Path.home() / ".clyde" / "settings.json"
+    return clyde_home() / "settings.json"
 
 
 def custom_providers() -> dict[str, str]:
-    """OpenAI-compatible services the user added: name -> base URL, from "providers" in
+    """Services the user added (OpenAI- or Anthropic-compatible): name -> base URL, from "providers" in
     ~/.clyde/settings.json. Each one's key env var is registered in PROVIDER_KEY_ENV, so saving,
     loading, logout and trace redaction treat it like a built-in provider."""
     try:
@@ -51,10 +55,16 @@ def custom_providers() -> dict[str, str]:
              and str(cfg.get("base_url", "")).startswith(("http://", "https://"))}
     for name in found:
         PROVIDER_KEY_ENV.setdefault(name, "CLYDE_" + name.upper().replace("-", "_") + "_API_KEY")
+        _PROTOCOL[name] = raw[name].get("protocol") if raw[name].get("protocol") in PROTOCOLS else "openai"
     return found
 
 
-def add_custom(name: str, base_url: str) -> str | None:
+def protocol(name: str) -> str:
+    """The API a custom provider speaks: openai (default) or anthropic."""
+    return _PROTOCOL.get(name, "openai")
+
+
+def add_custom(name: str, base_url: str, protocol: str = "openai") -> str | None:
     """Save a custom provider; returns why it can't be added, or None."""
     if not _NAME.match(name):
         return "use 2-31 lowercase letters, digits or dashes, starting with a letter"
@@ -62,7 +72,10 @@ def add_custom(name: str, base_url: str) -> str | None:
         return f"{name} is a built-in provider"
     if not base_url.startswith(("http://", "https://")):
         return "the base URL must start with http:// or https://"
-    problem = _edit_providers(lambda providers: providers.__setitem__(name, {"base_url": base_url.rstrip("/")}))
+    if protocol not in PROTOCOLS:
+        return f"the protocol must be one of {', '.join(PROTOCOLS)}"
+    entry = {"base_url": base_url.rstrip("/")} | ({"protocol": protocol} if protocol != "openai" else {})
+    problem = _edit_providers(lambda providers: providers.__setitem__(name, entry))
     custom_providers()
     return problem
 
@@ -99,7 +112,7 @@ def _edit_providers(change) -> str | None:
 
 
 def keys_file() -> Path:
-    return Path.home() / ".clyde" / "keys.json"
+    return clyde_home() / "keys.json"
 
 
 class KeysFileError(RuntimeError):

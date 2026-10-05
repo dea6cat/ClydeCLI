@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from src.config import clyde_home
+
 try:
     from prompt_toolkit import PromptSession
     from prompt_toolkit.history import FileHistory
@@ -238,6 +240,24 @@ def _clock(when: datetime | None = None) -> str:
     return (when or datetime.now()).strftime("%I:%M %p").lstrip("0")
 
 
+def _tokens(n: int) -> str:
+    return f"{n / 1000:.1f}k" if n >= 1000 else str(n)
+
+
+def _usage_note(usage: dict, ref: str) -> str:
+    """' · 4.1k in, 388 out · $0.012 · 812 requests left' for the turn footer; parts that aren't known are left out."""
+    from src.agent.cost_tracker import estimate_usd
+    from src.providers.base import remaining_quota
+
+    parts = [f"{_tokens(usage.get('input_tokens', 0))} in, {_tokens(usage.get('output_tokens', 0))} out"]
+    cost = estimate_usd(ref, usage) if ref else None
+    if cost:
+        parts.append(f"${cost:.3f}" if cost >= 0.001 else "<$0.001")
+    if quota := remaining_quota(ref.partition(":")[0]):
+        parts.append(quota)
+    return " · " + " · ".join(parts)
+
+
 def _duration(seconds: float) -> str:
     """0.4s, 12s, 2m 45s, 1h 3m."""
     if seconds < 10:
@@ -289,6 +309,10 @@ if Completer is not None:
 
 class ClydeREPL:
     """Interactive REPL for ClydeCLI."""
+
+    # Listeners for a turn's streamed text and tool events (used by --acp); None in the terminal.
+    on_text_hook = None
+    on_event_hook = None
 
     # Esc cancels a running turn or command; prompts pause it (see src/repl/esc.py).
     _esc = EscWatcher()
@@ -384,7 +408,7 @@ class ClydeREPL:
     def _setup_prompt(self) -> None:
         """The interactive prompt: history, completion, key bindings (paste, Shift+Tab) and the frame."""
         # Prompt toolkit with tab completion
-        history_file = Path.home() / ".clyde" / "history"
+        history_file = clyde_home() / "history"
         history_file.parent.mkdir(parents=True, exist_ok=True)
 
         self.completer = self._make_completer()
@@ -1873,6 +1897,8 @@ class ClydeREPL:
                     stream_started = False
 
             def on_event(ev: ToolEvent) -> None:
+                if self.on_event_hook is not None:
+                    self.on_event_hook(ev)
                 if ev.kind == "tool_use":
                     _resume_status()
                     tool_started[ev.tool_use_id or ev.tool_name] = time.monotonic()
@@ -1922,6 +1948,8 @@ class ClydeREPL:
                 nonlocal thinking_open
                 if not chunk:
                     return
+                if self.on_text_hook is not None:
+                    self.on_text_hook(chunk)
                 _stop_status_once()
                 if thinking_open:
                     self.console.print("\n")
@@ -1995,7 +2023,8 @@ class ClydeREPL:
             else:
                 self.console.print(Markdown(result.response_text))
                 self.console.print()
-            self._turn_footer(past, turn_started)
+            dealt = self.provider.dealt if isinstance(self.provider, CardShuffle) else None
+            self._turn_footer(past, turn_started, result.usage, dealt or model_ref(self.provider, self.model))
 
         except Exception as e:
             self._current_status = None
@@ -2077,9 +2106,11 @@ class ClydeREPL:
         self.console.print(f"[green]Model: {ref}[/green] [dim](saved as default)[/dim]")
         return True
 
-    def _turn_footer(self, past: str, started: float) -> None:
-        """Close a reply with how long it took and the machine time, e.g. ♠ Shuffled for 2m 45s · 5:47 PM."""
-        self.console.print(Text.assemble(("♠ ", _CARD_ACCENT), (f"{past} for {_duration(time.monotonic() - started)} · {_clock()}", _CARD_DIM)))
+    def _turn_footer(self, past: str, started: float, usage: dict | None = None, ref: str = "") -> None:
+        """Close a reply with how long it took, the machine time and, when known, what the turn used,
+        e.g. ♠ Shuffled for 2m 45s · 5:47 PM · 4.1k in, 388 out · $0.012 · 812 requests left."""
+        line = f"{past} for {_duration(time.monotonic() - started)} · {_clock()}" + (_usage_note(usage, ref) if usage else "")
+        self.console.print(Text.assemble(("♠ ", _CARD_ACCENT), (line, _CARD_DIM)))
         self.console.print()
 
     def _say_goodbye(self) -> None:
@@ -2113,7 +2144,7 @@ class ClydeREPL:
                 done[0] += 1
                 status.update(f"[{_CARD_DIM}]Tested {done[0]}/{len(targets)} · {score.ref}[/{_CARD_DIM}]")
             scores = evaluate_all(targets, on_done=progress)
-        save_results(scores)
+        drops = save_results(scores)
         width = getattr(self.console, "width", 100)
         table = Table(box=None, pad_edge=False, header_style=_CARD_DIM, show_edge=False)
         table.add_column("", no_wrap=True, width=1)
@@ -2134,6 +2165,8 @@ class ClydeREPL:
                 Text(sc.short_note, style=_CARD_DIM),
             )
         self.console.print(table)
+        for line in drops:   # a model that got worse since its last grade; cardShuffle now ranks it lower
+            self.console.print(Text(f"↓ {line}", style="#d0202f"))
         kinds = {k: sum(sc.kind == k for sc in scores) for k in ("ok", "tools", "unavailable", "answer", "transient")}
         parts = [(f"{kinds['ok']}/{len(scores)} passed", f"bold {_CARD_ACCENT}")]
         for key, label in (("tools", "no tool calling"), ("unavailable", "not available"), ("answer", "wrong answer"),

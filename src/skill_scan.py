@@ -18,6 +18,8 @@ already started by then; the scan decides whether the model sees its tools.
 """
 from __future__ import annotations
 
+from src.config import clyde_home
+
 import hashlib
 import json
 import os
@@ -54,7 +56,7 @@ def enabled() -> bool:
 
 
 def cache_path() -> Path:
-    return Path.home() / ".clyde" / "skill_scans.json"
+    return clyde_home() / "skill_scans.json"
 
 
 def _load_cache() -> dict[str, Any]:

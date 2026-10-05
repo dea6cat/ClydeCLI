@@ -44,6 +44,7 @@ Examples:
   clyde plugin list                   List installed plugins; also: plugin remove|enable|disable <name>
   clyde -p "<prompt>"                 One turn without the prompt, answer on stdout (scripts, CI); also --mode,
                                       --output-format json, --max-turns. Piped input is added: git diff | clyde -p "review"
+  clyde --acp                         Run as an Agent Client Protocol agent on stdio, for editors (Zed, JetBrains)
 """
     )
 
@@ -66,6 +67,8 @@ Examples:
     parser.add_argument('--output-format', choices=['text', 'json'], default='text',
                         help='-p: plain answer, or JSON with the answer, model, usage, turns and session id')
     parser.add_argument('--max-turns', type=int, default=20, metavar='N', help='-p: tool rounds before giving up (default 20)')
+    parser.add_argument('--acp', action='store_true',
+                        help='Speak the Agent Client Protocol on stdio so an editor (Zed, JetBrains) can run Clyde')
 
     subparsers = parser.add_subparsers(dest='command', help='Available commands')
     subparsers.add_parser('login', help='Connect a provider and pick a default model')
@@ -87,6 +90,10 @@ Examples:
     plugin_parser.add_argument('-y', '--yes', action='store_true', help='install without prompting; the plugin stays disabled')
 
     args = parser.parse_args()
+
+    if args.acp:
+        from src import acp
+        return acp.main(model=args.model)
 
     if args.print_prompt is not None:
         from src.repl import headless
@@ -159,14 +166,16 @@ def _suggest_local_models(console: Console) -> None:
 
 
 def _add_custom_provider(console: Console) -> str | None:
-    """Ask for an OpenAI-compatible service's name and base URL and save it; its name, or None."""
+    """Ask for a service's name, protocol and base URL and save it; its name, or None."""
     from src.providers import keys
 
-    console.print("[dim]Any OpenAI-compatible API (Together, Fireworks, Groq, vLLM, LiteLLM...). "
-                  "The base URL is the part before /chat/completions.[/dim]")
+    console.print("[dim]Any OpenAI-compatible API (Together, Fireworks, Groq, vLLM, LiteLLM...) or Anthropic-compatible "
+                  "one (a second Anthropic account, MiniMax, a proxy). The base URL is the part before "
+                  "/chat/completions (OpenAI) or /v1/messages (Anthropic).[/dim]")
     name = Prompt.ask("Name (e.g. together)").strip().lower()
+    protocol = Prompt.ask("Protocol", choices=list(keys.PROTOCOLS), default="openai")
     base_url = Prompt.ask("Base URL (e.g. https://api.together.xyz/v1)").strip()
-    problem = keys.add_custom(name, base_url)
+    problem = keys.add_custom(name, base_url, protocol)
     if problem:
         console.print(f"[red]Can't add {name or 'it'}: {problem}.[/red]")
         return None
