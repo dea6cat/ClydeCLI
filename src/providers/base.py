@@ -207,6 +207,28 @@ def _open(req, timeout, provider, cancel):
         raise ProviderError(provider, f"connection failed: {e.reason}", retryable=True) from e
 
 
+# Provider -> its last response's remaining-quota headers (x-ratelimit-remaining-tokens, anthropic-ratelimit-
+# requests-remaining, ...), for the per-turn usage line. Empty for providers that don't send them.
+RATE_LIMITS: dict[str, dict[str, str]] = {}
+
+
+def _note_limits(resp, provider: str) -> None:
+    headers = getattr(resp, "headers", None) or {}
+    found = {k.lower(): v for k, v in headers.items() if "ratelimit" in k.lower() and "remaining" in k.lower()}
+    if found:
+        RATE_LIMITS[provider] = found
+
+
+def remaining_quota(provider: str) -> str:
+    """'812 requests left', from the provider's last rate-limit headers; '' when it sent none."""
+    limits = RATE_LIMITS.get(provider, {})
+    for unit in ("requests", "tokens"):
+        value = next((v for k, v in limits.items() if unit in k and v.isdigit()), None)
+        if value is not None:
+            return f"{int(value):,} {unit} left"
+    return ""
+
+
 def post_json(url: str, payload: dict, headers: dict | None = None, timeout: int = 600,
               provider: str = "http", cancel=None) -> dict:
     """POST JSON, return parsed JSON. Raises ProviderError with a useful message, or
@@ -214,6 +236,7 @@ def post_json(url: str, payload: dict, headers: dict | None = None, timeout: int
     if cancel is not None and cancel.is_set():
         raise _Cancelled()
     resp = _open(_request(url, payload, headers), timeout, provider, cancel)
+    _note_limits(resp, provider)
     _register(resp)
     try:
         with resp:
@@ -235,6 +258,7 @@ def post_stream(url: str, payload: dict, headers: dict | None = None, timeout: i
         raise _Cancelled()
     timeout = timeout or _stall_timeout(url)
     resp = _open(_request(url, payload, headers), timeout, provider, cancel)
+    _note_limits(resp, provider)
     _register(resp)
     try:
         with resp:
