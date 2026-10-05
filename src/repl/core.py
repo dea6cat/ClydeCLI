@@ -240,6 +240,24 @@ def _clock(when: datetime | None = None) -> str:
     return (when or datetime.now()).strftime("%I:%M %p").lstrip("0")
 
 
+def _tokens(n: int) -> str:
+    return f"{n / 1000:.1f}k" if n >= 1000 else str(n)
+
+
+def _usage_note(usage: dict, ref: str) -> str:
+    """' · 4.1k in, 388 out · $0.012 · 812 requests left' for the turn footer; parts that aren't known are left out."""
+    from src.agent.cost_tracker import estimate_usd
+    from src.providers.base import remaining_quota
+
+    parts = [f"{_tokens(usage.get('input_tokens', 0))} in, {_tokens(usage.get('output_tokens', 0))} out"]
+    cost = estimate_usd(ref, usage) if ref else None
+    if cost:
+        parts.append(f"${cost:.3f}" if cost >= 0.001 else "<$0.001")
+    if quota := remaining_quota(ref.partition(":")[0]):
+        parts.append(quota)
+    return " · " + " · ".join(parts)
+
+
 def _duration(seconds: float) -> str:
     """0.4s, 12s, 2m 45s, 1h 3m."""
     if seconds < 10:
@@ -1997,7 +2015,8 @@ class ClydeREPL:
             else:
                 self.console.print(Markdown(result.response_text))
                 self.console.print()
-            self._turn_footer(past, turn_started)
+            dealt = self.provider.dealt if isinstance(self.provider, CardShuffle) else None
+            self._turn_footer(past, turn_started, result.usage, dealt or model_ref(self.provider, self.model))
 
         except Exception as e:
             self._current_status = None
@@ -2079,9 +2098,11 @@ class ClydeREPL:
         self.console.print(f"[green]Model: {ref}[/green] [dim](saved as default)[/dim]")
         return True
 
-    def _turn_footer(self, past: str, started: float) -> None:
-        """Close a reply with how long it took and the machine time, e.g. ♠ Shuffled for 2m 45s · 5:47 PM."""
-        self.console.print(Text.assemble(("♠ ", _CARD_ACCENT), (f"{past} for {_duration(time.monotonic() - started)} · {_clock()}", _CARD_DIM)))
+    def _turn_footer(self, past: str, started: float, usage: dict | None = None, ref: str = "") -> None:
+        """Close a reply with how long it took, the machine time and, when known, what the turn used,
+        e.g. ♠ Shuffled for 2m 45s · 5:47 PM · 4.1k in, 388 out · $0.012 · 812 requests left."""
+        line = f"{past} for {_duration(time.monotonic() - started)} · {_clock()}" + (_usage_note(usage, ref) if usage else "")
+        self.console.print(Text.assemble(("♠ ", _CARD_ACCENT), (line, _CARD_DIM)))
         self.console.print()
 
     def _say_goodbye(self) -> None:
