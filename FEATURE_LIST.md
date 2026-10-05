@@ -240,7 +240,6 @@ Goal: build features unique to the Python rewrite.
 
 ### P2: Filling in key Claude Code experiences
 
-- IDE integration (VS Code / JetBrains: editor diagnostics, diff views)
 - Linux sandbox testing on a machine with `bwrap`
 - Performance monitoring and tuning
 
