@@ -169,6 +169,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The RemoteTrigger and REPL tools: stubs that only ever returned "not implemented"
 
 ### Fixed
+- `/models local` no longer lists models without tool calling: Hugging Face GGUF and MLX repos whose chat
+  template never mentions tools are dropped, and models that already failed `/eval` here are hidden
+  (ollama.com's tool tag alone let `command-r7b` through).
 - A single trace file stops growing at 20 MB (with a `truncated` marker), so a long session can't fill the disk
 - Laya never answered the first turns of a session, and never in `clyde -p`: its 15 s cold load
   started with the turn that needed it. The first cardShuffle turn now waits for it, once, up to 30 s
