@@ -12,6 +12,7 @@ from ..tool_system.checks import edit_check_for
 from . import trace
 from ..tool_system.registry import ToolRegistry
 from ..tool_system.context import ToolContext
+from ..tool_system.deferral import advertised, index_prompt, is_deferred
 from .conversation import Conversation
 from ..context_system import build_context_prompt
 from ..output_styles import resolve_output_style
@@ -260,14 +261,16 @@ def run_agent_loop(
         AgentLoopResult with final text response, usage info, and turn count
     """
     tool_context.provider, tool_context.model = provider, model
-    specs = from_specs(tool_registry.list_specs())
-    known_tools = tuple(s.name for s in specs)
+    all_specs = tool_registry.list_specs()
+    known_tools = tuple(s.name for s in all_specs)   # every tool runs when called; only some are sent (deferral.py)
     style_name = getattr(tool_context, "output_style_name", None)
     style_dir = getattr(tool_context, "output_style_dir", None)
     style_prompt = resolve_output_style(style_name, style_dir).prompt
     system_prompt = _build_effective_system_prompt(style_prompt, tool_context)
     if system_extra:   # a custom sub-agent's own instructions
         system_prompt += "\n\n" + system_extra
+    if index := index_prompt(all_specs):
+        system_prompt += "\n\n" + index
     text_handler = on_text_chunk if (stream and on_text_chunk is not None) else _discard
 
     last_user_visible_message: str | None = None
@@ -278,6 +281,7 @@ def run_agent_loop(
         return total_usage if total_usage["input_tokens"] > 0 or total_usage["output_tokens"] > 0 else None
 
     for _turn in range(max_turns):
+        specs = from_specs(advertised(all_specs, tool_context.loaded_tools))   # again each turn: ToolSearch may have loaded more
         request = to_canonical(conversation, system_prompt)
         response = trace.model_call(provider, model, request, lambda: stream_with_retry(
             provider,
@@ -308,6 +312,8 @@ def run_agent_loop(
         for tc in tool_calls:
             tool_id = tc.id
             tool_name, tool_input = coerce_tool_args(tc.name, tc.arguments, known_tools)
+            if is_deferred(tool_name):
+                tool_context.loaded_tools.add(tool_name.lower())   # called by name: send its definition from now on
             started = time.monotonic()
 
             try:

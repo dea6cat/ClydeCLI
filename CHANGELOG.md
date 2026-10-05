@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Lower per-request overhead: only 17 core tools (Bash, Read, Write, Edit, Glob, Grep, web, todo, Agent, Skill, plan mode...)
+  are sent with every request; the other 39, MCP tools included, are listed by name in a short "More tools" section of the
+  system prompt and loaded when the model calls `ToolSearch` (or calls the tool by name). A first request in a Dart/Flutter
+  project with an MCP server went from about 13.8k to 5.6k input tokens. `CLYDE_ALL_TOOLS=1` sends every tool as before.
 - The status line under the prompt shows the model in use in its right corner (`provider:model`); with cardShuffle it reads
   `cardShuffle:house → provider:model`, following the model the latest turn was dealt to.
 - Two new providers, both over their OpenAI-compatible endpoints: Cloudflare Workers AI (`cloudflare`: an API token plus
