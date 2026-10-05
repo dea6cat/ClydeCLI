@@ -43,6 +43,8 @@ model to `~/.clyde/config.json` as `provider:model`.
 | mistral | `MISTRAL_API_KEY` |
 | nvidia | `NVIDIA_API_KEY` |
 | cerebras | `CEREBRAS_API_KEY` |
+| cloudflare | `CLOUDFLARE_API_TOKEN` (plus `CLOUDFLARE_ACCOUNT_ID`) |
+| pollinations | `POLLINATIONS_API_KEY` |
 | glm | `GLM_API_KEY` |
 | minimax | `MINIMAX_API_KEY` |
 | ollama-cloud | `OLLAMA_API_KEY` |

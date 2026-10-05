@@ -20,7 +20,7 @@
 ## Project Highlights
 
 - **Python rewrite**: Not just a UI imitation, but a rebuild following Claude Code's architectural approach.
-- **Multi-model first**: 12 providers (Anthropic, OpenAI, Gemini, OpenRouter, DeepSeek, Mistral, NVIDIA, Cerebras, GLM, MiniMax, Ollama local and cloud) over stdlib HTTP, no vendor SDKs.
+- **Multi-model first**: 14 providers (Anthropic, OpenAI, Gemini, OpenRouter, DeepSeek, Mistral, NVIDIA, Cerebras, GLM, MiniMax, Cloudflare Workers AI, Pollinations, Ollama local and cloud) over stdlib HTTP, no vendor SDKs.
 - **Usable CLI / REPL**: Basic interaction already works and is ready for continued iteration.
 - **Complete tool system framework**: 30+ tool modules, an Agent Loop, and a permission system framework are implemented.
 - **Built for community collaboration**: The Python ecosystem is easier to extend, well suited to tooling, automation, and data engineering scenarios.
