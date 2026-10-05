@@ -35,6 +35,7 @@ class Server:
         self.lock = threading.Lock()
         self.next_id = 0
         self.cancelled = threading.Event()
+        self.busy = False                           # a prompt turn is running (only then does cancel interrupt)
 
     # -- transport --------------------------------------------------------------------------------
     def send(self, message: dict) -> None:
@@ -80,11 +81,21 @@ class Server:
             box = self.replies.pop(rid, None)
             if box is not None:
                 box.put({"result": {"outcome": {"outcome": "cancelled"}}})
-        abort_all_connections()
-        os.kill(os.getpid(), signal.SIGINT)                          # the same path Esc takes
+        if self.busy:                                                # idle: nothing to interrupt
+            abort_all_connections()
+            os.kill(os.getpid(), signal.SIGINT)                      # the same path Esc takes
 
     def serve(self) -> int:
+        if self.stdin.isatty():
+            print("clyde --acp speaks the Agent Client Protocol on stdin/stdout; an editor (e.g. Zed) starts it. "
+                  "Ctrl+C to quit.", file=sys.stderr)
         threading.Thread(target=self._read, name="acp-reader", daemon=True).start()
+        try:
+            return self._loop()
+        except KeyboardInterrupt:                                    # Ctrl+C while idle: quit quietly
+            return 130
+
+    def _loop(self) -> int:
         while (msg := self.work.get()) is not None:
             handler = getattr(self, "on_" + msg["method"].replace("/", "_"), None)
             if handler is None:
@@ -128,10 +139,13 @@ class Server:
         repl.on_text_hook = lambda chunk: update({"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": chunk}})
         repl.on_event_hook = lambda ev: update(_tool_update(ev))
         self.cancelled.clear()
+        self.busy = True
         try:
             repl.chat(text)
         except KeyboardInterrupt:
             return {"stopReason": "cancelled"}
+        finally:
+            self.busy = False
         if self.cancelled.is_set():
             return {"stopReason": "cancelled"}
         if repl.last_error:
