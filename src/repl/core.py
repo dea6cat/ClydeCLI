@@ -99,7 +99,8 @@ from src.providers.convert import append_response, to_canonical
 from src.tool_system.context import ToolContext
 from src.plugins import apply_plugins
 from src.tool_system.hooks import load_hooks
-from src.repl.esc import EscWatcher
+from src.picker import Choice, pick
+from src.repl.esc import WATCHER
 from src.repl.images import IMAGE_TYPES, MAX_IMAGE_BYTES, clipboard_image, image_path, shrink
 from src.tool_system.permission_rules import load_rules, save_allow_rule
 from src.tool_system.tools.code_map import start_background_refresh
@@ -194,7 +195,7 @@ _HELP_TEXT = """
 - `/multiline` - Toggle multiline input mode
 - `/stream [on|off|toggle]` - Toggle live response rendering
 - `/render-last` - Re-render the last assistant reply as Markdown
-- `/model [provider:model]` - Show or switch the model (saved as default)
+- `/model [provider:model]` - Pick a model with the arrow keys (type to filter), or switch to the one named; saved as default
 - `/models [all|refresh]` - List models from every connected provider (hides ones /eval showed don't work; refresh re-fetches)
 - `/models local [ollama|hf|mlx] [words]` - Find local models on ollama.com and Hugging Face (GGUF, MLX on Apple Silicon) that fit this machine, rated relax / balance / hard, and download one
 - `/laya` - Laya's status, and how its stuck checks and difficulty scores lined up with how traced turns ended
@@ -316,7 +317,7 @@ class ClydeREPL:
     on_event_hook = None
 
     # Esc cancels a running turn or command; prompts pause it (see src/repl/esc.py).
-    _esc = EscWatcher()
+    _esc = WATCHER
 
     def __init__(self, model: str | None = None, stream: bool = False,
                  resume: str | None = None, continue_last: bool = False, debug: bool = False,
@@ -1299,8 +1300,7 @@ class ClydeREPL:
         elif cmd == '/model' or cmd.startswith('/model '):
             parts = raw.split(maxsplit=1)
             if len(parts) == 1:
-                self.console.print(f"[green]Model: {model_ref(self.provider, self.model)}[/green]")
-                self.console.print("[dim]Switch with /model provider:model · list with /models[/dim]")
+                self._pick_model()
             else:
                 self._switch_model(parts[1].strip())
 
@@ -1699,37 +1699,31 @@ class ClydeREPL:
 
     def _rewind(self) -> None:
         """Pick a checkpoint and put files and/or the conversation back to before that message."""
-        from rich.prompt import Prompt
-
         cps = self.checkpoints.list()[-15:]
         if not cps:
             self.console.print("Nothing to rewind yet: checkpoints start with your next message.")
             return
-        table = Table(box=None, pad_edge=False, header_style=_CARD_DIM, show_edge=False)
-        for col in ("#", "time", "files", "your message"):
-            table.add_column(col, overflow="ellipsis", no_wrap=True, justify="right" if col in ("#", "files") else "left")
-        for cp in reversed(cps):
-            table.add_row(str(cp.number), cp.at[11:16], str(len(cp.files)), cp.prompt.replace("\n", " ")[:90])
-        self.console.print(table)
-        with self._esc.paused():
-            pick = Prompt.ask("Rewind to before which # (Enter to cancel)", default="", show_default=False,
-                              console=self.console).strip()
-        cp = next((c for c in cps if str(c.number) == pick), None)
+        picked = pick(self.console, "Rewind to before which message?",
+                      [Choice(str(c.number), f"#{c.number}  {c.at[11:16]}  {len(c.files)} file(s)", c.prompt.replace("\n", " ")[:90])
+                       for c in reversed(cps)], description="Files edited since then are put back; you choose what else next.")
+        cp = next((c for c in cps if str(c.number) == picked), None)
         if cp is None:
-            self.console.print("Nothing rewound." if not pick else f"No checkpoint {pick}.")
+            self.console.print("Nothing rewound.")
             return
         messages = self.session.conversation.messages
         first = messages[cp.message_index] if cp.message_index < len(messages) else None
         first_text = first.content if first is not None and isinstance(first.content, str) else \
             next((b.text for b in (first.content if first is not None else []) if getattr(b, "type", "") == "text"), "")
         talk_ok = first is not None and first.role == "user" and first_text.startswith(cp.prompt[:100])
-        options = ["c", "f", "m"] if talk_ok else ["f"]
-        if talk_ok:
-            menu = "c = code and conversation, f = files only, m = conversation only"
-        else:
-            menu = "f = files only (the conversation was compacted or cleared since, so it can't be cut there)"
-        with self._esc.paused():
-            what = Prompt.ask(menu, choices=options, default=options[0], console=self.console)
+        modes = [Choice("c", "Code and conversation", "restore the files and cut the chat back to that message"),
+                 Choice("f", "Files only", "keep the conversation"),
+                 Choice("m", "Conversation only", "keep the files as they are")]
+        if not talk_ok:
+            self.console.print("[dim]The conversation was compacted or cleared since, so only files can be restored.[/dim]")
+        what = pick(self.console, "Rewind what?", modes if talk_ok else modes[1:2])
+        if what is None:
+            self.console.print("Nothing rewound.")
+            return
         if what in ("c", "f"):
             restored, problems = self.checkpoints.restore(cp.number)
             for line in restored:
@@ -2186,6 +2180,23 @@ class ClydeREPL:
         if hidden:
             self.console.print(Text(f"/models now hides the {hidden} that don't work · /models all shows them", style=_CARD_DIM))
 
+    def _pick_model(self) -> None:
+        """/model: choose from every connected provider's models with the arrow keys; Enter switches."""
+        live = usable(self.registry)
+        if not live:
+            self.console.print("[yellow]No providers connected.[/yellow] Run [bold]clyde login[/bold], "
+                               "or start Ollama or LM Studio for local models.")
+            return
+        current, hide = model_ref(self.provider, self.model), hidden_refs()
+        with self.console.status(f"[{_CARD_DIM}]Fetching model lists…[/{_CARD_DIM}]", spinner="dots", spinner_style=_CARD_ACCENT):
+            listings = {name: p.list_models() for name, p in live.items()}
+        refs = [f"{name}:{m}" for name, models in listings.items() for m in models]
+        choices = [Choice(ref, ref) for ref in refs if ref not in hide or ref == current]
+        chosen = pick(self.console, "Select model", choices, current=current,
+                      description="Your pick becomes the default. Type to filter; /models all also lists the ones /eval hid.")
+        if chosen and chosen != current:
+            self._switch_model(chosen)
+
     def _show_models(self, arg: str = "") -> None:
         """List models from every connected provider, minus those /eval showed don't work.
         `/models all` includes them; `/models refresh` fetches fresh lists first; `/models local ...`
@@ -2247,14 +2258,12 @@ class ClydeREPL:
     def _recover_auth(self) -> bool:
         """After a rejected key: re-enter just this provider's key (k), switch provider or model (s), or
         leave it (n). True when a new key or model is in place."""
-        from rich.prompt import Prompt
-
         key_name = "ollama" if self.provider_name == "ollama-cloud" else self.provider_name
         can_rekey = key_name in keys.PROVIDER_KEY_ENV
-        options = (["k"] if can_rekey else []) + ["s", "n"]
-        menu = (f"k = new {self.provider_name} key, " if can_rekey else "") + "s = switch provider or model, n = not now"
+        options = ([Choice("k", f"New {self.provider_name} key", "enter a replacement key")] if can_rekey else []) + [
+            Choice("s", "Switch provider or model", "pick another one"), Choice("n", "Not now", "fix it later with clyde login or /model")]
         self._esc.stop()
-        choice = Prompt.ask(f"\nFix it now? ({menu})", choices=options, default=options[0], console=self.console)
+        choice = pick(self.console, "Fix it now?", options) or "n"
         if choice == "n":
             self.console.print("\n[dim]Run [bold]clyde login[/bold] or /model later to fix it.[/dim]")
             return False
@@ -2308,12 +2317,11 @@ class ClydeREPL:
 
     def _handle_relogin(self, provider: str | None = None, title: str = "Reconfigure API key"):
         """Connect a provider (or re-enter a failed key) and switch to the model picked."""
-        from src.cli import _print_provider_table, run_login_flow
+        from src.cli import run_login_flow
 
         self.console.print(Text.assemble(("\n♠ ", _CARD_ACCENT), (title, f"bold {_CARD_TEXT}"), "\n"))
-        if provider is None:
-            _print_provider_table(self.console, self.registry)
-        ref = run_login_flow(self.console, self.registry, default_provider=self.provider_name, provider=provider)
+        with self._esc.paused():   # the flow reads the keyboard: pickers, key entry, questions
+            ref = run_login_flow(self.console, self.registry, default_provider=self.provider_name, provider=provider)
         if ref is None:
             return
         self.registry = build_registry()   # a new key can add providers (e.g. Ollama Cloud)
@@ -2356,22 +2364,11 @@ class ClydeREPL:
             return
 
         shown = sessions[:_RESUME_SHOWN]
-        self.console.print("\n[bold]Recent sessions:[/bold]")
-        for i, s in enumerate(shown, start=1):
-            when = s.updated_at[:16].replace("T", " ")
-            self.console.print(f"  {i:>2}. {when}  {len(s.conversation.messages):>3} msgs  ", end="")
-            self.console.print(_first_prompt(s), markup=False, highlight=False)
-        try:
-            with self._esc.paused():
-                raw = input("Resume which session? (number, Enter to cancel) > ").strip()
-        except EOFError:
-            raw = ""
-        if not raw:
-            return
-        if not raw.isdigit() or not 1 <= int(raw) <= len(shown):
-            self.console.print(f"[red]No session numbered {raw}.[/red]")
-            return
-        self._switch_session(shown[int(raw) - 1])
+        chosen = pick(self.console, "Resume a session",
+                      [Choice(str(i), f"{s.updated_at[:16].replace('T', ' ')}  {len(s.conversation.messages):>3} msgs",
+                              _first_prompt(s)) for i, s in enumerate(shown)])
+        if chosen is not None:
+            self._switch_session(shown[int(chosen)])
 
     def _switch_session(self, loaded_session) -> None:
         saved_model = f"{loaded_session.provider}:{loaded_session.model}"

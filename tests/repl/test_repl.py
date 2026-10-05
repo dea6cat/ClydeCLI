@@ -295,12 +295,12 @@ class TestREPL(unittest.TestCase):
             with ctx as provider:
                 repl = ClydeREPL(model="glm:glm-4.5")
                 repl.console.print = Mock()
-                with patch('rich.prompt.Prompt.ask', return_value="k") as ask, \
+                with patch('src.repl.core.pick', return_value="k") as ask, \
                         patch('src.cli.prompt_secret', return_value="new-key"), \
                         patch('src.repl.core.keys.connect') as connect, \
                         patch('src.repl.core.build_registry', return_value={"glm": provider}):
                     repl.chat("hi there")
-                self.assertIn("k = new glm key", ask.call_args.args[0])
+                self.assertIn("New glm key", [c.label for c in ask.call_args.args[2]])
                 connect.assert_called_once_with("glm", "new-key")
                 self.assertEqual(len(provider.requests), 2)                       # the same message, sent again
                 users = [m for m in conversation.messages if m.role == "user"]
@@ -315,7 +315,7 @@ class TestREPL(unittest.TestCase):
             with ctx as provider:
                 repl = ClydeREPL(model="glm:glm-4.5")
                 repl.console.print = Mock()
-                with patch('rich.prompt.Prompt.ask', return_value="n"), patch('src.cli.prompt_secret') as secret:
+                with patch('src.repl.core.pick', return_value="n"), patch('src.cli.prompt_secret') as secret:
                     repl.chat("hi there")
                 secret.assert_not_called()
                 self.assertEqual(len(provider.requests), 1)
@@ -329,7 +329,7 @@ class TestREPL(unittest.TestCase):
             with ctx as provider:
                 repl = ClydeREPL(model="glm:glm-4.5")
                 repl.console.print = Mock()
-                with patch('rich.prompt.Prompt.ask', return_value="k") as ask, \
+                with patch('src.repl.core.pick', return_value="k") as ask, \
                         patch('src.cli.prompt_secret', return_value="new-key"), patch('src.repl.core.keys.connect'), \
                         patch('src.repl.core.build_registry', return_value={"glm": provider}):
                     repl.chat("hi there")
@@ -357,8 +357,15 @@ class TestREPL(unittest.TestCase):
                 with _fake_provider_env():
                     repl = ClydeREPL(model="glm:glm-4.5")
                     repl.console.print = Mock()
-                    repl.handle_command("/model")
-                    self.assertTrue(any("glm:glm-4.5" in str(a[0]) for a, _k in repl.console.print.call_args_list if a))
+                    with patch('src.repl.core.pick', return_value=None) as pick:
+                        repl.handle_command("/model")
+                    self.assertEqual(pick.call_args.kwargs["current"], "glm:glm-4.5")   # the picker opens on the current model
+                    with patch('src.repl.core.set_default_model') as save:
+                        with patch('src.repl.core.pick', return_value="glm:glm-4.5-air"):
+                            repl.handle_command("/model")
+                    save.assert_called_once_with("glm:glm-4.5-air")
+                    self.assertEqual(repl.model, "glm-4.5-air")
+                    repl.handle_command("/model glm:glm-4.5")
 
                     with patch('src.repl.core.set_default_model') as save:
                         repl.handle_command("/model glm:glm-4.5-air")
