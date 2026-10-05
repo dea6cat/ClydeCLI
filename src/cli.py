@@ -159,14 +159,16 @@ def _suggest_local_models(console: Console) -> None:
 
 
 def _add_custom_provider(console: Console) -> str | None:
-    """Ask for an OpenAI-compatible service's name and base URL and save it; its name, or None."""
+    """Ask for a service's name, protocol and base URL and save it; its name, or None."""
     from src.providers import keys
 
-    console.print("[dim]Any OpenAI-compatible API (Together, Fireworks, Groq, vLLM, LiteLLM...). "
-                  "The base URL is the part before /chat/completions.[/dim]")
+    console.print("[dim]Any OpenAI-compatible API (Together, Fireworks, Groq, vLLM, LiteLLM...) or Anthropic-compatible "
+                  "one (a second Anthropic account, MiniMax, a proxy). The base URL is the part before "
+                  "/chat/completions (OpenAI) or /v1/messages (Anthropic).[/dim]")
     name = Prompt.ask("Name (e.g. together)").strip().lower()
+    protocol = Prompt.ask("Protocol", choices=list(keys.PROTOCOLS), default="openai")
     base_url = Prompt.ask("Base URL (e.g. https://api.together.xyz/v1)").strip()
-    problem = keys.add_custom(name, base_url)
+    problem = keys.add_custom(name, base_url, protocol)
     if problem:
         console.print(f"[red]Can't add {name or 'it'}: {problem}.[/red]")
         return None
