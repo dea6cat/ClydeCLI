@@ -30,6 +30,17 @@ def _lms() -> str | None:
     return shutil.which("lms") or (str(bundled) if bundled.is_file() else None)
 
 
+MODELS_DIR = Path.home() / ".lmstudio" / "models"
+
+
+def model_files(entry: dict) -> Path | None:
+    """Where an `lms ls` entry lives under the models folder, or None when that can't be told for sure
+    (catalog aliases like `qwen/qwen3.5-9b` don't name their folder, and the folder can be moved)."""
+    root = MODELS_DIR.resolve()
+    target = (root / str(entry.get("path", ""))).resolve()
+    return target if root in target.parents and target.exists() else None
+
+
 class LMStudioProvider(OpenAICompatProvider):
     def __init__(self) -> None:
         super().__init__("lmstudio", os.environ.get("LMSTUDIO_BASE_URL", DEFAULT_URL), "LMSTUDIO_API_KEY",
@@ -49,18 +60,21 @@ class LMStudioProvider(OpenAICompatProvider):
     def is_available(self) -> bool:
         return _lms() is not None or self._server_up()
 
-    def _fetch_models(self) -> list[str]:
-        if self._server_up():
-            return super()._fetch_models()
+    def downloaded(self) -> list[dict]:
+        """Every model on disk (`lms ls --json`), embedding models included."""
         exe = _lms()
         if exe is None:
             return []
         try:
             done = subprocess.run([exe, "ls", "--json"], capture_output=True, text=True, timeout=20)
-            downloaded = json.loads(done.stdout or "[]")
+            return [m for m in json.loads(done.stdout or "[]") if isinstance(m, dict) and m.get("modelKey")]
         except (OSError, ValueError, subprocess.TimeoutExpired):
             return []
-        return sorted(m["modelKey"] for m in downloaded if isinstance(m, dict) and m.get("type") == "llm" and m.get("modelKey"))
+
+    def _fetch_models(self) -> list[str]:
+        if self._server_up():
+            return super()._fetch_models()
+        return sorted(m["modelKey"] for m in self.downloaded() if m.get("type") == "llm")
 
     def context_window(self, model: str) -> int:
         """The context LM Studio actually loaded the model with (`lms ps`), cached briefly."""
