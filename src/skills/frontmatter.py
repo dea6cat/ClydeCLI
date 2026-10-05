@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+import textwrap
 from dataclasses import dataclass
 from typing import Any, Dict, List, Tuple
 
@@ -27,6 +29,7 @@ def parse_frontmatter(markdown: str) -> FrontmatterParseResult:
           - item2
     - Lists via comma-separated shorthand, only for list keys such as allowed-tools:
         allowed-tools: Read, Grep
+    - Block scalars: `key: >` folds the indented lines below into one line, `key: |` keeps them as lines
     Quoted values are plain strings; prose such as a description keeps its commas.
     Any unsupported structure falls back to a string.
     """
@@ -55,6 +58,14 @@ def parse_frontmatter(markdown: str) -> FrontmatterParseResult:
             i += 1
             continue
         key, value = _split_key_value(line)
+        if _BLOCK_SCALAR.fullmatch(value):
+            block: List[str] = []
+            i += 1
+            while i < len(fm_lines) and (not fm_lines[i].strip() or fm_lines[i][0] in " \t"):
+                block.append(fm_lines[i])
+                i += 1
+            fm[key] = _block_text(block, folded=value[0] == ">")
+            continue
         # List (hyphen form)
         if value == "" and i + 1 < len(fm_lines) and fm_lines[i + 1].lstrip().startswith("- "):
             items: List[str] = []
@@ -84,6 +95,18 @@ def parse_frontmatter(markdown: str) -> FrontmatterParseResult:
             fm[key] = _coerce_scalar(value.strip())
         i += 1
     return FrontmatterParseResult(frontmatter=fm, body=body)
+
+
+_BLOCK_SCALAR = re.compile(r"[>|][+-]?")
+
+
+def _block_text(lines: List[str], *, folded: bool) -> str:
+    """The text of a YAML block scalar: `>` joins its lines with spaces (a blank line starts a new
+    paragraph), `|` keeps them as written. Surrounding blank lines are dropped."""
+    text = textwrap.dedent("\n".join(lines)).strip("\n")
+    if not folded:
+        return text
+    return "\n".join(" ".join(paragraph.split()) for paragraph in re.split(r"\n\s*\n", text)).strip()
 
 
 def _split_key_value(line: str) -> Tuple[str, str]:

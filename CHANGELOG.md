@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   only tool-calling text models; Pollinations leaves out community models, which run on their owners' servers.
 - Every choose-one-from-a-list question is now an arrow-key picker (Up/Down, PageUp/PageDown, Home/End, type to
   filter, Enter to pick, Esc to cancel, the current choice marked ✔): `/login` (provider, protocol, model),
-  `/model` and `/models` (same picker; `/models all` and `/models refresh` still work), `/models local`, `/resume`, `/rewind` and the rejected-key menu. Without a terminal
+  `/model` and `/models` (same picker; `/models all` and `/models refresh` still work), `/models local`, `/skills` (Enter runs the chosen skill), `/resume`, `/rewind` and the rejected-key menu. Without a terminal
   (pipes, ACP) they fall back to a numbered question.
 - `/models local` offers to install Ollama (Homebrew on macOS, ollama.com script on Linux) or LM Studio
   (Homebrew cask) when the chosen model needs one that isn't there, or to start Ollama when it isn't
@@ -176,6 +176,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The RemoteTrigger and REPL tools: stubs that only ever returned "not implemented"
 
 ### Fixed
+- Skills whose `description: >` (or `|`) block text spanned several lines showed just `>`: frontmatter block scalars are now read.
 - Pollinations out of credits: it answers with a normal chat message instead of an error, so Clyde showed the notice as the
   model's reply, kept it in the conversation, and `/eval` could mark the model as failing. It is now a `❌ HTTP 402` line
   with the top-up link, nothing is added to the conversation, and `/eval` counts it as a transient failure.
