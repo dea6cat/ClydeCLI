@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Every choose-one-from-a-list question is now an arrow-key picker (Up/Down, PageUp/PageDown, Home/End, type to
+  filter, Enter to pick, Esc to cancel, the current choice marked ✔): `/login` (provider, protocol, model),
+  `/model` with no argument, `/models local`, `/resume`, `/rewind` and the rejected-key menu. Without a terminal
+  (pipes, ACP) they fall back to a numbered question.
 - `/models local` offers to install Ollama (Homebrew on macOS, ollama.com script on Linux) or LM Studio
   (Homebrew cask) when the chosen model needs one that isn't there, or to start Ollama when it isn't
   running. It shows the exact command and asks first (default no), then goes on with the download.
@@ -169,6 +173,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The RemoteTrigger and REPL tools: stubs that only ever returned "not implemented"
 
 ### Fixed
+- `/login` (and `clyde login` inside a session) ignored typing: the Esc watcher was still reading the keyboard while
+  its prompts were open, so keystrokes never reached them.
 - `/models local` skips Hugging Face quants of base (not chat-tuned) models, such as `Qwen2.5-Coder-7B` next to its
   `-Instruct` sibling: they write tool calls as prose and ignore tool results, so they always failed `/eval`.
 - A tool call whose arguments repeat the call itself (`{'name': 'add_numbers', 'arguments': {...}}`, as Qwen2.5-Coder

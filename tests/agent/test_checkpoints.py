@@ -111,7 +111,7 @@ class TestRewindCommand(_Home):
             repl.chat("make app v2")
             repl.chat("add extra.py")
             self.assertEqual((self.ws / "app.py").read_text(), "v2\n")
-            with patch("rich.prompt.Prompt.ask", side_effect=["1", "c"]):
+            with patch("src.repl.core.pick", side_effect=["1", "c"]):
                 repl._rewind()
         self.assertEqual((self.ws / "app.py").read_text(), "v1\n")
         self.assertFalse((self.ws / "extra.py").exists())
