@@ -96,6 +96,47 @@ class TestPollinations(unittest.TestCase):
             self.assertTrue(PollinationsProvider().is_available())
 
 
+NOTICE = ("The account behind this API key doesn't have enough credits. Please "
+          "[top up](https://enter.pollinations.ai/top-up?ref=agent_low_balance_topup) or "
+          "[complete a quest](https://enter.pollinations.ai/quests?ref=agent_low_balance_quests), then try again.")
+
+
+class TestPollinationsOutOfCredits(unittest.TestCase):
+    """Out of credits, Pollinations replies 200 with a chat message; Clyde must treat it as the error it is."""
+
+    def _stream(self, text, tool_calls=()):
+        from src.providers.base import ProviderResponse
+        reply = ProviderResponse(message=Message.assistant(text=text, tool_calls=list(tool_calls)), raw={})
+        with patch("src.providers.openai_compat.OpenAICompatProvider.stream", return_value=reply):
+            return PollinationsProvider().stream(Conversation("s", [Message.user("hi")]), "openai/gpt-5.5", (), lambda _t: None)
+
+    def test_the_low_balance_notice_becomes_a_402_error(self):
+        from src.providers.base import ProviderError
+        with self.assertRaises(ProviderError) as raised:
+            self._stream(NOTICE)
+        self.assertEqual(raised.exception.status, 402)
+        self.assertFalse(raised.exception.retryable)
+        message = str(raised.exception)
+        self.assertIn("HTTP 402", message)
+        self.assertIn("enter.pollinations.ai/top-up", message)
+        self.assertNotIn("\n", message)
+
+    def test_eval_counts_it_as_transient_not_as_a_model_that_fails(self):
+        from src.providers.model_eval import ModelScore
+        with self.assertRaises(Exception) as raised:
+            self._stream(NOTICE)
+        score = ModelScore("pollinations:openai/gpt-5.5")
+        score.error = str(raised.exception)
+        self.assertEqual(score.kind, "transient")
+
+    def test_an_ordinary_reply_passes_through_untouched(self):
+        self.assertEqual(self._stream("Hi! How can I help?").message.text, "Hi! How can I help?")
+
+    def test_a_reply_that_merely_mentions_credits_is_not_flagged(self):
+        text = "Pollinations credits are called pollen; you can top up at the dashboard."
+        self.assertEqual(self._stream(text).message.text, text)
+
+
 class _Home(unittest.TestCase):
     def setUp(self):
         self.home = Path(tempfile.mkdtemp())

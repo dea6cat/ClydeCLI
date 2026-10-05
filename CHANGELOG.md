@@ -176,6 +176,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The RemoteTrigger and REPL tools: stubs that only ever returned "not implemented"
 
 ### Fixed
+- Pollinations out of credits: it answers with a normal chat message instead of an error, so Clyde showed the notice as the
+  model's reply, kept it in the conversation, and `/eval` could mark the model as failing. It is now a `❌ HTTP 402` line
+  with the top-up link, nothing is added to the conversation, and `/eval` counts it as a transient failure.
 - `/login` (and `clyde login` inside a session) ignored typing: the Esc watcher was still reading the keyboard while
   its prompts were open, so keystrokes never reached them.
 - `/models local` skips Hugging Face quants of base (not chat-tuned) models, such as `Qwen2.5-Coder-7B` next to its
