@@ -272,12 +272,19 @@ def load_results() -> dict[str, dict[str, Any]]:
     return data if isinstance(data, dict) else {}
 
 
-def save_results(scores: list[ModelScore]) -> None:
-    """Merge these results into ~/.clyde/model_evals.json (newest result per model wins)."""
+def save_results(scores: list[ModelScore]) -> list[str]:
+    """Merge these results into ~/.clyde/model_evals.json (newest result per model wins). Returns a line per
+    model whose share of the hand dropped since it was last graded, so a silently worse model is noticed."""
     data = load_results()
     stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    drops = []
     for sc in scores:
         earlier = data.get(sc.ref) or {}
+        if sc.strength is not None and earlier.get("strength") is not None:
+            before, after = earlier["strength"] / (earlier.get("hand") or 4), sc.strength / len(HAND)
+            if after < before:
+                drops.append(f"{sc.ref}: {earlier['strength']}/{earlier.get('hand') or 4} → {sc.strength}/{len(HAND)}"
+                             f" since {str(earlier.get('at', ''))[:10] or 'last time'}")
         strength = sc.strength if sc.strength is not None or not sc.passed else earlier.get("strength")
         data[sc.ref] = {"passed": sc.passed, "kind": sc.kind, "note": (sc.error or sc.note)[:200], "at": stamp,
                         "strength": strength, "hand": len(HAND) if sc.strength is not None else earlier.get("hand"),
@@ -285,6 +292,7 @@ def save_results(scores: list[ModelScore]) -> None:
     path = results_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+    return drops
 
 
 def hidden_refs(results: dict[str, dict[str, Any]] | None = None) -> set[str]:
