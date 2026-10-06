@@ -74,6 +74,7 @@ import asyncio
 import base64
 import os
 import random
+import threading
 import time
 from contextlib import contextmanager
 import re
@@ -99,6 +100,7 @@ from src.providers.convert import append_response, to_canonical
 from src.tool_system.context import ToolContext
 from src.plugins import apply_plugins
 from src.tool_system.hooks import load_hooks
+from src import activity
 from src.picker import Choice, pick
 from src.tool_system.deferral import advertised
 from src.repl.esc import WATCHER
@@ -285,6 +287,23 @@ def _duration(seconds: float) -> str:
 def _thinking_label(word: str | None = None) -> str:
     import random
     return f"[{_CARD_DIM}]{word or random.choice(_THINKING_WORDS)[0]}…[/{_CARD_DIM}]"
+
+
+_TICK = 1.0   # seconds between spinner rewrites
+
+
+def _spin_text(word: str, started: float, now: float | None = None) -> str:
+    """The spinner's line: the word, how long the turn has been going, and what it is waiting for, e.g.
+    `Dealing… · 12s · waiting up to 30s for Laya to load`."""
+    from rich.markup import escape
+
+    elapsed = (time.monotonic() if now is None else now) - started
+    parts = [f"{word}…"]
+    if elapsed >= 1:
+        parts.append(_duration(elapsed))
+    if waiting := activity.get():
+        parts.append(waiting)
+    return f"[{_CARD_DIM}]{escape(' · '.join(parts))}[/{_CARD_DIM}]"
 
 
 def _help_descriptions() -> dict[str, str]:
@@ -1862,13 +1881,39 @@ class ClydeREPL:
             return provider_window(self.model)
         return catalog.context_window(self.model) or get_context_window_for_model(self.model)
 
+    @contextmanager
+    def _ticking(self, status, word: str, started: float, active=lambda: True):  # type: ignore[no-untyped-def]
+        """Rewrite the spinner's text every second while `active()` (the status is stopped while text streams), so the
+        counter runs through the whole wait and the phrase follows what the turn is waiting for."""
+        stop = threading.Event()
+
+        def tick() -> None:
+            while not stop.wait(_TICK):
+                if not active():
+                    continue
+                try:
+                    status.update(_spin_text(word, started))
+                except Exception:
+                    return
+
+        thread = threading.Thread(target=tick, name="spinner-ticker", daemon=True)
+        thread.start()
+        try:
+            yield
+        finally:
+            stop.set()
+
     def _maybe_auto_compact(self) -> None:
         """Compact the conversation before a turn when it nears the context window."""
         if not needs_auto_compact(self.session.conversation, self._context_window()):
             return
         self.console.print("[dim]Context is nearly full; compacting the conversation...[/dim]")
+        started = time.monotonic()
+        activity.set("compacting the conversation")
         try:
-            result = asyncio.run(compact_conversation(self.session.conversation, self.provider, self.model, trigger="auto"))
+            status = self.console.status(_spin_text("Compacting", started), spinner="dots", spinner_style=_CARD_ACCENT)
+            with status, self._ticking(status, "Compacting", started):
+                result = asyncio.run(compact_conversation(self.session.conversation, self.provider, self.model, trigger="auto"))
         except Exception as e:
             self.console.print(f"[yellow]Auto-compact failed: {e}[/yellow]")
             return
@@ -1882,6 +1927,7 @@ class ClydeREPL:
             max_turns: Maximum number of tool call turns (default 20, higher for complex commands).
         """
         self.last_result, self.last_error = None, None
+        activity.clear()
         trace.record("turn", provider=self.provider_name, model=self.model, prompt_chars=len(user_input))
         self._maybe_auto_compact()
         # Add user message
@@ -1987,8 +2033,9 @@ class ClydeREPL:
                 self.console.print(chunk, end="", markup=False, highlight=False, soft_wrap=True)
 
             if self._should_try_direct_stream(user_input):
-                self._current_status = self.console.status(_thinking_label(word), spinner="dots", spinner_style=_CARD_ACCENT)
-                with self._current_status:
+                self._current_status = self.console.status(_spin_text(word, turn_started), spinner="dots", spinner_style=_CARD_ACCENT)
+                with self._current_status, self._ticking(self._current_status, word, turn_started, lambda: not stream_started):
+                    activity.set(f"waiting for {model_ref(self.provider, self.model)}")
                     direct_response = self._stream_direct_response(on_text_chunk=on_text_chunk,
                                                                    on_thinking=on_thinking)
                 self._current_status = None
@@ -2015,8 +2062,8 @@ class ClydeREPL:
                     on_thinking=on_thinking,
                 )
 
-            self._current_status = self.console.status(_thinking_label(word), spinner="dots", spinner_style=_CARD_ACCENT)
-            with self._current_status:
+            self._current_status = self.console.status(_spin_text(word, turn_started), spinner="dots", spinner_style=_CARD_ACCENT)
+            with self._current_status, self._ticking(self._current_status, word, turn_started, lambda: not stream_started):
                 result = play()
                 # cardShuffle: a model stuck in its tool loop hands the turn to the next card.
                 while (result.response_text == MAX_TURNS_REPLY and isinstance(self.provider, CardShuffle)

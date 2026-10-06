@@ -220,6 +220,16 @@ class TestF02Ask(Case):
         t.expect("without any answer text", 30)
         t.turn_done()
 
+    def test_F02_E10_the_spinner_says_what_it_waits_for_and_counts_before_the_answer_comes(self):
+        server = self.model(say("late answer", delay=6))
+        t = self.app(server)
+        t.send_line("hi")
+        t.expect("waiting for fake:m", 10)                      # what it is waiting for
+        t.expect(r"· [3-9]\.0s · waiting for fake:m", 10, regex=True)   # the counter runs while the model is still silent
+        self.assertNotIn("late answer", t.buffer)               # ... and the answer has not come yet
+        t.expect("late answer", 20)
+        t.turn_done()
+
     def test_F02_E4_ctrl_c_at_the_idle_prompt_does_not_quit(self):
         t = self.app(self.model(say("still here")))
         t.send(CTRL_C)
