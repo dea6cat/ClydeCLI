@@ -123,6 +123,13 @@ def _safe_call_handler(handler: ToolEventHandler | None, event: ToolEvent) -> No
         return
 
 
+def goal_prompt(goal: str | None) -> str:
+    """The system-prompt section for the session goal (/goal); "" when none is set."""
+    if not goal:
+        return ""
+    return f"## Session goal\nThe user set this goal for the session: {goal}\nKeep working toward it, and say when it is met."
+
+
 def _build_effective_system_prompt(style_prompt: str, tool_context: ToolContext) -> str:
     try:
         context_prompt = build_context_prompt(
@@ -135,6 +142,8 @@ def _build_effective_system_prompt(style_prompt: str, tool_context: ToolContext)
         context_prompt += ("\n\n## Mode: reading the table (plan mode)\nThe user wants a plan before any change. Investigate "
                            "with read-only tools only; tools that modify files or run non-read-only commands are refused. "
                            "When you have a plan, present it with the ExitPlanMode tool.")
+    if section := goal_prompt(getattr(tool_context, "goal", None)):
+        context_prompt += "\n\n" + section
     if not context_prompt.strip():
         return style_prompt
     return f"{style_prompt}\n\n{context_prompt}"
