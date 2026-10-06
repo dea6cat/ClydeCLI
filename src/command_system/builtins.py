@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
 
@@ -760,6 +761,23 @@ INIT_COMMAND = PromptCommand(
 )
 
 
+@dataclass(frozen=True)
+class ReviewCommand(PromptCommand):
+    """/review [commit SHA | base BRANCH]: the prompt is built from the git diff when the command runs."""
+
+    async def get_prompt_for_command(self, args: str, context: CommandContext) -> list[dict[str, Any]]:
+        from ..review import build_review_prompt
+        return [{"type": "text", "text": build_review_prompt(args, context.workspace_root)}]
+
+
+REVIEW_COMMAND = ReviewCommand(
+    name="review",
+    description="Review uncommitted changes, or: /review commit SHA, /review base BRANCH",
+    progress_message="reading the changes",
+    source="builtin",
+)
+
+
 # Synchronous versions for REPL integration
 def execute_command_sync(cmd_name: str, args: str, context: CommandContext) -> tuple[bool, str | None, str | None]:
     """
@@ -831,6 +849,7 @@ def get_builtin_commands() -> list[Command]:
         DOCTOR_COMMAND,
         CHECK_COMMAND,
         INIT_COMMAND,
+        REVIEW_COMMAND,
     ]
 
 

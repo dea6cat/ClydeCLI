@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ignored and hidden folders and stops after 1 s.
 
 ### Added
+- `/review` and `clyde review`: a read-only review of uncommitted changes (and the untracked files), `commit SHA`, or `base BRANCH`.
+  The diff is capped per file, smallest first, and anything left out is named. `clyde review` prints and exits (2 outside a repo).
 - The spinner now says what the turn is waiting for and runs a live timer through the whole wait, not only once the answer
   arrives: `Dealing… · 12s · waiting up to 30s for Laya to load`, then `asking Laya how hard this is`, `waiting for provider:model`,
   `retry 2 of 3 in 2s: HTTP 503…`, `running Bash`, and `compacting the conversation` (which had no spinner before).
