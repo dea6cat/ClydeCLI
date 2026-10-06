@@ -293,7 +293,7 @@ to do. The session is saved, so `clyde -c` picks the conversation up interactive
 | Agent Loop | ✅ | Tool-calling loop with retries, reasoning control, history repair |
 | Skill System | ✅ | SKILL.md slash-command skills with args + tool limits |
 | Context Building | ✅ | Workspace snapshot, git status, a README excerpt, entry points, the code map and memory files go into the prompt: `~/.clyde/CLYDE.md` (user), `CLYDE.md` (project, shared) and `CLYDE.local.md` (project, personal, keep it gitignored). Files written for other agents are read too: `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, `.cursorrules`, `.github/copilot-instructions.md` (one per folder, first found wins) |
-| Permissions | ✅ | Bash asks for any command that is not read-only (dangerous patterns are refused), Write/Edit ask for docs files, Config asks before a change, WebFetch asks per domain. Answer "don't ask again" or add `permissions.allow` / `deny` rules (Claude Code syntax) to `~/.clyde/settings.json` |
+| Permissions | ✅ | Bash asks for any command that is not read-only (dangerous patterns are refused), Write/Edit/NotebookEdit ask before every change in hold mode, Config asks before a change, WebFetch asks per domain. Answer "don't ask again" or add `permissions.allow` / `deny` rules (Claude Code syntax) to `~/.clyde/settings.json` |
 | Sandbox | ✅ | Shell commands write only to the project, temp and package caches (macOS `sandbox-exec`, Linux `bwrap`); `unsandboxed: true` always asks |
 | Sessions | ✅ | Auto-saved after each turn; `/resume` picker per workspace, `clyde -c` / `clyde --resume [id]` |
 | Checkpoints | ✅ | `/rewind` undoes the model's file edits and/or the conversation back to before any of your messages; saved per session, so they survive `/resume` |
@@ -640,7 +640,7 @@ Shift+Tab cycles the mode, shown under the prompt:
 
 | Mode | What it does |
 |---|---|
-| `♠ hold` | The default. Asks before anything risky: non-read-only shell commands, doc edits, settings changes |
+| `♠ hold` | The default. Asks before anything that changes things: every file edit, non-read-only shell commands, settings changes |
 | `♠ reading the table` | Plan mode. Reads, searches and runs read-only commands, then presents a plan; anything that would change files is refused until the plan is in |
 | `♠♠ all in` | Plays without asking, except major moves: `rm -r`/`-f`, `git push`, `git reset --hard`, `git clean -f`, `branch -D`, publishing, `curl … \| sh`, `docker rm`/`prune`, `kubectl delete`, `terraform apply`/`destroy`, `chmod -R`, `kill -9`, writing to secrets |
 
