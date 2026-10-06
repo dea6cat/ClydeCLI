@@ -166,7 +166,8 @@ class TestResumeCommand(_TempHomeAndWorkspace):
 class TestCliFlags(unittest.TestCase):
     def _main(self, *argv):
         from src import cli
-        with patch.object(sys, "argv", ["clyde", *argv]), patch.object(cli, "start_repl", return_value=0) as start:
+        with patch.object(sys, "argv", ["clyde", *argv]), patch.dict(os.environ, {"CLYDE_ACCEPT_LICENSE": "1"}), \
+                patch.object(cli, "start_repl", return_value=0) as start:
             cli.main()
         return start.call_args.kwargs
 

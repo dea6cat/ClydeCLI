@@ -44,6 +44,7 @@ Examples:
   clyde plugin install <path|git-url> Install a plugin (skills, hooks, MCP servers, tools); asks before enabling it
   clyde plugin import                 Bring over plugins installed for Claude Code, Codex or Cursor
   clyde plugin list                   List installed plugins; also: plugin remove|enable|disable <name>
+  clyde license [accept]              Show the licence terms and whether you accepted them; accept records it
   clyde -p "<prompt>"                 One turn without the prompt, answer on stdout (scripts, CI); also --mode,
                                       --output-format json, --max-turns. Piped input is added: git diff | clyde -p "review"
   clyde --acp                         Run as an Agent Client Protocol agent on stdio, for editors (Zed, JetBrains)
@@ -98,7 +99,17 @@ Examples:
     sessions_parser.add_argument('action', choices=['list', 'search', 'archive', 'unarchive'])
     sessions_parser.add_argument('target', nargs='*', help='search: the words to look for; archive/unarchive: a session id')
 
+    license_parser = subparsers.add_parser('license', help='Show the licence terms and whether you accepted them; `license accept` records it')
+    license_parser.add_argument('action', nargs='?', choices=['show', 'accept'], default='show')
+
     args = parser.parse_args()
+
+    if args.command == 'license':
+        return handle_license(Console(), args.action)
+    if not args.version:
+        from src import license_gate
+        if not license_gate.ensure_accepted(Console()):
+            return license_gate.EXIT_DECLINED
 
     if args.acp:
         from src import acp
@@ -494,6 +505,29 @@ def _scan_plugin(console: Console, plugin):  # type: ignore[no-untyped-def]
     if verdict.blocked:
         console.print("  [red]SkillSpector recommends not installing it.[/red] Enabling it anyway records your approval.")
     return verdict
+
+
+def handle_license(console: Console, action: str) -> int:
+    """`clyde license [show|accept]`: the terms and this machine's status; accept records it (typed phrase, or
+    CLYDE_ACCEPT_LICENSE=1 when there is no terminal)."""
+    from src import license_gate
+    if action == 'show':
+        console.print(license_gate.SUMMARY, markup=False, highlight=False)
+        console.print()
+        console.print("Accepted on this machine." if license_gate.is_accepted() else "Not accepted yet. Run: clyde license accept")
+        return 0
+    if license_gate.is_accepted():
+        console.print("Already accepted on this machine.")
+        return 0
+    if not sys.stdin.isatty() and os.environ.get(license_gate.ENV_ACCEPT) == "1":
+        try:
+            license_gate.record_acceptance()
+        except OSError as e:
+            console.print(f"[red]Couldn't save your acceptance: {e}[/red]")
+            return license_gate.EXIT_DECLINED
+        console.print("Accepted (CLYDE_ACCEPT_LICENSE=1) and recorded.")
+        return 0
+    return 0 if license_gate.prompt_and_record(console) else license_gate.EXIT_DECLINED
 
 
 def handle_sessions(console: Console, action: str, target: str) -> int:

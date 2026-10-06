@@ -8,8 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
-- Licence: new work is under the PolyForm Noncommercial License 1.0.0 (source-available; commercial use needs permission). The
-  portions derived from Clawd Codex stay MIT, and copies obtained before this change remain MIT.
+- Clyde asks you to accept its licence before its first command: type `I accept` (Enter alone declines, status 3). Saved in
+  `~/.clyde/license.json`, so installs that update from an earlier version are asked on their next run, once. `clyde license
+  [accept]` shows or records it; `CLYDE_ACCEPT_LICENSE=1` accepts one scripted run. Changing the terms (`TERMS_VERSION`) asks
+  everyone again.
+- Licence: ClydeCLI is under the PolyForm Noncommercial License 1.0.0 (source-available; commercial use needs permission). Copies
+  obtained before this change remain MIT.
 
 ### Fixed
 - A provider's `Retry-After` (seconds or a date) is read: retries wait that long (up to 30 s); a longer ask skips the retries and
