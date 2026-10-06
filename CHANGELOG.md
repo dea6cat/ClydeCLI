@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- cardShuffle deals the next model when the dealt one returns no answer text and no tool call (usage still recorded).
+- The project snapshot no longer walks a huge start folder such as `~` for minutes before the first request: one walk that skips
+  ignored and hidden folders and stops after 1 s.
+
 ### Added
 - The spinner now says what the turn is waiting for and runs a live timer through the whole wait, not only once the answer
   arrives: `Dealing… · 12s · waiting up to 30s for Laya to load`, then `asking Laya how hard this is`, `waiting for provider:model`,
