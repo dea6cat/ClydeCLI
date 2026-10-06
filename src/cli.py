@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from pathlib import Path
 
 from rich.console import Console
 from rich.prompt import Prompt
@@ -90,6 +91,9 @@ Examples:
     plugin_parser.add_argument('target', nargs='?', help='install: a folder or git URL; remove/enable/disable: a plugin name')
     plugin_parser.add_argument('-y', '--yes', action='store_true', help='install without prompting; the plugin stays disabled')
 
+    review_parser = subparsers.add_parser('review', help='Review uncommitted changes (or: commit SHA, base BRANCH), read-only; prints and exits')
+    review_parser.add_argument('target', nargs='*', help='commit SHA | base BRANCH; nothing reviews uncommitted changes')
+
     args = parser.parse_args()
 
     if args.acp:
@@ -100,6 +104,16 @@ Examples:
         from src.repl import headless
         return headless.run(args.print_prompt, model=args.model, mode=args.mode,
                             output_format=args.output_format, max_turns=args.max_turns)
+
+    if args.command == 'review':
+        from src.repl import headless
+        from src.review import ReviewError, build_review_prompt
+        try:
+            prompt = build_review_prompt(' '.join(args.target), Path.cwd())
+        except ReviewError as e:
+            print(f"review: {e}", file=sys.stderr)
+            return 2
+        return headless.run(prompt, model=args.model, mode='plan', output_format=args.output_format, max_turns=args.max_turns)
 
     if args.version:
         from src import __version__
