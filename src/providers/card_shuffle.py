@@ -221,6 +221,9 @@ class CardShuffle:
                 continue
             if response.usage:
                 self.spent.append((self.dealt, response.usage))
+            empty = not (response.message.text or "").strip() and not response.message.tool_calls
+            if empty and not (cancel is not None and cancel.is_set()) and self.redeal(f"{self.dealt} returned no answer"):
+                continue
             return response
 
 
