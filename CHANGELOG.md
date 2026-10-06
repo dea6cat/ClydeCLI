@@ -190,6 +190,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The RemoteTrigger and REPL tools: stubs that only ever returned "not implemented"
 
 ### Fixed
+- A turn that ends with no answer text (a reasoning model that spends it all thinking, or hits its output limit) printed only the footer.
+  It now says so, with the output-token count, and suggests asking again, `/think off` or another model.
 - A command or skill typed by its exact name alone (`/cost`, `/doctor`, `/check`, a skill like `/hello`) listed matching
   commands instead of running; only `/name args` ran it. It also made Enter in the `/skills` picker do nothing useful.
 - `/model provider:name` for a model the provider does not list now warns instead of silently saving it as the default.
