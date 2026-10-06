@@ -167,8 +167,16 @@ class Terminal:
         self._seen = 0
         pid, fd = pty.fork()
         if pid == 0:
+            # A test run started with `&` has SIGINT ignored, and so would the app (Python keeps an inherited
+            # "ignore"): Ctrl+C would silently do nothing. Restore the defaults a terminal user gets.
+            signal.signal(signal.SIGINT, signal.SIG_DFL)
+            signal.signal(signal.SIGQUIT, signal.SIG_DFL)
             os.chdir(workdir)
-            os.execve(sys.executable, [sys.executable, "-m", "src.cli", *self.args], self.env)
+            # SIGUSR1 dumps every thread's Python stack to the terminal, so a wait that times out can show what the app
+            # was doing (see expect). Otherwise this is `python -m src.cli`.
+            boot = ("import faulthandler, runpy, signal; faulthandler.register(signal.SIGUSR1, all_threads=True); "
+                    "runpy.run_module('src.cli', run_name='__main__', alter_sys=True)")
+            os.execve(sys.executable, [sys.executable, "-c", boot, *self.args], self.env)
         self.pid, self.fd = pid, fd
         fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
 
@@ -204,7 +212,26 @@ class Terminal:
                 self._seen = found.end()
                 return self.buffer
             self._pump(0.2)
-        raise AssertionError(f"timed out waiting for {text!r}\n--- screen so far (tail) ---\n{self.buffer[-1500:]}")
+        stacks = ""
+        if self.pid:                                  # what was the app doing? its threads' stacks, via SIGUSR1
+            before = len(self.buffer)
+            try:
+                os.kill(self.pid, signal.SIGUSR1)
+                self._pump(1.0)
+                stacks = "\n--- the app's thread stacks ---\n" + self.buffer[before:][-3500:] + self._terminal_state()
+            except OSError:
+                pass
+        raise AssertionError(f"timed out waiting for {text!r}\n--- screen so far (tail) ---\n{self.buffer[-1500:]}{stacks}")
+
+    def _terminal_state(self) -> str:
+        """Which terminal flags and which process group the app has, for a stuck-prompt report."""
+        try:
+            lflag = termios.tcgetattr(self.fd)[3]
+            flags = ", ".join(f"{name}={'on' if lflag & bit else 'off'}" for name, bit in
+                              (("ISIG", termios.ISIG), ("ICANON", termios.ICANON), ("ECHO", termios.ECHO)))
+            return f"\n--- terminal: {flags}; foreground group {os.tcgetpgrp(self.fd)}, app {self.pid} ---"
+        except (OSError, termios.error) as e:
+            return f"\n--- terminal state unavailable: {e} ---"
 
     def absent(self, text: str, wait: float = 1.5) -> None:
         """Assert `text` does not show up in the next `wait` seconds."""
@@ -268,17 +295,28 @@ class Terminal:
         return None
 
     def close(self) -> None:
+        """Release the terminal, stop the app and reap it. The pty is closed first: a child that is still writing
+        to a full terminal cannot finish exiting until its other end is gone, so waiting for it first deadlocks."""
+        fd, self.fd = self.fd, -1
+        if fd >= 0:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
         if self.pid:
             try:
                 os.kill(self.pid, signal.SIGKILL)
-                os.waitpid(self.pid, 0)
-            except (OSError, ChildProcessError):
+            except OSError:
                 pass
+            for _ in range(50):                      # up to 5 s, never forever
+                try:
+                    done, _status = os.waitpid(self.pid, os.WNOHANG)
+                except ChildProcessError:
+                    break
+                if done:
+                    break
+                time.sleep(0.1)
             self.pid = 0
-        try:
-            os.close(self.fd)
-        except OSError:
-            pass
         if not self.keep_home:
             shutil.rmtree(self.home, ignore_errors=True)
 
