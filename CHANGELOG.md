@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Licence: new work is under the PolyForm Noncommercial License 1.0.0 (source-available; commercial use needs permission). The
+  portions derived from Clawd Codex stay MIT, and copies obtained before this change remain MIT.
+
 ### Fixed
 - A provider's `Retry-After` (seconds or a date) is read: retries wait that long (up to 30 s); a longer ask skips the retries and
   cardShuffle benches the model for it instead of stalling the turn.
