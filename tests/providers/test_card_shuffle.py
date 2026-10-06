@@ -71,6 +71,25 @@ class TestDealing(unittest.TestCase):
         self.assertEqual(self.deals, [LOCAL, HAIKU])
         self.assertEqual(self.card.spent, [(HAIKU, {"input_tokens": 3, "output_tokens": 1})])
 
+    def test_an_empty_reply_deals_the_next_card(self):
+        self.ollama._responses = [reply("", usage={"input_tokens": 5, "output_tokens": 9})]
+        self.anthropic._responses = [reply("real")]
+        response = self._stream(Conversation("sys", [Message.user("hi")]))
+        self.assertEqual(response.message.text, "real")
+        self.assertEqual(self.deals, [LOCAL, HAIKU])
+        self.assertEqual(self.card.spent[0][0], LOCAL)
+
+    def test_a_tool_call_without_text_is_not_empty(self):
+        self.ollama._responses = [reply(None, tool_calls=[("Read", {})])]
+        self._stream(Conversation("sys", [Message.user("hi")]))
+        self.assertEqual(self.deals, [LOCAL])
+
+    def test_when_every_card_is_empty_the_last_empty_reply_comes_back(self):
+        self.ollama._responses = [reply("")]
+        self.anthropic._responses = [reply(""), reply("")]
+        response = self._stream(Conversation("sys", [Message.user("hi")]))
+        self.assertEqual(response.message.text, "")
+
     def test_spent_deck_raises_the_last_error(self):
         self.ollama._responses = [ProviderError("ollama", "boom")]
         self.anthropic._responses = [ProviderError("anthropic", "a"), ProviderError("anthropic", "b")]
