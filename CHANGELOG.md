@@ -153,6 +153,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (no questions except major moves such as recursive deletes, pushes or hard resets)
 
 ### Changed
+- Hold mode now asks before every file change (Write, Edit, NotebookEdit), code files included, not just `.md` files; a saved
+  allow rule or all-in mode skips the question, and `clyde -p` in hold denies them as it does other asks.
+- The status-line corner for cardShuffle drops the `cardShuffle:` prefix before it cuts the tier name when the terminal is narrow
+  (`high-roller → nvidia:meta/muse-glimmer-30b`, not `…fle:high-roller → …`).
 - Reading a secret file (`.env`, keys, `.ssh`, credentials) asks first, even in all-in mode, as editing
   one already did; allow and deny rules now cover Read and Grep
 - Clyde's persona tells it not to open with agreement and to say when the user is wrong
