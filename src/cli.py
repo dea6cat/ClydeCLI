@@ -94,6 +94,10 @@ Examples:
     review_parser = subparsers.add_parser('review', help='Review uncommitted changes (or: commit SHA, base BRANCH), read-only; prints and exits')
     review_parser.add_argument('target', nargs='*', help='commit SHA | base BRANCH; nothing reviews uncommitted changes')
 
+    sessions_parser = subparsers.add_parser('sessions', help="This folder's saved sessions: list, search, archive, unarchive")
+    sessions_parser.add_argument('action', choices=['list', 'search', 'archive', 'unarchive'])
+    sessions_parser.add_argument('target', nargs='*', help='search: the words to look for; archive/unarchive: a session id')
+
     args = parser.parse_args()
 
     if args.acp:
@@ -104,6 +108,9 @@ Examples:
         from src.repl import headless
         return headless.run(args.print_prompt, model=args.model, mode=args.mode,
                             output_format=args.output_format, max_turns=args.max_turns)
+
+    if args.command == 'sessions':
+        return handle_sessions(Console(), args.action, ' '.join(args.target))
 
     if args.command == 'review':
         from src.repl import headless
@@ -487,6 +494,32 @@ def _scan_plugin(console: Console, plugin):  # type: ignore[no-untyped-def]
     if verdict.blocked:
         console.print("  [red]SkillSpector recommends not installing it.[/red] Enabling it anyway records your approval.")
     return verdict
+
+
+def handle_sessions(console: Console, action: str, target: str) -> int:
+    """`clyde sessions list|search WORDS|archive ID|unarchive ID` for the current folder. Exit 1 when nothing matched."""
+    from src.agent.session import Session
+    cwd = str(Path.cwd())
+    if action in ('archive', 'unarchive'):
+        if not target:
+            console.print(f"[red]clyde sessions {action} needs a session id[/red] (see: clyde sessions list)")
+            return 2
+        moved = Session.archive(target) if action == 'archive' else Session.unarchive(target)
+        console.print(f"[green]{action.capitalize()}d {target}.[/green]" if moved else f"[red]No session to {action}: {target}[/red]")
+        return 0 if moved else 1
+    if action == 'search':
+        if not target:
+            console.print("[red]clyde sessions search needs words to look for[/red]")
+            return 2
+        rows = [(s, snippet) for s, snippet in Session.search(cwd, target)]
+    else:
+        rows = [(s, "") for s in Session.list_recent(cwd)]
+    if not rows:
+        console.print("No matching sessions in this folder.")
+        return 1
+    for session, snippet in rows:
+        console.print(f"{session.session_id}  {session.updated_at[:16].replace('T', ' ')}  {len(session.conversation.messages):>3} msgs  {snippet}", markup=False, highlight=False)
+    return 0
 
 
 def handle_plugin(console: Console, action: str, target: str | None, assume_yes: bool = False) -> int:
