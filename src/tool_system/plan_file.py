@@ -7,11 +7,13 @@ not, so the plan is written to a file and its head is put back into the system p
 from __future__ import annotations
 
 import re
+import subprocess
 from pathlib import Path
 
 STATUSES = ("pending", "in_progress", "complete")
 MAX_PLAN_BYTES = 200_000     # a bigger file is not read at all
 PLAN_HEAD_CHARS = 2_500      # what rides in the prompt each turn
+_IGNORE_ENTRY = ".clyde/plans/"
 _BEGIN, _END = "===BEGIN PLAN DATA===", "===END PLAN DATA==="
 _PHASE = re.compile(r"^###\s+Phase\s+(\d+)\s*:?\s*(.*)$", re.MULTILINE)
 _STATUS = re.compile(r"^([ \t]*-[ \t]*\*\*Status:\*\*[ \t]*)(\w+)[ \t]*$", re.MULTILINE)   # one line: never eat the newline
@@ -42,6 +44,28 @@ Next Step; write every error into Errors Encountered; after a failed action try 
 
 def plan_file_for(workspace_root: Path, session_id: str) -> Path:
     return workspace_root / ".clyde" / "plans" / f"{session_id}.md"
+
+
+def keep_plans_out_of_git(workspace_root: Path) -> bool:
+    """Add `.clyde/plans/` to the repository's own `.git/info/exclude` (local to this clone: no tracked file changes, nothing to
+    commit) so saved plans never end up in a commit. True when it is excluded afterwards; False when this is not a git
+    repository, git is missing, or the file cannot be written. The plan is saved either way."""
+    try:
+        done = subprocess.run(["git", "rev-parse", "--git-path", "info/exclude"], cwd=workspace_root, capture_output=True,
+                              text=True, timeout=5)
+        if done.returncode != 0 or not done.stdout.strip():
+            return False
+        exclude = Path(done.stdout.strip())
+        if not exclude.is_absolute():
+            exclude = workspace_root / exclude
+        current = exclude.read_text(encoding="utf-8") if exclude.exists() else ""
+        if _IGNORE_ENTRY in current.splitlines():
+            return True
+        exclude.parent.mkdir(parents=True, exist_ok=True)
+        exclude.write_text(current + ("" if not current or current.endswith("\n") else "\n") + _IGNORE_ENTRY + "\n", encoding="utf-8")
+        return True
+    except (OSError, subprocess.SubprocessError):
+        return False
 
 
 def read_plan(path: Path | None) -> str:
