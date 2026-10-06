@@ -517,6 +517,20 @@ class TestREPL(unittest.TestCase):
                     text, _ = self._status_line(repl, width=100)       # room enough: the full name stays
                     self.assertTrue(text.endswith("cardShuffle:high-roller → nvidia:meta/muse-glimmer-30b"), text)
 
+    def test_a_turn_with_no_answer_text_prints_a_notice_with_the_token_count(self):
+        with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
+            with patch('src.repl.core.Session.create') as session:
+                session.return_value = Mock(conversation=Conversation())
+                with _fake_provider_env(reply("", usage={"input_tokens": 10, "output_tokens": 792}), reply("a real answer")):
+                    repl = ClydeREPL(model="glm:glm-4.5")
+                    repl.console.print = Mock()
+                    repl.chat("make this rhyme")
+                    repl.chat("again")
+                    shown = [str(a[0]) for a, _k in repl.console.print.call_args_list if a]
+                    notices = [line for line in shown if "without any answer text" in line]
+                    self.assertEqual(len(notices), 1)                       # for the empty turn only
+                    self.assertIn("after 792 output tokens", notices[0])
+
     def _skills_repl(self):
         from types import SimpleNamespace
         skills = [SimpleNamespace(name="zeta", description="Last one.\n  Second line.", user_invocable=True),

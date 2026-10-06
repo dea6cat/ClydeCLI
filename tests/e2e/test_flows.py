@@ -213,6 +213,13 @@ class TestF02Ask(Case):
         t.turn_done()
         self.assertEqual(server.user_texts()[-1], f"compare {first} with {second}")
 
+    def test_F02_E9_a_reply_with_no_answer_text_says_so_instead_of_going_quiet(self):
+        # A reasoning model can spend its whole turn thinking and send no answer; the screen used to show only the footer.
+        t = self.app(self.model(say("", thinking="pondering the poem at length")))
+        t.send_line("make this rhyme")
+        t.expect("without any answer text", 30)
+        t.turn_done()
+
     def test_F02_E4_ctrl_c_at_the_idle_prompt_does_not_quit(self):
         t = self.app(self.model(say("still here")))
         t.send(CTRL_C)
