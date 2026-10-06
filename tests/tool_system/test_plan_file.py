@@ -172,3 +172,47 @@ class TestPlanCommands(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestKeepOutOfGit(unittest.TestCase):
+    def _repo(self, tmp: str) -> Path:
+        import subprocess
+        root = Path(tmp).resolve()
+        subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+        return root
+
+    def test_the_plans_folder_is_excluded_once_and_git_agrees(self):
+        import subprocess
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._repo(tmp)
+            self.assertTrue(pf.keep_plans_out_of_git(root))
+            self.assertTrue(pf.keep_plans_out_of_git(root))                       # again: no second line
+            exclude = (root / ".git" / "info" / "exclude").read_text()
+            self.assertEqual(exclude.splitlines().count(".clyde/plans/"), 1)
+            plan = pf.plan_file_for(root, "s1")
+            plan.parent.mkdir(parents=True)
+            plan.write_text("x")
+            ignored = subprocess.run(["git", "check-ignore", "-q", str(plan)], cwd=root).returncode
+            self.assertEqual(ignored, 0)
+            self.assertFalse((root / ".gitignore").exists())                      # no tracked file is touched
+
+    def test_an_existing_exclude_file_keeps_its_lines(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._repo(tmp)
+            exclude = root / ".git" / "info" / "exclude"
+            exclude.parent.mkdir(exist_ok=True)
+            exclude.write_text("*.log")                                           # no trailing newline
+            self.assertTrue(pf.keep_plans_out_of_git(root))
+            self.assertEqual(exclude.read_text().splitlines(), ["*.log", ".clyde/plans/"])
+
+    def test_outside_a_repository_it_is_false_and_writes_nothing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertFalse(pf.keep_plans_out_of_git(Path(tmp)))
+            self.assertEqual(list(Path(tmp).iterdir()), [])
+
+    def test_exit_plan_mode_excludes_the_folder_in_a_repository(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._repo(tmp)
+            ctx = ToolContext(workspace_root=root, plan_file=pf.plan_file_for(root, "s1"), plan_mode=True)
+            ExitPlanModeTool().run({"plan": PLAN}, ctx)
+            self.assertIn(".clyde/plans/", (root / ".git" / "info" / "exclude").read_text())

@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ignored and hidden folders and stops after 1 s.
 
 ### Added
+- Saving a plan in a git repository adds `.clyde/plans/` to that clone's `.git/info/exclude` (local; no tracked file changes), so plans
+  never get committed. The README now has a Plans section, and lists `/review`, `/status`, `/goal`, `/plan`, `clyde review` and
+  `clyde sessions`. It notes that a custom `planFilePath` is not reloaded and not excluded.
 - The plan you approve in plan mode now lives on disk per session (`.clyde/plans/<session>.md`) and its head (goal, next step,
   one line per phase with its status) goes back into the system prompt every turn, fenced as data, so it survives `/compact`
   and `--resume`. Plan mode asks for a fixed shape (goal, next step, phases with a Status, decisions, errors) and rules: log

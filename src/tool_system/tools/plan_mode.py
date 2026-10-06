@@ -7,6 +7,7 @@ from typing import Any
 from ..context import ToolContext
 from ..errors import ToolInputError, ToolPermissionError
 from ..protocol import ToolResult
+from ..plan_file import keep_plans_out_of_git
 from ..registry import ToolSpec
 
 
@@ -84,6 +85,8 @@ class ExitPlanModeTool:
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(plan, encoding="utf-8")
             file_path_out = str(target)
+            if context.plan_file is not None and target == context.plan_file:
+                keep_plans_out_of_git(context.workspace_root)
 
         context.plan_mode = False
         out: dict[str, Any] = {
