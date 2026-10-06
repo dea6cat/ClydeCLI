@@ -208,6 +208,8 @@ _HELP_TEXT = """
 - `/models [all|refresh]` - Same picker as /model (hides ones /eval showed don't work; all shows them, refresh re-fetches the lists)
 - `/models local [ollama|hf|mlx] [words]` - Find local models on ollama.com and Hugging Face (GGUF, MLX on Apple Silicon) that fit this machine, rated relax / balance / hard, and download one
 - `/laya` - Laya's status, and how its stuck checks and difficulty scores lined up with how traced turns ended
+- `/status` - Show the model, mode, directory, session, goal and token totals
+- `/goal [text|clear]` - Set a goal for this session (kept in the system prompt every turn), show it, or clear it
 - `/terse [on|off]` - Shorter replies (fewer tokens, quicker on local models); bare opens a picker; saved
 - `/purge [name]` - Delete local models (Ollama and LM Studio) from disk, all of them or only those matching name; asks first
 - `/eval [filter]` - Test the listed models (or those matching filter) on a tool call and a round trip
@@ -420,6 +422,8 @@ class ClydeREPL:
             "/models",
             "/purge",
             "/terse",
+            "/status",
+            "/goal",
             "/eval",
             "/think",
             "/tools",
@@ -1369,6 +1373,12 @@ class ClydeREPL:
         elif cmd == '/models' or cmd.startswith('/models '):
             self._show_models(raw.split(maxsplit=1)[1].strip().lower() if " " in raw.strip() else "")
 
+        elif cmd == '/status':
+            self._show_status()
+
+        elif cmd == '/goal' or cmd.startswith('/goal '):
+            self._handle_goal(raw.split(maxsplit=1)[1].strip() if " " in raw.strip() else "")
+
         elif cmd == '/terse' or cmd.startswith('/terse '):
             self._handle_terse(cmd[len('/terse'):].strip())
 
@@ -2278,6 +2288,36 @@ class ClydeREPL:
         hidden = kinds["tools"] + kinds["unavailable"] + kinds["answer"]
         if hidden:
             self.console.print(Text(f"/models now hides the {hidden} that don't work · /models all shows them", style=_CARD_DIM))
+
+    def _show_status(self) -> None:
+        """/status: what this session is set to."""
+        from src import __version__
+        from src.repl.status import status_lines
+        totals = {"input_tokens": 0, "output_tokens": 0}
+        for usage in getattr(self.cost_tracker, "models", {}).values():
+            for key in totals:
+                totals[key] += usage.get(key, 0)
+        label, _ = self._MODE_LABELS[self.mode]
+        for line in status_lines(version=__version__, model=model_ref(self.provider, self.model), mode=label.lstrip("♠ "),
+                                 cwd=self.tool_context.cwd or self.tool_context.workspace_root, session_id=self.session.session_id,
+                                 goal=self.tool_context.goal, terse=self.tool_context.output_style_name == "terse", usage=totals):
+            self.console.print(line, markup=False)
+
+    def _handle_goal(self, arg: str) -> None:
+        """/goal [text|clear]: set, show or clear the session goal."""
+        from src.repl.status import MAX_GOAL_CHARS, clamp_goal
+        if not arg:
+            self.console.print(f"Goal: {self.tool_context.goal}" if self.tool_context.goal else "No goal set. Set one with /goal TEXT.", markup=False)
+            return
+        if arg.lower() == "clear":
+            self.tool_context.goal = None
+            self.console.print("[green]Goal cleared.[/green]")
+            return
+        goal, cut = clamp_goal(arg)
+        self.tool_context.goal = goal
+        self.console.print(f"[green]Goal set.[/green] [dim](applies from your next message)[/dim]")
+        if cut:
+            self.console.print(f"[yellow]Cut to {MAX_GOAL_CHARS} characters; it is sent every turn.[/yellow]")
 
     def _handle_terse(self, arg: str) -> None:
         """/terse [on|off]: shorter replies. Bare opens a picker. Saved, and in effect from the next message."""
