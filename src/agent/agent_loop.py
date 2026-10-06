@@ -13,6 +13,7 @@ from ..tool_system.checks import edit_check_for
 from . import trace
 from ..tool_system.registry import ToolRegistry
 from ..tool_system.context import ToolContext
+from ..tool_system.plan_file import PLAN_SHAPE, plan_prompt, read_plan
 from ..tool_system.deferral import advertised, index_prompt, is_deferred
 from .conversation import Conversation
 from ..context_system import build_context_prompt
@@ -141,7 +142,9 @@ def _build_effective_system_prompt(style_prompt: str, tool_context: ToolContext)
     if tool_context.plan_mode:
         context_prompt += ("\n\n## Mode: reading the table (plan mode)\nThe user wants a plan before any change. Investigate "
                            "with read-only tools only; tools that modify files or run non-read-only commands are refused. "
-                           "When you have a plan, present it with the ExitPlanMode tool.")
+                           "When you have a plan, present it with the ExitPlanMode tool.\n\n" + PLAN_SHAPE)
+    elif section := plan_prompt(read_plan(getattr(tool_context, "plan_file", None))):
+        context_prompt += "\n\n" + section
     if section := goal_prompt(getattr(tool_context, "goal", None)):
         context_prompt += "\n\n" + section
     if not context_prompt.strip():
