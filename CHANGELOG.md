@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ignored and hidden folders and stops after 1 s.
 
 ### Added
+- `/status` shows the model, mode, directory, session, goal, terse and token totals. `/goal [text|clear]` sets a goal for the
+  session that rides in the system prompt every turn (capped at 500 characters, in memory only).
 - `/review` and `clyde review`: a read-only review of uncommitted changes (and the untracked files), `commit SHA`, or `base BRANCH`.
   The diff is capped per file, smallest first, and anything left out is named. `clyde review` prints and exits (2 outside a repo).
 - The spinner now says what the turn is waiting for and runs a live timer through the whole wait, not only once the answer

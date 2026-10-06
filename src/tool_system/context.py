@@ -32,6 +32,7 @@ class ToolContext:
     # Deferred tools the model has loaded (lowercase names); see deferral.py. Shared with sub-agents.
     loaded_tools: set[str] = field(default_factory=set)
     output_style_name: str | None = None
+    goal: str | None = None   # /goal: rides in the system prompt each turn
     output_style_dir: Path | None = None
     # Set by run_agent_loop so the Agent tool can run a sub-agent on the same model.
     provider: Any | None = None

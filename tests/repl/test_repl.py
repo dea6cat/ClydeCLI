@@ -432,6 +432,41 @@ class TestREPL(unittest.TestCase):
                     self.assertEqual(repl.tool_context.output_style_name, "terse")
                     self.assertTrue(any("Usage: /terse" in str(a[0]) for a, _k in repl.console.print.call_args_list if a))
 
+    def test_goal_is_set_shown_cleared_capped_and_reaches_the_system_prompt(self):
+        from src.agent.agent_loop import _build_effective_system_prompt
+        with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
+            with patch('src.repl.core.Session.create'):
+                with _fake_provider_env():
+                    repl = ClydeREPL(model="glm:glm-4.5")
+                    repl.console.print = Mock()
+                    shown = lambda: " ".join(str(a[0]) for a, _k in repl.console.print.call_args_list if a)
+                    repl.handle_command("/goal")
+                    self.assertIn("No goal set", shown())
+                    repl.handle_command("/goal ship the   parser\nfix")
+                    self.assertEqual(repl.tool_context.goal, "ship the parser fix")
+                    with patch('src.agent.agent_loop.build_context_prompt', return_value=""):
+                        self.assertIn("ship the parser fix", _build_effective_system_prompt("style", repl.tool_context))
+                    repl.handle_command("/goal " + "x" * 900)
+                    self.assertEqual(len(repl.tool_context.goal), 500)
+                    self.assertIn("Cut to 500", shown())
+                    repl.handle_command("/goal clear")
+                    self.assertIsNone(repl.tool_context.goal)
+                    with patch('src.agent.agent_loop.build_context_prompt', return_value=""):
+                        self.assertNotIn("Session goal", _build_effective_system_prompt("style", repl.tool_context))
+
+    def test_status_lists_the_session_settings(self):
+        with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
+            with patch('src.repl.core.Session.create'):
+                with _fake_provider_env():
+                    repl = ClydeREPL(model="glm:glm-4.5")
+                    repl.console.print = Mock()
+                    repl.tool_context.goal = "fix the build"
+                    repl.cost_tracker.record_usage("glm", "glm-4.5", {"input_tokens": 1200, "output_tokens": 34})
+                    repl.handle_command("/status")
+                    text = "\n".join(str(a[0]) for a, _k in repl.console.print.call_args_list if a)
+        for expected in ("glm:glm-4.5", "hold", "fix the build", "1,200 in, 34 out", "terse:     off"):
+            self.assertIn(expected, text)
+
     def test_the_terse_style_reaches_the_system_prompt_only_when_on(self):
         from src.agent.agent_loop import run_agent_loop
         from src.output_styles.styles import TERSE_RULE
