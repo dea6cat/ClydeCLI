@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- The spinner now says what the turn is waiting for and runs a live timer through the whole wait, not only once the answer
+  arrives: `Dealing… · 12s · waiting up to 30s for Laya to load`, then `asking Laya how hard this is`, `waiting for provider:model`,
+  `retry 2 of 3 in 2s: HTTP 503…`, `running Bash`, and `compacting the conversation` (which had no spinner before).
 - End-to-end tests (`tests/e2e`, opt in with `CLYDE_E2E=1`): a real `clyde` in a pseudo-terminal against a scripted fake model, in a throwaway HOME.
 - `/terse [on|off]` (a picker when bare): a built-in `terse` output style that asks for shorter replies, saved and applied to
   new sessions. On a local Qwen2.5-Coder 3B it cut output tokens by about 55% and reply time by about a third on three

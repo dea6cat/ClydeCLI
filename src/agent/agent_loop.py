@@ -8,6 +8,7 @@ import time
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from .. import activity
 from ..tool_system.checks import edit_check_for
 from . import trace
 from ..tool_system.registry import ToolRegistry
@@ -282,6 +283,7 @@ def run_agent_loop(
 
     for _turn in range(max_turns):
         specs = from_specs(advertised(all_specs, tool_context.loaded_tools))   # again each turn: ToolSearch may have loaded more
+        activity.set(f"waiting for {getattr(provider, 'name', '')}:{model}")
         request = to_canonical(conversation, system_prompt)
         response = trace.model_call(provider, model, request, lambda: stream_with_retry(
             provider,
@@ -315,6 +317,7 @@ def run_agent_loop(
             if is_deferred(tool_name):
                 tool_context.loaded_tools.add(tool_name.lower())   # called by name: send its definition from now on
             started = time.monotonic()
+            activity.set(f"running {tool_name}")
 
             try:
                 _safe_call_handler(
