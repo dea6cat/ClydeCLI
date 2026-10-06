@@ -38,8 +38,8 @@ STUCK_EVERY = 3     # tool rounds between looks
 STUCK_AT = 0.8      # ponytail: from one replayed loop (0.95) vs normal progress (0.38); tune from traces
 _STUCK = {"type": "noul", "instructions": "Is the agent repeating the same tool calls in `recent_tool_calls`, "
                                           "with the same or empty results, without making progress?"}
-# Cooldowns, after freellmapi's benching: later turns skip a card that hit a quota. ponytail: fixed lengths, the provider's
-# Retry-After is not read; add it when ProviderError carries the header.
+# Cooldowns, after freellmapi's benching: later turns skip a card that hit a quota, for the provider's Retry-After when it
+# gave one (capped at an hour), else these lengths.
 RATE_LIMIT_BENCH_S = 90        # 429
 OUT_OF_CREDIT_BENCH_S = 3600   # 402
 EMPTY_BENCH_S = 600            # a model that answered nothing
@@ -241,6 +241,9 @@ class CardShuffle:
 
 def _bench_for(error: Exception) -> float:
     """How long a failed card sits out later turns: a spent quota stays spent, a rate limit clears in minutes."""
+    asked = getattr(error, "retry_after", None)
+    if asked:
+        return min(asked, OUT_OF_CREDIT_BENCH_S)
     status = getattr(error, "status", None)
     return {429: RATE_LIMIT_BENCH_S, 402: OUT_OF_CREDIT_BENCH_S}.get(status, 0.0)
 
