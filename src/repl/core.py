@@ -123,6 +123,8 @@ from src.command_system import (
     register_builtin_commands,
 )
 from src.agent.cost_tracker import CostTracker
+from src.tool_system import plan_file as plans
+from src.tool_system.plan_file import plan_file_for
 from src.agent.history import HistoryLog
 
 # Pastes longer than this collapse to a [Pasted text #N +X lines] marker in the prompt.
@@ -209,7 +211,8 @@ _HELP_TEXT = """
 - `/models local [ollama|hf|mlx] [words]` - Find local models on ollama.com and Hugging Face (GGUF, MLX on Apple Silicon) that fit this machine, rated relax / balance / hard, and download one
 - `/laya` - Laya's status, and how its stuck checks and difficulty scores lined up with how traced turns ended
 - `/status` - Show the model, mode, directory, session, goal and token totals
-- `/goal [text|clear]` - Set a goal for this session (kept in the system prompt every turn), show it, or clear it
+- `/goal [text|plan|clear]` - Set a goal for this session (kept in the system prompt every turn), show it, or clear it; `plan` makes it "every phase of the saved plan is complete"
+- `/plan [done|start|pending N|clear]` - Show the saved plan and its phases; set phase N's status; or delete the plan
 - `/terse [on|off]` - Shorter replies (fewer tokens, quicker on local models); bare opens a picker; saved
 - `/purge [name]` - Delete local models (Ollama and LM Studio) from disk, all of them or only those matching name; asks first
 - `/eval [filter]` - Test the listed models (or those matching filter) on a tool call and a round trip
@@ -390,6 +393,7 @@ class ClydeREPL:
         self._mcp_servers, self._mcp_errors = servers, {}
         self._connect_mcp_servers(servers)
         self.tool_context.ask_user = self._ask_user_questions
+        self.tool_context.plan_file = plan_file_for(self.tool_context.workspace_root, self.session.session_id)
         self.tool_context.before_edit = lambda path: self.checkpoints.snapshot(path)
         # Session-scoped cron: due jobs are queued here and run only between turns.
         self._cron_checked_at = datetime.now()
@@ -424,6 +428,7 @@ class ClydeREPL:
             "/terse",
             "/status",
             "/goal",
+            "/plan",
             "/eval",
             "/think",
             "/tools",
@@ -1379,6 +1384,9 @@ class ClydeREPL:
         elif cmd == '/goal' or cmd.startswith('/goal '):
             self._handle_goal(raw.split(maxsplit=1)[1].strip() if " " in raw.strip() else "")
 
+        elif cmd == '/plan' or cmd.startswith('/plan '):
+            self._handle_plan(raw.split(maxsplit=1)[1].strip() if " " in raw.strip() else "")
+
         elif cmd == '/terse' or cmd.startswith('/terse '):
             self._handle_terse(cmd[len('/terse'):].strip())
 
@@ -2223,6 +2231,7 @@ class ClydeREPL:
         line = f"{past} for {_duration(time.monotonic() - started)} · {_clock()}" + (_usage_note(usage, ref) if usage else "")
         self.console.print(Text.assemble(("♠ ", _CARD_ACCENT), (line, _CARD_DIM)))
         self.console.print()
+        self._check_goal_met()
 
     def _say_goodbye(self) -> None:
         self.console.print(Text.assemble(("♠ ", _CARD_ACCENT), ("Goodbye!", f"bold {_CARD_TEXT}")))
@@ -2302,6 +2311,43 @@ class ClydeREPL:
                                  cwd=self.tool_context.cwd or self.tool_context.workspace_root, session_id=self.session.session_id,
                                  goal=self.tool_context.goal, terse=self.tool_context.output_style_name == "terse", usage=totals):
             self.console.print(line, markup=False)
+        if note := plans.status_note(plans.read_plan(self.tool_context.plan_file)):
+            self.console.print(f"  plan:      {note}", markup=False)
+
+    def _handle_plan(self, arg: str) -> None:
+        """/plan [done|start|pending N|clear]: show the saved plan, set one phase's status, or delete the plan."""
+        path = self.tool_context.plan_file
+        text = plans.read_plan(path)
+        if not text:
+            self.console.print("No saved plan. Press Shift+Tab to plan mode and ask for one; it is saved when you approve it.", markup=False)
+            return
+        words = arg.split()
+        if words and words[0] == "clear":
+            path.unlink(missing_ok=True)
+            self.console.print("[green]Plan deleted.[/green]")
+            return
+        if words:
+            status = {"done": "complete", "start": "in_progress", "pending": "pending"}.get(words[0])
+            if status is None or len(words) != 2 or not words[1].isdigit():
+                self.console.print("[red]Usage: /plan [done|start|pending N | clear][/red]")
+                return
+            try:
+                text = plans.set_phase_status(text, int(words[1]), status)
+            except ValueError as e:
+                self.console.print(f"[red]{e}[/red]")
+                return
+            path.write_text(text, encoding="utf-8")
+        self.console.print(plans.plan_head(text), markup=False, highlight=False)
+        self.console.print(plans.status_note(text), markup=False, highlight=False)
+        self._check_goal_met()
+
+    def _check_goal_met(self) -> None:
+        """A goal made with /goal plan ends when every phase of the saved plan is complete."""
+        ctx = self.tool_context
+        done, total = plans.progress(plans.read_plan(ctx.plan_file))
+        if ctx.goal_from_plan and total and done == total:
+            ctx.goal, ctx.goal_from_plan = None, False
+            self.console.print("[green]Plan complete: the goal is met and cleared.[/green]")
 
     def _handle_goal(self, arg: str) -> None:
         """/goal [text|clear]: set, show or clear the session goal."""
@@ -2310,10 +2356,19 @@ class ClydeREPL:
             self.console.print(f"Goal: {self.tool_context.goal}" if self.tool_context.goal else "No goal set. Set one with /goal TEXT.", markup=False)
             return
         if arg.lower() == "clear":
-            self.tool_context.goal = None
+            self.tool_context.goal, self.tool_context.goal_from_plan = None, False
             self.console.print("[green]Goal cleared.[/green]")
             return
+        if arg.lower() == "plan":
+            goal = plans.goal_from_plan(plans.read_plan(self.tool_context.plan_file))
+            if not goal:
+                self.console.print("[yellow]No saved plan with phases yet.[/yellow] Present one in plan mode (Shift+Tab).")
+                return
+            self.tool_context.goal, self.tool_context.goal_from_plan = clamp_goal(goal)[0], True
+            self.console.print("[green]Goal set from the plan.[/green] [dim]It ends when every phase is complete.[/dim]")
+            return
         goal, cut = clamp_goal(arg)
+        self.tool_context.goal_from_plan = False
         self.tool_context.goal = goal
         self.console.print(f"[green]Goal set.[/green] [dim](applies from your next message)[/dim]")
         if cut:
@@ -2507,6 +2562,8 @@ class ClydeREPL:
     def _switch_session(self, loaded_session) -> None:
         saved_model = f"{loaded_session.provider}:{loaded_session.model}"
         self.session = loaded_session
+        self.tool_context.plan_file = plan_file_for(self.tool_context.workspace_root, loaded_session.session_id)
+        self.tool_context.goal, self.tool_context.goal_from_plan = None, False   # a goal belongs to the session that set it
         self.checkpoints = Checkpoints(loaded_session.session_id)   # its checkpoints, for /rewind
         trace.start(loaded_session.session_id, **self._trace_options)
         self.command_context.conversation = loaded_session.conversation   # /clear, /compact act on it
