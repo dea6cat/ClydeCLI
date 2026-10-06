@@ -426,6 +426,7 @@ class ClydeREPL:
             "/tool",
             "/skills",
             "/init",
+            "/review",
         ]
         self._built_in_commands = list(self._original_built_ins)
 
