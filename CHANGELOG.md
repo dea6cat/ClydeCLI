@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- End-to-end tests (`tests/e2e`, opt in with `CLYDE_E2E=1`): a real `clyde` in a pseudo-terminal against a scripted fake model, in a throwaway HOME.
 - `/terse [on|off]` (a picker when bare): a built-in `terse` output style that asks for shorter replies, saved and applied to
   new sessions. On a local Qwen2.5-Coder 3B it cut output tokens by about 55% and reply time by about a third on three
   prompts; answers stay correct but briefer. Off by default.
@@ -185,6 +186,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The RemoteTrigger and REPL tools: stubs that only ever returned "not implemented"
 
 ### Fixed
+- A command or skill typed by its exact name alone (`/cost`, `/doctor`, `/check`, a skill like `/hello`) listed matching
+  commands instead of running; only `/name args` ran it. It also made Enter in the `/skills` picker do nothing useful.
+- `/model provider:name` for a model the provider does not list now warns instead of silently saving it as the default.
 - Skills whose `description: >` (or `|`) block text spanned several lines showed just `>`: frontmatter block scalars are now read.
 - Pollinations out of credits: it answers with a normal chat message instead of an error, so Clyde showed the notice as the
   model's reply, kept it in the conversation, and `/eval` could mark the model as failing. It is now a `❌ HTTP 402` line
