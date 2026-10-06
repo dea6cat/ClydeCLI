@@ -503,6 +503,20 @@ class TestREPL(unittest.TestCase):
                         repl.handle_command("/hel")           # partial: list what matches
                         palette.assert_called_once_with(query="hel")
 
+    def test_cardshuffle_corner_drops_its_prefix_before_it_cuts_the_tier(self):
+        from src.providers.card_shuffle import CardShuffle
+        with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
+            with patch('src.repl.core.Session.create'):
+                with _fake_provider_env():
+                    repl = ClydeREPL(model="glm:glm-4.5")
+                    repl.provider, repl.model = CardShuffle({}), "high-roller"
+                    repl.provider.dealt = "nvidia:meta/muse-glimmer-30b"
+                    text, _ = self._status_line(repl, width=82)        # the width of the screenshot
+                    self.assertTrue(text.endswith("high-roller → nvidia:meta/muse-glimmer-30b"), text)
+                    self.assertNotIn("…", text)
+                    text, _ = self._status_line(repl, width=100)       # room enough: the full name stays
+                    self.assertTrue(text.endswith("cardShuffle:high-roller → nvidia:meta/muse-glimmer-30b"), text)
+
     def _skills_repl(self):
         from types import SimpleNamespace
         skills = [SimpleNamespace(name="zeta", description="Last one.\n  Second line.", user_invocable=True),

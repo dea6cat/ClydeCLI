@@ -21,6 +21,7 @@ class ToolContext:
     tasks: dict[str, dict[str, Any]] = field(default_factory=dict)
     plan_mode: bool = False  # "reading the table": dispatch refuses tools that change things
     auto_approve: bool = False  # "all in": permission asks are approved without prompting (deny rules still apply)
+    confirm_edits: bool = False  # "hold": Write, Edit and NotebookEdit ask before every change (the REPL turns this on)
     worktree_root: Path | None = None
     outbox: list[dict[str, Any]] = field(default_factory=list)
     ask_user: Callable[[list[dict[str, Any]]], dict[str, str]] | None = None
