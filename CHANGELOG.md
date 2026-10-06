@@ -17,6 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ignored and hidden folders and stops after 1 s.
 
 ### Added
+- The plan you approve in plan mode now lives on disk per session (`.clyde/plans/<session>.md`) and its head (goal, next step,
+  one line per phase with its status) goes back into the system prompt every turn, fenced as data, so it survives `/compact`
+  and `--resume`. Plan mode asks for a fixed shape (goal, next step, phases with a Status, decisions, errors) and rules: log
+  errors, never repeat a failed action, update the status. `/plan` shows it, `/plan done|start|pending N` sets a phase's
+  status, `/plan clear` deletes it, `/status` shows the progress, and `/goal plan` makes "every phase is complete" the goal,
+  which ends and clears itself when the last phase is done. Idea from planning-with-files (MIT).
 - `clyde sessions list|search WORDS|archive ID|unarchive ID`: find old sessions of this folder by their text, and move ones you
   are done with out of `/resume` (to `sessions/archive/`; unarchive brings them back).
 - `/status` shows the model, mode, directory, session, goal, terse and token totals. `/goal [text|clear]` sets a goal for the
