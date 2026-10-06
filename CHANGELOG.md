@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- cardShuffle benches a model that hit a quota (429: 90 s, 402: 1 h) or answered nothing (10 min), so later turns do not deal it
+  again straight away. The idea comes from freellmapi's cooldowns.
 - cardShuffle deals the next model when the dealt one returns no answer text and no tool call (usage still recorded).
 - The project snapshot no longer walks a huge start folder such as `~` for minutes before the first request: one walk that skips
   ignored and hidden folders and stops after 1 s.

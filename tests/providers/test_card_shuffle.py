@@ -90,6 +90,27 @@ class TestDealing(unittest.TestCase):
         response = self._stream(Conversation("sys", [Message.user("hi")]))
         self.assertEqual(response.message.text, "")
 
+    def test_a_rate_limited_card_sits_out_later_turns_until_its_cooldown_ends(self):
+        clock = [0.0]
+        self.card._now = lambda: clock[0]
+        self.ollama._responses = [ProviderError("ollama", "slow down", retryable=True, status=429), reply("later")]
+        self.anthropic._responses = [reply("one"), reply("two")]
+        self._stream(Conversation("sys", [Message.user("hi")]))
+        self.deals.clear()
+        self._stream(Conversation("sys", [Message.user("again")]))
+        self.assertEqual(self.deals, [HAIKU])
+        clock[0] = 91.0
+        self.ollama._responses = [reply("back")]
+        self._stream(Conversation("sys", [Message.user("third")]))
+        self.assertEqual(self.deals[-1], LOCAL)
+
+    def test_a_plain_error_is_not_benched_past_its_turn(self):
+        self.ollama._responses = [ProviderError("ollama", "boom"), reply("ok")]
+        self.anthropic._responses = [reply("saved")]
+        self._stream(Conversation("sys", [Message.user("hi")]))
+        self._stream(Conversation("sys", [Message.user("again")]))
+        self.assertEqual(self.deals, [LOCAL, HAIKU, LOCAL])
+
     def test_spent_deck_raises_the_last_error(self):
         self.ollama._responses = [ProviderError("ollama", "boom")]
         self.anthropic._responses = [ProviderError("anthropic", "a"), ProviderError("anthropic", "b")]

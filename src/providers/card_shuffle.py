@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import statistics
+import time
 from typing import Callable, Iterable
 
 from .. import activity
@@ -37,6 +38,11 @@ STUCK_EVERY = 3     # tool rounds between looks
 STUCK_AT = 0.8      # ponytail: from one replayed loop (0.95) vs normal progress (0.38); tune from traces
 _STUCK = {"type": "noul", "instructions": "Is the agent repeating the same tool calls in `recent_tool_calls`, "
                                           "with the same or empty results, without making progress?"}
+# Cooldowns, after freellmapi's benching: later turns skip a card that hit a quota. ponytail: fixed lengths, the provider's
+# Retry-After is not read; add it when ProviderError carries the header.
+RATE_LIMIT_BENCH_S = 90        # 429
+OUT_OF_CREDIT_BENCH_S = 3600   # 402
+EMPTY_BENCH_S = 600            # a model that answered nothing
 LAYA_WAIT = 30      # seconds a turn waits, once per session, for Laya to finish its cold load
 # Promotion: split the shadow-scored turns at their median score; the harder half must take clearly
 # more tool rounds. Laya's scores sit in a narrow band (about 1.3 to 1.9 of 3), so the test is relative.
@@ -111,6 +117,8 @@ class CardShuffle:
         self.spent: list[tuple[str, dict]] = []  # (ref, usage) per real call, drained by the REPL for /cost
         self._deck: list[str] = []
         self._burned: set[str] = set()
+        self._benched: dict[str, float] = {}    # ref -> monotonic time its cooldown ends; outlives the turn
+        self._now: Callable[[], float] = time.monotonic
 
     def is_available(self) -> bool:
         return bool(self._candidates(check=False))
@@ -135,7 +143,8 @@ class CardShuffle:
         return out
 
     def _deal(self, why: str) -> str:
-        card = next((r for r in self._deck if r not in self._burned), None)
+        now = self._now()
+        card = next((r for r in self._deck if r not in self._burned and self._benched.get(r, 0.0) <= now), None)
         if card is None:
             raise ProviderError(NAME, "no model left to deal: every candidate failed or none passed /eval "
                                       "(run /eval, then try again)")
@@ -191,10 +200,13 @@ class CardShuffle:
         trace.record("laya", question="stuck", noul=round(p, 2), acted=p >= STUCK_AT, model=self.dealt)
         return p
 
-    def redeal(self, why: str) -> bool:
-        """Burn the dealt card and deal the next one; False when the deck is spent."""
+    def redeal(self, why: str, bench_s: float = 0.0) -> bool:
+        """Burn the dealt card and deal the next one; False when the deck is spent.
+        bench_s keeps the card out of later turns' deals for that long (it is still burned for this turn)."""
         if self.dealt is not None:
             self._burned.add(self.dealt)
+            if bench_s:
+                self._benched[self.dealt] = self._now() + bench_s
         try:
             self._deal(why)
         except ProviderError:
@@ -216,15 +228,21 @@ class CardShuffle:
             except _Cancelled:
                 raise
             except Exception as e:
-                if (cancel is not None and cancel.is_set()) or not self.redeal(f"{self.dealt} failed: {str(e)[:80]}"):
+                if (cancel is not None and cancel.is_set()) or not self.redeal(f"{self.dealt} failed: {str(e)[:80]}", _bench_for(e)):
                     raise
                 continue
             if response.usage:
                 self.spent.append((self.dealt, response.usage))
             empty = not (response.message.text or "").strip() and not response.message.tool_calls
-            if empty and not (cancel is not None and cancel.is_set()) and self.redeal(f"{self.dealt} returned no answer"):
+            if empty and not (cancel is not None and cancel.is_set()) and self.redeal(f"{self.dealt} returned no answer", EMPTY_BENCH_S):
                 continue
             return response
+
+
+def _bench_for(error: Exception) -> float:
+    """How long a failed card sits out later turns: a spent quota stays spent, a rate limit clears in minutes."""
+    status = getattr(error, "status", None)
+    return {429: RATE_LIMIT_BENCH_S, 402: OUT_OF_CREDIT_BENCH_S}.get(status, 0.0)
 
 
 def _traced_lines() -> list[str]:
