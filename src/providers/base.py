@@ -15,7 +15,7 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Callable, Protocol
 
-from .. import __version__
+from .. import __version__, activity
 from .toolspec import ToolSpec
 from .types import Conversation, Message
 
@@ -298,6 +298,7 @@ def stream_with_retry(provider, conversation, model, tools, on_text, *, retries=
                     raise ProviderError(e.provider, f"{raw} — retried {attempt}×, still failing",
                                         retryable=True, status=e.status) from e
                 raise
+            activity.set(f"retry {attempt + 1} of {retries} in {delay:.0f}s: {str(e).removeprefix(f'[{e.provider}] ')[:70]}")
             waited = 0.0
             while waited < delay:
                 if cancel is not None and cancel.is_set():

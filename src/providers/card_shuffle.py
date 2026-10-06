@@ -21,6 +21,7 @@ import json
 import statistics
 from typing import Callable, Iterable
 
+from .. import activity
 from ..agent import trace
 from . import laya_client
 from .base import ProviderError, ProviderResponse, _Cancelled
@@ -139,6 +140,7 @@ class CardShuffle:
             raise ProviderError(NAME, "no model left to deal: every candidate failed or none passed /eval "
                                       "(run /eval, then try again)")
         self.dealt = card
+        activity.set(f"waiting for {card}")
         if self.on_deal is not None:
             self.on_deal(card, why)
         return card
@@ -169,7 +171,9 @@ class CardShuffle:
             return None
         if not self._waited:
             self._waited = True
+            activity.set(f"waiting up to {LAYA_WAIT}s for Laya to load")
             self.wait(LAYA_WAIT)
+        activity.set("asking Laya how hard this is")
         answers = self.ask({"request": request[-4000:], "mode": self.mode}, {"difficulty": _DIFFICULTY})
         return float(answers["difficulty"]["score"]) if answers else None
 
