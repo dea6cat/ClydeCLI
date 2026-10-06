@@ -38,7 +38,7 @@ class Retry(unittest.TestCase):
 
     def test_retry_after_header_parses_seconds_and_dates(self):
         self.assertEqual(base.parse_retry_after("12"), 12.0)
-        self.assertEqual(base.parse_retry_after("Wed, 21 Oct 2015 07:28:30 GMT", now=1445412480 - 30 + 0), 30.0)
+        self.assertEqual(base.parse_retry_after("Wed, 21 Oct 2015 07:28:30 GMT", now=1445412510 - 30), 30.0)
         self.assertIsNone(base.parse_retry_after("soon"))
         self.assertIsNone(base.parse_retry_after(None))
 
