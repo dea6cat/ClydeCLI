@@ -36,6 +36,32 @@ class Retry(unittest.TestCase):
         # Provider prefix isn't duplicated, and the retry count is surfaced.
         self.assertEqual(str(ctx.exception), "[nvidia] HTTP 504: Gateway Timeout — retried 3×, still failing")
 
+    def test_retry_after_header_parses_seconds_and_dates(self):
+        self.assertEqual(base.parse_retry_after("12"), 12.0)
+        self.assertEqual(base.parse_retry_after("Wed, 21 Oct 2015 07:28:30 GMT", now=1445412480 - 30 + 0), 30.0)
+        self.assertIsNone(base.parse_retry_after("soon"))
+        self.assertIsNone(base.parse_retry_after(None))
+
+    def test_http_429_carries_the_retry_after_the_provider_sent(self):
+        import io, urllib.error
+        from email.message import Message as Headers
+        headers = Headers()
+        headers["Retry-After"] = "20"
+        err = urllib.error.HTTPError("http://x", 429, "Too Many", headers, io.BytesIO(b"{}"))
+        self.assertEqual(base._http_error(err, "x").retry_after, 20.0)
+
+    def test_a_retry_after_longer_than_the_cap_is_not_retried(self):
+        calls = []
+        class P:
+            name = "x"
+            def stream(self, c, m, t, on_text, *, cancel=None, **_kwargs):
+                calls.append(1)
+                raise ProviderError("x", "HTTP 429: limit", retryable=True, status=429, retry_after=600)
+        with self.assertRaises(ProviderError) as ctx:
+            base.stream_with_retry(P(), Conversation(system_prompt="s"), "m", (), lambda _c: None, retries=3)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(ctx.exception.retry_after, 600)
+
     def test_no_retries_left_is_not_annotated(self):
         # retries=0 means we never actually retried, so no "retried N×" suffix.
         class P:

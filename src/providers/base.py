@@ -6,6 +6,7 @@ per-provider SDKs.
 """
 from __future__ import annotations
 
+import email.utils
 import json
 import threading
 import time as _time
@@ -39,11 +40,13 @@ class ProviderResponse:
 
 
 class ProviderError(RuntimeError):
-    def __init__(self, provider: str, message: str, *, retryable: bool = False, status: int | None = None):
+    def __init__(self, provider: str, message: str, *, retryable: bool = False, status: int | None = None,
+                 retry_after: float | None = None):
         super().__init__(f"[{provider}] {message}")
         self.provider = provider
         self.retryable = retryable
         self.status = status
+        self.retry_after = retry_after   # seconds the provider asked us to wait, when it said
 
 
 # --- Abortable connections -------------------------------------------------
@@ -159,6 +162,22 @@ def is_auth_error(exc: BaseException) -> bool:
     return exc.status == 401 or (exc.status in (400, 403) and any(w in str(exc).lower() for w in _AUTH_WORDS))
 
 
+def parse_retry_after(value: str | None, now: float | None = None) -> float | None:
+    """Seconds from a Retry-After header: delta-seconds or an HTTP date; None when absent or unreadable."""
+    if not value:
+        return None
+    value = value.strip()
+    try:
+        return max(0.0, float(value))
+    except ValueError:
+        pass
+    try:
+        when = email.utils.parsedate_to_datetime(value)
+    except (TypeError, ValueError):
+        return None
+    return max(0.0, when.timestamp() - (_time.time() if now is None else now))
+
+
 def _http_error(e: urllib.error.HTTPError, provider: str) -> ProviderError:
     body = ""
     try:
@@ -166,7 +185,8 @@ def _http_error(e: urllib.error.HTTPError, provider: str) -> ProviderError:
     except Exception:
         pass
     return ProviderError(provider, http_error_message(e.code, body, e.reason),
-                         retryable=(e.code == 429 or e.code >= 500), status=e.code)
+                         retryable=(e.code == 429 or e.code >= 500), status=e.code,
+                         retry_after=parse_retry_after(e.headers.get("Retry-After") if e.headers else None))
 
 
 def _request(url: str, payload: dict, headers: dict | None) -> urllib.request.Request:
@@ -276,6 +296,9 @@ def post_stream(url: str, payload: dict, headers: dict | None = None, timeout: i
         _unregister(resp)
 
 
+MAX_RETRY_AFTER_WAIT_S = 30.0   # longer asks bench the card instead of stalling the turn
+
+
 def stream_with_retry(provider, conversation, model, tools, on_text, *, retries=3, cancel=None,
                       reasoning=None, on_thinking=None) -> ProviderResponse:
     """provider.stream with backoff on retryable ProviderError (429/5xx/connection). Honors a
@@ -292,12 +315,15 @@ def stream_with_retry(provider, conversation, model, tools, on_text, *, retries=
             cancelled = cancel is not None and cancel.is_set()
             if not e.retryable or cancelled:
                 raise
+            if e.retry_after and e.retry_after > MAX_RETRY_AFTER_WAIT_S:
+                raise   # waiting that long would stall the turn; the caller (cardShuffle) benches the model instead
             if attempt == retries:
                 if attempt >= 1:
                     raw = str(e).removeprefix(f"[{e.provider}] ")
                     raise ProviderError(e.provider, f"{raw} — retried {attempt}×, still failing",
-                                        retryable=True, status=e.status) from e
+                                        retryable=True, status=e.status, retry_after=e.retry_after) from e
                 raise
+            delay = min(e.retry_after, MAX_RETRY_AFTER_WAIT_S) if e.retry_after else delay   # the provider's own ask beats our backoff
             activity.set(f"retry {attempt + 1} of {retries} in {delay:.0f}s: {str(e).removeprefix(f'[{e.provider}] ')[:70]}")
             waited = 0.0
             while waited < delay:

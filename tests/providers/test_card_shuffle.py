@@ -104,6 +104,16 @@ class TestDealing(unittest.TestCase):
         self._stream(Conversation("sys", [Message.user("third")]))
         self.assertEqual(self.deals[-1], LOCAL)
 
+    def test_the_provider_retry_after_sets_the_bench_length(self):
+        clock = [0.0]
+        self.card._now = lambda: clock[0]
+        self.ollama._responses = [ProviderError("ollama", "slow", retryable=True, status=429, retry_after=300), reply("back")]
+        self.anthropic._responses = [reply("one"), reply("two")]
+        self._stream(Conversation("sys", [Message.user("hi")]))
+        clock[0] = 200.0                      # past the 90 s default, inside the 300 s ask
+        self._stream(Conversation("sys", [Message.user("again")]))
+        self.assertEqual(self.deals, [LOCAL, HAIKU, HAIKU])
+
     def test_a_plain_error_is_not_benched_past_its_turn(self):
         self.ollama._responses = [ProviderError("ollama", "boom"), reply("ok")]
         self.anthropic._responses = [reply("saved")]
