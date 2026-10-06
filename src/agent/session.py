@@ -5,6 +5,7 @@ from __future__ import annotations
 from src.config import clyde_home
 
 import json
+import re
 from pathlib import Path
 from datetime import datetime
 from typing import Optional
@@ -73,6 +74,40 @@ class Session:
         return sorted(sessions, key=lambda s: s.updated_at, reverse=True)
 
     @classmethod
+    def archive(cls, session_id: str) -> bool:
+        """Move a saved session out of /resume's list (to sessions/archive/); False when there is no such session."""
+        return _move(session_id, _sessions_dir(), _archive_dir())
+
+    @classmethod
+    def unarchive(cls, session_id: str) -> bool:
+        """Bring an archived session back; False when it is not archived."""
+        return _move(session_id, _archive_dir(), _sessions_dir())
+
+    @classmethod
+    def search(cls, cwd: str, query: str, archived: bool = False) -> list[tuple['Session', str]]:
+        """This workspace's sessions whose messages contain `query` (any case), newest first, each with a snippet
+        around the first match. `archived` searches the archive instead."""
+        needle = query.strip().lower()
+        if not needle:
+            return []
+        found = []
+        for path in (_archive_dir() if archived else _sessions_dir()).glob("*.json"):
+            try:
+                session = cls._from_data(json.loads(path.read_text()))
+            except (OSError, ValueError, KeyError, TypeError):
+                continue
+            if session.cwd != cwd:
+                continue
+            for message in session.conversation.messages:
+                text = _message_text(message)
+                at = text.lower().find(needle)
+                if at >= 0:
+                    start = max(0, at - 40)
+                    found.append((session, " ".join(text[start:at + len(needle) + 60].split())))
+                    break
+        return sorted(found, key=lambda pair: pair[0].updated_at, reverse=True)
+
+    @classmethod
     def _from_data(cls, data: dict) -> 'Session':
         return cls(
             session_id=data["session_id"],
@@ -97,3 +132,25 @@ class Session:
 
 def _sessions_dir() -> Path:
     return clyde_home() / "sessions"
+
+
+def _archive_dir() -> Path:
+    return _sessions_dir() / "archive"
+
+
+def _move(session_id: str, source: Path, target: Path) -> bool:
+    """Move one session file between folders. The id is a file name, so anything else is refused."""
+    if not re.fullmatch(r"[\w.-]+", session_id) or session_id.startswith("."):
+        return False
+    file = source / f"{session_id}.json"
+    if not file.is_file():
+        return False
+    target.mkdir(parents=True, exist_ok=True)
+    file.replace(target / file.name)
+    return True
+
+
+def _message_text(message) -> str:
+    if isinstance(message.content, str):
+        return message.content
+    return " ".join(getattr(block, "text", "") for block in message.content if isinstance(getattr(block, "text", None), str))
