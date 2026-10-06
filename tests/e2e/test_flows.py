@@ -773,5 +773,33 @@ class TestF12Model(Case):
         self.assertNotIn("Traceback", t.tail(3000))
 
 
+@unittest.skipUnless(ON, "set CLYDE_E2E=1 (needs prompt_toolkit)")
+class TestLicenseGate(Case):
+    def _terminal(self, server, home: Path) -> Terminal:
+        env = isolated_env(server, home)
+        env.pop("CLYDE_ACCEPT_LICENSE")                       # the real gate, as a user meets it
+        terminal = Terminal(server, self.tmp, home=home, env=env)
+        self.addCleanup(terminal.close)
+        return terminal
+
+    def test_F00_E1_the_terms_are_asked_once_enter_alone_declines_and_the_phrase_accepts(self):
+        home = self.folder("clyde-e2e-lic-")
+        server = self.model(say("hi"))
+        declined = self._terminal(server, home)
+        declined.expect("Type 'I accept'", 30)
+        declined.send_line("")                                # Enter alone is not an acceptance
+        declined.expect("not accepted", 10)
+        self.assertEqual(declined.wait_exit(10), 3)
+        self.assertFalse((home / ".clyde" / "license.json").exists())
+        accepted = self._terminal(server, home)
+        accepted.expect("Type 'I accept'", 30)
+        accepted.send_line("I accept")
+        accepted.expect(PROMPT, 30)
+        self.assertTrue((home / ".clyde" / "license.json").exists())
+        again = self._terminal(server, home)                  # recorded: no question the next time
+        again.expect(PROMPT, 30)
+        self.assertNotIn("Type 'I accept'", again.buffer)
+
+
 if __name__ == "__main__":
     unittest.main()
