@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 from dataclasses import dataclass
 from typing import Any, Iterable, Mapping, Protocol
@@ -66,6 +67,26 @@ def _reads_secret(spec: ToolSpec, tool_input: dict[str, Any]) -> bool:
         return False
     from pathlib import Path
     return bool(_SECRET_NAMES.search(Path(_read_target(tool_input)).expanduser().resolve().as_posix()))
+
+
+def _edit_target(spec: ToolSpec, tool_input: dict[str, Any], context: ToolContext):
+    """The file a Write, Edit or NotebookEdit call would change, when it is inside the allowed folders (anything
+    else is refused by the tool itself, so there is nothing to ask about)."""
+    field = _EDIT_PATHS.get(spec.name)
+    raw = tool_input.get(field) if field else None
+    if not isinstance(raw, str):
+        return None
+    try:
+        return context.ensure_allowed_path(raw)
+    except Exception:
+        return None
+
+
+def _shown(path, context: ToolContext) -> str:
+    try:
+        return str(path.relative_to(Path(context.workspace_root).resolve()))
+    except ValueError:
+        return str(path)
 
 
 def _is_major(spec: ToolSpec, tool_input: dict[str, Any], context: ToolContext) -> bool:
@@ -155,6 +176,9 @@ class ToolRegistry:
         if ruling != "allow" and permission_result.behavior.value == "allow" and _reads_secret(spec, call.input):
             # Keys and .env files reach the model only with a yes (or an allow rule); _is_major keeps all-in asking too.
             permission_result = PermissionResult.ask(f"{spec.name} wants to read a secret file: {_read_target(call.input)}")
+        target = _edit_target(spec, call.input, context) if context.confirm_edits else None
+        if target is not None and permission_result.behavior.value == "allow":
+            permission_result = PermissionResult.ask(f"{spec.name} wants to change {_shown(target, context)}")   # hold mode
         auto = context.auto_approve and not _is_major(spec, call.input, context)
         if permission_result.behavior.value == "ask" and (ruling == "allow" or auto):
             if auto and ruling != "allow":

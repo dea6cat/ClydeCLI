@@ -11,12 +11,13 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import tempfile
 import unittest
 from pathlib import Path
 
-from tests.e2e.harness import (CTRL_C, CTRL_D, DOWN, ENTER, ESC, SHIFT_TAB, FakeModel, Terminal, call, fail, run_cli, say)
+from tests.e2e.harness import (CTRL_C, CTRL_D, DOWN, ENTER, ESC, SHIFT_TAB, FakeModel, Terminal, call, fail, isolated_env, run_cli, say)
 
 try:
     import prompt_toolkit  # noqa: F401
@@ -184,6 +185,34 @@ class TestF02Ask(Case):
         t.expect("ok", 60)
         self.assertIn(long.strip(), server.user_texts()[-1])
 
+    def test_F02_E7_a_paste_inside_typed_text_is_expanded_before_it_is_sent(self):
+        # Typed words, a multi-line paste (shown as a [Pasted text] marker), then a closing quote typed after it.
+        server = self.model(say("ok"))
+        t = self.app(server)
+        poem = "\n".join(f"line {i} of the poem" for i in range(18))
+        t.send('make this rhyme "')
+        t.paste(poem)
+        t.send('"')
+        t.expect("[Pasted text #1", 10)                    # the prompt shows a marker, not 18 lines
+        t.send(ENTER)
+        t.turn_done()
+        sent = server.user_texts()[-1]
+        self.assertEqual(sent, f'make this rhyme "{poem}"')
+        self.assertNotIn("[Pasted", sent)
+
+    def test_F02_E8_two_pastes_in_one_message_are_both_expanded_in_order(self):
+        server = self.model(say("ok"))
+        t = self.app(server)
+        first, second = "\n".join(f"a{i}" for i in range(6)), "\n".join(f"b{i}" for i in range(6))
+        t.send("compare ")
+        t.paste(first)
+        t.send(" with ")
+        t.paste(second)
+        t.expect("[Pasted text #2", 10)
+        t.send(ENTER)
+        t.turn_done()
+        self.assertEqual(server.user_texts()[-1], f"compare {first} with {second}")
+
     def test_F02_E4_ctrl_c_at_the_idle_prompt_does_not_quit(self):
         t = self.app(self.model(say("still here")))
         t.send(CTRL_C)
@@ -232,8 +261,7 @@ class TestF02Ask(Case):
 
 @unittest.skipUnless(ON, "set CLYDE_E2E=1 (needs prompt_toolkit)")
 class TestF03Approvals(Case):
-    """In hold mode Clyde asks about shell commands, documentation (.md) edits and settings changes; a plain code
-    file inside the project is written without asking (README, "Permissions"). Doc files stand in for "risky" here."""
+    """In hold mode Clyde asks before every file change (and before shell commands and settings changes)."""
 
     def test_F03_H1_a_doc_write_asks_and_y_writes_the_file(self):
         target = self.tmp / "a.md"
@@ -320,13 +348,16 @@ class TestF03Approvals(Case):
                 self.assertEqual(messages[at + 1]["role"], "tool", messages)    # every tool call has its result
         self.assertFalse(target.exists())
 
-    def test_F03_E6_a_code_file_inside_the_project_is_written_without_asking(self):
-        # By design in hold mode (README); the original asks for every edit. See "to check" in bugs.md.
+    def test_F03_E6_a_code_file_asks_too_and_reading_does_not(self):
         target = self.tmp / "a.py"
-        t = self.app(self.model(write_call(target, "x = 1"), say("done")))
-        t.send_line("make a script")
+        (self.tmp / "notes.txt").write_text("plain")
+        t = self.app(self.model(call("Read", file_path=str(self.tmp / "notes.txt")), write_call(target, "x = 1"), say("done")))
+        t.send_line("read then write a script")
+        t.expect("Allow?", 30)                      # the first (and only) question is for the write, not the read
+        self.assertFalse(target.exists())
+        t.send("y\r")
         t.expect("done", 30)
-        self.assertNotIn("Allow?", t.buffer)
+        self.assertEqual(t.buffer.count("Allow?"), 1)
         self.assertEqual(target.read_text(), "x = 1")
 
 
@@ -433,6 +464,7 @@ class TestF06Rewind(Case):
         target = self.tmp / "a.txt"
         t = self.app(self.model(write_call(target), say("done")))
         t.send_line("make a file")
+        self.approve(t, "y")
         t.turn_done()
         self.assertTrue(target.exists())
         t.send_line("/rewind")
@@ -455,6 +487,7 @@ class TestF06Rewind(Case):
         target = self.tmp / "a.txt"
         t = self.app(self.model(write_call(target), say("done")))
         t.send_line("make a file")
+        self.approve(t, "y")
         t.turn_done()
         t.send_line("/rewind")
         t.expect("Rewind to before which message?", 15)
@@ -582,8 +615,8 @@ class TestF11Headless(Case):
         self.assertIn("THE PIPED TEXT", server.user_texts()[-1])
         self.assertIn("summarise", server.user_texts()[-1])
 
-    def test_F11_N1_hold_mode_denies_a_doc_write_and_reports_it(self):
-        target = self.tmp / "a.md"
+    def test_F11_N1_hold_mode_denies_a_write_and_reports_it(self):
+        target = self.tmp / "a.py"
         code, out, _ = run_cli(self.model(write_call(target), say("could not")), self.tmp,
                                ["--model", "fake:m", "-p", "write it", "--output-format", "json"])
         data = json.loads(out[out.index("{"):])
@@ -613,6 +646,36 @@ class TestF11Headless(Case):
 
 @unittest.skipUnless(ON, "set CLYDE_E2E=1 (needs prompt_toolkit)")
 class TestF12Model(Case):
+    def shuffled(self, server, *, cols: int = 120) -> Terminal:
+        """The app on cardShuffle:house, with the fake model recorded as having passed /eval so it can be dealt."""
+        home = Path(tempfile.mkdtemp(prefix="clyde-e2e-home-"))
+        self.addCleanup(shutil.rmtree, home, True)
+        env = isolated_env(server, home)
+        (home / ".clyde" / "model_evals.json").write_text(json.dumps({
+            "fake:m": {"passed": True, "kind": "ok", "strength": 4, "hand": 4, "note": "", "at": "2026-10-06T00:00:00+00:00",
+                       "tokens_per_s": 50.0}}))
+        terminal = Terminal(server, self.tmp, ["--model", "cardShuffle:house"], home=home, env=env, cols=cols)
+        self.addCleanup(terminal.close)
+        terminal.expect(PROMPT, 40)
+        return terminal
+
+    def test_F12_E4_cardshuffle_deals_a_model_and_the_corner_follows_it(self):
+        server = self.model(say("from the dealt model"))
+        t = self.shuffled(server)
+        t.send_line("hi")
+        t.expect("dealt fake:m", 30)                        # the deal line
+        t.turn_done()
+        self.assertEqual(server.requests[0]["model"], "m")
+        self.assertIn("cardShuffle:house → fake:m", t.tail(600))
+
+    def test_F12_E5_a_narrow_terminal_keeps_the_dealt_model_readable(self):
+        server = self.model(say("ok"))
+        t = self.shuffled(server, cols=60)
+        t.send_line("hi")
+        t.turn_done()
+        corner = re.sub(r"\[\?\d+[hl]|zq\d+qz", "", t.tail(600).splitlines()[-1])    # stray mode codes, the ready() probe
+        self.assertTrue(corner.rstrip().endswith("fake:m"), corner)      # the end of the line, which names the model
+        self.assertLessEqual(len(corner.rstrip()), 60)
     def test_F12_H1_the_model_picker_switches_and_the_next_request_uses_it(self):
         server = self.model(say("on m2"))
         t = self.app(server)

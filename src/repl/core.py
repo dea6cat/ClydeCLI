@@ -365,7 +365,7 @@ class ClydeREPL:
             for warning in loaded.warnings:
                 self.console.print(warning, style="yellow", markup=False)
         self.tool_context = ToolContext(workspace_root=Path.cwd(), hooks=hooks, permission_rules=load_rules(),
-                                        output_style_name=get_output_style())
+                                        output_style_name=get_output_style(), confirm_edits=True)
         self._mcp_servers, self._mcp_errors = servers, {}
         self._connect_mcp_servers(servers)
         self.tool_context.ask_user = self._ask_user_questions
@@ -608,6 +608,8 @@ class ClydeREPL:
         left = [("class:mode", f"  {label}"), ("class:mode-note", note), ("class:rule", "  (shift+tab to cycle)")]
         room = self._rule_width() - 1 - sum(len(text) for _, text in left) - 2   # a column of margin, two before the model
         ref, dealt = self._model_parts()
+        if dealt and len(ref + dealt) > room and isinstance(self.provider, CardShuffle):
+            ref = self.model   # too long: the tier alone ("high-roller") says as much as "cardShuffle:high-roller"
         shown = (ref + dealt)[-room:] if room > 8 else ""
         if not shown:
             return left
