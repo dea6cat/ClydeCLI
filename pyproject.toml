@@ -7,7 +7,7 @@ name = "clyde-cli"
 version = "0.1.0"
 description = "A coding-agent harness for your terminal: bring any LLM, cloud or local, and Clyde turns it into an agent"
 readme = "README.md"
-license = {text = "MIT"}
+license = {text = "PolyForm-Noncommercial-1.0.0 (portions MIT); see LICENSE"}
 requires-python = ">=3.14"
 authors = [
     {name = "dea6cat", email = "notalexander24@gmail.com"}
@@ -16,7 +16,7 @@ keywords = ["cli", "ai", "llm", "agent", "anthropic", "openai", "gemini", "ollam
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
+    "License :: Other/Proprietary License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.14",
 ]
