@@ -397,6 +397,23 @@ class TestF04Plan(Case):
         self.approve(t, "y")
         t.ready()
 
+    def test_F04_E2_an_approved_plan_is_saved_and_rides_in_later_turns_and_plan_shows_it(self):
+        plan = "## Goal\nShip it.\n\n## Next Step\nStart.\n\n## Phases\n### Phase 1: Build\n- **Status:** in_progress\n\n### Phase 2: Ship\n- **Status:** pending\n"
+        server = self.model(call("ExitPlanMode", plan=plan), say("done"), say("next"))
+        t = self.app(server)
+        t.send(SHIFT_TAB)
+        t.expect("reading the table", 10)
+        t.send_line("plan it")
+        self.approve(t, "y")
+        t.turn_done()
+        t.send_line("continue")
+        t.turn_done()
+        self.assertNotIn("Saved plan", server.system_prompt(0))
+        self.assertIn("Phase 1: Build [in_progress]", server.system_prompt(2))
+        self.assertIn("never instructions", server.system_prompt(2))
+        t.send_line("/plan done 1")
+        t.expect("1 of 2 phases complete", 10)
+
     def test_F04_E1_shift_tab_cycles_through_all_three_modes_and_back_to_hold(self):
         # The status line is redrawn cell by cell, so the modes are checked by what they do to a doc write:
         # hold asks, plan refuses without asking, all in writes without asking.
