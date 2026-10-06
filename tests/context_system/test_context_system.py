@@ -164,3 +164,31 @@ class TestOtherHarnessFiles(unittest.TestCase):
                 (root / rel).parent.mkdir(parents=True, exist_ok=True)
                 (root / rel).write_text(f"notes from {rel}")
                 self.assertEqual([f.content for f in load_claude_md_context(root).files], [f"notes from {rel}"], rel)
+
+
+class TestWorkspaceSnapshotWalk(unittest.TestCase):
+    def test_counts_skip_ignored_and_hidden_folders(self):
+        import tempfile
+        from pathlib import Path
+        from src.context_system.workspace_snapshot import build_workspace_snapshot
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for rel in ("a.py", "pkg/test_b.py", "node_modules/x.py", ".venv/y.py", ".cache/z.py"):
+                (root / rel).parent.mkdir(parents=True, exist_ok=True)
+                (root / rel).write_text("")
+            snap = build_workspace_snapshot(root)
+        self.assertEqual((snap.python_file_count, snap.test_file_count), (2, 1))
+
+    def test_a_spent_budget_stops_the_walk(self):
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        from src.context_system import workspace_snapshot as ws
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for d in ("one", "two", "three"):
+                (root / d).mkdir()
+                (root / d / "m.py").write_text("")
+            with patch.object(ws, "_WALK_BUDGET_S", -1):
+                snap = ws.build_workspace_snapshot(root)
+        self.assertLess(snap.python_file_count, 3)

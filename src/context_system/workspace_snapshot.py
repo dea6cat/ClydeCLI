@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import time
 from pathlib import Path
 
 from .models import WorkspaceSnapshot
@@ -13,6 +15,7 @@ _IGNORED_NAMES = {
     "__pycache__",
     "node_modules",
 }
+_WALK_BUDGET_S = 1.0
 _KEY_FILE_CANDIDATES = (
     "README.md",
     "CLYDE.md",
@@ -51,8 +54,7 @@ def build_workspace_snapshot(
             break
 
     key_files = tuple(name for name in _KEY_FILE_CANDIDATES if (root / name).exists())
-    python_file_count = sum(1 for path in root.rglob("*.py") if _is_countable(path))
-    test_file_count = sum(1 for path in root.rglob("test_*.py") if _is_countable(path))
+    python_file_count, test_file_count = _count_python_files(root)
 
     return WorkspaceSnapshot(
         workspace_root=root,
@@ -72,5 +74,19 @@ def _is_within(child: Path, parent: Path) -> bool:
         return False
 
 
-def _is_countable(path: Path) -> bool:
-    return path.is_file() and not any(part in _IGNORED_NAMES for part in path.parts)
+def _count_python_files(root: Path) -> tuple[int, int]:
+    """Count .py and test_*.py files, skipping ignored and hidden folders and giving up after _WALK_BUDGET_S.
+
+    An unbounded walk of a huge root such as the home folder took minutes before the model was ever asked.
+    """
+    deadline = time.monotonic() + _WALK_BUDGET_S
+    python = tests = 0
+    for _, dirs, files in os.walk(root):
+        dirs[:] = [d for d in dirs if d not in _IGNORED_NAMES and not d.startswith(".")]
+        for name in files:
+            if name.endswith(".py"):
+                python += 1
+                tests += name.startswith("test_")
+        if time.monotonic() > deadline:
+            break
+    return python, tests
