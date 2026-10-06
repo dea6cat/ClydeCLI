@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ignored and hidden folders and stops after 1 s.
 
 ### Added
+- `clyde sessions list|search WORDS|archive ID|unarchive ID`: find old sessions of this folder by their text, and move ones you
+  are done with out of `/resume` (to `sessions/archive/`; unarchive brings them back).
 - `/status` shows the model, mode, directory, session, goal, terse and token totals. `/goal [text|clear]` sets a goal for the
   session that rides in the system prompt every turn (capped at 500 characters, in memory only).
 - `/review` and `clyde review`: a read-only review of uncommitted changes (and the untracked files), `commit SHA`, or `base BRANCH`.
