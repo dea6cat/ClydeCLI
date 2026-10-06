@@ -111,6 +111,6 @@ class TestReviewCli(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         with tempfile.TemporaryDirectory() as plain:
             done = subprocess.run([sys.executable, "-m", "src.cli", "review"], cwd=plain, capture_output=True, text=True,
-                                  env={"PYTHONPATH": str(root), "HOME": plain, "PATH": "/usr/bin:/bin:/usr/local/bin"}, timeout=60)
+                                  env={"PYTHONPATH": str(root), "HOME": plain, "CLYDE_ACCEPT_LICENSE": "1", "PATH": "/usr/bin:/bin:/usr/local/bin"}, timeout=60)
         self.assertEqual(done.returncode, 2, done.stderr)
         self.assertIn("review:", done.stderr)
