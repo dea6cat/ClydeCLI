@@ -956,6 +956,19 @@ class ClydeREPL:
         except Exception:
             return
 
+    def _names_a_command(self, name: str) -> bool:
+        """Whether `/name` typed alone is a command or a user-invocable skill that exists, so it runs."""
+        if self.command_registry.has(name):
+            return True
+        try:
+            from src.skills.loader import get_all_skills
+
+            cwd = self.tool_context.cwd or self.tool_context.workspace_root
+            return any(s.name.lower() == name.lower() and getattr(s, "user_invocable", True)
+                       for s in get_all_skills(project_root=cwd))
+        except Exception:
+            return False
+
     def _show_slash_palette(self, query: str | None = None) -> None:
         q = (query or "").strip().lower()
         self.console.print("\n[bold]Available commands and skills:[/bold]")
@@ -1159,7 +1172,7 @@ class ClydeREPL:
             return
         if raw.startswith("/") and " " not in raw and raw.lower() not in (c.lower() for c in self._built_in_commands):
             query = raw[1:]
-            if query:
+            if query and not self._names_a_command(query):   # a real name runs; a partial one lists what matches
                 self._show_slash_palette(query=query)
                 return
 
@@ -2119,7 +2132,18 @@ class ClydeREPL:
         ref = model_ref(self.provider, self.model)
         set_default_model(ref)
         self.console.print(f"[green]Model: {ref}[/green] [dim](saved as default)[/dim]")
+        self._warn_if_unlisted()
         return True
+
+    def _warn_if_unlisted(self) -> None:
+        """A model the provider's own list doesn't contain usually fails on the first request: say so now."""
+        try:
+            models = self.provider.list_models()
+        except Exception:
+            return
+        if models and self.model not in models:
+            self.console.print(f"[yellow]{self.model} isn't in {self.provider_name}'s model list; if the next request "
+                               "fails, pick another with /model.[/yellow]")
 
     def _turn_footer(self, past: str, started: float, usage: dict | None = None, ref: str = "") -> None:
         """Close a reply with how long it took, the machine time and, when known, what the turn used,

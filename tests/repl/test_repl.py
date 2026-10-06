@@ -486,6 +486,23 @@ class TestREPL(unittest.TestCase):
                     self.assertTrue(text.endswith("Q8_0") and "…" in text)   # too long: the end, which names the model, is kept
                     self.assertLess(len(text), 90)
 
+    def test_a_command_or_skill_typed_alone_runs_and_only_a_partial_name_lists_matches(self):
+        from types import SimpleNamespace
+        with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
+            with patch('src.repl.core.Session.create'):
+                with _fake_provider_env():
+                    repl = ClydeREPL(model="glm:glm-4.5")
+                    repl.console.print = Mock()
+                    skill = SimpleNamespace(name="hello", description="Greets.", user_invocable=True)
+                    with patch.object(repl, "_show_slash_palette") as palette, \
+                            patch('src.skills.loader.get_all_skills', return_value=[skill]), \
+                            patch.object(repl, "_try_execute_new_command", return_value=(True, "ran")):
+                        repl.handle_command("/cost")          # a registry command that is not one of the built-in names
+                        repl.handle_command("/hello")         # a skill
+                        palette.assert_not_called()
+                        repl.handle_command("/hel")           # partial: list what matches
+                        palette.assert_called_once_with(query="hel")
+
     def _skills_repl(self):
         from types import SimpleNamespace
         skills = [SimpleNamespace(name="zeta", description="Last one.\n  Second line.", user_invocable=True),
@@ -531,6 +548,18 @@ class TestREPL(unittest.TestCase):
                         repl.handle_command("/skills scan")
                     scan.assert_called_once_with(["scan"])
                     pick.assert_not_called()
+
+    def test_switching_to_a_model_the_provider_does_not_list_warns(self):
+        with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
+            with patch('src.repl.core.Session.create'):
+                with _fake_provider_env():
+                    repl = ClydeREPL(model="glm:glm-4.5")
+                    repl.console.print = Mock()
+                    with patch('src.repl.core.set_default_model'):
+                        repl.handle_command("/model glm:nope")
+                        repl.handle_command("/model glm:glm-4.5")
+                    shown = [str(a[0]) for a, _k in repl.console.print.call_args_list if a]
+                    self.assertEqual(sum("isn't in glm's model list" in line for line in shown), 1)   # only for the unlisted one
 
     def test_model_command_rejects_unknown_provider(self):
         with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
