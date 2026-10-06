@@ -253,6 +253,8 @@ clyde setup                    # First-run onboarding (provider, other agents' h
 clyde login                    # Connect a provider, pick a default model
 clyde hooks import             # Bring over hooks from Claude Code, Gemini CLI, Cursor, Copilot CLI
 clyde mcp import               # Bring over MCP servers from Claude Code, Cursor, Gemini CLI, Codex, Copilot CLI
+clyde review [commit SHA | base BRANCH]  # Read-only review of your changes; prints and exits (2 outside a git repo)
+clyde sessions list|search WORDS|archive ID|unarchive ID  # This folder's sessions: find by text, hide old ones from /resume
 clyde plugin install <dir|url> # Install a plugin (then list / enable / disable / remove)
 clyde plugin import            # Bring over plugins installed for Claude Code, Codex or Cursor
 clyde --debug                  # Print trace events live while you work
@@ -466,6 +468,10 @@ That's all it takes: clone, configure, run.
 | `/mcp login <server>` / `/mcp logout <server>` | OAuth sign-in (browser) for a remote MCP server, or forget its tokens |
 | `/plugins`   | Loaded plugins and what each added |
 | `/check`     | Run the project's ruff, mypy and pytest |
+| `/review [commit SHA \| base BRANCH]` | Read-only review of uncommitted changes (and untracked files), one commit, or this branch against its base |
+| `/status`    | Model, mode, directory, session, goal, terse and token totals, plus plan progress |
+| `/goal [text\|plan\|clear]` | A goal for this session, kept in the system prompt every turn (500 characters at most); `plan` makes it "every phase of the saved plan is complete" and it clears itself when the last phase is done |
+| `/plan [done\|start\|pending N \| clear]` | Show the saved plan; set phase N's status; or delete the plan |
 | `/debug [path]` | The last turn's model and tool calls, or the trace file path |
 | `/skills scan` / `/skills allow <name>` | Rescan skills with SkillSpector (LLM review when your model allows) and show verdicts; let a held-back skill, plugin or `mcp:<server>` in |
 | `/rewind` | Undo the model's file edits and/or the conversation back to before one of your messages |
@@ -646,6 +652,24 @@ Shift+Tab cycles the mode, shown under the prompt:
 
 Deny rules and the always-refused commands (like `sudo`) apply in every mode, and writes outside the
 project are refused in every mode.
+
+### Plans
+
+When the model presents a plan with `ExitPlanMode` and you approve it, the plan is saved to
+`.clyde/plans/<session id>.md` and its head (goal, next step, one line per phase with its status) goes back into the
+system prompt on every turn, fenced as data. So the plan survives `/compact`, `/clear` and `--resume`. Plan mode asks
+for a fixed shape: `## Goal`, `## Next Step`, `### Phase N: name` blocks each with a `- **Status:** pending | in_progress | complete`
+line, then decisions and errors. `/plan` shows it, `/plan done|start|pending N` changes a phase, `/status` shows the
+progress, and `/goal plan` turns "every phase is complete" into a goal that ends itself.
+(The idea comes from [planning-with-files](https://github.com/OthmanAdi/planning-with-files), MIT.)
+
+- **Kept out of git automatically.** The first time a plan is saved in a git repository, `.clyde/plans/` is added to that
+  clone's `.git/info/exclude`. It is local to your clone: no `.gitignore` or other tracked file is changed. Outside a
+  repository nothing is added.
+- **A custom `planFilePath` is not tracked.** If the model gives `ExitPlanMode` its own `planFilePath`, the plan is written
+  there (inside the project, as every write must be), but Clyde does not reload it into later turns, `/plan` does not see
+  it, and it is not added to `.git/info/exclude`. Only the default per-session file is.
+- A saved plan file over 200 KB is ignored, and only its head (about 2,500 characters) rides in the prompt.
 
 ### Data Files
 
