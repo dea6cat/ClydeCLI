@@ -292,18 +292,34 @@ class TestF03Approvals(Case):
         t.send("n\r")
         t.expect("done", 30)
 
-    def test_F03_E5_ctrl_c_at_the_permission_prompt_is_a_denial_and_the_app_survives(self):
+    def test_F03_E5_ctrl_c_at_the_permission_prompt_writes_nothing_and_the_app_survives(self):
+        # Ctrl+C there has two valid outcomes, depending on timing: the turn is aborted, or it counts as a denial and
+        # the turn goes on. Either way nothing is written, the follow-up reaches the model, and no tool call is left
+        # without a result (a real provider rejects a conversation that has one).
         target = self.tmp / "a.md"
-        server = self.model(write_call(target), say("done"), say("alive"))
+        server = self.model(write_call(target), say("done"), say("alive"), say("alive"))
         t = self.app(server)
         t.send_line("make a doc")
         t.expect("Allow?", 30)
         t.send(CTRL_C)
-        t.ready(30)                                     # the prompt takes input again
+        # Aborted ("Interrupted") or denied and carried on (the turn footer): wait for whichever happens, so the
+        # follow-up is typed at an idle prompt and not into a turn that is still running.
+        t.expect(r"Interrupted|\d+ in, \d+ out", 30, regex=True, since_last=True)
+        t.ready(30)
         self.assertFalse(target.exists())
         t.send_line("still there?")
-        t.turn_done()
-        self.assertIn("still there?", server.user_texts()[-1])
+        for _ in range(150):
+            if any(server.user_texts(i)[-1] == "still there?" for i in range(len(server.requests))):
+                break
+            t._pump(0.2)
+        followed = [i for i in range(len(server.requests)) if server.user_texts(i)[-1] == "still there?"]
+        self.assertTrue(followed, [server.user_texts(i)[-1] for i in range(len(server.requests))])
+        messages = server.requests[followed[0]]["messages"]
+        for at, message in enumerate(messages):
+            if message["role"] == "assistant" and message.get("tool_calls"):
+                self.assertEqual(messages[at + 1]["role"], "tool", messages)    # every tool call has its result
+        self.assertFalse(target.exists())
+
     def test_F03_E6_a_code_file_inside_the_project_is_written_without_asking(self):
         # By design in hold mode (README); the original asks for every edit. See "to check" in bugs.md.
         target = self.tmp / "a.py"
@@ -454,7 +470,8 @@ class TestF07Context(Case):
         t.send_line("hi")
         t.expect("hello", 30)
         t.send_line("/context")
-        t.expect("oken", 15, since_last=True)
+        t.expect("Context Usage", 20)
+        t.expect("Tokens:", 5)
         self.assertNotIn("Traceback", t.tail(3000))
 
     def test_F07_H2_compact_after_a_short_chat_does_not_crash(self):
@@ -610,8 +627,7 @@ class TestF12Model(Case):
         t.ready()
         t.send_line("hi")
         t.turn_done()
-        self.assertEqual(server.requests[0]["model"], "m2")
-        self.assertRegex(t.tail(400), r"♠ hold.*fake:m2")
+        self.assertEqual(server.requests[0]["model"], "m2")             # the status-line corner is checked in F02-H1
     def test_F12_H2_typing_filters_the_picker(self):
         t = self.app(self.model())
         t.send_line("/model")
