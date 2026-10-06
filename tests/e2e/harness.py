@@ -37,9 +37,9 @@ _ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)
 UP, DOWN, ENTER, ESC, CTRL_C, CTRL_D, SHIFT_TAB = b"\x1b[A", b"\x1b[B", b"\r", b"\x1b", b"\x03", b"\x04", b"\x1b[Z"
 
 
-def say(text: str, delay: float = 0) -> dict:
-    """A scripted reply that is plain text, after `delay` seconds."""
-    return {"text": text, "delay": delay}
+def say(text: str, delay: float = 0, thinking: str = "") -> dict:
+    """A scripted reply that is plain text, after `delay` seconds, optionally with reasoning text before it."""
+    return {"text": text, "delay": delay, "thinking": thinking}
 
 
 def fail(status: int, message: str = "scripted error") -> dict:
@@ -107,8 +107,12 @@ class FakeModel:
                           "function": {"name": item["tool"], "arguments": json.dumps(item["arguments"])}}
             return [{"choices": [{"index": 0, "delta": {"role": "assistant", "tool_calls": [call_delta]}}]},
                     {"choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}], "usage": usage}]
-        return [{"choices": [{"index": 0, "delta": {"role": "assistant", "content": item["text"]}}]},
-                {"choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}], "usage": usage}]
+        chunks = []
+        if item.get("thinking"):
+            chunks.append({"choices": [{"index": 0, "delta": {"role": "assistant", "reasoning_content": item["thinking"]}}]})
+        if item["text"]:
+            chunks.append({"choices": [{"index": 0, "delta": {"role": "assistant", "content": item["text"]}}]})
+        return chunks + [{"choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}], "usage": usage}]
 
     def close(self) -> None:
         """Stop answering and refuse connections (the socket is closed too). Safe to call twice."""

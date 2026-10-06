@@ -2050,6 +2050,8 @@ class ClydeREPL:
             elif self.stream and stream_started:
                 self.console.print()
                 self.console.print()
+            elif not result.response_text.strip():
+                self._print_no_answer(result)
             else:
                 self.console.print(Markdown(result.response_text))
                 self.console.print()
@@ -2146,6 +2148,16 @@ class ClydeREPL:
         if models and self.model not in models:
             self.console.print(f"[yellow]{self.model} isn't in {self.provider_name}'s model list; if the next request "
                                "fails, pick another with /model.[/yellow]")
+
+    def _print_no_answer(self, result) -> None:  # type: ignore[no-untyped-def]
+        """A turn that ended with no answer text (a reasoning model can spend all of it thinking): say so, with what is
+        known, instead of showing only the footer."""
+        tokens = (result.usage or {}).get("output_tokens", 0)
+        spent = f" after {tokens} output tokens" if tokens else ""
+        self.console.print(f"[yellow]The model ended its turn{spent} without any answer text.[/yellow] "
+                           "[dim]It may have used them on reasoning or reached its output limit. Ask again, try /think off, "
+                           "or pick another model with /model.[/dim]")
+        self.console.print()
 
     def _turn_footer(self, past: str, started: float, usage: dict | None = None, ref: str = "") -> None:
         """Close a reply with how long it took, the machine time and, when known, what the turn used,
