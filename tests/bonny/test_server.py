@@ -104,6 +104,17 @@ class TestPage(BonnyCase):
         self.assertNotIn("innerHTML", PAGE)   # replies reach the page as text only
         self.assertNotIn("transition: all", PAGE)
 
+    def test_the_page_keeps_its_accessibility_structure(self):
+        from src.bonny.page import PAGE
+
+        self.assertEqual(PAGE.count("<h1"), 1)                                   # one page title, even while a chat hides the hero
+        self.assertIn('class="skip" href="#input"', PAGE)                         # a way past the sidebar
+        self.assertIn('role="log" aria-live="off"', PAGE)                         # streamed text is not read out chunk by chunk
+        self.assertIn('id="announce" role="status" aria-live="polite"', PAGE)     # progress and completion are
+        self.assertIn('aria-controls="side" aria-expanded="false"', PAGE)
+        for ident in ("dim", "blur", "glass", "fit", "font"):
+            self.assertIn(f'for="{ident}"', PAGE)                                 # every setting control has a label
+
     def test_models_lists_graded_models_and_state_carries_the_latest_event_id(self):
         graded = {"a:m": {"passed": True}, "b:m": {"passed": False}, "cardShuffle:house": {"passed": True}}
         with patch("src.providers.model_eval.load_results", return_value=graded):

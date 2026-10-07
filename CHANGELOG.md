@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Bonny now uses the site's fonts, hairlines and corner-cut controls, and **Customize** changes her look: presets, seven colours, a
   background image (dim, blur, see-through panels), shape, font, greeting, custom CSS and a copyable theme code, saved in
   `~/.clyde/bonny/`.
+  Accessibility pass: a skip link, one page title, streamed text no longer read out chunk by chunk (progress and completion are announced instead), keyboard
+  navigation for the answer menu and the Customize panel with focus returned on close, labelled controls, and a low-contrast warning when your colours are hard to read.
 - A steer: text sent to a running turn is added as a user message before the model's next call (`RunControl` in
   `src/run_control.py`, polled by the agent loop). ACP's stop uses the same interrupt.
 - cardShuffle council: `cardShuffle:<tier> council` (for example `/model cardShuffle:high-roller council`) asks the tier's top four
