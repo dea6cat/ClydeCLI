@@ -7,9 +7,15 @@
  *
  * The pattern: scrub and pick. A tween per card, a stagger by distance, and a
  * hit test on the cards' RESTING heights, so a card sliding out cannot change
- * which one is chosen.
+ * which one is chosen. With nobody pointing, it deals on its own, one model at
+ * a time, and the read-out names the card that is out.
  */
-const { Cam, fit, lerp, mk, place, pointer, poly, proj, rad, register, disposer, rrect, tdone, tset, tval, tween } = HL;
+const { Cam, fit, lerp, mk, place, pointer, poly, proj, rad, register, reducedMotion, disposer, rrect, tdone, tset, tval, tween } = HL;
+
+// the models of the pile, bottom card first: the names the read-out gives (all of them models Clyde can be pointed at)
+const NAMES = ["qwen3-0.6b", "haiku", "qwen3:8b", "codestral", "gemini-flash", "muse-glimmer", "glm-4.5", "gpt-5.4"];
+// the order the dealer works through on its own, a shuffle that visits every card
+const ORDER = [5, 2, 7, 0, 3, 6, 1, 4], DWELL = 2100, START = 3200, RESUME = 1200;
 
 const N = 8, CW = 56, CH = 78, GAP = 8, TK = 1.4, SLIDE = 46, UP = 18;
 // each card rests a little off the one below it: turn in degrees, then x and y in world units
@@ -49,13 +55,20 @@ function mount({ stage, svg, read }, value) {
     cd.pips.forEach((el, k) => place(el, at(i, -CW / 2 + 7 + (k % 4) * 3.6, -CH / 2 + 7 + Math.floor(k / 4) * 3.6, s, z)));
   };
 
+  // autoplay, ambient and the only motion without input: deal on a schedule while nobody is pointing; the pointer takes over
+  let held = false, step = 0, nextAt = 0;
   const B = register(stage, (_dt, now) => {
     let moving = false;
+    const auto = !held && !reducedMotion();
+    if (auto) {
+      if (!nextAt) nextAt = now + START;
+      if (now >= nextAt) { setActive(ORDER[step++ % ORDER.length]); nextAt = now + DWELL; }
+    }
     cards.forEach((cd, i) => {
       draw(i, tval(cd.s, now), tval(cd.u, now));
       if (!tdone(cd.s, now) || !tdone(cd.u, now)) moving = true;
     });
-    return moving;
+    return moving || auto;
   });
   bag.add(B.unregister);
 
@@ -86,12 +99,15 @@ function mount({ stage, svg, read }, value) {
       tset(cd.u, a >= 0 && i > a ? 1 : 0, now, delay);
     });
     mark(a);
-    read.textContent = a < 0 ? "rest" : "card " + (a + 1);
+    read.textContent = a < 0 ? "rest" : NAMES[a];
     B.wake();
   }
 
   cards.forEach((_, i) => draw(i, 0, 0));
-  bag.add(pointer(stage, { move: (p) => setActive(hit(p)), leave: () => setActive(-1) }));
+  bag.add(pointer(stage, {
+    move: (p) => { held = true; setActive(hit(p)); },
+    leave: () => { held = false; nextAt = performance.now() + RESUME; setActive(-1); },
+  }));
   bag.add(() => svg.replaceChildren());
 
   return { set: (v) => { stag = v; }, destroy: bag.dispose };
@@ -99,8 +115,8 @@ function mount({ stage, svg, read }, value) {
 
 hairline({
   name: "deal",
-  means: "Eight cards in a loose pile: the one at the pointer's height slides out, and the cards above lift to let it through.",
-  rules: [1, 2, 5, 8],
+  means: "A pile of eight cards, one per model, dealt in turn: the one at the pointer's height slides out and names itself.",
+  rules: [1, 2, 5, 7, 8],
   range: [0, 40, 90],
   mount,
 });
