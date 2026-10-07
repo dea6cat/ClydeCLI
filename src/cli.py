@@ -44,6 +44,7 @@ Examples:
   clyde plugin install <path|git-url> Install a plugin (skills, hooks, MCP servers, tools); asks before enabling it
   clyde plugin import                 Bring over plugins installed for Claude Code, Codex or Cursor
   clyde plugin list                   List installed plugins; also: plugin remove|enable|disable <name>
+  clyde uninstall [--purge] [-y]      Remove Clyde the way it was installed; --purge also deletes ~/.clyde
   clyde doctor                        How Clyde is installed: method, version, PATH, other installs, Claude Code
   clyde license [accept]              Show the licence terms and whether you accepted them; accept records it
   clyde -p "<prompt>"                 One turn without the prompt, answer on stdout (scripts, CI); also --mode,
@@ -101,6 +102,9 @@ Examples:
     sessions_parser.add_argument('target', nargs='*', help='search: the words to look for; archive/unarchive: a session id')
 
     subparsers.add_parser('doctor', help='How Clyde is installed: method, version, PATH, other installs, Claude Code, licence')
+    uninstall_parser = subparsers.add_parser('uninstall', help='Remove Clyde the way it was installed; --purge also deletes ~/.clyde (keys, sessions)')
+    uninstall_parser.add_argument('--purge', action='store_true', help="also delete Clyde's data folder: settings, saved keys, sessions, licence record")
+    uninstall_parser.add_argument('-y', '--yes', action='store_true', help='no confirmation questions')
     license_parser = subparsers.add_parser('license', help='Show the licence terms and whether you accepted them; `license accept` records it')
     license_parser.add_argument('action', nargs='?', choices=['show', 'accept'], default='show')
 
@@ -131,6 +135,9 @@ Examples:
         print("\n".join(install_info.report_lines()))
         print("\nFor the full environment check (keys, providers, sandbox, config) run /doctor inside clyde.")
         return 1 if any(line.lstrip().startswith("✗") for line in install_info.report_lines()) else 0
+
+    if args.command == 'uninstall':
+        return handle_uninstall(Console(), purge=args.purge, assume_yes=args.yes)
 
     if args.command == 'review':
         from src.repl import headless
@@ -514,6 +521,44 @@ def _scan_plugin(console: Console, plugin):  # type: ignore[no-untyped-def]
     if verdict.blocked:
         console.print("  [red]SkillSpector recommends not installing it.[/red] Enabling it anyway records your approval.")
     return verdict
+
+
+def handle_uninstall(console: Console, purge: bool = False, assume_yes: bool = False) -> int:
+    """`clyde uninstall [--purge] [-y]`: remove Clyde with the tool that installed it. Data stays unless --purge.
+    Exit 0 done or nothing to do, 1 the removal failed, 2 not managed here."""
+    import shutil
+    import subprocess
+    from rich.prompt import Confirm
+    from src import install_info
+    info = install_info.detect()
+    command = install_info.uninstall_command(info)
+    if command is None:
+        console.print(f"[yellow]This Clyde runs from a source checkout ({info.location}); nothing to uninstall.[/yellow] "
+                      "Delete the folder, and its virtual environment, yourself.")
+        return 2
+    folder = install_info.purge_target() if purge else None
+    if purge and folder is None:
+        console.print("[red]Won't purge: Clyde's data folder isn't where it should be.[/red] Nothing was removed.")
+        return 2
+    console.print(f"This will run: [bold]{' '.join(command)}[/bold]")
+    console.print(f"Then delete {folder} (settings, saved keys, sessions, licence record)." if folder else
+                  "Your settings, saved keys and sessions in the Clyde folder stay; `clyde uninstall --purge` deletes them too.")
+    if not assume_yes and not Confirm.ask("Continue?", default=False):
+        console.print("Cancelled; nothing was removed.")
+        return 0
+    try:
+        done = subprocess.run(command, check=False)
+    except OSError as e:
+        console.print(f"[red]Couldn't run {command[0]}: {e}[/red]")
+        return 1
+    if done.returncode != 0:
+        console.print(f"[red]{command[0]} failed (exit {done.returncode}); nothing else was removed.[/red]")
+        return 1
+    if folder is not None:
+        shutil.rmtree(folder)
+        console.print(f"Deleted {folder}.")
+    console.print("[green]ClydeCLI uninstalled.[/green] Project `.clyde/` folders in your repositories are left alone.")
+    return 0
 
 
 def handle_license(console: Console, action: str) -> int:
