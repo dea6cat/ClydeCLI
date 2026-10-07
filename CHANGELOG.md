@@ -25,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ignored and hidden folders and stops after 1 s.
 
 ### Added
+- Update channels: `clyde update --channel latest|stable` (saved as `update_channel`). `latest` follows `main`; `stable` follows the newest
+  `vX.Y.Z` tag and never suggests a downgrade. The once-a-day check and its note follow the saved channel.
 - `clyde update [--check]` updates Clyde the way it was installed. A once-a-day background check (cached in `~/.clyde/update_check.json`,
   off with `CLYDE_NO_UPDATE_CHECK=1`) adds one line at the next start when a newer version exists; nothing installs by itself.
   `uninstall`, `update` and `doctor` work without accepting the licence, so you can always leave.

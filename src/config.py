@@ -149,3 +149,21 @@ def set_output_style(name: Optional[str]) -> None:
     else:
         config.pop("output_style", None)
     save_config(config)
+
+
+UPDATE_CHANNELS = ("latest", "stable")
+
+
+def get_update_channel() -> str:
+    """Which releases `clyde update` follows: "latest" (every commit on main, the default) or "stable" (tagged releases)."""
+    channel = load_config().get("update_channel")
+    return channel if channel in UPDATE_CHANNELS else "latest"
+
+
+def set_update_channel(channel: str) -> None:
+    """Persist the update channel. ValueError for anything but latest or stable."""
+    if channel not in UPDATE_CHANNELS:
+        raise ValueError(f"channel must be one of {', '.join(UPDATE_CHANNELS)}")
+    config = load_config()
+    config["update_channel"] = channel
+    save_config(config)

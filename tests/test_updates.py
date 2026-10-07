@@ -21,16 +21,29 @@ OLD = ii.Install(method="uv-tool", version="0", location="/x", commit="aaaaaaa")
 SAME = ii.Install(method="uv-tool", version="0", location="/x", commit="dddddd0"[:7])
 
 
+LATEST = updates.Target("latest", FULL)
+STABLE = updates.Target("stable", "e" * 40, "0.2.0", "v0.2.0")
+
+
 class TestCompare(unittest.TestCase):
-    def test_states(self):
-        self.assertEqual(updates.compare(OLD, FULL).state, "behind")
-        self.assertEqual(updates.compare(ii.Install("uv-tool", "0", "/x", commit="ddddddd"), FULL).state, "current")
-        self.assertEqual(updates.compare(ii.Install("pip", "0", "/x"), FULL).state, "unknown")     # no recorded commit
+    def test_latest_compares_commits(self):
+        self.assertEqual(updates.compare(OLD, LATEST).state, "behind")
+        self.assertEqual(updates.compare(ii.Install("uv-tool", "0", "/x", commit="ddddddd"), LATEST).state, "current")
+        self.assertEqual(updates.compare(ii.Install("pip", "0", "/x"), LATEST).state, "unknown")     # no recorded commit
         self.assertEqual(updates.compare(OLD, None).state, "unknown")
+
+    def test_stable_compares_versions_and_never_suggests_a_downgrade(self):
+        at = lambda v: ii.Install("uv-tool", v, "/x", commit="aaaaaaa")
+        self.assertEqual(updates.compare(at("0.1.0"), STABLE).state, "behind")
+        self.assertEqual(updates.compare(at("0.2.0"), STABLE).state, "current")
+        self.assertEqual(updates.compare(at("0.3.1"), STABLE).state, "ahead")
+        self.assertEqual(updates.compare(at("dev"), STABLE).state, "unknown")
 
     def test_update_commands_follow_the_method(self):
         make = lambda m: ii.Install(method=m, version="0", location="/x")
         self.assertEqual(updates.update_command(make("uv-tool"))[:3], ["uv", "tool", "install"])
+        self.assertTrue(updates.update_command(make("uv-tool"), STABLE)[-1].endswith("ClydeCLI@v0.2.0"))
+        self.assertTrue(updates.update_command(make("uv-tool"), LATEST)[-1].endswith("ClydeCLI"))
         self.assertIn("--force", updates.update_command(make("pipx")))
         self.assertIn("--upgrade", updates.update_command(make("pip")))
         self.assertIsNone(updates.update_command(make("editable")))
@@ -60,6 +73,23 @@ class TestFetch(unittest.TestCase):
         self.assertIsNone(self._fetch(urllib.error.URLError("offline")))
 
 
+class TestTags(unittest.TestCase):
+    def _tags(self, body):
+        with patch.object(updates, "_get", return_value=body):
+            return updates.fetch_newest_tag()
+
+    def test_the_highest_release_tag_wins_and_other_tags_are_ignored(self):
+        tags = [{"name": "v0.9.0", "commit": {"sha": "a" * 40}}, {"name": "v0.10.0", "commit": {"sha": "b" * 40}},
+                {"name": "v1.0.0-rc1", "commit": {"sha": "c" * 40}}, {"name": "nightly", "commit": {"sha": "d" * 40}},
+                {"name": "v0.2.0", "commit": {"sha": "not a sha"}}]
+        got = self._tags(json.dumps(tags))
+        self.assertEqual((got.version, got.ref, got.commit), ("0.10.0", "v0.10.0", "b" * 40))      # 10 > 9, not text order
+
+    def test_no_tags_or_a_bad_answer_is_none(self):
+        for body in ("[]", "not json", "{}", None):
+            self.assertIsNone(self._tags(body), body)
+
+
 class TestCacheAndNote(unittest.TestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
@@ -73,31 +103,38 @@ class TestCacheAndNote(unittest.TestCase):
         os.environ.pop(updates.ENV_DISABLE, None)
         self.addCleanup(env.stop)
 
-    def test_the_cache_is_refreshed_at_most_once_a_day(self):
+    def test_the_cache_is_refreshed_at_most_once_a_day_per_channel(self):
         calls = []
-        fetch = lambda: calls.append(1) or FULL
-        self.assertTrue(updates.refresh_cache(fetch, now=10_000_000.0))
-        self.assertFalse(updates.refresh_cache(fetch, now=10_000_000.0 + updates.CHECK_EVERY_S - 1))
-        self.assertTrue(updates.refresh_cache(fetch, now=10_000_000.0 + updates.CHECK_EVERY_S + 1))
-        self.assertEqual(len(calls), 2)
-        self.assertEqual(json.loads((self.home / "update_check.json").read_text())["remote"], FULL)
+        fetch = lambda channel: calls.append(channel) or (LATEST if channel == "latest" else STABLE)
+        self.assertTrue(updates.refresh_cache(fetch, now=10_000_000.0, channel="latest"))
+        self.assertFalse(updates.refresh_cache(fetch, now=10_000_000.0 + updates.CHECK_EVERY_S - 1, channel="latest"))
+        self.assertTrue(updates.refresh_cache(fetch, now=10_000_000.0 + 5, channel="stable"))        # a new channel asks at once
+        self.assertTrue(updates.refresh_cache(fetch, now=10_000_000.0 + 5 + updates.CHECK_EVERY_S + 1, channel="stable"))
+        self.assertEqual(calls, ["latest", "stable", "stable"])
+        self.assertEqual(json.loads((self.home / "update_check.json").read_text())["ref"], "v0.2.0")
 
     def test_a_failed_fetch_stores_nothing_and_does_not_start_the_clock(self):
-        self.assertFalse(updates.refresh_cache(lambda: None, now=10_000_000.0))
+        self.assertFalse(updates.refresh_cache(lambda channel: None, now=10_000_000.0, channel="latest"))
         self.assertFalse((self.home / "update_check.json").exists())
 
-    def test_the_note_appears_only_when_behind_and_checks_are_on(self):
-        (self.home / "update_check.json").write_text(json.dumps({"checked_at": 1.0, "remote": FULL}))
-        note = updates.cached_note(OLD)
+    def test_the_note_appears_only_when_behind_on_the_cached_channel_and_checks_are_on(self):
+        updates.refresh_cache(lambda channel: LATEST, now=10_000_000.0, channel="latest")
+        note = updates.cached_note(OLD, channel="latest")
         self.assertIn("aaaaaaa → ddddddd", note)
         self.assertIn("clyde update", note)
-        self.assertIsNone(updates.cached_note(ii.Install("uv-tool", "0", "/x", commit="ddddddd")))
+        self.assertIsNone(updates.cached_note(ii.Install("uv-tool", "0", "/x", commit="ddddddd"), channel="latest"))
+        self.assertIsNone(updates.cached_note(OLD, channel="stable"))            # the cache is for another channel
         with patch.dict(os.environ, {updates.ENV_DISABLE: "1"}):
-            self.assertIsNone(updates.cached_note(OLD))
+            self.assertIsNone(updates.cached_note(OLD, channel="latest"))
+
+    def test_a_stable_note_names_the_versions(self):
+        updates.refresh_cache(lambda channel: STABLE, now=10_000_000.0, channel="stable")
+        self.assertIn("0.1.0 → 0.2.0, stable channel", updates.cached_note(ii.Install("uv-tool", "0.1.0", "/x"), channel="stable"))
+        self.assertIsNone(updates.cached_note(ii.Install("uv-tool", "0.3.0", "/x"), channel="stable"))   # newer than stable
 
     def test_a_broken_cache_gives_no_note(self):
         (self.home / "update_check.json").write_text("not json")
-        self.assertIsNone(updates.cached_note(OLD))
+        self.assertIsNone(updates.cached_note(OLD, channel="latest"))
 
     def test_the_background_check_is_off_when_disabled(self):
         with patch.dict(os.environ, {updates.ENV_DISABLE: "1"}), patch("threading.Thread") as thread:
@@ -106,43 +143,76 @@ class TestCacheAndNote(unittest.TestCase):
 
 
 class TestHandler(unittest.TestCase):
-    def _run(self, install, remote, *, check=False, returncode=0):
+    def _run(self, install, target, *, check=False, returncode=0, channel=None, saved="latest"):
         from src import cli
         out = StringIO()
-        with patch.object(ii, "detect", return_value=install), patch.object(updates, "fetch_remote_commit", return_value=remote), \
+        with patch.object(ii, "detect", return_value=install), patch.object(updates, "fetch_target", return_value=target), \
+                patch("src.config.get_update_channel", return_value=channel or saved), \
+                patch("src.config.set_update_channel") as saver, \
                 patch("subprocess.run", return_value=subprocess.CompletedProcess([], returncode)) as run:
-            code = cli.handle_update(Console(file=out, width=140), check_only=check)
-        return code, out.getvalue(), run
+            code = cli.handle_update(Console(file=out, width=140), check_only=check, channel=channel)
+        return code, out.getvalue(), run, saver
 
     def test_check_reports_without_running_anything(self):
-        code, text, run = self._run(OLD, FULL, check=True)
+        code, text, run, _ = self._run(OLD, LATEST, check=True)
         self.assertEqual(code, 1)
         self.assertIn("A newer version exists", text)
-        self.assertEqual(self._run(ii.Install("uv-tool", "0", "/x", commit="ddddddd"), FULL, check=True)[0], 0)
+        self.assertEqual(self._run(ii.Install("uv-tool", "0", "/x", commit="ddddddd"), LATEST, check=True)[0], 0)
         self.assertEqual(self._run(OLD, None, check=True)[0], 2)
         run.assert_not_called()
 
     def test_update_runs_the_install_command_when_behind_and_not_when_current(self):
-        code, _, run = self._run(OLD, FULL)
+        code, _, run, _ = self._run(OLD, LATEST)
         self.assertEqual(code, 0)
         self.assertEqual(run.call_args.args[0][:3], ["uv", "tool", "install"])
-        code, text, run = self._run(ii.Install("uv-tool", "0", "/x", commit="ddddddd"), FULL)
+        code, text, run, _ = self._run(ii.Install("uv-tool", "0", "/x", commit="ddddddd"), LATEST)
         self.assertEqual(code, 0)
         self.assertIn("Already up to date", text)
         run.assert_not_called()
 
-    def test_update_still_runs_when_the_check_cannot_be_made(self):
-        code, _, run = self._run(OLD, None)
+    def test_stable_installs_the_tag_and_never_downgrades(self):
+        code, _, run, _ = self._run(ii.Install("uv-tool", "0.1.0", "/x", commit="aaaaaaa"), STABLE, saved="stable")
         self.assertEqual(code, 0)
+        self.assertTrue(run.call_args.args[0][-1].endswith("@v0.2.0"))
+        code, text, run, _ = self._run(ii.Install("uv-tool", "0.9.0", "/x", commit="aaaaaaa"), STABLE, saved="stable")
+        self.assertEqual(code, 0)
+        self.assertIn("Not downgrading", text)
+        run.assert_not_called()
+
+    def test_stable_with_no_release_yet_changes_nothing(self):
+        code, text, run, _ = self._run(OLD, None, saved="stable")
+        self.assertEqual(code, 2)
+        self.assertIn("no release yet", text)
+        run.assert_not_called()
+
+    def test_the_channel_flag_is_saved(self):
+        _, _, _, saver = self._run(OLD, STABLE, channel="stable")
+        saver.assert_called_once_with("stable")
+
+    def test_update_does_nothing_when_the_check_cannot_be_made_on_latest(self):
+        code, _, run, _ = self._run(OLD, None)
+        self.assertEqual(code, 0)             # latest: go ahead and reinstall the newest main
         run.assert_called_once()
 
     def test_a_failed_command_is_reported_and_a_source_checkout_is_not_managed(self):
-        code, text, _ = self._run(OLD, FULL, returncode=1)
+        code, text, _, _ = self._run(OLD, LATEST, returncode=1)
         self.assertEqual(code, 1)
         self.assertIn("failed", text)
-        code, _, run = self._run(ii.Install("editable", "0", "/src"), FULL)
+        code, _, run, _ = self._run(ii.Install("editable", "0", "/src"), LATEST)
         self.assertEqual(code, 2)
         run.assert_not_called()
+
+
+class TestChannelConfig(unittest.TestCase):
+    def test_the_default_is_latest_and_a_bad_value_is_refused(self):
+        from src import config
+        with tempfile.TemporaryDirectory() as tmp, patch("src.config.get_config_path", return_value=Path(tmp) / "config.json"):
+            self.assertEqual(config.get_update_channel(), "latest")
+            config.set_update_channel("stable")
+            self.assertEqual(config.get_update_channel(), "stable")
+            with self.assertRaises(ValueError):
+                config.set_update_channel("nightly")
+            self.assertEqual(config.get_update_channel(), "stable")
 
 
 if __name__ == "__main__":

@@ -253,7 +253,7 @@ clyde setup                    # First-run onboarding (provider, other agents' h
 clyde login                    # Connect a provider, pick a default model
 clyde hooks import             # Bring over hooks from Claude Code, Gemini CLI, Cursor, Copilot CLI
 clyde mcp import               # Bring over MCP servers from Claude Code, Cursor, Gemini CLI, Codex, Copilot CLI
-clyde update [--check]         # Move Clyde to the newest version, the way it was installed; --check only says whether one exists
+clyde update [--check] [--channel latest|stable]  # Move Clyde to the newest version of its channel, the way it was installed
 clyde uninstall [--purge] [-y] # Remove Clyde the way it was installed (uv tool, pipx, pip); --purge also deletes ~/.clyde: settings, keys, sessions
 clyde doctor                   # How Clyde is installed: method, version, PATH, other installs, Claude Code, licence
 clyde review [commit SHA | base BRANCH]  # Read-only review of your changes; prints and exits (2 outside a git repo)
@@ -658,8 +658,17 @@ project are refused in every mode.
 
 ### Updates
 
-`clyde update` moves Clyde to the newest commit on `main` with the tool that installed it (uv tool, pipx or pip); a source
-checkout is updated with `git pull`. `clyde update --check` only reports (exit 0 current, 1 newer exists, 2 could not check).
+`clyde update` moves Clyde to the newest version of its channel with the tool that installed it (uv tool, pipx or pip); a
+source checkout is updated with `git pull`. `clyde update --check` only reports (exit 0 current, 1 newer exists, 2 could not
+check).
+
+| Channel | Follows | Set with |
+|---|---|---|
+| `latest` (default) | every commit on `main` | `clyde update --channel latest` |
+| `stable` | the newest `vX.Y.Z` release tag; never downgrades you | `clyde update --channel stable` |
+
+The channel is saved in `~/.clyde/config.json` (`update_channel`). While no release tag exists, `stable` says so and changes
+nothing.
 Once a day a background thread asks GitHub for the newest commit and caches the answer in `~/.clyde/update_check.json`; the next
 start shows one line when you are behind. It never delays start-up and never installs anything by itself. Turn the check off
 with `CLYDE_NO_UPDATE_CHECK=1`. It does not run for `-p`, `--acp` or other commands.
