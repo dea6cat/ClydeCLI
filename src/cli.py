@@ -44,7 +44,7 @@ Examples:
   clyde --resume [SESSION_ID]         Pick a recent session to resume, or resume one by id
   clyde --list-models                 List models from every connected provider
   clyde --debug                       Start REPL and print trace events (model/tool calls) to stderr
-  clyde luv bonny                     Start Bonny, the web mode of Clyde, on localhost
+  clyde luv bonny [PORT]              Start Bonny, the web mode of Clyde, on localhost (default port 8080)
   bonny luv clyde                     Start Clyde in the terminal, from Bonny's side (same as `clyde`)
   clyde login                         Connect a provider and pick a default model
   clyde logout openai                 Remove a saved API key
@@ -115,7 +115,8 @@ Examples:
 
     luv_parser = subparsers.add_parser('luv', help='clyde luv bonny: start Bonny, the web mode of Clyde, on localhost')
     luv_parser.add_argument('who', choices=['bonny'])
-    luv_parser.add_argument('--port', type=int, default=0, help='port on 127.0.0.1 (default: any free one)')
+    luv_parser.add_argument('port', nargs='?', type=int, help='port on localhost (default: 8080, or a free one if that is taken)')
+    luv_parser.add_argument('--port', dest='port_flag', type=int, help='the same, as an option')
     luv_parser.add_argument('--no-open', action='store_true', help="don't open the browser")
 
     subparsers.add_parser('doctor', help='How Clyde is installed: method, version, PATH, other installs, Claude Code, licence')
@@ -150,7 +151,11 @@ Examples:
 
     if args.command == 'luv':
         from src.bonny import server
-        return server.main(model=args.model, port=args.port, open_browser=not args.no_open)
+        port = args.port if args.port is not None else args.port_flag
+        if port is not None and not 1 <= port <= 65535:
+            print(f"Port {port} is not valid: use 1 to 65535.", file=sys.stderr)
+            return 2
+        return server.main(model=args.model, port=port, open_browser=not args.no_open)
 
     if args.command == 'sessions':
         return handle_sessions(Console(), args.action, ' '.join(args.target))
