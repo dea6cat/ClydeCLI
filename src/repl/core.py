@@ -96,6 +96,7 @@ from src.providers.model_eval import hidden_refs
 from src.providers.base import ProviderError, is_auth_error
 from src.providers import laya_client
 from src.providers.card_shuffle import CardShuffle, record_vote
+from src.run_control import RunControl
 from src.providers.convert import append_response, to_canonical
 from src.tool_system.context import ToolContext
 from src.plugins import apply_plugins
@@ -361,6 +362,7 @@ class ClydeREPL:
         self.headless = headless
         self.last_result: Any = None   # the latest turn's AgentLoopResult
         self.last_error: str | None = None
+        self.control = RunControl()   # queue, steer and stop for a front end that drives turns from another thread
         self.stream = stream
         self._startup_resume = resume   # "" opens the picker, an id loads that session
         self._continue_last = continue_last
@@ -2130,6 +2132,7 @@ class ClydeREPL:
                     on_text_chunk=on_text_chunk if self.stream else None,
                     reasoning=self.reasoning,
                     on_thinking=on_thinking,
+                    steer=self.control.take_steer,
                 )
 
             self._current_status = self.console.status(_spin_text(word, turn_started), spinner="dots", spinner_style=_CARD_ACCENT)
