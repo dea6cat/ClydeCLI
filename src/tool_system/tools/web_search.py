@@ -7,7 +7,7 @@ import urllib.request
 from typing import Any
 
 from ..context import ToolContext
-from ..errors import ToolInputError
+from ..errors import ToolExecutionError, ToolInputError
 from ..protocol import ToolResult
 from ..registry import ToolSpec
 
@@ -17,6 +17,23 @@ _RESULT_RE = re.compile(
     r'<a[^>]+class="result__snippet"[^>]*>(?P<snippet>.*?)</a>',
     re.DOTALL,
 )
+
+
+# DuckDuckGo answers a plainly labelled script with an anti-bot page and no results, so the request looks like a browser's.
+_BROWSER_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"
+
+
+def _real_url(href: str) -> str:
+    """The page a result points at: DuckDuckGo wraps links as //duckduckgo.com/l/?uddg=<the real url>."""
+    href = html.unescape(href)
+    if href.startswith("//"):
+        href = "https:" + href
+    parsed = urllib.parse.urlparse(href)
+    if parsed.netloc.endswith("duckduckgo.com") and parsed.path.startswith("/l/"):
+        target = urllib.parse.parse_qs(parsed.query).get("uddg")
+        if target:
+            return target[0]
+    return href
 
 
 def _strip_tags(s: str) -> str:
@@ -49,8 +66,8 @@ class WebSearchTool:
         if not isinstance(num, int) or num < 1 or num > 10:
             raise ToolInputError("num must be an integer between 1 and 10")
 
-        url = "https://duckduckgo.com/html/?" + urllib.parse.urlencode({"q": query})
-        req = urllib.request.Request(url, headers={"User-Agent": "clyde-cli/0.1"})
+        url = "https://html.duckduckgo.com/html/?" + urllib.parse.urlencode({"q": query})
+        req = urllib.request.Request(url, headers={"User-Agent": _BROWSER_UA, "Accept-Language": "en"})
         with urllib.request.urlopen(req, timeout=15) as resp:
             raw = resp.read(1_000_000).decode("utf-8", errors="replace")
 
@@ -59,12 +76,14 @@ class WebSearchTool:
             results.append(
                 {
                     "title": _strip_tags(match.group("title")),
-                    "url": html.unescape(match.group("url")),
+                    "url": _real_url(match.group("url")),
                     "snippet": _strip_tags(match.group("snippet")),
                 }
             )
             if len(results) >= num:
                 break
 
+        if not results and "anomaly" in raw.lower():   # the anti-bot page: say so, don't pass off "no results"
+            raise ToolExecutionError("web search was blocked by the search engine (anti-bot check); try again later or use WebFetch on a known page")
         return ToolResult(name="WebSearch", output={"query": query, "results": results})
 
