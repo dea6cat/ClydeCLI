@@ -1115,6 +1115,11 @@ class ClydeREPL:
     def run(self):
         """Run the REPL."""
         self._print_startup_header()
+        from src import updates
+        if note := updates.cached_note():
+            self.console.print(f"[{_CARD_DIM}]{note}[/{_CARD_DIM}]")
+            self.console.print()
+        updates.start_background_check()     # a thread: the answer shows on the next start
         start_background_refresh(self.tool_context.workspace_root)
         if isinstance(self.provider, CardShuffle):
             laya_client.warm()   # ~17 s cold load in the background, ready before the first turn needs it
