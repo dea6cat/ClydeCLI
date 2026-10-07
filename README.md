@@ -360,6 +360,8 @@ One line (installs uv if needed, then `clyde`, then runs `clyde setup`):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/dea6cat/ClydeCLI/main/install.sh | sh
+# or pin a release tag or an exact commit:
+curl -fsSL https://raw.githubusercontent.com/dea6cat/ClydeCLI/main/install.sh | CLYDE_REF=v0.2.0 sh
 ```
 
 It includes Laya, the bundled decision model, and SkillSpector, the bundled skill scanner, so the
@@ -672,6 +674,11 @@ nothing.
 Once a day a background thread asks GitHub for the newest commit and caches the answer in `~/.clyde/update_check.json`; the next
 start shows one line when you are behind. It never delays start-up and never installs anything by itself. Turn the check off
 with `CLYDE_NO_UPDATE_CHECK=1`. It does not run for `-p`, `--acp` or other commands.
+
+**What is verified.** Clyde installs from source, so there are no signed binaries or checksum manifests like Claude Code's.
+What you get instead: `clyde update` installs the exact commit (or release tag) it just checked, so the install cannot differ from
+what it reported; `CLYDE_REF` pins the installer the same way; and `clyde doctor` shows which commit you run. Trust rests on
+GitHub over HTTPS and the commit hash. The one-line installer is `curl | sh`: read it first if that matters to you.
 
 ### Plans
 
