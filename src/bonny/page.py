@@ -10,6 +10,7 @@ PAGE = r"""<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Bonny</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20170%20100%22%3E%3Cstyle%3E.b%7Bfill%3A%2316231b%7D%40media%20%28prefers-color-scheme%3Adark%29%7B.b%7Bfill%3A%23e3dfd6%7D%7D%3C%2Fstyle%3E%3Cdefs%3E%3Cmask%20id%3D%22p%22%20maskUnits%3D%22userSpaceOnUse%22%20x%3D%220%22%20y%3D%220%22%20width%3D%22100%22%20height%3D%22100%22%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22%23fff%22%2F%3E%3Cpolyline%20points%3D%2234%2C44%2052%2C57%2034%2C70%22%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%227.5%22%2F%3E%3Crect%20x%3D%2257%22%20y%3D%2266.5%22%20width%3D%2215%22%20height%3D%227%22%20fill%3D%22%23000%22%2F%3E%3C%2Fmask%3E%3Cmask%20id%3D%22c%22%20maskUnits%3D%22userSpaceOnUse%22%20x%3D%220%22%20y%3D%220%22%20width%3D%22100%22%20height%3D%22100%22%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22%23fff%22%2F%3E%3Cpolyline%20points%3D%2237%2C36%2024%2C48%2037%2C60%22%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%227%22%2F%3E%3Cpolyline%20points%3D%2263%2C36%2076%2C48%2063%2C60%22%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%227%22%2F%3E%3Cline%20x1%3D%2256%22%20y1%3D%2235%22%20x2%3D%2244%22%20y2%3D%2263%22%20stroke%3D%22%23000%22%20stroke-width%3D%227%22%2F%3E%3C%2Fmask%3E%3C%2Fdefs%3E%3Cpath%20fill%3D%22%23d0202f%22%20mask%3D%22url%28%23p%29%22%20d%3D%22M50%205%20C50%205%209%2036%209%2060%20C9%2074%2021%2084%2034%2082%20C41%2081%2046%2077%2048%2072%20C48%2084%2044%2092%2033%2096%20L67%2096%20C56%2092%2052%2084%2052%2072%20C54%2077%2059%2081%2066%2082%20C79%2084%2091%2074%2091%2060%20C91%2036%2050%205%2050%205%20Z%22%2F%3E%3Cg%20transform%3D%22translate%2870%200%29%22%3E%3Cg%20mask%3D%22url%28%23c%29%22%3E%3Cpath%20class%3D%22b%22%20transform%3D%22rotate%28180%2050%2050%29%22%20d%3D%22M50%205%20C50%205%209%2036%209%2060%20C9%2074%2021%2084%2034%2082%20C41%2081%2046%2077%2048%2072%20C48%2084%2044%2092%2033%2096%20L67%2096%20C56%2092%2052%2084%2052%2072%20C54%2077%2059%2081%2066%2082%20C79%2084%2091%2074%2091%2060%20C91%2036%2050%205%2050%205%20Z%22%2F%3E%3C%2Fg%3E%3C%2Fg%3E%3C%2Fsvg%3E">
 <style>
 @font-face { font-family: "Bricolage Grotesque"; src: url(/static/bricolage-grotesque.woff2) format("woff2"); font-weight: 400 800; font-stretch: 75% 100%; font-display: swap; unicode-range: U+0000-00FF, U+2010-2027, U+2190-21FF; }
 @font-face { font-family: "JetBrains Mono"; src: url(/static/jetbrains-mono.woff2) format("woff2"); font-weight: 400 700; font-display: swap; unicode-range: U+0000-00FF, U+2010-2027, U+2190-21FF; }
@@ -85,7 +86,9 @@ body[data-shape="square"] .tag { clip-path: none; }
 .app { display: flex; height: 100%; }
 aside { width: 268px; flex: none; background: var(--side); border-right: 1px solid var(--line); display: flex; flex-direction: column; padding: 18px 0 8px; overflow: hidden; }
 .brand { display: flex; align-items: center; gap: 10px; padding: 0 18px 16px; font-weight: 800; font-size: 19px; letter-spacing: -.01em; border-bottom: 1px solid var(--line); }
-.brand svg { width: 24px; height: 24px; color: var(--spade); display: block; }
+.brand svg { height: 24px; width: auto; display: block; }
+.brand .clyde { fill: var(--spade); }
+.brand .bonny { fill: var(--text); }
 nav { display: flex; flex-direction: column; padding: 8px 0; border-bottom: 1px solid var(--line); }
 .nav { display: flex; align-items: center; gap: 10px; width: 100%; background: none; border: 0; border-left: 2px solid transparent; padding: 7px 18px; font: 500 13px/1.4 var(--mono); text-align: left; color: var(--text);
   transition-property: color, background-color, border-color; transition-duration: .2s; }
@@ -256,7 +259,14 @@ input[type="color"] { width: 36px; height: 24px; padding: 0; border: 1px solid v
 <div class="app">
 <aside id="side" aria-label="Bonny">
   <div class="brand">
-    <svg viewBox="0 0 100 100" role="img" aria-label="Bonny"><mask id="bonny-cut" maskUnits="userSpaceOnUse" x="0" y="0" width="100" height="100"><rect width="100" height="100" fill="#fff"/><polyline points="34,44 52,57 34,70" fill="none" stroke="#000" stroke-width="7.5" stroke-linejoin="miter"/><rect x="57" y="66.5" width="15" height="7" fill="#000"/></mask><path mask="url(#bonny-cut)" fill="currentColor" d="M50 5 C50 5 9 36 9 60 C9 74 21 84 34 82 C41 81 46 77 48 72 C48 84 44 92 33 96 L67 96 C56 92 52 84 52 72 C54 77 59 81 66 82 C79 84 91 74 91 60 C91 36 50 5 50 5 Z"/></svg>
+    <svg class="mark" viewBox="0 0 170 100" role="img" aria-label="Bonny">
+      <defs>
+        <mask id="bm-prompt" maskUnits="userSpaceOnUse" x="0" y="0" width="100" height="100"><rect width="100" height="100" fill="#fff"/><polyline points="34,44 52,57 34,70" fill="none" stroke="#000" stroke-width="7.5"/><rect x="57" y="66.5" width="15" height="7" fill="#000"/></mask>
+        <mask id="bm-code" maskUnits="userSpaceOnUse" x="0" y="0" width="100" height="100"><rect width="100" height="100" fill="#fff"/><polyline points="37,36 24,48 37,60" fill="none" stroke="#000" stroke-width="7"/><polyline points="63,36 76,48 63,60" fill="none" stroke="#000" stroke-width="7"/><line x1="56" y1="35" x2="44" y2="63" stroke="#000" stroke-width="7"/></mask>
+      </defs>
+      <path class="clyde" mask="url(#bm-prompt)" d="M50 5 C50 5 9 36 9 60 C9 74 21 84 34 82 C41 81 46 77 48 72 C48 84 44 92 33 96 L67 96 C56 92 52 84 52 72 C54 77 59 81 66 82 C79 84 91 74 91 60 C91 36 50 5 50 5 Z"/>
+      <g transform="translate(70 0)"><g mask="url(#bm-code)"><path class="bonny" transform="rotate(180 50 50)" d="M50 5 C50 5 9 36 9 60 C9 74 21 84 34 82 C41 81 46 77 48 72 C48 84 44 92 33 96 L67 96 C56 92 52 84 52 72 C54 77 59 81 66 82 C79 84 91 74 91 60 C91 36 50 5 50 5 Z"/></g></g>
+    </svg>
     Bonny
   </div>
   <nav>
