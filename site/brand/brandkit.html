@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ClydeCLI brand board</title>
+<style>
+  @font-face { font-family: "Bricolage Grotesque"; src: url(../fonts/bricolage-grotesque.woff2) format("woff2"); font-weight: 400 800; font-stretch: 75% 100%; }
+  @font-face { font-family: "JetBrains Mono"; src: url(../fonts/jetbrains-mono.woff2) format("woff2"); font-weight: 400 700; }
+  :root { --forest: #0f1a14; --deep: #0a120d; --bone: #e3dfd6; --ace: #d0202f; --signal: #6cc985; --dim: #9aa39c; --line: #24382b; --canvas: #070a08; }
+  * { box-sizing: border-box; margin: 0; }
+  body { width: 1920px; height: 1280px; background: var(--canvas); color: var(--bone); font: 17px/1.5 "Bricolage Grotesque", sans-serif; }
+  .board { display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(2, 1fr); gap: 24px; padding: 24px; height: 100%; }
+  .panel { position: relative; overflow: hidden; border-radius: 14px; border: 1px solid rgba(255,255,255,.06); background: var(--forest); }
+  .tag { position: absolute; right: 22px; bottom: 18px; font: 500 13px "JetBrains Mono", monospace; color: var(--dim); letter-spacing: .04em; }
+  .mark { color: var(--ace); display: block; }
+
+  /* 1 logo */
+  .p1 .mark { position: absolute; left: 56px; top: 56px; width: 190px; height: 190px; }
+  .p1 .word { position: absolute; left: 52px; bottom: 56px; font: 800 104px/1 "Bricolage Grotesque"; font-stretch: 86%; letter-spacing: -.025em; }
+
+  /* 2 browser */
+  .p2 { background: var(--deep); display: flex; flex-direction: column; justify-content: center; }
+  .chrome { margin: 0 30px; height: 44px; border-radius: 8px 8px 0 0; background: #141f18; display: flex; align-items: center; padding: 0 14px; }
+  .url { flex: 1; height: 28px; border-radius: 8px; background: var(--deep); color: var(--dim); font: 400 13px/28px "JetBrains Mono"; padding: 0 12px; }
+  .site { margin: 0 30px; height: 360px; background: var(--forest); border-radius: 0 0 8px 8px; padding: 22px 26px; border: 1px solid #141f18; border-top: 0; }
+  .nav { display: flex; justify-content: space-between; align-items: center; font-size: 14px; }
+  .nav b { display: flex; align-items: center; gap: 9px; font-weight: 800; font-size: 17px; }
+  .nav b svg { width: 22px; height: 22px; }
+  .nav span a { color: var(--signal); margin-left: 14px; text-decoration: underline; text-underline-offset: 3px; }
+  .site h1 { font: 800 54px/1 "Bricolage Grotesque"; font-stretch: 86%; letter-spacing: -.02em; margin: 44px 0 14px; }
+  .site p { font-size: 15.5px; color: var(--bone); max-width: 430px; }
+  .install { display: flex; gap: 8px; margin-top: 22px; }
+  .install code { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; background: var(--deep); border: 1px solid var(--line); border-radius: 8px; padding: 11px 13px; font: 400 12.5px "JetBrains Mono"; color: var(--bone); }
+  .install i { font: normal 600 13px "Bricolage Grotesque"; border: 1px solid var(--line); border-radius: 8px; padding: 11px 14px; }
+
+  /* 3 command */
+  .p3 { background: var(--deep); padding: 0 36px; display: flex; flex-direction: column; justify-content: center; }
+  .win { border: 1px solid var(--line); border-radius: 8px; background: var(--forest); padding: 22px 24px; font: 400 15px/1.7 "JetBrains Mono"; }
+  .win .dim { color: var(--dim); }
+  .win .go { color: var(--signal); font-weight: 700; }
+  .win .sp { color: var(--ace); }
+  .caret { display: inline-block; width: 9px; height: 18px; background: var(--bone); vertical-align: -3px; margin-left: 3px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 26px; }
+  .chip { border: 1px solid var(--line); border-radius: 8px; padding: 9px 14px; font: 500 14px "JetBrains Mono"; color: var(--dim); }
+  .chip.on { color: var(--bone); border-color: var(--dim); }
+  .chip .sp { color: var(--ace); }
+  .p3 h3 { font: 700 15px "Bricolage Grotesque"; color: var(--dim); margin: 40px 0 0; letter-spacing: .01em; }
+  .p3 .big { font: 800 40px/1.05 "Bricolage Grotesque"; font-stretch: 86%; letter-spacing: -.02em; margin-top: 8px; text-wrap: balance; }
+
+  /* 4 atmosphere + card */
+  .p4 { background: radial-gradient(120% 90% at 30% 20%, #17301f 0%, var(--forest) 55%, var(--deep) 100%); }
+  .dots { position: absolute; inset: 0; background-image: radial-gradient(circle, rgba(227,223,214,.55) 1.5px, transparent 2px); background-size: 13px 13px;
+          -webkit-mask-image: linear-gradient(115deg, #000 0%, rgba(0,0,0,.35) 38%, transparent 70%); mask-image: linear-gradient(115deg, #000 0%, rgba(0,0,0,.35) 38%, transparent 70%); }
+  .card { position: absolute; left: 190px; top: 82px; width: 236px; height: 336px; border-radius: 14px; background: var(--bone); color: #1b1d1b;
+          transform: rotate(-7deg); box-shadow: 0 30px 60px rgba(2,8,4,.55), 0 2px 0 rgba(255,255,255,.4) inset; }
+  .card .mark { position: absolute; left: 58px; top: 100px; width: 120px; height: 120px; }
+  .card .c { position: absolute; font: 800 34px/1 "Bricolage Grotesque"; font-stretch: 86%; color: var(--ace); text-align: center; width: 30px; }
+  .card .c small { display: block; font-size: 22px; margin-top: 2px; }
+  .card .tl { left: 16px; top: 14px; }
+  .card .br { right: 16px; bottom: 14px; transform: rotate(180deg); }
+
+  /* 5 construction + palette */
+  .p5 { background: var(--deep); }
+  .p5 svg.build { position: absolute; left: 100px; top: 24px; width: 408px; height: 408px; }
+  .sw { position: absolute; left: 30px; right: 30px; bottom: 28px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .sw div { height: 86px; border-radius: 8px; padding: 10px 12px; font: 500 12px/1.4 "JetBrains Mono"; display: flex; flex-direction: column; justify-content: flex-end; border: 1px solid rgba(255,255,255,.08); }
+
+  /* 6 tagline */
+  .p6 { background: var(--bone); color: var(--forest); }
+  .p6 .t { position: absolute; left: 52px; top: 52px; right: 40px; font: 800 94px/.98 "Bricolage Grotesque"; font-stretch: 86%; letter-spacing: -.03em; }
+  .p6 .s { position: absolute; left: 54px; bottom: 56px; font: 600 28px "Bricolage Grotesque"; display: flex; align-items: center; gap: 12px; }
+  .p6 .s b { color: var(--ace); font-size: 34px; line-height: 1; }
+  .p6 .tag { color: #5a5e5a; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <mask id="cut" maskUnits="userSpaceOnUse" x="0" y="0" width="100" height="100">
+      <rect width="100" height="100" fill="#fff"/>
+      <polyline points="34,44 52,57 34,70" fill="none" stroke="#000" stroke-width="7.5"/>
+      <rect x="57" y="66.5" width="15" height="7" fill="#000"/>
+    </mask>
+    <symbol id="mark" viewBox="0 0 100 100">
+      <path mask="url(#cut)" fill="currentColor" d="M50 5 C50 5 9 36 9 60 C9 74 21 84 34 82 C41 81 46 77 48 72 C48 84 44 92 33 96 L67 96 C56 92 52 84 52 72 C54 77 59 81 66 82 C79 84 91 74 91 60 C91 36 50 5 50 5 Z"/>
+    </symbol>
+  </defs>
+</svg>
+
+<div class="board">
+
+  <section class="panel p1">
+    <svg class="mark" aria-hidden="true"><use href="#mark"/></svg>
+    <div class="word">ClydeCLI</div>
+    <div class="tag">1 / 6</div>
+  </section>
+
+  <section class="panel p2">
+    <div class="chrome"><div class="url">dea6cat.github.io/ClydeCLI</div></div>
+    <div class="site">
+      <div class="nav"><b><svg class="mark" aria-hidden="true"><use href="#mark"/></svg>ClydeCLI</b><span><a>Source</a><a>Changelog</a><a>Issues</a></span></div>
+      <h1>ClydeCLI</h1>
+      <p>A coding-agent harness for the terminal. Bring any LLM; Clyde gives it tools, permissions, a sandbox, undo and sessions.</p>
+      <div class="install"><code>curl -fsSL https://raw.githubusercontent.com/dea6cat/ClydeCLI/main/install.sh | sh</code><i>Copy</i></div>
+    </div>
+    <div class="tag">2 / 6</div>
+  </section>
+
+  <section class="panel p3">
+    <div class="win">
+      <div><span class="go">❯</span> fix the leap-year test<span class="caret"></span></div>
+      <div class="dim"><span class="sp">♠</span> dealt google:gemini-3.1-flash-lite</div>
+    </div>
+    <div class="chips">
+      <span class="chip on"><span class="sp">♠</span> hold</span>
+      <span class="chip"><span class="sp">♠</span> reading the table</span>
+      <span class="chip"><span class="sp">♠♠</span> all in</span>
+    </div>
+    <h3>Modes</h3>
+    <div class="big">Ask first. Plan first. Or play all in.</div>
+    <div class="tag">3 / 6</div>
+  </section>
+
+  <section class="panel p4">
+    <div class="dots"></div>
+    <div class="card">
+      <div class="c tl">A<small>♠</small></div>
+      <svg class="mark" aria-hidden="true"><use href="#mark"/></svg>
+      <div class="c br">A<small>♠</small></div>
+    </div>
+    <div class="tag">4 / 6</div>
+  </section>
+
+  <section class="panel p5">
+    <svg class="build" viewBox="0 0 400 400" aria-label="Construction of the mark">
+      <g stroke="rgba(227,223,214,.09)" stroke-width="1">
+        <path d="M0 50H400M0 100H400M0 150H400M0 200H400M0 250H400M0 300H400M0 350H400M50 0V400M100 0V400M150 0V400M200 0V400M250 0V400M300 0V400M350 0V400"/>
+      </g>
+      <g transform="translate(50 50) scale(3)">
+        <use href="#mark" width="100" height="100" style="color: rgba(208,32,47,.92)"/>
+        <g fill="none" stroke="#6cc985" stroke-width=".5" stroke-dasharray="2 1.6">
+          <circle cx="31" cy="61" r="22"/><circle cx="69" cy="61" r="22"/>
+          <path d="M50 2V100M0 96H100"/>
+        </g>
+        <polyline points="34,44 52,57 34,70" fill="none" stroke="#6cc985" stroke-width=".6"/>
+        <rect x="57" y="66.5" width="15" height="7" fill="none" stroke="#6cc985" stroke-width=".6"/>
+      </g>
+      <g font-family="JetBrains Mono" font-size="12" fill="#6cc985">
+        <text x="334" y="263">cursor</text><path d="M330 259H270" stroke="#6cc985" stroke-width="1"/>
+        <text x="8" y="223">prompt</text><path d="M58 219H150" stroke="#6cc985" stroke-width="1"/>
+      </g>
+    </svg>
+    <div class="sw">
+      <div style="background:#0f1a14;color:#e3dfd6">Forest<br>#0f1a14</div>
+      <div style="background:#e3dfd6;color:#0f1a14">Bone<br>#e3dfd6</div>
+      <div style="background:#d0202f;color:#f6f6f3">Ace<br>#d0202f</div>
+      <div style="background:#6cc985;color:#0a120d">Signal<br>#6cc985</div>
+    </div>
+    <div class="tag" style="bottom:auto;top:18px">5 / 6</div>
+  </section>
+
+  <section class="panel p6">
+    <div class="t">Bring any model.</div>
+    <div class="s"><b>♠</b> Clyde deals.</div>
+    <div class="tag">6 / 6</div>
+  </section>
+
+</div>
+</body>
+</html>
