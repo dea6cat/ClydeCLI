@@ -1,6 +1,6 @@
 <div align="center">
 
-# ♠ ClydeCLI
+<h1><img src="site/brand/banner.png" alt="ClydeCLI: a coding-agent harness for your terminal. Bring any model. Clyde deals." width="100%"></h1>
 
 **A coding-agent harness for your terminal, written in Python.**<br>
 Bring any LLM; Clyde turns it into an agent.
