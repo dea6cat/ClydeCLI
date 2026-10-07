@@ -44,7 +44,7 @@ Examples:
   clyde --resume [SESSION_ID]         Pick a recent session to resume, or resume one by id
   clyde --list-models                 List models from every connected provider
   clyde --debug                       Start REPL and print trace events (model/tool calls) to stderr
-  clyde luv bonny [PORT]              Start Bonny, Clyde's wife and lover, on localhost (default port 8080)
+  clyde luv bonny [PORT]              Start Bonny, Clyde's luv accomplice, on localhost (default port 8080)
   bonny luv clyde                     Start Clyde in the terminal, from Bonny's side (same as `clyde`)
   clyde login                         Connect a provider and pick a default model
   clyde logout openai                 Remove a saved API key
@@ -113,7 +113,7 @@ Examples:
     sessions_parser.add_argument('action', choices=['list', 'search', 'archive', 'unarchive'])
     sessions_parser.add_argument('target', nargs='*', help='search: the words to look for; archive/unarchive: a session id')
 
-    luv_parser = subparsers.add_parser('luv', help='clyde luv bonny: start Bonny, Clyde\'s wife and lover, on localhost')
+    luv_parser = subparsers.add_parser('luv', help='clyde luv bonny: start Bonny, Clyde\'s luv accomplice, on localhost')
     luv_parser.add_argument('who', choices=['bonny'])
     luv_parser.add_argument('port', nargs='?', type=int, help='port on localhost (default: 8080, or a free one if that is taken)')
     luv_parser.add_argument('--port', dest='port_flag', type=int, help='the same, as an option')
