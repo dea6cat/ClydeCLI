@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import base64
 import collections
+import datetime
 import hashlib
 import hmac
 import json
@@ -31,7 +32,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 from src import activity
 from src.config import clyde_home
 from src.agent.session import Session
-from src.bonny import artifacts, attachments, pins, theme
+from src.bonny import artifacts, attachments, automations, pins, theme
 from src.bonny.page import PAGE
 from src.providers import model_ref
 from src.providers.card_shuffle import record_vote
@@ -82,9 +83,9 @@ def record_feedback(session_id: str, model: str, question: str, vote: int) -> No
         f.write(json.dumps(line) + "\n")
 
 
-class Prompt(collections.namedtuple("Prompt", "text search mode files", defaults=((),))):
-    """A queued message: Search turns get the sourcing rules, each turn runs in the mode it was sent with, and `files` are
-    the attachments (already taken from the upload store) that go with it."""
+class Prompt(collections.namedtuple("Prompt", "text search mode files auto", defaults=((), None))):
+    """A queued message: Search turns get the sourcing rules, each turn runs in the mode it was sent with, `files` are
+    the attachments (already taken from the upload store) that go with it, and `auto` names the automation that sent it."""
 
 
 class EventLog:
@@ -181,6 +182,8 @@ class Bonny:
 
     def _turn(self, prompt: Prompt) -> None:
         repl, text = self.repl, prompt.text
+        if prompt.auto:
+            self.new_session()                         # every automation run is a session of its own
         message, images = attachments.apply_to_turn(repl, text, list(prompt.files))
         repl.direct_stream = prompt.search   # Computer mode always has its tools; only Search takes the quick tool-free path
         if prompt.mode:
@@ -250,6 +253,32 @@ class Bonny:
         self.events.emit("tool", phase="end", call=call, tool="WebSearch", error=error is not None,
                          summary=error or f"{len(results)} results", **({"results": [{"title": r["title"], "url": r["url"]} for r in results]} if results else {}))
         return search_context(results, error)
+
+    # -- automations ---------------------------------------------------------------------------------
+    @property
+    def project(self) -> str:
+        return str(self.repl.tool_context.workspace_root)
+
+    def fire(self, row: dict) -> None:
+        """Queue an automation's prompt. Read-only (plan mode) unless it was made with edits allowed: nobody is there to answer a card."""
+        self.control.queue(Prompt(row["prompt"], False, "all_in" if row.get("edits") else "plan", (), row["id"]))
+        self.events.emit("automation", automation=row["id"], name=row["name"])
+
+    def tick(self, now: datetime.datetime) -> None:
+        for row in automations.due(self.project, now):
+            automations.mark_ran(row["id"], now)
+            self.fire(row)
+
+    def start_scheduler(self, every: float = 20.0) -> None:
+        def loop() -> None:
+            while True:
+                time.sleep(every)
+                try:
+                    self.tick(datetime.datetime.now())
+                except Exception as e:   # a bad file must not stop the clock; the page shows nothing, the log shows why
+                    self.events.emit("notice", message=f"Automations couldn't check the schedule: {e}")
+
+        threading.Thread(target=loop, name="bonny-automations", daemon=True).start()
 
     def council(self) -> dict | None:
         return getattr(self.repl.provider, "last_council", None)
@@ -462,6 +491,8 @@ def make_server(bonny: Bonny, host: str = "127.0.0.1", port: int = 0) -> Threadi
                 self._json(200, {"artifacts": [artifacts.public(r) for r in bonny.artifact_rows()]})
             elif url.path == "/api/artifact":
                 self._artifact_preview(query.get("path", [""])[0])
+            elif url.path == "/api/automations":
+                self._json(200, {"automations": [{**a, "when": automations.describe(a["schedule"])} for a in automations.listing(bonny.project)]})
             elif url.path == "/api/models":
                 self._json(200, {"models": bonny.models()})
             elif url.path == "/api/sessions":
@@ -561,6 +592,8 @@ def make_server(bonny: Bonny, host: str = "127.0.0.1", port: int = 0) -> Threadi
                 self._trash(path, data)
             elif path == "/api/session/pin":
                 self._pin(data)
+            elif path.startswith("/api/automation/"):
+                self._automation(path.rsplit("/", 1)[1], data)
             else:
                 self._json(404, {"error": "not found"})
 
@@ -700,6 +733,29 @@ def make_server(bonny: Bonny, host: str = "127.0.0.1", port: int = 0) -> Threadi
                 ok = Session.unarchive(session_id)
             self._json(200, {"ok": True, "state": bonny.state()}) if ok else self._json(404, {"error": "no such session"})
 
+        def _automation(self, action: str, data: dict) -> None:
+            if action == "create":
+                try:
+                    row = automations.add(bonny.project, data.get("name"), data.get("prompt"), data.get("schedule"), data.get("edits"), datetime.datetime.now())
+                except ValueError as e:
+                    self._json(400, {"error": str(e)})
+                else:
+                    self._json(200, {"automation": row})
+                return
+            automation_id = data.get("id")
+            if action not in ("pause", "resume", "delete", "run") or not isinstance(automation_id, str) or not _ID.match(automation_id):
+                self._json(400, {"error": "unknown automation action"})
+                return
+            row = automations.get(bonny.project, automation_id)
+            if row is None:
+                self._json(404, {"error": "no such automation"})
+            elif action == "run":
+                bonny.fire(row)
+                self._json(200, {"queued": bonny.control.prompts.qsize()})
+            else:
+                automations.update(bonny.project, automation_id, action)
+                self._json(200, {"ok": True})
+
         def _pin(self, data: dict) -> None:
             session_id = data.get("id")
             if not isinstance(session_id, str) or not _ID.match(session_id) or not isinstance(data.get("pinned"), bool):
@@ -750,6 +806,7 @@ def main(model: str | None = None, port: int = 0, open_browser: bool = True) -> 
     server = make_server(bonny, "127.0.0.1", port)
     url = f"http://127.0.0.1:{server.server_address[1]}/"
     threading.Thread(target=server.serve_forever, name="bonny-http", daemon=True).start()
+    bonny.start_scheduler()
     print(f"Bonny is running at {url}  (Ctrl+C to stop)")
     if open_browser:
         webbrowser.open(url)
