@@ -95,7 +95,7 @@ from src.providers import catalog
 from src.providers.model_eval import hidden_refs
 from src.providers.base import ProviderError, is_auth_error
 from src.providers import laya_client
-from src.providers.card_shuffle import CardShuffle
+from src.providers.card_shuffle import CardShuffle, record_vote
 from src.providers.convert import append_response, to_canonical
 from src.tool_system.context import ToolContext
 from src.plugins import apply_plugins
@@ -210,6 +210,7 @@ _HELP_TEXT = """
 - `/models [all|refresh]` - Same picker as /model (hides ones /eval showed don't work; all shows them, refresh re-fetches the lists)
 - `/models local [ollama|hf|mlx] [words]` - Find local models on ollama.com and Hugging Face (GGUF, MLX on Apple Silicon) that fit this machine, rated relax / balance / hard, and download one
 - `/laya` - Laya's status, and how its stuck checks and difficulty scores lined up with how traced turns ended
+- `/council [up N|down N]` - Show every answer from the last cardShuffle council turn with Laya's score, or vote one up or down (votes stay on this machine)
 - `/status` - Show the model, mode, directory, session, goal and token totals
 - `/goal [text|plan|clear]` - Set a goal for this session (kept in the system prompt every turn), show it, or clear it; `plan` makes it "every phase of the saved plan is complete"
 - `/remember [project] TEXT` - Keep a note between sessions, about you (default) or this project; `/memory` lists the notes, `/forget [project] N` drops one; the model can save one too when you ask it to remember
@@ -420,6 +421,7 @@ class ClydeREPL:
             "/rewind",
             "/login",
             "/laya",
+            "/council",
             "/multiline",
             "/stream",
             "/render-last",
@@ -1231,7 +1233,7 @@ class ClydeREPL:
                 'help', 'tools', 'tool',
                 'save', 'load', 'resume', 'multiline', 'stream', 'render-last',
                 'model', 'models', 'think', 'eval',
-                'skill', 'skills', 'mcp', 'debug', 'laya',
+                'skill', 'skills', 'mcp', 'debug', 'laya', 'council',
                 'context', 'compact',  # These need special handling
                 'clear', 'reset', 'new',  # also clears the screen and redraws the banner
                 ''
@@ -1448,6 +1450,9 @@ class ClydeREPL:
             self._handle_relogin(raw.split(maxsplit=1)[1].strip() if " " in raw.strip() else None, title="Connect a provider")
         elif cmd == '/laya':
             self._show_laya()
+
+        elif cmd == '/council' or cmd.startswith('/council '):
+            self._show_council(raw.split(maxsplit=1)[1].strip().lower() if " " in raw.strip() else "")
         elif cmd == '/debug' or cmd.startswith('/debug '):
             self._show_debug(raw.split(maxsplit=1)[1].strip().lower() if " " in raw else "")
 
@@ -1822,6 +1827,34 @@ class ClydeREPL:
             self.console.print("  Conversation rewound; your message is back in the prompt to edit or resend.")
         self.console.print(Text("Changes made by shell commands (rm, mv, scripts) aren't covered by /rewind.", style=_CARD_DIM))
         self._autosave_session()
+
+    def _show_council(self, arg: str) -> None:
+        """The last council turn's answers with Laya's scores, or `up N` / `down N` to vote on one."""
+        council = getattr(self.provider, "last_council", None)
+        if council is None:
+            self.console.print("No council turn yet. Try /model cardShuffle:high-roller council", markup=False)
+            return
+        answers = council["answers"]
+        if arg:
+            way, _, number = arg.partition(" ")
+            if way not in ("up", "down") or not number.isdigit() or not 1 <= int(number) <= len(answers):
+                self.console.print(f"Use /council up N or /council down N, N from 1 to {len(answers)}.", markup=False)
+                return
+            ref = answers[int(number) - 1]["ref"]
+            try:
+                record_vote(council, ref, 1 if way == "up" else -1)
+            except OSError as e:
+                self.console.print(f"Couldn't save the vote: {e}", markup=False)
+                return
+            self.console.print(f"Voted {way} on {ref}. Votes stay on this machine.", markup=False)
+            return
+        for n, a in enumerate(answers, 1):
+            chance = "unranked" if a["p"] is None else f"{a['p']:.0%} best"
+            self.console.print(Text(f"{n}. {a['ref']}  {chance}", style=_CARD_ACCENT), highlight=False)
+            self.console.print(a["text"], markup=False, highlight=False)
+        for ref, why in council["failed"].items():
+            self.console.print(Text(f"  {ref}: {why}", style=_CARD_DIM), highlight=False)
+        self.console.print(Text("Vote with /council up N or /council down N.", style=_CARD_DIM), highlight=False)
 
     def _show_laya(self) -> None:
         """Laya's status, and how its judgments lined up with how traced turns ended."""
