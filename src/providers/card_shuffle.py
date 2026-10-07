@@ -17,13 +17,17 @@ it separates easy turns from hard ones; from then on harder requests start house
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import statistics
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, wait
 from typing import Callable, Iterable
 
 from .. import activity
 from ..agent import trace
+from ..config import clyde_home
 from . import laya_client
 from .base import ProviderError, ProviderResponse, _Cancelled
 from .model_eval import load_results
@@ -32,6 +36,14 @@ from .types import Conversation, Role
 NAME = "cardShuffle"
 TIERS = ("high-roller", "house", "free", "small")
 LOCAL = ("ollama", "lmstudio")
+
+# Council: `cardShuffle:<tier> council` asks the tier's top models the same question at once, Laya picks the best answer.
+COUNCIL = "council"
+COUNCIL_SIZE = 4
+COUNCIL_DEADLINE_S = 90     # ponytail: one fixed deadline; make it adaptive if slow providers are common
+REPLY_CHARS = 4000          # of each answer shown to Laya
+VOTES_FILE = "council_votes.jsonl"
+_JUDGE = "Which reply answers `request` most correctly and helpfully?"
 
 STUCK_AFTER = 6     # tool calls in a turn before Laya first looks for a loop
 STUCK_EVERY = 3     # tool rounds between looks
@@ -55,6 +67,41 @@ _DIFFICULTY = {"type": "score", "instructions": "How hard is `request` for an AI
                             "Simple: a small, well-specified change confined to one file",
                             "Moderate: a multi-step change, a bug investigation, or work across a few files",
                             "Hard: a design decision, a subtle bug, or a large refactor across many files"]}
+
+
+def split_council(model: str) -> tuple[str, bool]:
+    """("high-roller", True) for "high-roller council"; any other string comes back unchanged and False."""
+    words = model.split()
+    return (words[0], True) if len(words) == 2 and words[1] == COUNCIL else (model, False)
+
+
+def rank(ask: Callable[[object, dict], dict | None], request: str, answers: dict[str, str]) -> dict[str, float] | None:
+    """Laya's chance that each answer (keyed by model ref) is the best one, or None when Laya can't say.
+    Laya favours some option slots, so it is asked once per rotation of the options and the chances are averaged."""
+    refs = list(answers)
+    k = len(refs)
+    labels = [chr(ord("a") + i) for i in range(k)]
+    question = {"type": "choice", "instructions": _JUDGE, "criteria": {l: answers[r][:REPLY_CHARS] for l, r in zip(labels, refs)}}
+    got = ask({"request": request[-4000:]}, {f"r{i}": dict(question, option_order=[(j + i) % k for j in range(k)]) for i in range(k)})
+    if not got:
+        return None
+    try:
+        return {r: sum(a["probabilities"][l] for a in got.values()) / k for l, r in zip(labels, refs)}
+    except (KeyError, TypeError):
+        return None
+
+
+def record_vote(council: dict, ref: str, vote: int) -> None:
+    """Append one up (+1) or down (-1) vote on a council answer to ~/.clyde/council_votes.jsonl. Votes stay on this machine."""
+    answer = next((a for a in council["answers"] if a["ref"] == ref), None)
+    if answer is None or vote not in (1, -1):
+        raise ValueError(f"no answer {ref!r} in this council, or vote is not +1/-1")
+    line = {"ts": time.time(), "prompt": hashlib.sha256(council["request"].encode()).hexdigest()[:16], "tier": council["tier"],
+            "ref": ref, "p": answer["p"], "vote": vote}
+    path = clyde_home() / VOTES_FILE
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(line) + "\n")
 
 
 def _this_turn(conversation: Conversation) -> list:
@@ -119,12 +166,13 @@ class CardShuffle:
         self._burned: set[str] = set()
         self._benched: dict[str, float] = {}    # ref -> monotonic time its cooldown ends; outlives the turn
         self._now: Callable[[], float] = time.monotonic
+        self.last_council: dict | None = None   # the latest council turn's answers and scores, for UIs; the REPL ignores it
 
     def is_available(self) -> bool:
         return bool(self._candidates(check=False))
 
     def list_models(self) -> list[str]:
-        return list(TIERS)
+        return [*TIERS, *(f"{t} {COUNCIL}" for t in TIERS)]
 
     def _candidates(self, check: bool = True) -> dict[str, dict]:
         """Eval results of the models that passed /eval (and, with check, whose provider is connected now)."""
@@ -173,15 +221,19 @@ class CardShuffle:
             self._verdict = difficulty_verdict(_traced_lines())
         return self._verdict
 
+    def _await_laya(self) -> None:
+        """The first Laya question of a session waits for its cold load, so Laya actually gets to answer."""
+        if not self._waited:
+            self._waited = True
+            activity.set(f"waiting up to {LAYA_WAIT}s for Laya to load")
+            self.wait(LAYA_WAIT)
+
     def _difficulty(self, request: str) -> float | None:
         """Laya's difficulty score (0 to 3) for this request, on every tier; None without Laya.
         The first turn of a session waits for Laya's cold load, so Laya actually gets to answer."""
         if not request.strip():
             return None
-        if not self._waited:
-            self._waited = True
-            activity.set(f"waiting up to {LAYA_WAIT}s for Laya to load")
-            self.wait(LAYA_WAIT)
+        self._await_laya()
         activity.set("asking Laya how hard this is")
         answers = self.ask({"request": request[-4000:], "mode": self.mode}, {"difficulty": _DIFFICULTY})
         return float(answers["difficulty"]["score"]) if answers else None
@@ -213,11 +265,75 @@ class CardShuffle:
             return False
         return True
 
+    def _council(self, conversation: Conversation, tier: str, request: str, on_text, cancel, reasoning) -> ProviderResponse | None:
+        """Ask the tier's top models at once, tools off, and return the answer Laya rates best; None when fewer than two
+        models are available (the turn is then dealt normally). The scored answers are left in `last_council`."""
+        if tier not in TIERS:
+            raise ProviderError(NAME, f"unknown tier '{tier}' (one of {', '.join(TIERS)})")
+        now = self._now()
+        roster = [r for r in deck(tier, self._candidates(), self.mode) if self._benched.get(r, 0.0) <= now][:COUNCIL_SIZE]
+        if len(roster) < 2:
+            return None
+        stop = threading.Event()   # ends the models still running when the deadline passes or the user cancels
+
+        def ask_one(ref: str) -> ProviderResponse:
+            name, _, real = ref.partition(":")
+            return self.registry[name].stream(conversation, real, (), lambda _: None, cancel=stop, reasoning=reasoning)
+
+        pool = ThreadPoolExecutor(len(roster))
+        pending = {pool.submit(ask_one, ref): ref for ref in roster}
+        answers: dict[str, ProviderResponse] = {}
+        failed: dict[str, str] = {}
+        deadline = self._now() + COUNCIL_DEADLINE_S
+        while pending and self._now() < deadline and not (cancel is not None and cancel.is_set()):
+            activity.set(f"council: {len(answers) + len(failed)} of {len(roster)} models have answered")
+            done, _ = wait(pending, timeout=0.2)
+            for future in done:
+                ref = pending.pop(future)
+                try:
+                    response = future.result()
+                except Exception as e:
+                    failed[ref] = str(e)[:80]
+                    if bench := _bench_for(e):
+                        self._benched[ref] = self._now() + bench
+                    continue
+                if response.usage:
+                    self.spent.append((ref, response.usage))
+                if (response.message.text or "").strip() and not response.message.tool_calls:
+                    answers[ref] = response
+                else:
+                    failed[ref] = "returned no answer"
+        stop.set()
+        pool.shutdown(wait=False, cancel_futures=True)
+        if cancel is not None and cancel.is_set():
+            raise _Cancelled()
+        failed.update({ref: "missed the deadline" for ref in pending.values()})
+        if not answers:
+            raise ProviderError(NAME, "council: no model answered (" + "; ".join(f"{r}: {why}" for r, why in failed.items()) + ")")
+        order = [r for r in roster if r in answers]
+        self._await_laya()
+        activity.set("asking Laya which answer is best")
+        chances = rank(self.ask, request, {r: answers[r].message.text for r in order}) if len(order) > 1 else None
+        winner = max(order, key=lambda r: chances[r]) if chances else order[0]
+        self.last_council = {"tier": tier, "request": request, "ranked": chances is not None, "failed": failed,
+                             "answers": [{"ref": r, "text": answers[r].message.text, "p": chances[r] if chances else None} for r in order]}
+        self.dealt = winner
+        if self.on_deal is not None:
+            self.on_deal(winner, f"council of {len(roster)} · " + (f"{chances[winner]:.0%} best" if chances else "unranked"))
+        on_text(answers[winner].message.text)
+        return answers[winner]
+
     def stream(self, conversation: Conversation, model: str, tools, on_text, *, cancel=None,
                reasoning=None, on_thinking=None) -> ProviderResponse:
         last = conversation.messages[-1] if conversation.messages else None
-        if self.dealt is None or last is None or not last.tool_results:
-            self.shuffle(model, (last.text or "") if last is not None else "")   # a fresh user message opens a new turn
+        tier, council = split_council(model)
+        fresh = self.dealt is None or last is None or not last.tool_results   # a fresh user message opens a new turn
+        request = (last.text or "") if last is not None else ""
+        self.last_council = None
+        if council and fresh and (response := self._council(conversation, tier, request, on_text, cancel, reasoning)) is not None:
+            return response
+        if fresh:
+            self.shuffle(tier, request)
         elif (p := self._stuck(conversation)) is not None and p >= STUCK_AT:
             self.redeal(f"{self.dealt} looked stuck (laya {p:.2f})")
         while True:

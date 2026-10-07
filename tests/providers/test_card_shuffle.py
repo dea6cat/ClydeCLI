@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import json
+import threading
 import unittest
 from unittest.mock import patch
 
-from src.providers.base import ProviderError
+from src.config import clyde_home
+from src.providers import card_shuffle
+from src.providers.base import ProviderError, _Cancelled
 from src.providers import laya_client
-from src.providers.card_shuffle import (PROMOTE_MIN_TURNS, CardShuffle, Verdict, deck, difficulty_verdict, laya_report,
-                                        turn_tool_calls)
+from src.providers.card_shuffle import (PROMOTE_MIN_TURNS, CardShuffle, Verdict, deck, difficulty_verdict, laya_report, rank,
+                                        record_vote, split_council, turn_tool_calls)
 from src.providers.types import Conversation, Message, ToolCall, ToolResult
 from tests.fakes import FakeProvider, reply
 
@@ -303,3 +307,159 @@ class TestLayaClient(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+COUNCIL_EVALS = {f"{n}:m": {"passed": True, "strength": st} for n, st in (("a", 5), ("b", 4), ("c", 3), ("d", 2), ("e", 1))}
+
+
+def _prefers(ref_to_p: dict[str, float], texts: dict[str, str]):
+    """A fake Laya that gives each answer the chance listed for its text, whatever slot it sits in."""
+    def ask(state, questions):
+        out = {}
+        for name, q in questions.items():
+            order = q.get("option_order") or range(len(q["criteria"]))
+            labels = list(q["criteria"])
+            out[name] = {"probabilities": {labels[i]: ref_to_p[texts[q["criteria"][labels[i]]]] for i in order}}
+        return out
+    return ask
+
+
+class TestCouncil(unittest.TestCase):
+    def setUp(self):
+        patcher = patch("src.providers.card_shuffle.load_results", return_value=COUNCIL_EVALS)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.providers = {n: FakeProvider(reply(f"answer {n}", usage={"input_tokens": 1, "output_tokens": 1}), name=n) for n in "abcde"}
+        self.texts = {f"answer {n}": f"{n}:m" for n in "abcde"}
+        self.deals: list[str] = []
+
+    def _card(self, ask) -> CardShuffle:
+        card = CardShuffle(self.providers, ask=ask, verdict=Verdict([]))
+        card.on_deal = lambda ref, why: self.deals.append(f"{ref} | {why}")
+        return card
+
+    def _run(self, card: CardShuffle, model: str = "high-roller council"):
+        shown: list[str] = []
+        response = card.stream(Conversation("sys", [Message.user("what is 2+2?")]), model, (), shown.append)
+        return response, shown
+
+    def test_split_council_reads_a_trailing_council_word_only(self):
+        self.assertEqual(split_council("high-roller council"), ("high-roller", True))
+        self.assertEqual(split_council("high-roller"), ("high-roller", False))
+        self.assertEqual(split_council("high-roller extra"), ("high-roller extra", False))
+
+    def test_the_council_forms_are_listed_as_models(self):
+        self.assertIn("high-roller council", self._card(lambda *a: None).list_models())
+
+    def test_the_top_four_answer_and_the_best_rated_wins(self):
+        chances = {"a:m": 0.1, "b:m": 0.2, "c:m": 0.6, "d:m": 0.1}
+        card = self._card(_prefers(chances, self.texts))
+        response, shown = self._run(card)
+        self.assertEqual(response.message.text, "answer c")
+        self.assertEqual(shown, ["answer c"])
+        self.assertEqual(card.dealt, "c:m")
+        self.assertEqual([a["ref"] for a in card.last_council["answers"]], ["a:m", "b:m", "c:m", "d:m"])   # e is not in the top four
+        self.assertEqual(self.providers["e"].requests, [])
+        self.assertAlmostEqual(card.last_council["answers"][2]["p"], 0.6)
+        self.assertTrue(card.last_council["ranked"])
+        self.assertIn("council of 4", self.deals[0])
+
+    def test_models_get_no_tools_and_every_call_is_spent(self):
+        card = self._card(_prefers({r: 0.25 for r in self.texts.values()}, self.texts))
+        self._run(card)
+        self.assertTrue(all(p.requests[0]["tools"] == () for n, p in self.providers.items() if n != "e"))
+        self.assertEqual(sorted(ref for ref, _ in card.spent), ["a:m", "b:m", "c:m", "d:m"])
+
+    def test_without_laya_the_strongest_answer_comes_back_unranked(self):
+        card = self._card(lambda *a: None)
+        response, _ = self._run(card)
+        self.assertEqual(response.message.text, "answer a")
+        self.assertFalse(card.last_council["ranked"])
+        self.assertIn("unranked", self.deals[0])
+
+    def test_a_failing_or_empty_model_does_not_block_the_others(self):
+        self.providers["a"]._responses = [ProviderError("a", "boom")]
+        self.providers["b"]._responses = [reply("")]
+        card = self._card(_prefers({"c:m": 0.7, "d:m": 0.2, "e:m": 0.1}, self.texts))
+        response, _ = self._run(card)
+        self.assertEqual(response.message.text, "answer c")
+        failed = card.last_council["failed"]
+        self.assertIn("boom", failed["a:m"])
+        self.assertEqual(failed["b:m"], "returned no answer")
+
+    def test_a_model_past_the_deadline_is_dropped(self):
+        class Stuck(FakeProvider):
+            def stream(self, conversation, model, tools, on_text, *, cancel=None, **kw):
+                cancel.wait(5)
+                raise _Cancelled()
+
+        self.providers["a"] = Stuck(name="a")
+        card = self._card(lambda *a: None)
+        with patch.object(card_shuffle, "COUNCIL_DEADLINE_S", 0.3):
+            response, _ = self._run(card)
+        self.assertEqual(response.message.text, "answer b")
+        self.assertEqual(card.last_council["failed"], {"a:m": "missed the deadline"})
+
+    def test_every_model_failing_raises(self):
+        for n in "abcd":
+            self.providers[n]._responses = [ProviderError(n, "down")]
+        with self.assertRaises(ProviderError):
+            self._run(self._card(lambda *a: None))
+
+    def test_a_cancelled_turn_raises_cancelled(self):
+        cancel = threading.Event()
+        cancel.set()
+        with self.assertRaises(_Cancelled):
+            self._card(lambda *a: None).stream(Conversation("sys", [Message.user("hi")]), "high-roller council", (), lambda _: None, cancel=cancel)
+
+    def test_one_available_model_is_dealt_normally(self):
+        only_a = {"a:m": COUNCIL_EVALS["a:m"]}
+        with patch("src.providers.card_shuffle.load_results", return_value=only_a):
+            card = self._card(lambda *a: None)
+            response, _ = self._run(card)
+        self.assertEqual(response.message.text, "answer a")
+        self.assertIsNone(card.last_council)
+
+    def test_plain_tiers_are_untouched(self):
+        card = self._card(lambda *a: None)
+        response, _ = self._run(card, "high-roller")
+        self.assertEqual(response.message.text, "answer a")
+        self.assertIsNone(card.last_council)
+        self.assertEqual([len(p.requests) for p in self.providers.values()], [1, 0, 0, 0, 0])
+
+
+class TestRank(unittest.TestCase):
+    def test_every_answer_takes_the_first_slot_once_so_slot_bias_averages_out(self):
+        seen: list[dict] = []
+
+        def slot_zero_fan(state, questions):
+            seen.extend(questions.values())
+            return {n: {"probabilities": {list(q["criteria"])[q["option_order"][0]]: 1.0,
+                                          **{l: 0.0 for i, l in enumerate(q["criteria"]) if i != q["option_order"][0]}}}
+                    for n, q in questions.items()}
+
+        chances = rank(slot_zero_fan, "q", {"x": "one", "y": "two", "z": "three"})
+        self.assertEqual(sorted(q["option_order"][0] for q in seen), [0, 1, 2])
+        self.assertEqual({r: round(p, 3) for r, p in chances.items()}, {"x": 0.333, "y": 0.333, "z": 0.333})
+
+    def test_none_when_laya_cannot_answer_or_answers_oddly(self):
+        self.assertIsNone(rank(lambda *a: None, "q", {"x": "1", "y": "2"}))
+        self.assertIsNone(rank(lambda *a: {"r0": {}}, "q", {"x": "1", "y": "2"}))
+
+
+class TestVotes(unittest.TestCase):
+    COUNCIL = {"tier": "house", "request": "hi", "answers": [{"ref": "a:m", "text": "t", "p": 0.4}]}
+
+    def test_a_vote_is_appended_locally_without_the_prompt_text(self):
+        record_vote(self.COUNCIL, "a:m", -1)
+        record_vote(self.COUNCIL, "a:m", 1)
+        lines = [json.loads(l) for l in (clyde_home() / "council_votes.jsonl").read_text().splitlines()]
+        self.assertEqual([l["vote"] for l in lines[-2:]], [-1, 1])
+        self.assertEqual(lines[-1]["ref"], "a:m")
+        self.assertNotIn("hi", json.dumps(lines[-1]).replace("high", ""))
+
+    def test_an_unknown_answer_or_bad_vote_is_refused(self):
+        with self.assertRaises(ValueError):
+            record_vote(self.COUNCIL, "z:m", 1)
+        with self.assertRaises(ValueError):
+            record_vote(self.COUNCIL, "a:m", 5)
