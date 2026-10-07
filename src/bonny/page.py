@@ -71,6 +71,7 @@ body[data-shape="round"] .cut::before, body[data-shape="round"] .cut::after, bod
 .sel select option { background: var(--bg); color: var(--text); }
 .caret { position: absolute; right: 9px; pointer-events: none; font-size: 9px; font-style: normal; color: var(--dim); }
 .seg { display: inline-flex; gap: 4px; }
+#opts { display: none; }
 .chip { --c: 6px; height: 28px; padding: 0 12px; border: 0; font: 500 12px/1 var(--mono); color: var(--dim); }
 .chip[aria-pressed="true"] { --edge: var(--text); --fill: var(--text); color: var(--bg); }
 .tag { background: var(--text); color: var(--bg); font: 500 11px/1.4 var(--mono); letter-spacing: .04em; padding: 4px 11px; --c: 7px;
@@ -306,6 +307,17 @@ input[type="color"] { width: 36px; height: 24px; padding: 0; border: 1px solid v
   aside { position: fixed; z-index: 5; inset: 0 auto 0 0; transform: translateX(-100%); transition: transform .2s; background: var(--bg); }
   body.side-open aside { transform: none; box-shadow: 0 0 0 100vmax rgba(0, 0, 0, .5); }
   #toggle { display: inline-block; }
+  .bar { flex-wrap: nowrap; gap: 5px; }
+  .bar .chip { padding: 0 9px; }
+  .bar .btn.icon { flex: none; }
+  .bar .btn { padding: 0 11px; }
+  .dock { padding: 0 14px 18px; }
+  .bar .right { margin-left: auto; }
+  #opts { display: inline-block; }
+  .bar .sel { display: none; }
+  .bar.opts-open { flex-wrap: wrap; }
+  .bar.opts-open .sel { display: inline-flex; flex: 1 1 140px; max-width: none; }
+  .bar.opts-open .right { order: 9; }
   .hero h2 { font-size: 34px; }
   .pickers { grid-template-columns: 1fr; }
 }
@@ -369,6 +381,7 @@ input[type="color"] { width: 36px; height: 24px; padding: 0; border: 1px solid v
             <button type="button" class="chip cut" data-mode="search" aria-pressed="false">Search</button>
             <button type="button" class="chip cut" data-mode="computer" aria-pressed="true">Computer</button>
           </div>
+          <button type="button" class="chip cut" id="opts" aria-expanded="false" aria-controls="model perm">Options</button>
           <label class="sr" for="model">Model</label>
           <span class="sel cut"><select id="model"></select><i class="caret" aria-hidden="true">&#9662;</i></span>
           <label class="sr" for="perm">Permissions</label>
@@ -576,7 +589,7 @@ function paintControls() {
   $("hero-kind").textContent = search ? "Search" : "Computer";
   $("hero-title").textContent = (T && T.greeting) || (search ? "What do you want to know?" : "What should we work on?");
   $("input").placeholder = search ? "Ask anything" : "Describe what you want done";
-  document.querySelectorAll("#form .chip").forEach((c) => c.setAttribute("aria-pressed", String(c.dataset.mode === st.ui)));
+  document.querySelectorAll("#form .chip[data-mode]").forEach((c) => c.setAttribute("aria-pressed", String(c.dataset.mode === st.ui)));
   $("nav-computer").setAttribute("aria-current", String(!search && $("main").dataset.view !== "artifacts"));
 }
 function applyState(s) {
@@ -694,7 +707,7 @@ $("steer").addEventListener("click", async () => {
   if (!text) return;
   try { await api("/api/steer", { text }); $("input").value = ""; autosize(); note("Sent to the running task: " + text); } catch (e) { note(e.message, "error"); }
 });
-document.querySelectorAll("#form .chip").forEach((c) => c.addEventListener("click", () => { st.ui = c.dataset.mode; paintControls(); }));
+document.querySelectorAll("#form .chip[data-mode]").forEach((c) => c.addEventListener("click", () => { st.ui = c.dataset.mode; paintControls(); }));
 $("nav-computer").addEventListener("click", () => { showView("chat"); st.ui = "computer"; paintControls(); $("input").focus(); });
 $("new").addEventListener("click", async () => {
   if (st.busy) { toast("Bonny is working. Stop her, or wait, to start a new session."); return; }
@@ -999,6 +1012,7 @@ async function attachFiles(files) {
   }
 }
 $("attach").append(ico("clip"));
+$("opts").addEventListener("click", () => { const open = document.querySelector(".bar").classList.toggle("opts-open"); $("opts").setAttribute("aria-expanded", String(open)); });
 $("attach").addEventListener("click", () => $("files").click());
 $("files").addEventListener("change", () => { attachFiles([...$("files").files]); $("files").value = ""; });
 $("input").addEventListener("paste", (e) => {
