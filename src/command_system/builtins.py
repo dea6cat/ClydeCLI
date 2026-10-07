@@ -602,7 +602,8 @@ def doctor_command_call(args: str, context: CommandContext) -> LocalCommandResul
     from ..config import get_config_path
     from ..providers import keys
 
-    lines = ["ClydeCLI doctor:", ""]
+    from .. import install_info
+    lines = ["ClydeCLI doctor:", "", *install_info.report_lines(), ""]
 
     running = ".".join(map(str, sys.version_info[:3]))
     spec = _requires_python()
