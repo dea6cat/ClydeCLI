@@ -71,6 +71,7 @@ body[data-shape="round"] .cut::before, body[data-shape="round"] .cut::after, bod
 .sel select option { background: var(--bg); color: var(--text); }
 .caret { position: absolute; right: 9px; pointer-events: none; font-size: 9px; font-style: normal; color: var(--dim); }
 .seg { display: inline-flex; gap: 4px; }
+#opts { display: none; }
 .chip { --c: 6px; height: 28px; padding: 0 12px; border: 0; font: 500 12px/1 var(--mono); color: var(--dim); }
 .chip[aria-pressed="true"] { --edge: var(--text); --fill: var(--text); color: var(--bg); }
 .tag { background: var(--text); color: var(--bg); font: 500 11px/1.4 var(--mono); letter-spacing: .04em; padding: 4px 11px; --c: 7px;
@@ -96,15 +97,25 @@ nav { display: flex; flex-direction: column; padding: 8px 0; border-bottom: 1px 
 .nav[aria-current="true"] { border-left-color: var(--link); background: color-mix(in srgb, var(--link) 9%, transparent); }
 .nav:disabled { color: var(--dim); cursor: default; }
 .nav small { margin-left: auto; color: var(--dim); font-size: 11px; }
+button.project:hover { color: var(--link); }
 .label { padding: 14px 18px 4px; font: 600 11.5px/1.4 var(--mono); color: var(--dim); }
-.project { padding: 2px 18px; font: 400 12px/1.5 var(--mono); color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project { display: block; width: 100%; text-align: left; background: none; border: 0; padding: 2px 18px; font: 400 12px/1.5 var(--mono); color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #sessions { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; margin-top: 4px; }
 .srow { position: relative; flex: none; display: flex; border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent); transition: opacity .18s ease-out, transform .18s ease-out; }
-.srow .session { flex: 1; border-bottom: 0; padding-right: 46px; }
+.srow .session { flex: 1; border-bottom: 0; padding-right: 76px; }
 .srow.gone { opacity: 0; transform: translateX(-8px); pointer-events: none; }
 .del { position: absolute; right: 8px; top: 50%; translate: 0 -50%; width: 28px; height: 28px; display: grid; place-items: center; border: 0; background: none; color: var(--dim); opacity: 0;
   transition-property: opacity, color, background-color; transition-duration: .12s; }
 .del::before { content: ""; position: absolute; inset: -6px; }
+.pin { position: absolute; right: 38px; top: 50%; translate: 0 -50%; width: 28px; height: 28px; display: grid; place-items: center; border: 0; background: none; color: var(--dim); opacity: 0;
+  transition-property: opacity, color, background-color; transition-duration: .12s; }
+.pin .ico { width: 15px; height: 15px; }
+.pin[aria-pressed="true"] { opacity: 1; color: var(--link); }
+.pin[aria-pressed="true"] .ico { fill: currentColor; }
+.pin:hover { color: var(--link); background: color-mix(in srgb, var(--link) 12%, transparent); }
+.srow:hover .pin, .srow:focus-within .pin, .pin:focus-visible { opacity: 1; }
+@media (hover: none) { .pin { opacity: .75; } }
+body[data-shape="round"] .pin { border-radius: 8px; }
 .srow:hover .del, .srow:focus-within .del, .del:focus-visible { opacity: 1; }
 .del:hover { color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); }
 @media (hover: none) { .del { opacity: .75; } }
@@ -190,6 +201,14 @@ dialog::backdrop { background: rgba(0, 0, 0, .5); }
 .dlg-head { display: flex; align-items: center; padding: 12px 18px; border-bottom: 1px solid var(--line); background: var(--tint); }
 .dlg-head h2 { margin: 0; font-size: 17px; font-weight: 750; letter-spacing: -.01em; flex: 1; }
 .dlg-body { padding: 16px 18px 20px; overflow-y: auto; max-height: calc(86vh - 56px); display: flex; flex-direction: column; gap: 14px; }
+.hint { font: 400 12px/1.5 var(--mono); color: var(--dim); }
+.pj-path { font: 500 12.5px/1.5 var(--mono); word-break: break-all; padding: 8px 10px; border: 1px solid var(--line); }
+.pj-list { display: flex; flex-direction: column; max-height: 220px; overflow-y: auto; border: 1px solid var(--line); }
+.pj-list button { text-align: left; padding: 8px 10px; background: none; border: 0; border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent); font: 500 12.5px var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pj-list button:hover { background: color-mix(in srgb, var(--text) 6%, transparent); color: var(--link); }
+.pj-list .none { padding: 8px 10px; color: var(--dim); font: 400 12.5px var(--mono); }
+#pj-form input { flex: 1; min-width: 0; height: 32px; padding: 0 10px; background: none; color: var(--text); border: 1px solid var(--line); font: 14px var(--font-body); }
+.dlg-body .line { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .dlg-body h3 { margin: 0 0 8px; font-size: 14px; }
 .dlg-body ol, .dlg-body ul { margin: 0; padding-left: 1.3em; display: flex; flex-direction: column; gap: 7px; }
 .dlg-body li .host { color: var(--dim); font: 400 12px var(--mono); margin-left: 8px; }
@@ -242,8 +261,28 @@ body[data-shape="round"] dialog { border-radius: 14px; }
 /* artifacts: the files Clyde wrote or edited, with a sandboxed preview */
 #artifacts-view { display: none; flex: 1; min-height: 0; flex-direction: column; }
 main[data-view="artifacts"] #artifacts-view { display: flex; }
-main[data-view="artifacts"] #thread, main[data-view="artifacts"] .dock { display: none; }
+main:not([data-view="chat"]) #thread, main:not([data-view="chat"]) .dock { display: none; }
+#auto-view { display: none; flex: 1; min-height: 0; flex-direction: column; overflow-y: auto; }
+main[data-view="auto"] #auto-view { display: flex; }
+.auto-body { width: 100%; max-width: 760px; margin: 0 auto; padding: 18px 22px 40px; display: flex; flex-direction: column; gap: 18px; }
+.af { --c: 12px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.af .fld { display: flex; flex-direction: column; gap: 5px; font: 600 11.5px var(--mono); color: var(--dim); }
+.af input[type="text"], .af input[type="number"], .af input[type="time"], .af textarea { width: 100%; padding: 8px 10px; background: none; color: var(--text); border: 1px solid var(--line); font: 14px/1.4 var(--font-body); }
+.af textarea { min-height: 84px; resize: vertical; }
+.af .line { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.af .line > * { flex: none; }
+.af .line input[type="number"] { width: 84px; }
+.af .line input[type="time"] { width: 120px; }
+.af .chk { display: flex; gap: 8px; align-items: center; font: 500 12.5px var(--mono); color: var(--text); }
+.af .hint { font: 400 12px/1.5 var(--mono); color: var(--dim); }
+.arow { display: flex; flex-direction: column; gap: 6px; padding: 12px 0; border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent); }
+.arow .n { font-weight: 700; }
+.arow .pr { color: var(--dim); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.arow .mt { font: 400 12px/1.5 var(--mono); color: var(--dim); }
+.arow.off .n { color: var(--dim); }
+.arow .ctl { display: flex; gap: 8px; flex-wrap: wrap; }
 .art-top { display: flex; align-items: center; gap: 14px; padding: 12px 22px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.art-top .hint { font: 400 12px/1.5 var(--mono); color: var(--dim); }
 .art-top h2 { margin: 0; font-size: 20px; font-weight: 800; letter-spacing: -.02em; }
 .art-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(230px, 300px) minmax(0, 1fr); }
 .art-list { overflow-y: auto; border-right: 1px solid var(--line); }
@@ -306,6 +345,17 @@ input[type="color"] { width: 36px; height: 24px; padding: 0; border: 1px solid v
   aside { position: fixed; z-index: 5; inset: 0 auto 0 0; transform: translateX(-100%); transition: transform .2s; background: var(--bg); }
   body.side-open aside { transform: none; box-shadow: 0 0 0 100vmax rgba(0, 0, 0, .5); }
   #toggle { display: inline-block; }
+  .bar { flex-wrap: nowrap; gap: 5px; }
+  .bar .chip { padding: 0 9px; }
+  .bar .btn.icon { flex: none; }
+  .bar .btn { padding: 0 11px; }
+  .dock { padding: 0 14px 18px; }
+  .bar .right { margin-left: auto; }
+  #opts { display: inline-block; }
+  .bar .sel { display: none; }
+  .bar.opts-open { flex-wrap: wrap; }
+  .bar.opts-open .sel { display: inline-flex; flex: 1 1 140px; max-width: none; }
+  .bar.opts-open .right { order: 9; }
   .hero h2 { font-size: 34px; }
   .pickers { grid-template-columns: 1fr; }
 }
@@ -337,12 +387,12 @@ input[type="color"] { width: 36px; height: 24px; padding: 0; border: 1px solid v
   <nav>
     <button class="nav" id="new"><span aria-hidden="true">+</span> New</button>
     <button class="nav" id="nav-computer" aria-current="true"><span aria-hidden="true">&gt;_</span> Computer</button>
-    <button class="nav" disabled><span aria-hidden="true">&#9719;</span> Automations <small>soon</small></button>
+    <button class="nav" id="nav-auto"><span aria-hidden="true">&#9719;</span> Automations</button>
     <button class="nav" id="nav-artifacts"><span aria-hidden="true">&#9635;</span> Artifacts</button>
     <button class="nav" id="customize"><span aria-hidden="true">&#9998;</span> Customize</button>
   </nav>
   <div class="label">Project</div>
-  <div class="project" id="project" title=""></div>
+  <button class="project" id="project" type="button" title="" aria-haspopup="dialog"></button>
   <div class="label">Sessions</div>
   <div id="sessions"></div>
 </aside>
@@ -369,6 +419,7 @@ input[type="color"] { width: 36px; height: 24px; padding: 0; border: 1px solid v
             <button type="button" class="chip cut" data-mode="search" aria-pressed="false">Search</button>
             <button type="button" class="chip cut" data-mode="computer" aria-pressed="true">Computer</button>
           </div>
+          <button type="button" class="chip cut" id="opts" aria-expanded="false" aria-controls="model perm">Options</button>
           <label class="sr" for="model">Model</label>
           <span class="sel cut"><select id="model"></select><i class="caret" aria-hidden="true">&#9662;</i></span>
           <label class="sr" for="perm">Permissions</label>
@@ -381,6 +432,27 @@ input[type="color"] { width: 36px; height: 24px; padding: 0; border: 1px solid v
         </div>
       </form>
     </div>
+    <section id="auto-view" aria-label="Automations">
+      <div class="art-top"><h2>Automations</h2><span class="hint" id="auto-hint">Prompts Bonny runs on a schedule, in this project. They run only while Bonny is open, each in its own session.</span></div>
+      <div class="auto-body">
+        <form class="af cut" id="af">
+          <label class="fld">Name<input type="text" id="af-name" maxlength="80" placeholder="Morning look (optional)"></label>
+          <label class="fld">What should Bonny do?<textarea id="af-prompt" maxlength="4000" required placeholder="Summarise what changed in the repo since yesterday"></textarea></label>
+          <div class="fld" id="af-when-wrap">When
+            <div class="line">
+              <span class="sel cut"><select id="af-kind" aria-label="How often"><option value="every">Every</option><option value="daily">Every day</option><option value="weekly">On certain days</option></select><i class="caret" aria-hidden="true">&#9662;</i></span>
+              <span id="af-every" class="line"><input type="number" id="af-n" min="1" max="10080" value="30" aria-label="How many"><span class="sel cut"><select id="af-unit" aria-label="Minutes or hours"><option value="1">minutes</option><option value="60">hours</option></select><i class="caret" aria-hidden="true">&#9662;</i></span></span>
+              <span id="af-time" class="line" hidden><input type="time" id="af-at" value="09:00" aria-label="Time"></span>
+            </div>
+            <div class="seg" id="af-days" role="group" aria-label="Days" hidden></div>
+          </div>
+          <label class="chk"><input type="checkbox" id="af-edits"> Allow it to change files (otherwise it only reads)</label>
+          <div class="hint">Nobody is there to approve changes, so it reads and reports unless you allow edits.</div>
+          <div class="line"><button type="submit" class="btn cut primary">Add automation</button></div>
+        </form>
+        <div id="auto-list" aria-label="Your automations"></div>
+      </div>
+    </section>
     <section id="artifacts-view" aria-label="Artifacts">
       <div class="art-top"><h2>Artifacts</h2><div class="seg" id="art-filter" role="group" aria-label="Show"></div></div>
       <div class="art-body" id="art-body">
@@ -397,6 +469,18 @@ input[type="color"] { width: 36px; height: 24px; padding: 0; border: 1px solid v
 <dialog id="council" aria-labelledby="council-title">
   <div class="dlg-head"><h2 id="council-title">Council</h2><button class="btn cut" id="council-close">Close</button></div>
   <div class="dlg-body" id="council-body"></div>
+</dialog>
+
+<dialog id="proj" aria-labelledby="proj-title">
+  <div class="dlg-head"><h2 id="proj-title">Choose a project</h2><button class="btn cut" id="proj-close">Close</button></div>
+  <div class="dlg-body">
+    <div class="hint">Bonny reads and writes files in the project folder. Pick any folder, or make a new one.</div>
+    <div class="pj-path" id="pj-path"></div>
+    <div class="line"><button type="button" class="btn cut" id="pj-up">Up</button><button type="button" class="btn cut" id="pj-home">Home</button><button type="button" class="btn cut primary" id="pj-use">Use this folder</button></div>
+    <div id="pj-recent-wrap"><h3>Recent</h3><div class="pj-list" id="pj-recent"></div></div>
+    <div><h3>Folders here</h3><div class="pj-list" id="pj-dirs"></div></div>
+    <form class="line" id="pj-form"><label class="sr" for="pj-new">New folder name</label><input type="text" id="pj-new" maxlength="100" placeholder="New folder name"><button type="submit" class="btn cut">Create here</button></form>
+  </div>
 </dialog>
 
 <dialog id="sources" aria-labelledby="sources-title">
@@ -439,6 +523,7 @@ input[type="color"] { width: 36px; height: 24px; padding: 0; border: 1px solid v
   <svg data-i="up" viewBox="0 0 24 24"><path d="M7 11v9H4.5A1.5 1.5 0 0 1 3 18.5v-6A1.5 1.5 0 0 1 4.5 11H7z"/><path d="M7 11l3.4-6.1A1.8 1.8 0 0 1 14 5.8V9h4.6a2 2 0 0 1 2 2.3l-1.1 6.5a2 2 0 0 1-2 1.7H7"/></svg>
   <svg data-i="council" viewBox="0 0 24 24"><circle cx="6" cy="5.5" r="2"/><circle cx="18" cy="5.5" r="2"/><circle cx="12" cy="19" r="2"/><path d="M6 7.5v1.2a3 3 0 0 0 3 3h6a3 3 0 0 0 3-3V7.5M12 11.7V17"/></svg>
   <svg data-i="retry" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 5v6h-6"/></svg>
+  <svg data-i="pin" viewBox="0 0 24 24"><path d="M9 4h6l-1 6 3 3v1.5H7V13l3-3z"/><path d="M12 14.5V20"/></svg>
   <svg data-i="trash" viewBox="0 0 24 24"><path d="M4.5 7h15"/><path d="M9.5 7V4.5h5V7"/><path d="M6.5 7l.9 12.5h9.2L17.5 7"/><path d="M10.2 11v5.2M13.8 11v5.2"/></svg>
   <svg data-i="clip" viewBox="0 0 24 24"><path d="M19 11.5l-6.8 6.8a4.2 4.2 0 0 1-6-6l7.2-7.2a2.8 2.8 0 0 1 4 4l-7.2 7.2a1.4 1.4 0 0 1-2-2l6.5-6.5"/></svg>
   <svg data-i="x" viewBox="0 0 24 24"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg>
@@ -576,8 +661,8 @@ function paintControls() {
   $("hero-kind").textContent = search ? "Search" : "Computer";
   $("hero-title").textContent = (T && T.greeting) || (search ? "What do you want to know?" : "What should we work on?");
   $("input").placeholder = search ? "Ask anything" : "Describe what you want done";
-  document.querySelectorAll("#form .chip").forEach((c) => c.setAttribute("aria-pressed", String(c.dataset.mode === st.ui)));
-  $("nav-computer").setAttribute("aria-current", String(!search && $("main").dataset.view !== "artifacts"));
+  document.querySelectorAll("#form .chip[data-mode]").forEach((c) => c.setAttribute("aria-pressed", String(c.dataset.mode === st.ui)));
+  $("nav-computer").setAttribute("aria-current", String(!search && $("main").dataset.view === "chat"));
 }
 function applyState(s) {
   st.busy = s.busy; st.queued = s.queued; st.mode = s.mode; st.session = s.session;
@@ -601,8 +686,10 @@ async function refresh() {
       const row = h("div", { class: "srow" },
         h("button", { class: "session", "data-id": s.id, title: s.title, "aria-current": String(s.id === st.session), onclick: () => openSession(s.id) },
           h("span", { class: "t" }, s.title), h("span", { class: "m" }, when(s.updated))),
+        h("button", { class: "pin", type: "button", "aria-pressed": String(!!s.pinned), "aria-label": (s.pinned ? "Unpin session: " : "Pin session: ") + s.title, title: s.pinned ? "Unpin" : "Pin" }, ico("pin")),
         h("button", { class: "del", type: "button", "aria-label": "Delete session: " + s.title, title: "Delete" }, ico("trash")));
       row.querySelector(".del").addEventListener("click", () => deleteSession(s, row));
+      row.querySelector(".pin").addEventListener("click", () => pinSession(s));
       return row;
     })
     : [h("div", { class: "empty-note" }, "No saved sessions yet")]));
@@ -647,6 +734,10 @@ async function openSession(id) {
     st.session = r.session; renderMessages(r.messages); applyState(r); $("input").focus();
   } catch (e) { toast(e.message); await refresh(); }
   finally { clearTimeout(slow); }
+}
+async function pinSession(s) {
+  try { await api("/api/session/pin", { id: s.id, pinned: !s.pinned }); await refresh(); $("sessions").querySelector('[data-id="' + s.id + '"]').parentElement.querySelector(".pin").focus(); }
+  catch (e) { toast(e.message); }
 }
 async function deleteSession(s, row) {
   const wasOpen = s.id === st.session;
@@ -694,7 +785,7 @@ $("steer").addEventListener("click", async () => {
   if (!text) return;
   try { await api("/api/steer", { text }); $("input").value = ""; autosize(); note("Sent to the running task: " + text); } catch (e) { note(e.message, "error"); }
 });
-document.querySelectorAll("#form .chip").forEach((c) => c.addEventListener("click", () => { st.ui = c.dataset.mode; paintControls(); }));
+document.querySelectorAll("#form .chip[data-mode]").forEach((c) => c.addEventListener("click", () => { st.ui = c.dataset.mode; paintControls(); }));
 $("nav-computer").addEventListener("click", () => { showView("chat"); st.ui = "computer"; paintControls(); $("input").focus(); });
 $("new").addEventListener("click", async () => {
   if (st.busy) { toast("Bonny is working. Stop her, or wait, to start a new session."); return; }
@@ -815,6 +906,37 @@ function openSources(info) {
 }
 $("sources-close").addEventListener("click", () => $("sources").close());
 
+/* Project chooser: browse folders, make one, use one. Switching opens a fresh session in it. */
+let pjHere = "";
+async function pjBrowse(path) {
+  let info;
+  try { info = await api("/api/dirs" + (path ? "?path=" + encodeURIComponent(path) : "")); } catch (e) { toast(e.message); return; }
+  pjHere = info.path; $("pj-path").textContent = info.path;
+  $("pj-up").disabled = !info.parent; $("pj-up").dataset.to = info.parent || ""; $("pj-home").dataset.to = info.home;
+  const go = (name, to) => { const b = h("button", { type: "button", title: to }, name); b.addEventListener("click", () => pjBrowse(to)); return b; };
+  $("pj-dirs").replaceChildren(...(info.dirs.length ? info.dirs.map((d) => go(d, info.path.replace(/\/$/, "") + "/" + d)) : [h("div", { class: "none" }, "No folders here")]));
+  $("pj-recent-wrap").hidden = !info.recent.length;
+  $("pj-recent").replaceChildren(...info.recent.map((r) => go(r, r)));
+}
+async function pjUse() {
+  try {
+    const r = await api("/api/project", { path: pjHere });
+    $("proj").close(); showView("chat"); st.session = r.session; renderMessages([]); applyState(r);
+    arts = []; artSel = ""; await refresh(); $("input").focus();
+    toast("Working in " + r.cwd);
+  } catch (e) { toast(e.message); }
+}
+$("project").addEventListener("click", () => { $("proj").showModal(); pjBrowse(""); });
+$("proj-close").addEventListener("click", () => $("proj").close());
+$("pj-up").addEventListener("click", (e) => pjBrowse(e.currentTarget.dataset.to));
+$("pj-home").addEventListener("click", (e) => pjBrowse(e.currentTarget.dataset.to));
+$("pj-use").addEventListener("click", pjUse);
+$("pj-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  try { const r = await api("/api/dirs/create", { parent: pjHere, name: $("pj-new").value }); $("pj-new").value = ""; await pjBrowse(r.path); }
+  catch (err) { toast(err.message); }
+});
+
 function markdownOf(o) {
   const lines = ["# " + o.question, "", o.text];
   const used = o.info ? o.info.cited : [];
@@ -894,6 +1016,7 @@ const rawUrl = (path, extra) => "/artifact/raw?t=" + encodeURIComponent(TOKEN) +
 function showView(name) {
   $("main").dataset.view = name;
   $("nav-artifacts").setAttribute("aria-current", String(name === "artifacts"));
+  $("nav-auto").setAttribute("aria-current", String(name === "auto"));
   paintControls();
 }
 function paintArtFilters() {
@@ -967,6 +1090,57 @@ function artifactCard(e) {
 }
 $("nav-artifacts").addEventListener("click", () => openArtifacts());
 
+/* Automations: a form with a plain-words schedule, and the list for this project. */
+const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const pickedDays = new Set([0, 1, 2, 3, 4]);
+function paintDays() {
+  $("af-days").replaceChildren(...DAY_NAMES.map((name, d) => {
+    const b = h("button", { type: "button", class: "chip cut", "aria-pressed": String(pickedDays.has(d)) }, name);
+    b.addEventListener("click", () => { pickedDays.has(d) ? pickedDays.delete(d) : pickedDays.add(d); paintDays(); });
+    return b;
+  }));
+}
+function paintKind() {
+  const kind = $("af-kind").value;
+  $("af-every").hidden = kind !== "every"; $("af-time").hidden = kind === "every"; $("af-days").hidden = kind !== "weekly";
+}
+function scheduleFromForm() {
+  const kind = $("af-kind").value;
+  if (kind === "every") return { kind, minutes: Math.round(Number($("af-n").value) * Number($("af-unit").value)) };
+  return kind === "daily" ? { kind, at: $("af-at").value } : { kind, at: $("af-at").value, days: [...pickedDays].sort() };
+}
+function paintAutomations(rows) {
+  $("auto-list").replaceChildren(...(rows.length ? rows.map((a) => {
+    const run = h("button", { type: "button", class: "btn cut" }, "Run now");
+    const pause = h("button", { type: "button", class: "btn cut" }, a.paused ? "Resume" : "Pause");
+    const del = h("button", { type: "button", class: "btn cut danger" }, "Delete");
+    const act = (action, then) => async () => { try { await api("/api/automation/" + action, { id: a.id }); await loadAutomations(); if (then) then(); } catch (e) { toast(e.message); } };
+    run.addEventListener("click", act("run", () => toast("Queued \u201c" + a.name + "\u201d")));
+    pause.addEventListener("click", act(a.paused ? "resume" : "pause"));
+    del.addEventListener("click", act("delete"));
+    return h("div", { class: "arow" + (a.paused ? " off" : "") },
+      h("div", { class: "n" }, a.name), h("div", { class: "pr", title: a.prompt }, a.prompt),
+      h("div", { class: "mt" }, [a.when, a.paused ? "paused" : "next " + when(a.next_run), a.last_run ? "last " + when(a.last_run) : "never run", a.edits ? "can change files" : "read-only"].join(" \u00b7 ")),
+      h("div", { class: "ctl" }, run, pause, del));
+  }) : [h("div", { class: "art-empty" }, "No automations in this project yet.")]));
+}
+async function loadAutomations() { paintAutomations((await api("/api/automations")).automations); }
+async function openAutomations() {
+  showView("auto"); document.body.classList.remove("side-open"); $("toggle").setAttribute("aria-expanded", "false");
+  try { await loadAutomations(); } catch (e) { toast(e.message); }
+}
+$("nav-auto").addEventListener("click", openAutomations);
+$("af-kind").addEventListener("change", paintKind);
+$("af").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  try {
+    await api("/api/automation/create", { name: $("af-name").value, prompt: $("af-prompt").value, schedule: scheduleFromForm(), edits: $("af-edits").checked });
+    $("af-name").value = ""; $("af-prompt").value = "";
+    await loadAutomations(); toast("Automation added");
+  } catch (err) { toast(err.message); }
+});
+paintDays(); paintKind();
+
 /* Attachments: images and text files, from the button, a drop or a paste. Each is uploaded as soon as it is chosen. */
 const MAX_ATTACH = 6, MAX_ATTACH_BYTES = 12_000_000;
 let pending = [];
@@ -999,6 +1173,7 @@ async function attachFiles(files) {
   }
 }
 $("attach").append(ico("clip"));
+$("opts").addEventListener("click", () => { const open = document.querySelector(".bar").classList.toggle("opts-open"); $("opts").setAttribute("aria-expanded", String(open)); });
 $("attach").addEventListener("click", () => $("files").click());
 $("files").addEventListener("change", () => { attachFiles([...$("files").files]); $("files").value = ""; });
 $("input").addEventListener("paste", (e) => {
