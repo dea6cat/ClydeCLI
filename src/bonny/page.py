@@ -101,11 +101,20 @@ nav { display: flex; flex-direction: column; padding: 8px 0; border-bottom: 1px 
 .project { padding: 2px 18px; font: 400 12px/1.5 var(--mono); color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #sessions { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; margin-top: 4px; }
 .srow { position: relative; flex: none; display: flex; border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent); transition: opacity .18s ease-out, transform .18s ease-out; }
-.srow .session { flex: 1; border-bottom: 0; padding-right: 46px; }
+.srow .session { flex: 1; border-bottom: 0; padding-right: 76px; }
 .srow.gone { opacity: 0; transform: translateX(-8px); pointer-events: none; }
 .del { position: absolute; right: 8px; top: 50%; translate: 0 -50%; width: 28px; height: 28px; display: grid; place-items: center; border: 0; background: none; color: var(--dim); opacity: 0;
   transition-property: opacity, color, background-color; transition-duration: .12s; }
 .del::before { content: ""; position: absolute; inset: -6px; }
+.pin { position: absolute; right: 38px; top: 50%; translate: 0 -50%; width: 28px; height: 28px; display: grid; place-items: center; border: 0; background: none; color: var(--dim); opacity: 0;
+  transition-property: opacity, color, background-color; transition-duration: .12s; }
+.pin .ico { width: 15px; height: 15px; }
+.pin[aria-pressed="true"] { opacity: 1; color: var(--link); }
+.pin[aria-pressed="true"] .ico { fill: currentColor; }
+.pin:hover { color: var(--link); background: color-mix(in srgb, var(--link) 12%, transparent); }
+.srow:hover .pin, .srow:focus-within .pin, .pin:focus-visible { opacity: 1; }
+@media (hover: none) { .pin { opacity: .75; } }
+body[data-shape="round"] .pin { border-radius: 8px; }
 .srow:hover .del, .srow:focus-within .del, .del:focus-visible { opacity: 1; }
 .del:hover { color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); }
 @media (hover: none) { .del { opacity: .75; } }
@@ -452,6 +461,7 @@ input[type="color"] { width: 36px; height: 24px; padding: 0; border: 1px solid v
   <svg data-i="up" viewBox="0 0 24 24"><path d="M7 11v9H4.5A1.5 1.5 0 0 1 3 18.5v-6A1.5 1.5 0 0 1 4.5 11H7z"/><path d="M7 11l3.4-6.1A1.8 1.8 0 0 1 14 5.8V9h4.6a2 2 0 0 1 2 2.3l-1.1 6.5a2 2 0 0 1-2 1.7H7"/></svg>
   <svg data-i="council" viewBox="0 0 24 24"><circle cx="6" cy="5.5" r="2"/><circle cx="18" cy="5.5" r="2"/><circle cx="12" cy="19" r="2"/><path d="M6 7.5v1.2a3 3 0 0 0 3 3h6a3 3 0 0 0 3-3V7.5M12 11.7V17"/></svg>
   <svg data-i="retry" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 5v6h-6"/></svg>
+  <svg data-i="pin" viewBox="0 0 24 24"><path d="M9 4h6l-1 6 3 3v1.5H7V13l3-3z"/><path d="M12 14.5V20"/></svg>
   <svg data-i="trash" viewBox="0 0 24 24"><path d="M4.5 7h15"/><path d="M9.5 7V4.5h5V7"/><path d="M6.5 7l.9 12.5h9.2L17.5 7"/><path d="M10.2 11v5.2M13.8 11v5.2"/></svg>
   <svg data-i="clip" viewBox="0 0 24 24"><path d="M19 11.5l-6.8 6.8a4.2 4.2 0 0 1-6-6l7.2-7.2a2.8 2.8 0 0 1 4 4l-7.2 7.2a1.4 1.4 0 0 1-2-2l6.5-6.5"/></svg>
   <svg data-i="x" viewBox="0 0 24 24"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg>
@@ -614,8 +624,10 @@ async function refresh() {
       const row = h("div", { class: "srow" },
         h("button", { class: "session", "data-id": s.id, title: s.title, "aria-current": String(s.id === st.session), onclick: () => openSession(s.id) },
           h("span", { class: "t" }, s.title), h("span", { class: "m" }, when(s.updated))),
+        h("button", { class: "pin", type: "button", "aria-pressed": String(!!s.pinned), "aria-label": (s.pinned ? "Unpin session: " : "Pin session: ") + s.title, title: s.pinned ? "Unpin" : "Pin" }, ico("pin")),
         h("button", { class: "del", type: "button", "aria-label": "Delete session: " + s.title, title: "Delete" }, ico("trash")));
       row.querySelector(".del").addEventListener("click", () => deleteSession(s, row));
+      row.querySelector(".pin").addEventListener("click", () => pinSession(s));
       return row;
     })
     : [h("div", { class: "empty-note" }, "No saved sessions yet")]));
@@ -660,6 +672,10 @@ async function openSession(id) {
     st.session = r.session; renderMessages(r.messages); applyState(r); $("input").focus();
   } catch (e) { toast(e.message); await refresh(); }
   finally { clearTimeout(slow); }
+}
+async function pinSession(s) {
+  try { await api("/api/session/pin", { id: s.id, pinned: !s.pinned }); await refresh(); $("sessions").querySelector('[data-id="' + s.id + '"]').parentElement.querySelector(".pin").focus(); }
+  catch (e) { toast(e.message); }
 }
 async function deleteSession(s, row) {
   const wasOpen = s.id === st.session;

@@ -31,7 +31,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 from src import activity
 from src.config import clyde_home
 from src.agent.session import Session
-from src.bonny import artifacts, attachments, theme
+from src.bonny import artifacts, attachments, pins, theme
 from src.bonny.page import PAGE
 from src.providers import model_ref
 from src.providers.card_shuffle import record_vote
@@ -272,8 +272,10 @@ class Bonny:
     # -- sessions ------------------------------------------------------------------------------------
     def sessions(self) -> list[dict]:
         found = Session.list_recent(str(self.repl.tool_context.workspace_root))
-        return [{"id": s.session_id, "title": session_title(s), "updated": s.updated_at, "messages": len(s.conversation.messages)}
-                for s in found]
+        pinned = pins.load()
+        rows = [{"id": s.session_id, "title": session_title(s), "updated": s.updated_at, "messages": len(s.conversation.messages),
+                 "pinned": s.session_id in pinned} for s in found]
+        return sorted(rows, key=lambda r: pinned.index(r["id"]) if r["pinned"] else len(pinned))   # stable: pinned first, newest pin first, the rest as before
 
     def messages(self, session_id: str) -> list[dict] | None:
         from src.repl.core import _message_text
@@ -557,6 +559,8 @@ def make_server(bonny: Bonny, host: str = "127.0.0.1", port: int = 0) -> Threadi
                 self._change(path, data)
             elif path in ("/api/session/delete", "/api/session/restore"):
                 self._trash(path, data)
+            elif path == "/api/session/pin":
+                self._pin(data)
             else:
                 self._json(404, {"error": "not found"})
 
@@ -695,6 +699,18 @@ def make_server(bonny: Bonny, host: str = "127.0.0.1", port: int = 0) -> Threadi
             else:
                 ok = Session.unarchive(session_id)
             self._json(200, {"ok": True, "state": bonny.state()}) if ok else self._json(404, {"error": "no such session"})
+
+        def _pin(self, data: dict) -> None:
+            session_id = data.get("id")
+            if not isinstance(session_id, str) or not _ID.match(session_id) or not isinstance(data.get("pinned"), bool):
+                self._json(400, {"error": "id and pinned are required"})
+                return
+            try:
+                pins.set_pinned(session_id, data["pinned"])
+            except OSError as e:
+                self._json(500, {"error": f"couldn't save the pin: {e}"})
+            else:
+                self._json(200, {"ok": True})
 
         def _change(self, path: str, data: dict) -> None:
             """Session, mode and model changes: refused while a turn runs, since they act on the live REPL."""
