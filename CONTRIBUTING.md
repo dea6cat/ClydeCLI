@@ -352,3 +352,10 @@ If you have questions, feel free to:
 - Reach out to maintainers
 
 Thank you for contributing to ClydeCLI!
+
+## Releasing
+
+The `stable` update channel follows release tags. To cut a release: bump `__version__` in `src/__init__.py` (and `version` in
+`pyproject.toml`), update `CHANGELOG.md`, merge to `main`, then tag that commit `vX.Y.Z` (for example `git tag v0.2.0 && git push
+origin v0.2.0`). Only plain `vX.Y.Z` tags count; others (`v1.0.0-rc1`, `nightly`) are ignored. Until the first tag exists, `clyde
+update --channel stable` reports that there is no release yet.

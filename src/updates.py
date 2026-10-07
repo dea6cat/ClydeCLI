@@ -1,6 +1,7 @@
 """`clyde update` and the quiet "an update is available" note.
 
-Clyde is installed from its git repository, so "newest" means the newest commit on `main` (a release channel comes later).
+Clyde is installed from its git repository. The `latest` channel follows the newest commit on `main`; `stable` follows the
+newest `vX.Y.Z` tag. Stable never suggests a downgrade: it compares versions.
 The note never slows start-up: a background thread refreshes a cache at most once a day, and the next start reads it.
 Nothing is installed without the user running `clyde update`.
 """
@@ -9,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import threading
 import time
@@ -23,42 +25,100 @@ from src.config import clyde_home
 
 REPO_URL = "git+https://github.com/dea6cat/ClydeCLI"
 COMMIT_API = "https://api.github.com/repos/dea6cat/ClydeCLI/commits/main"
+TAGS_API = "https://api.github.com/repos/dea6cat/ClydeCLI/tags?per_page=100"
 CHECK_EVERY_S = 24 * 3600
 ENV_DISABLE = "CLYDE_NO_UPDATE_CHECK"      # "1" turns the start-up check off
 _TIMEOUT_S = 5
 
 
 @dataclass(frozen=True)
+class Target:
+    """What a channel points at: the newest commit on main (latest), or the newest tagged release (stable)."""
+    channel: str
+    commit: str                  # full sha
+    version: str | None = None   # "0.2.0", stable only
+    ref: str | None = None       # the git tag, "v0.2.0", stable only
+
+
+@dataclass(frozen=True)
 class Status:
-    state: str                   # "current", "behind" or "unknown" (nothing to compare)
+    state: str                   # "current", "behind", "ahead" (newer than stable) or "unknown" (nothing to compare)
     local: str | None
     remote: str | None
 
 
-def fetch_remote_commit() -> str | None:
-    """The full sha of the newest commit on main, or None when GitHub cannot be reached or answers oddly."""
-    request = urllib.request.Request(COMMIT_API, headers={"Accept": "application/vnd.github.sha", "User-Agent": "clyde-cli"})
+_TAG = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")     # release tags only; "v1.0.0-rc1" and the like are ignored
+
+
+def _semver(text: str | None) -> tuple[int, int, int] | None:
+    match = _TAG.match(f"v{text.removeprefix('v')}") if text else None
+    return tuple(int(g) for g in match.groups()) if match else None   # type: ignore[return-value]
+
+
+def _get(url: str, accept: str) -> str | None:
+    request = urllib.request.Request(url, headers={"Accept": accept, "User-Agent": "clyde-cli"})
     try:
         with urllib.request.urlopen(request, timeout=_TIMEOUT_S) as response:
-            sha = response.read().decode("ascii", errors="replace").strip()
+            return response.read().decode("utf-8", errors="replace")
     except (urllib.error.URLError, OSError, ValueError):
         return None
-    return sha if len(sha) == 40 and all(c in "0123456789abcdef" for c in sha) else None
 
 
-def compare(info: install_info.Install, remote: str | None) -> Status:
-    """Is this install behind `remote`? Only an install that recorded its commit can be compared."""
-    if remote is None or not info.commit:
-        return Status("unknown", info.commit, remote[:7] if remote else None)
-    return Status("current" if remote.startswith(info.commit) else "behind", info.commit, remote[:7])
+def _is_sha(text: str) -> bool:
+    return len(text) == 40 and all(c in "0123456789abcdef" for c in text)
 
 
-def update_command(info: install_info.Install) -> list[str] | None:
-    """The command that moves this install to the newest main, or None for a source checkout (update it with git)."""
+def fetch_remote_commit() -> str | None:
+    """The full sha of the newest commit on main, or None when GitHub cannot be reached or answers oddly."""
+    sha = (_get(COMMIT_API, "application/vnd.github.sha") or "").strip()
+    return sha if _is_sha(sha) else None
+
+
+def fetch_newest_tag() -> Target | None:
+    """The highest `vX.Y.Z` tag, or None when there is none or GitHub cannot be reached."""
+    try:
+        tags = json.loads(_get(TAGS_API, "application/vnd.github+json") or "")
+    except ValueError:
+        return None
+    best: tuple[tuple[int, int, int], Target] | None = None
+    for tag in tags if isinstance(tags, list) else []:
+        name, sha = tag.get("name", ""), (tag.get("commit") or {}).get("sha", "")
+        version = _semver(name) if isinstance(name, str) else None
+        if version and _is_sha(sha) and (best is None or version > best[0]):
+            best = (version, Target("stable", sha, ".".join(map(str, version)), name))
+    return best[1] if best else None
+
+
+def fetch_target(channel: str) -> Target | None:
+    if channel == "stable":
+        return fetch_newest_tag()
+    sha = fetch_remote_commit()
+    return Target("latest", sha) if sha else None
+
+
+def compare(info: install_info.Install, target: Target | None) -> Status:
+    """Is this install behind the channel's target? Latest compares commits (so the install must have recorded its commit);
+    stable compares versions and never suggests a downgrade."""
+    if target is None:
+        return Status("unknown", info.commit or info.version, None)
+    if target.channel == "stable":
+        mine, theirs = _semver(info.version), _semver(target.version)
+        if mine is None or theirs is None:
+            return Status("unknown", info.version, target.version)
+        return Status("behind" if theirs > mine else "current" if theirs == mine else "ahead", info.version, target.version)
+    if not info.commit:
+        return Status("unknown", None, target.commit[:7])
+    return Status("current" if target.commit.startswith(info.commit) else "behind", info.commit, target.commit[:7])
+
+
+def update_command(info: install_info.Install, target: Target | None = None) -> list[str] | None:
+    """The command that moves this install to the target (newest main when none is given), or None for a source checkout
+    (update it with git)."""
+    url = REPO_URL + (f"@{target.ref}" if target and target.ref else "")
     return {
-        "uv-tool": ["uv", "tool", "install", "--force", "--python", "3.14", REPO_URL],
-        "pipx": ["pipx", "install", "--force", REPO_URL],
-        "pip": [sys.executable, "-m", "pip", "install", "--upgrade", REPO_URL],
+        "uv-tool": ["uv", "tool", "install", "--force", "--python", "3.14", url],
+        "pipx": ["pipx", "install", "--force", url],
+        "pip": [sys.executable, "-m", "pip", "install", "--upgrade", url],
     }.get(info.method)
 
 
@@ -74,30 +134,41 @@ def _read_cache() -> dict:
     return data if isinstance(data, dict) else {}
 
 
-def refresh_cache(fetch: Callable[[], str | None] = fetch_remote_commit, now: float | None = None) -> bool:
-    """Ask GitHub unless the cache is under a day old; True when a fresh answer was stored."""
+def refresh_cache(fetch: Callable[[str], Target | None] = fetch_target, now: float | None = None, channel: str | None = None) -> bool:
+    """Ask GitHub about the configured channel unless the cache is under a day old (and for the same channel); True when a
+    fresh answer was stored."""
+    from src.config import get_update_channel
+    channel = channel or get_update_channel()
     now = time.time() if now is None else now
-    if now - float(_read_cache().get("checked_at", 0) or 0) < CHECK_EVERY_S:
+    cache = _read_cache()
+    if cache.get("channel") == channel and now - float(cache.get("checked_at", 0) or 0) < CHECK_EVERY_S:
         return False
-    remote = fetch()
-    if remote is None:
+    target = fetch(channel)
+    if target is None:
         return False
     try:
         _cache_path().parent.mkdir(parents=True, exist_ok=True)
-        _cache_path().write_text(json.dumps({"checked_at": now, "remote": remote}), encoding="utf-8")
+        _cache_path().write_text(json.dumps({"checked_at": now, "channel": channel, "commit": target.commit,
+                                             "version": target.version, "ref": target.ref}), encoding="utf-8")
     except OSError:
         return False
     return True
 
 
-def cached_note(info: install_info.Install | None = None) -> str | None:
+def cached_note(info: install_info.Install | None = None, channel: str | None = None) -> str | None:
     """The one-line note when the cached answer says this install is behind; None otherwise or when checks are off."""
+    from src.config import get_update_channel
     if os.environ.get(ENV_DISABLE) == "1":
         return None
-    status = compare(info or install_info.detect(), _read_cache().get("remote"))
+    channel = channel or get_update_channel()
+    cache = _read_cache()
+    commit = cache.get("commit")
+    if cache.get("channel") != channel or not isinstance(commit, str):
+        return None
+    status = compare(info or install_info.detect(), Target(channel, commit, cache.get("version"), cache.get("ref")))
     if status.state != "behind":
         return None
-    return f"A newer ClydeCLI is available ({status.local} → {status.remote}). Run `clyde update`."
+    return f"A newer ClydeCLI is available ({status.local} → {status.remote}, {channel} channel). Run `clyde update`."
 
 
 def start_background_check() -> None:

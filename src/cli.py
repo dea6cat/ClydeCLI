@@ -44,7 +44,7 @@ Examples:
   clyde plugin install <path|git-url> Install a plugin (skills, hooks, MCP servers, tools); asks before enabling it
   clyde plugin import                 Bring over plugins installed for Claude Code, Codex or Cursor
   clyde plugin list                   List installed plugins; also: plugin remove|enable|disable <name>
-  clyde update [--check]              Move Clyde to the newest version, the way it was installed
+  clyde update [--check] [--channel latest|stable]  Move Clyde to the newest version of its channel, the way it was installed
   clyde uninstall [--purge] [-y]      Remove Clyde the way it was installed; --purge also deletes ~/.clyde
   clyde doctor                        How Clyde is installed: method, version, PATH, other installs, Claude Code
   clyde license [accept]              Show the licence terms and whether you accepted them; accept records it
@@ -104,6 +104,7 @@ Examples:
 
     subparsers.add_parser('doctor', help='How Clyde is installed: method, version, PATH, other installs, Claude Code, licence')
     update_parser = subparsers.add_parser('update', help='Move Clyde to the newest version, the way it was installed')
+    update_parser.add_argument('--channel', choices=['latest', 'stable'], help='follow every commit on main (latest) or tagged releases (stable); saved')
     update_parser.add_argument('--check', action='store_true', help='only say whether a newer version exists (exit 0 current, 1 newer exists, 2 could not check)')
     uninstall_parser = subparsers.add_parser('uninstall', help='Remove Clyde the way it was installed; --purge also deletes ~/.clyde (keys, sessions)')
     uninstall_parser.add_argument('--purge', action='store_true', help="also delete Clyde's data folder: settings, saved keys, sessions, licence record")
@@ -142,7 +143,7 @@ Examples:
         return 1 if any(line.lstrip().startswith("✗") for line in install_info.report_lines()) else 0
 
     if args.command == 'update':
-        return handle_update(Console(), check_only=args.check)
+        return handle_update(Console(), check_only=args.check, channel=args.channel)
 
     if args.command == 'uninstall':
         return handle_uninstall(Console(), purge=args.purge, assume_yes=args.yes)
@@ -531,27 +532,39 @@ def _scan_plugin(console: Console, plugin):  # type: ignore[no-untyped-def]
     return verdict
 
 
-def handle_update(console: Console, check_only: bool = False) -> int:
-    """`clyde update [--check]`. Exit 0 updated or already current, 1 failed (or, with --check, a newer version exists),
-    2 not managed here (a source checkout) or, with --check, the check could not be made."""
+def handle_update(console: Console, check_only: bool = False, channel: str | None = None) -> int:
+    """`clyde update [--check] [--channel latest|stable]`. `--channel` saves the choice first. Exit 0 updated or already
+    current, 1 failed (or, with --check, a newer version exists), 2 not managed here (a source checkout), no stable release
+    yet, or, with --check, the check could not be made."""
     import subprocess
-    from src import install_info, updates
+    from src import config, install_info, updates
+    if channel is not None:
+        config.set_update_channel(channel)
+        console.print(f"Update channel: [bold]{channel}[/bold] (saved)")
+    channel = config.get_update_channel()
     info = install_info.detect()
-    command = updates.update_command(info)
-    remote = updates.fetch_remote_commit()
-    status = updates.compare(info, remote)
+    target = updates.fetch_target(channel)
+    status = updates.compare(info, target)
     if check_only:
-        if remote is None:
-            console.print("[yellow]Couldn't reach GitHub to check.[/yellow]")
+        if target is None:
+            console.print("[yellow]Couldn't reach GitHub, or the stable channel has no release yet.[/yellow]")
             return 2
-        console.print({"current": f"Up to date ({status.local}).", "behind": f"A newer version exists ({status.local} → {status.remote}). Run: clyde update",
-                       "unknown": f"Newest is {status.remote}; this install did not record its commit, so I can't compare. Run: clyde update"}[status.state])
+        console.print({"current": f"Up to date ({status.local}, {channel} channel).",
+                       "ahead": f"You are on {status.local}, newer than the newest stable release ({status.remote}).",
+                       "behind": f"A newer version exists ({status.local} → {status.remote}, {channel} channel). Run: clyde update",
+                       "unknown": f"Newest on {channel} is {status.remote}; this install did not record enough to compare. Run: clyde update"}[status.state])
         return 1 if status.state == "behind" else 0
+    command = updates.update_command(info, target)
     if command is None:
         console.print(f"[yellow]This Clyde runs from a source checkout ({info.location}).[/yellow] Update it with git pull there.")
         return 2
-    if status.state == "current":
-        console.print(f"Already up to date ({status.local}).")
+    if channel == "stable" and target is None:
+        console.print("[yellow]The stable channel has no release yet (or GitHub can't be reached); nothing changed.[/yellow] "
+                      "Use `clyde update --channel latest` to follow main.")
+        return 2
+    if status.state in ("current", "ahead"):
+        console.print(f"Already up to date ({status.local}, {channel} channel)." if status.state == "current" else
+                      f"Not downgrading: you are on {status.local}, newer than the newest stable release ({status.remote}).")
         return 0
     console.print(f"Updating with: [bold]{' '.join(command)}[/bold]")
     try:
