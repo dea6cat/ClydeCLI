@@ -17,6 +17,7 @@ import datetime
 import hashlib
 import hmac
 import json
+import os
 import re
 import secrets
 import sys
@@ -32,7 +33,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 from src import activity
 from src.config import clyde_home
 from src.agent.session import Session
-from src.bonny import artifacts, attachments, automations, pins, theme
+from src.bonny import artifacts, attachments, automations, pins, projects, theme
 from src.bonny.page import PAGE
 from src.providers import model_ref
 from src.providers.card_shuffle import record_vote
@@ -351,6 +352,17 @@ class Bonny:
             self.new_session()
         return True
 
+    def set_project(self, path: Path) -> None:
+        """Work in another folder: tools, permissions and new sessions follow it, and a fresh session opens there. The caller has
+        checked that nothing is running."""
+        # ponytail: MCP servers and hooks were loaded for the folder Bonny started in; restart Bonny to pick up a new project's own
+        os.chdir(path)
+        context = self.repl.tool_context
+        context.workspace_root = context.cwd = path
+        context.permission_context.workspace_root = path
+        projects.remember(path)
+        self.new_session()
+
     def new_session(self) -> None:
         self.repl._switch_session(Session.create(self.repl.provider_name, self.repl.model))
         self.events.emit("session", session=self.repl.session.session_id)
@@ -493,6 +505,11 @@ def make_server(bonny: Bonny, host: str = "127.0.0.1", port: int = 0) -> Threadi
                 self._artifact_preview(query.get("path", [""])[0])
             elif url.path == "/api/automations":
                 self._json(200, {"automations": [{**a, "when": automations.describe(a["schedule"])} for a in automations.listing(bonny.project)]})
+            elif url.path == "/api/dirs":
+                try:
+                    self._json(200, projects.browse(query.get("path", [bonny.project])[0]))
+                except ValueError as e:
+                    self._json(400, {"error": str(e)})
             elif url.path == "/api/models":
                 self._json(200, {"models": bonny.models()})
             elif url.path == "/api/sessions":
@@ -592,6 +609,13 @@ def make_server(bonny: Bonny, host: str = "127.0.0.1", port: int = 0) -> Threadi
                 self._trash(path, data)
             elif path == "/api/session/pin":
                 self._pin(data)
+            elif path == "/api/dirs/create":
+                try:
+                    self._json(200, {"path": str(projects.make_dir(data.get("parent"), data.get("name")))})
+                except ValueError as e:
+                    self._json(400, {"error": str(e)})
+            elif path == "/api/project":
+                self._project(data)
             elif path.startswith("/api/automation/"):
                 self._automation(path.rsplit("/", 1)[1], data)
             else:
@@ -756,6 +780,18 @@ def make_server(bonny: Bonny, host: str = "127.0.0.1", port: int = 0) -> Threadi
                 automations.update(bonny.project, automation_id, action)
                 self._json(200, {"ok": True})
 
+        def _project(self, data: dict) -> None:
+            if bonny.control.busy:
+                self._json(409, {"error": "Bonny is working. Stop her, or wait, then try again."})
+                return
+            try:
+                bonny.set_project(projects.choose(data.get("path")))
+            except ValueError as e:
+                self._json(400, {"error": str(e)})
+            else:
+                state = bonny.state()
+                self._json(200, {**state, "messages": []})
+
         def _pin(self, data: dict) -> None:
             session_id = data.get("id")
             if not isinstance(session_id, str) or not _ID.match(session_id) or not isinstance(data.get("pinned"), bool):
@@ -807,6 +843,7 @@ def main(model: str | None = None, port: int = 0, open_browser: bool = True) -> 
     url = f"http://127.0.0.1:{server.server_address[1]}/"
     threading.Thread(target=server.serve_forever, name="bonny-http", daemon=True).start()
     bonny.start_scheduler()
+    projects.remember(Path.cwd())
     print(f"Bonny is running at {url}  (Ctrl+C to stop)")
     if open_browser:
         webbrowser.open(url)
