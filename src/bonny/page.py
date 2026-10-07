@@ -204,7 +204,7 @@ dialog::backdrop { background: rgba(0, 0, 0, .5); }
 .hint { font: 400 12px/1.5 var(--mono); color: var(--dim); }
 .pj-path { font: 500 12.5px/1.5 var(--mono); word-break: break-all; padding: 8px 10px; border: 1px solid var(--line); }
 .pj-list { display: flex; flex-direction: column; max-height: 220px; overflow-y: auto; border: 1px solid var(--line); }
-.pj-list button { text-align: left; padding: 8px 10px; background: none; border: 0; border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent); font: 500 12.5px var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pj-list button { flex: none; line-height: 1.4; text-align: left; padding: 8px 10px; background: none; border: 0; border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent); font: 500 12.5px var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pj-list button:hover { background: color-mix(in srgb, var(--text) 6%, transparent); color: var(--link); }
 .pj-list .none { padding: 8px 10px; color: var(--dim); font: 400 12.5px var(--mono); }
 #pj-form input { flex: 1; min-width: 0; height: 32px; padding: 0 10px; background: none; color: var(--text); border: 1px solid var(--line); font: 14px var(--font-body); }
