@@ -180,8 +180,10 @@ voice and a plainer way to use them. Start her on a model with `clyde --model <p
 Everything the page does goes through a small local API: queue prompts, steer or stop a running turn, list and
 reopen sessions, answer permission cards, change mode or model, vote on council answers. Requests need a
 per-run token and a matching Host and Origin, and the server never listens on anything but your machine. One
-turn runs at a time; prompts queue behind it. Bonny's interface is still being reviewed: today `/` shows a
-placeholder and the API is what's live.
+turn runs at a time; prompts queue behind it. The page is a sidebar of your sessions (click one to reopen it and keep talking),
+Search and Computer modes (Search is read-only), a model and permissions picker, permission cards for anything that
+needs a yes, queue, steer and stop buttons, and the council popup with up and down votes. It is one file with no
+outside requests.
 
 ### Laya
 

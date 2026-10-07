@@ -54,6 +54,10 @@ class EventLog:
                 self._first = self._events[0]["id"]
             self._cond.notify_all()
 
+    def last(self) -> int:
+        with self._cond:
+            return self._first + len(self._events) - 1
+
     def after(self, last: int, timeout: float = 0.0) -> tuple[list[dict], int]:
         """(events with id > last, the newest id), waiting up to `timeout` seconds when there are none yet."""
         with self._cond:
@@ -157,7 +161,16 @@ class Bonny:
         repl = self.repl
         return {"busy": self.control.busy, "queued": self.control.prompts.qsize(), "model": model_ref(repl.provider, repl.model),
                 "mode": repl.mode, "session": repl.session.session_id, "cwd": str(repl.tool_context.workspace_root),
-                "council": self.council()}
+                "council": self.council(), "event": self.events.last()}
+
+    def models(self) -> list[str]:
+        """What the model picker offers: cardShuffle's tiers (and their council forms), then every model that passed /eval."""
+        from src.providers.model_eval import load_results
+
+        card = self.repl.registry.get("cardShuffle")
+        tiers = [f"cardShuffle:{m}" for m in card.list_models()] if card is not None else []
+        graded = sorted(ref for ref, r in load_results().items() if r.get("passed") and not ref.startswith("cardShuffle:"))
+        return tiers + graded
 
     # -- sessions ------------------------------------------------------------------------------------
     def sessions(self) -> list[dict]:
@@ -276,6 +289,8 @@ def make_server(bonny: Bonny, host: str = "127.0.0.1", port: int = 0) -> Threadi
             query = parse_qs(url.query)
             if url.path == "/api/state":
                 self._json(200, bonny.state())
+            elif url.path == "/api/models":
+                self._json(200, {"models": bonny.models()})
             elif url.path == "/api/sessions":
                 self._json(200, {"sessions": bonny.sessions()})
             elif url.path.startswith("/api/sessions/"):
