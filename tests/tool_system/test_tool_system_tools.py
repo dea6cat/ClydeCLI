@@ -15,7 +15,7 @@ from unittest.mock import patch
 from src.agent.conversation import Conversation
 from src.agent.agent_loop import run_agent_loop
 from src.tool_system.context import ToolContext
-from src.tool_system.errors import ToolInputError
+from src.tool_system.errors import ToolExecutionError, ToolInputError
 from src.tool_system.defaults import build_default_registry
 from src.tool_system.protocol import ToolCall
 from src.tool_system.registry import ToolRegistry
@@ -359,6 +359,41 @@ class TestWebSearchTool(ToolSystemTests):
             out = WebSearchTool().run({"query": "example", "num": 1}, self.ctx).output
             self.assertEqual(len(out["results"]), 1)
             self.assertEqual(out["results"][0]["url"], "https://example.com/")
+
+
+    def test_web_search_unwraps_redirect_links_and_sends_a_browser_user_agent(self) -> None:
+        html_doc = ('<a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fen.wikipedia.org%2Fwiki%2FELIZA&amp;rut=abc">ELIZA</a>'
+                    '<a class="result__snippet">A chatbot</a>')
+        seen = {}
+
+        class _Resp(io.BytesIO):
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        def fake(req, timeout=0):
+            seen["ua"], seen["url"] = req.get_header("User-agent"), req.full_url
+            return _Resp(html_doc.encode("utf-8"))
+
+        with patch.object(urllib.request, "urlopen", side_effect=fake):
+            out = WebSearchTool().run({"query": "eliza"}, self.ctx).output
+        self.assertEqual(out["results"][0]["url"], "https://en.wikipedia.org/wiki/ELIZA")
+        self.assertTrue(seen["ua"].startswith("Mozilla/"))
+        self.assertTrue(seen["url"].startswith("https://html.duckduckgo.com/html/"))
+
+    def test_web_search_says_so_when_the_engine_blocks_it(self) -> None:
+        class _Resp(io.BytesIO):
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        with patch.object(urllib.request, "urlopen", return_value=_Resp(b"<html>anomaly-modal challenge</html>")):
+            with self.assertRaises(ToolExecutionError):
+                WebSearchTool().run({"query": "example"}, self.ctx)
 
 
 class TestSleepTool(ToolSystemTests):
