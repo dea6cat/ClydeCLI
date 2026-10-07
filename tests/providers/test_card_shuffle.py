@@ -362,7 +362,7 @@ class TestCouncil(unittest.TestCase):
         self.assertEqual(self.providers["e"].requests, [])
         self.assertAlmostEqual(card.last_council["answers"][2]["p"], 0.6)
         self.assertTrue(card.last_council["ranked"])
-        self.assertIn("council of 4", self.deals[0])
+        self.assertIn("council, 4 of 4 answered · 60% best", self.deals[0])
 
     def test_models_get_no_tools_and_every_call_is_spent(self):
         card = self._card(_prefers({r: 0.25 for r in self.texts.values()}, self.texts))
