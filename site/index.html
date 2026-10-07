@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClydeCLI · a coding-agent harness for any LLM</title>
-<meta name="description" content="ClydeCLI is an open-source coding-agent harness for the terminal, written in Python. Bring any LLM; Clyde gives it tools, permissions, a sandbox, undo and sessions.">
+<meta name="description" content="ClydeCLI is a source-available coding-agent harness for the terminal, written in Python, free for noncommercial use. Bring any LLM; Clyde gives it tools, permissions, a sandbox, undo and sessions.">
 <meta property="og:title" content="ClydeCLI">
 <meta property="og:description" content="A coding-agent harness for the terminal, written in Python. Bring any LLM.">
 <meta name="theme-color" content="#0f1a14">
@@ -55,7 +55,7 @@
   <h1>ClydeCLI</h1>
   <p>A coding-agent harness for the terminal. Bring any LLM; Clyde gives it tools, permissions, a sandbox, undo and sessions.</p>
   <div class="install"><code id="cmd">curl -fsSL https://raw.githubusercontent.com/dea6cat/ClydeCLI/main/install.sh | sh</code><button type="button" id="copy">Copy</button></div>
-  <p>The model can be one of 13 providers, a local model through Ollama or LM Studio, or any OpenAI- or Anthropic-compatible endpoint. Written in Python, MIT licensed.</p>
+  <p>The model can be one of 13 providers, a local model through Ollama or LM Studio, or any OpenAI- or Anthropic-compatible endpoint. Written in Python. Source-available: free for noncommercial use under the PolyForm Noncommercial License, and it asks you to accept that on first run.</p>
 
   <h2>A real session</h2>
   <p>A three-file project with a leap-year bug, NVIDIA's <code>muse-glimmer-30b</code> in all-in mode, then <code>/rewind</code> to undo the fix. The dim italic lines are the model's own thinking.</p>
@@ -199,11 +199,15 @@ Difficulty (shadow turns, split at score 1.62)   turns  avg tool rounds  ran out
     <li>MCP servers work over stdio, HTTP and SSE, with OAuth sign-in.</li>
     <li>Sub-agents and teams run in parallel, in the background if you like.</li>
     <li>It reads the memory files, skills, hooks and MCP servers you already set up for Claude Code, Codex, Cursor or Gemini CLI.</li>
+    <li>Plan mode saves the plan you approve for the session and puts its phases back into every turn, so it survives <code>/compact</code> and <code>--resume</code>. <code>/plan</code> shows it and marks phases done.</li>
+    <li><code>/review</code> reads your uncommitted changes, a commit or a branch without editing anything. <code>clyde sessions</code> finds old sessions by what was said in them.</li>
+    <li><code>clyde doctor</code>, <code>update</code> and <code>uninstall</code> manage the install. Updates follow <code>main</code> or tagged releases, and nothing installs by itself.</li>
   </ul>
   <p>Editor support over the Agent Client Protocol, a read-only SQL tool and the rest are in the <a href="https://github.com/dea6cat/ClydeCLI#readme">README</a>.</p>
 
   <h2>Limits</h2>
   <ul>
+    <li>Source-available, not open source: free for noncommercial use under the PolyForm Noncommercial License 1.0.0, and commercial use needs written permission. The first run asks you to type "I accept"; nothing runs until you do.</li>
     <li>One maintainer, and few users so far. Expect rough edges.</li>
     <li>Needs Python 3.14+ on macOS or Linux. The install is about 850 MB, mostly PyTorch for the bundled Laya model.</li>
     <li>Editor support through ACP is new and hasn't been tried in a real editor yet. Android Studio doesn't support ACP agents.</li>
@@ -211,7 +215,7 @@ Difficulty (shadow turns, split at score 1.62)   turns  avg tool rounds  ran out
     <li>Some providers don't report token usage, so cost tracking can't count them.</li>
   </ul>
 </main>
-<footer>MIT license · <a href="https://github.com/dea6cat/ClydeCLI">github.com/dea6cat/ClydeCLI</a></footer>
+<footer><a href="https://github.com/dea6cat/ClydeCLI/blob/main/LICENSE">PolyForm Noncommercial 1.0.0</a> · <a href="https://github.com/dea6cat/ClydeCLI">github.com/dea6cat/ClydeCLI</a></footer>
 <script>
   document.getElementById("copy").addEventListener("click", function () {
     var b = this, t = document.getElementById("cmd").textContent;
