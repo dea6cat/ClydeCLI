@@ -114,7 +114,10 @@ def compare(info: install_info.Install, target: Target | None) -> Status:
 def update_command(info: install_info.Install, target: Target | None = None) -> list[str] | None:
     """The command that moves this install to the target (newest main when none is given), or None for a source checkout
     (update it with git)."""
-    url = REPO_URL + (f"@{target.ref}" if target and target.ref else "")
+    # Pin to what was checked: the tag for stable, the exact commit for latest, so the install cannot differ from the report
+    # even if main moves in between. Without a target (GitHub unreachable) the newest main is installed.
+    pin = (target.ref or target.commit) if target else None
+    url = REPO_URL + (f"@{pin}" if pin else "")
     return {
         "uv-tool": ["uv", "tool", "install", "--force", "--python", "3.14", url],
         "pipx": ["pipx", "install", "--force", url],
