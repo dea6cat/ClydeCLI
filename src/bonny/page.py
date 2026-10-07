@@ -252,8 +252,28 @@ body[data-shape="round"] dialog { border-radius: 14px; }
 /* artifacts: the files Clyde wrote or edited, with a sandboxed preview */
 #artifacts-view { display: none; flex: 1; min-height: 0; flex-direction: column; }
 main[data-view="artifacts"] #artifacts-view { display: flex; }
-main[data-view="artifacts"] #thread, main[data-view="artifacts"] .dock { display: none; }
+main:not([data-view="chat"]) #thread, main:not([data-view="chat"]) .dock { display: none; }
+#auto-view { display: none; flex: 1; min-height: 0; flex-direction: column; overflow-y: auto; }
+main[data-view="auto"] #auto-view { display: flex; }
+.auto-body { width: 100%; max-width: 760px; margin: 0 auto; padding: 18px 22px 40px; display: flex; flex-direction: column; gap: 18px; }
+.af { --c: 12px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.af .fld { display: flex; flex-direction: column; gap: 5px; font: 600 11.5px var(--mono); color: var(--dim); }
+.af input[type="text"], .af input[type="number"], .af input[type="time"], .af textarea { width: 100%; padding: 8px 10px; background: none; color: var(--text); border: 1px solid var(--line); font: 14px/1.4 var(--font-body); }
+.af textarea { min-height: 84px; resize: vertical; }
+.af .line { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.af .line > * { flex: none; }
+.af .line input[type="number"] { width: 84px; }
+.af .line input[type="time"] { width: 120px; }
+.af .chk { display: flex; gap: 8px; align-items: center; font: 500 12.5px var(--mono); color: var(--text); }
+.af .hint { font: 400 12px/1.5 var(--mono); color: var(--dim); }
+.arow { display: flex; flex-direction: column; gap: 6px; padding: 12px 0; border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent); }
+.arow .n { font-weight: 700; }
+.arow .pr { color: var(--dim); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.arow .mt { font: 400 12px/1.5 var(--mono); color: var(--dim); }
+.arow.off .n { color: var(--dim); }
+.arow .ctl { display: flex; gap: 8px; flex-wrap: wrap; }
 .art-top { display: flex; align-items: center; gap: 14px; padding: 12px 22px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.art-top .hint { font: 400 12px/1.5 var(--mono); color: var(--dim); }
 .art-top h2 { margin: 0; font-size: 20px; font-weight: 800; letter-spacing: -.02em; }
 .art-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(230px, 300px) minmax(0, 1fr); }
 .art-list { overflow-y: auto; border-right: 1px solid var(--line); }
@@ -358,7 +378,7 @@ input[type="color"] { width: 36px; height: 24px; padding: 0; border: 1px solid v
   <nav>
     <button class="nav" id="new"><span aria-hidden="true">+</span> New</button>
     <button class="nav" id="nav-computer" aria-current="true"><span aria-hidden="true">&gt;_</span> Computer</button>
-    <button class="nav" disabled><span aria-hidden="true">&#9719;</span> Automations <small>soon</small></button>
+    <button class="nav" id="nav-auto"><span aria-hidden="true">&#9719;</span> Automations</button>
     <button class="nav" id="nav-artifacts"><span aria-hidden="true">&#9635;</span> Artifacts</button>
     <button class="nav" id="customize"><span aria-hidden="true">&#9998;</span> Customize</button>
   </nav>
@@ -403,6 +423,27 @@ input[type="color"] { width: 36px; height: 24px; padding: 0; border: 1px solid v
         </div>
       </form>
     </div>
+    <section id="auto-view" aria-label="Automations">
+      <div class="art-top"><h2>Automations</h2><span class="hint" id="auto-hint">Prompts Bonny runs on a schedule, in this project. They run only while Bonny is open, each in its own session.</span></div>
+      <div class="auto-body">
+        <form class="af cut" id="af">
+          <label class="fld">Name<input type="text" id="af-name" maxlength="80" placeholder="Morning look (optional)"></label>
+          <label class="fld">What should Bonny do?<textarea id="af-prompt" maxlength="4000" required placeholder="Summarise what changed in the repo since yesterday"></textarea></label>
+          <div class="fld" id="af-when-wrap">When
+            <div class="line">
+              <span class="sel cut"><select id="af-kind" aria-label="How often"><option value="every">Every</option><option value="daily">Every day</option><option value="weekly">On certain days</option></select><i class="caret" aria-hidden="true">&#9662;</i></span>
+              <span id="af-every" class="line"><input type="number" id="af-n" min="1" max="10080" value="30" aria-label="How many"><span class="sel cut"><select id="af-unit" aria-label="Minutes or hours"><option value="1">minutes</option><option value="60">hours</option></select><i class="caret" aria-hidden="true">&#9662;</i></span></span>
+              <span id="af-time" class="line" hidden><input type="time" id="af-at" value="09:00" aria-label="Time"></span>
+            </div>
+            <div class="seg" id="af-days" role="group" aria-label="Days" hidden></div>
+          </div>
+          <label class="chk"><input type="checkbox" id="af-edits"> Allow it to change files (otherwise it only reads)</label>
+          <div class="hint">Nobody is there to approve changes, so it reads and reports unless you allow edits.</div>
+          <div class="line"><button type="submit" class="btn cut primary">Add automation</button></div>
+        </form>
+        <div id="auto-list" aria-label="Your automations"></div>
+      </div>
+    </section>
     <section id="artifacts-view" aria-label="Artifacts">
       <div class="art-top"><h2>Artifacts</h2><div class="seg" id="art-filter" role="group" aria-label="Show"></div></div>
       <div class="art-body" id="art-body">
@@ -600,7 +641,7 @@ function paintControls() {
   $("hero-title").textContent = (T && T.greeting) || (search ? "What do you want to know?" : "What should we work on?");
   $("input").placeholder = search ? "Ask anything" : "Describe what you want done";
   document.querySelectorAll("#form .chip[data-mode]").forEach((c) => c.setAttribute("aria-pressed", String(c.dataset.mode === st.ui)));
-  $("nav-computer").setAttribute("aria-current", String(!search && $("main").dataset.view !== "artifacts"));
+  $("nav-computer").setAttribute("aria-current", String(!search && $("main").dataset.view === "chat"));
 }
 function applyState(s) {
   st.busy = s.busy; st.queued = s.queued; st.mode = s.mode; st.session = s.session;
@@ -923,6 +964,7 @@ const rawUrl = (path, extra) => "/artifact/raw?t=" + encodeURIComponent(TOKEN) +
 function showView(name) {
   $("main").dataset.view = name;
   $("nav-artifacts").setAttribute("aria-current", String(name === "artifacts"));
+  $("nav-auto").setAttribute("aria-current", String(name === "auto"));
   paintControls();
 }
 function paintArtFilters() {
@@ -995,6 +1037,57 @@ function artifactCard(e) {
   st.bubble = null; scroll();
 }
 $("nav-artifacts").addEventListener("click", () => openArtifacts());
+
+/* Automations: a form with a plain-words schedule, and the list for this project. */
+const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const pickedDays = new Set([0, 1, 2, 3, 4]);
+function paintDays() {
+  $("af-days").replaceChildren(...DAY_NAMES.map((name, d) => {
+    const b = h("button", { type: "button", class: "chip cut", "aria-pressed": String(pickedDays.has(d)) }, name);
+    b.addEventListener("click", () => { pickedDays.has(d) ? pickedDays.delete(d) : pickedDays.add(d); paintDays(); });
+    return b;
+  }));
+}
+function paintKind() {
+  const kind = $("af-kind").value;
+  $("af-every").hidden = kind !== "every"; $("af-time").hidden = kind === "every"; $("af-days").hidden = kind !== "weekly";
+}
+function scheduleFromForm() {
+  const kind = $("af-kind").value;
+  if (kind === "every") return { kind, minutes: Math.round(Number($("af-n").value) * Number($("af-unit").value)) };
+  return kind === "daily" ? { kind, at: $("af-at").value } : { kind, at: $("af-at").value, days: [...pickedDays].sort() };
+}
+function paintAutomations(rows) {
+  $("auto-list").replaceChildren(...(rows.length ? rows.map((a) => {
+    const run = h("button", { type: "button", class: "btn cut" }, "Run now");
+    const pause = h("button", { type: "button", class: "btn cut" }, a.paused ? "Resume" : "Pause");
+    const del = h("button", { type: "button", class: "btn cut danger" }, "Delete");
+    const act = (action, then) => async () => { try { await api("/api/automation/" + action, { id: a.id }); await loadAutomations(); if (then) then(); } catch (e) { toast(e.message); } };
+    run.addEventListener("click", act("run", () => toast("Queued \u201c" + a.name + "\u201d")));
+    pause.addEventListener("click", act(a.paused ? "resume" : "pause"));
+    del.addEventListener("click", act("delete"));
+    return h("div", { class: "arow" + (a.paused ? " off" : "") },
+      h("div", { class: "n" }, a.name), h("div", { class: "pr", title: a.prompt }, a.prompt),
+      h("div", { class: "mt" }, [a.when, a.paused ? "paused" : "next " + when(a.next_run), a.last_run ? "last " + when(a.last_run) : "never run", a.edits ? "can change files" : "read-only"].join(" \u00b7 ")),
+      h("div", { class: "ctl" }, run, pause, del));
+  }) : [h("div", { class: "art-empty" }, "No automations in this project yet.")]));
+}
+async function loadAutomations() { paintAutomations((await api("/api/automations")).automations); }
+async function openAutomations() {
+  showView("auto"); document.body.classList.remove("side-open"); $("toggle").setAttribute("aria-expanded", "false");
+  try { await loadAutomations(); } catch (e) { toast(e.message); }
+}
+$("nav-auto").addEventListener("click", openAutomations);
+$("af-kind").addEventListener("change", paintKind);
+$("af").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  try {
+    await api("/api/automation/create", { name: $("af-name").value, prompt: $("af-prompt").value, schedule: scheduleFromForm(), edits: $("af-edits").checked });
+    $("af-name").value = ""; $("af-prompt").value = "";
+    await loadAutomations(); toast("Automation added");
+  } catch (err) { toast(err.message); }
+});
+paintDays(); paintKind();
 
 /* Attachments: images and text files, from the button, a drop or a paste. Each is uploaded as soon as it is chosen. */
 const MAX_ATTACH = 6, MAX_ATTACH_BYTES = 12_000_000;
