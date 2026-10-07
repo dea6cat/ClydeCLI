@@ -36,6 +36,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   obtained before this change remain MIT.
 
 ### Fixed
+- Two sessions created in the same second got the same id, and the second silently overwrote the first when saved. A new session now takes
+  the next free id (`..._2`), counting archived sessions as taken too.
 - `WebSearch` returned no results at all: DuckDuckGo answered its plainly labelled request with an anti-bot page, and the tool
   reported that as an empty list. It now sends a browser User-Agent to `html.duckduckgo.com`, turns DuckDuckGo's redirect links
   into the real page URLs, and says so when the search engine blocks it instead of returning nothing.
