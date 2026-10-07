@@ -65,8 +65,8 @@ body[data-shape="round"] .cut::before, body[data-shape="round"] .cut::after, bod
 .btn.primary { --edge: var(--text); --fill: var(--text); color: var(--bg); }
 .btn.primary:hover { --edge: var(--link); --fill: var(--link); }
 .btn.danger { color: var(--danger); }
-.sel { --c: 6px; display: inline-flex; align-items: center; height: 28px; max-width: 210px; min-width: 0; padding: 0 24px 0 10px; font: 500 12px/1 var(--mono); }
-.sel select { appearance: none; -webkit-appearance: none; background: none; border: 0; outline: 0; width: 100%; min-width: 0; text-overflow: ellipsis; cursor: pointer; }
+.sel { --c: 6px; display: inline-flex; align-items: stretch; height: 28px; max-width: 210px; min-width: 0; padding: 0; font: 500 12px/1 var(--mono); }
+.sel select { appearance: none; -webkit-appearance: none; background: none; border: 0; outline: 0; width: 100%; min-width: 0; height: 28px; padding: 0 24px 0 10px; text-overflow: ellipsis; cursor: pointer; font: inherit; }
 .sel select option { background: var(--bg); color: var(--text); }
 .caret { position: absolute; right: 9px; pointer-events: none; font-size: 9px; font-style: normal; color: var(--dim); }
 .seg { display: inline-flex; gap: 4px; }
@@ -136,9 +136,13 @@ main.empty .dock { margin: auto 0; padding-bottom: 12vh; }
 .hero { max-width: 720px; margin: 0 auto 20px; display: none; }
 main.empty .hero { display: block; }
 .hero .kind { font: 500 12.5px/1.4 var(--mono); color: var(--link); margin-bottom: 8px; }
-.hero h1 { margin: 0; font-weight: 800; font-stretch: 86%; font-size: 44px; line-height: 1.05; letter-spacing: -.035em; text-wrap: balance; }
+.hero h2 { margin: 0; font-weight: 800; font-stretch: 86%; font-size: 44px; line-height: 1.05; letter-spacing: -.035em; text-wrap: balance; }
 .box { --c: 16px; max-width: 720px; margin: 0 auto; padding: 14px 16px 12px; }
 textarea:focus-visible { outline: none; }
+::placeholder { color: var(--dim); opacity: 1; }
+.skip { position: absolute; left: 12px; top: -48px; z-index: 20; padding: 8px 14px; background: var(--text); color: var(--bg); font: 600 12.5px var(--mono); text-decoration: none; transition: top .15s ease-out; }
+.skip:focus { top: 12px; }
+.elapsed { color: var(--dim); }
 #input { width: 100%; resize: none; border: 0; background: none; outline: none; min-height: 28px; max-height: 40vh; display: block; font: 16px/1.5 var(--font-body); }
 .bar { display: flex; align-items: center; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
 .bar .right { margin-left: auto; display: flex; gap: 8px; }
@@ -165,7 +169,7 @@ dialog::backdrop { background: rgba(0, 0, 0, .5); }
 
 /* answer actions */
 .answer { display: flex; flex-direction: column; gap: 6px; }
-.actions { display: flex; align-items: center; gap: 2px; margin-left: -8px; animation: rise .24s ease-out both; }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; margin-left: -8px; animation: rise .24s ease-out both; }
 @keyframes rise { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 .act, .src { position: relative; display: inline-grid; place-items: center; height: 30px; min-width: 30px; padding: 0 7px; border: 0; background: none; color: var(--dim);
   transition-property: background-color, color, transform; transition-duration: 150ms; transition-timing-function: ease-out; }
@@ -185,7 +189,7 @@ dialog::backdrop { background: rgba(0, 0, 0, .5); }
 .act[data-tip]::after { content: attr(data-tip); position: absolute; bottom: calc(100% + 7px); left: 50%; transform: translate(-50%, 3px); background: var(--text); color: var(--bg);
   font: 500 11px/1 var(--mono); padding: 6px 9px; white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity 120ms ease-out, transform 120ms ease-out; z-index: 4; }
 .act:hover::after, .act:focus-visible::after { opacity: 1; transform: translate(-50%, 0); transition-delay: 300ms; }
-.src { display: inline-flex; align-items: center; gap: 9px; margin-left: 6px; font: 500 12px var(--mono); font-variant-numeric: tabular-nums; }
+.src { display: inline-flex; align-items: center; gap: 9px; margin-left: 6px; white-space: nowrap; font: 500 12px var(--mono); font-variant-numeric: tabular-nums; }
 .faces { display: inline-flex; }
 .face { width: 19px; height: 19px; border-radius: 50%; display: grid; place-items: center; font: 700 10px var(--font-body); color: #fff; box-shadow: 0 0 0 2px var(--bg); margin-left: -6px; }
 .face:first-child { margin-left: 0; }
@@ -212,7 +216,7 @@ dialog#look:not([open]) { display: none; }
 .pickers label { display: flex; align-items: center; justify-content: space-between; gap: 8px; font: 500 12px var(--mono); }
 input[type="color"] { width: 36px; height: 24px; padding: 0; border: 1px solid var(--line); background: none; cursor: pointer; }
 .rowc { display: flex; align-items: center; gap: 10px; }
-.rowc > span { width: 118px; font: 500 12px var(--mono); }
+.rowc > span, .rowc > label.k { width: 118px; font: 500 12px var(--mono); }
 .rowc input[type="range"] { flex: 1; min-width: 0; accent-color: var(--link); }
 .rowc output { width: 44px; text-align: right; font: 500 12px var(--mono); font-variant-numeric: tabular-nums; color: var(--dim); }
 .look-body input[type="text"] { width: 100%; height: 32px; padding: 0 10px; background: none; border: 1px solid var(--line); font: 14px var(--font-body); }
@@ -221,9 +225,9 @@ input[type="color"] { width: 36px; height: 24px; padding: 0; border: 1px solid v
 
 @media (max-width: 820px) {
   aside { position: fixed; z-index: 5; inset: 0 auto 0 0; transform: translateX(-100%); transition: transform .2s; background: var(--bg); }
-  body.menu aside { transform: none; box-shadow: 0 0 0 100vmax rgba(0, 0, 0, .5); }
+  body.side-open aside { transform: none; box-shadow: 0 0 0 100vmax rgba(0, 0, 0, .5); }
   #toggle { display: inline-block; }
-  .hero h1 { font-size: 34px; }
+  .hero h2 { font-size: 34px; }
   .pickers { grid-template-columns: 1fr; }
 }
 @media (prefers-reduced-motion: reduce) { .actions { animation: none; } .act, .src, .act .ico, .act::after, .cut, .glow { transition: none !important; } .status .spade { animation: none; } }
@@ -232,10 +236,13 @@ input[type="color"] { width: 36px; height: 24px; padding: 0; border: 1px solid v
 <style id="custom">__CUSTOM__</style>
 </head>
 <body data-shape="__SHAPE__">
+<a class="skip" href="#input">Skip to the message box</a>
+<h1 class="sr">Bonny</h1>
+<div class="sr" id="announce" role="status" aria-live="polite"></div>
 <div id="bg" aria-hidden="true"></div>
 <div class="glow" id="glow" aria-hidden="true"></div>
 <div class="app">
-<aside aria-label="Bonny">
+<aside id="side" aria-label="Bonny">
   <div class="brand">
     <svg viewBox="0 0 100 100" role="img" aria-label="Bonny"><mask id="bonny-cut" maskUnits="userSpaceOnUse" x="0" y="0" width="100" height="100"><rect width="100" height="100" fill="#fff"/><polyline points="34,44 52,57 34,70" fill="none" stroke="#000" stroke-width="7.5" stroke-linejoin="miter"/><rect x="57" y="66.5" width="15" height="7" fill="#000"/></mask><path mask="url(#bonny-cut)" fill="currentColor" d="M50 5 C50 5 9 36 9 60 C9 74 21 84 34 82 C41 81 46 77 48 72 C48 84 44 92 33 96 L67 96 C56 92 52 84 52 72 C54 77 59 81 66 82 C79 84 91 74 91 60 C91 36 50 5 50 5 Z"/></svg>
     Bonny
@@ -256,14 +263,14 @@ input[type="color"] { width: 36px; height: 24px; padding: 0; border: 1px solid v
 <main class="empty" id="main">
   <div class="frame">
     <div class="top">
-      <button id="toggle" aria-label="Show or hide the sidebar">&#9776;</button>
+      <button id="toggle" aria-label="Show or hide the sidebar" aria-controls="side" aria-expanded="false">&#9776;</button>
       <span class="tag" id="state-pill"></span>
       <span class="spacer"></span>
       <span class="tag" id="queue-pill" hidden></span>
     </div>
-    <div id="thread" role="log" aria-label="Conversation"><div class="col" id="col"></div></div>
+    <div id="thread" role="log" aria-live="off" aria-label="Conversation"><div class="col" id="col"></div></div>
     <div class="dock">
-      <div class="hero"><div class="kind" id="hero-kind">Computer</div><h1 id="hero-title">What should we work on?</h1></div>
+      <div class="hero"><div class="kind" id="hero-kind">Computer</div><h2 id="hero-title">What should we work on?</h2></div>
       <form class="box cut" id="form">
         <label class="sr" for="input">Message Bonny</label>
         <textarea id="input" rows="1" placeholder="Describe what you want done"></textarea>
@@ -302,19 +309,19 @@ input[type="color"] { width: 36px; height: 24px; padding: 0; border: 1px solid v
   <div class="dlg-head"><h2 id="look-title">Customize</h2><button class="btn cut" id="look-close">Done</button></div>
   <div class="look-body">
     <section class="sec"><h3>Theme</h3><div class="swatches" id="presets"></div></section>
-    <section class="sec"><h3>Colors</h3><div class="pickers" id="pickers"></div><div><button class="btn cut" id="reset-colors" type="button">Reset colors</button></div></section>
+    <section class="sec"><h3>Colors</h3><div class="pickers" id="pickers"></div><div class="note" id="contrast" role="status"></div><div><button class="btn cut" id="reset-colors" type="button">Reset colors</button></div></section>
     <section class="sec"><h3>Background image</h3>
       <div class="thumb" id="thumb" hidden></div>
       <div class="rowc"><label class="btn cut" for="bgfile">Choose image</label><input class="sr" id="bgfile" type="file" accept="image/png,image/jpeg,image/gif,image/webp"><button class="btn cut" id="bg-remove" type="button">Remove</button></div>
       <div class="note" id="bg-note">PNG, JPEG, GIF or WebP, up to 8 MB. It stays on this machine.</div>
-      <div class="rowc"><span>Dim</span><input type="range" id="dim" min="0" max="90" step="5"><output id="dim-out"></output></div>
-      <div class="rowc"><span>Blur</span><input type="range" id="blur" min="0" max="24" step="1"><output id="blur-out"></output></div>
-      <div class="rowc"><span>See-through</span><input type="range" id="glass" min="0" max="90" step="5"><output id="glass-out"></output></div>
-      <div class="rowc"><span>Fit</span><span class="sel cut"><select id="fit" aria-label="Image fit"><option value="cover">Fill</option><option value="contain">Fit inside</option><option value="tile">Tile</option><option value="center">Center</option></select><i class="caret" aria-hidden="true">&#9662;</i></span></div>
+      <div class="rowc"><label class="k" for="dim">Dim</label><input type="range" id="dim" min="0" max="90" step="5"><output id="dim-out"></output></div>
+      <div class="rowc"><label class="k" for="blur">Blur</label><input type="range" id="blur" min="0" max="24" step="1"><output id="blur-out"></output></div>
+      <div class="rowc"><label class="k" for="glass">See-through</label><input type="range" id="glass" min="0" max="90" step="5"><output id="glass-out"></output></div>
+      <div class="rowc"><label class="k" for="fit">Fit</label><span class="sel cut"><select id="fit" aria-label="Image fit"><option value="cover">Fill</option><option value="contain">Fit inside</option><option value="tile">Tile</option><option value="center">Center</option></select><i class="caret" aria-hidden="true">&#9662;</i></span></div>
     </section>
     <section class="sec"><h3>Shape and type</h3>
       <div class="seg" id="shapes" role="group" aria-label="Corner shape"><button type="button" class="chip cut" data-shape="cut" aria-pressed="false">Cut</button><button type="button" class="chip cut" data-shape="round" aria-pressed="false">Round</button><button type="button" class="chip cut" data-shape="square" aria-pressed="false">Square</button></div>
-      <div class="rowc"><span>Font</span><span class="sel cut"><select id="font" aria-label="Font"><option value="site">Bricolage (site)</option><option value="system">System</option><option value="serif">Serif</option><option value="mono">Mono</option></select><i class="caret" aria-hidden="true">&#9662;</i></span></div>
+      <div class="rowc"><label class="k" for="font">Font</label><span class="sel cut"><select id="font" aria-label="Font"><option value="site">Bricolage (site)</option><option value="system">System</option><option value="serif">Serif</option><option value="mono">Mono</option></select><i class="caret" aria-hidden="true">&#9662;</i></span></div>
     </section>
     <section class="sec"><h3>Greeting</h3><label class="sr" for="greeting">Greeting</label><input type="text" id="greeting" maxlength="80" placeholder="What should we work on?"></section>
     <section class="sec"><h3>Custom CSS</h3><label class="sr" for="css">Custom CSS</label><textarea id="css" spellcheck="false" placeholder="body { ... }"></textarea>
@@ -342,7 +349,7 @@ input[type="color"] { width: 36px; height: 24px; padding: 0; border: 1px solid v
 const TOKEN = window.BONNY_TOKEN;
 const $ = (id) => document.getElementById(id);
 const st = { busy: false, ui: "computer", mode: "hold", bubble: null, bubbleText: "", tools: new Map(), session: "", queued: 0,
-  status: null, since: 0, activity: "", ticker: 0, titles: new Map(), fetched: [], pending: new Map(), queries: [], wrap: null, turn: null, sent: new Map() };
+  status: null, since: 0, activity: "", ticker: 0, titles: new Map(), fetched: [], pending: new Map(), queries: [], wrap: null, turn: null, sent: new Map(), said: "" };
 
 async function api(path, body) {
   const res = await fetch(path, {
@@ -417,19 +424,23 @@ function startBubble() {
   st.wrap = h("div", { class: "answer" }, st.bubble); col.append(st.wrap);
 }
 function paintBubble() { if (st.bubble) { st.bubble.replaceChildren(markdown(st.bubbleText)); scroll(); } }
-function note(text, cls) { setEmpty(false); col.append(h("div", { class: "note " + (cls || "") }, text)); scroll(); }
+function note(text, cls) { setEmpty(false); col.append(h("div", { class: "note " + (cls || ""), ...(cls === "error" ? { role: "alert" } : {}) }, text)); scroll(); }
+function announce(text) { $("announce").textContent = text; }
 
 /* Waiting feedback: a pulsing spade, what Clyde says it is doing, and how long it has been. */
 function paintStatus() {
   if (!st.status) return;
   const secs = Math.round((Date.now() - st.since) / 1000);
-  st.status.lastChild.textContent = (st.activity || "Thinking…") + (secs ? " · " + secs + "s" : "");
+  const words = st.activity || "Thinking…";
+  st.status.children[1].textContent = words;
+  st.status.children[2].textContent = secs ? " · " + secs + "s" : "";
+  if (words !== st.said) { st.said = words; announce(words); }   // announce what it is doing, not the ticking seconds
 }
 function placeStatus() { if (st.status) col.append(st.status); }
 function begin() {
   if (st.status) return;
   st.busy = true; st.since = Date.now(); st.activity = "Starting…";
-  st.status = h("div", { class: "status", role: "status" }, h("span", { class: "spade", "aria-hidden": "true" }, "\u2660"), h("span", {}));
+  st.status = h("div", { class: "status" }, h("span", { class: "spade", "aria-hidden": "true" }, "\u2660"), h("span", {}), h("span", { class: "elapsed", "aria-hidden": "true" }));
   paintStatus(); setEmpty(false); placeStatus(); scroll();
   st.ticker = setInterval(async () => {
     try { st.activity = (await api("/api/state")).activity || ""; } catch (e) { /* keep the last words */ }
@@ -491,7 +502,7 @@ async function showSession() {
   setEmpty(!messages.length); scroll();
 }
 async function openSession(id) {
-  try { await api("/api/session/open", { id }); document.body.classList.remove("menu"); } catch (e) { note(e.message, "error"); }
+  try { await api("/api/session/open", { id }); document.body.classList.remove("side-open"); } catch (e) { note(e.message, "error"); }
 }
 
 /* sending */
@@ -523,8 +534,8 @@ $("steer").addEventListener("click", async () => {
 });
 document.querySelectorAll("#form .chip").forEach((c) => c.addEventListener("click", () => { st.ui = c.dataset.mode; paintControls(); }));
 $("nav-computer").addEventListener("click", () => { st.ui = "computer"; paintControls(); $("input").focus(); });
-$("new").addEventListener("click", async () => { try { await api("/api/session/new", {}); document.body.classList.remove("menu"); } catch (e) { note(e.message, "error"); } });
-$("toggle").addEventListener("click", () => document.body.classList.toggle("menu"));
+$("new").addEventListener("click", async () => { try { await api("/api/session/new", {}); document.body.classList.remove("side-open"); } catch (e) { note(e.message, "error"); } });
+$("toggle").addEventListener("click", () => { const open = document.body.classList.toggle("side-open"); $("toggle").setAttribute("aria-expanded", String(open)); if (open) $("new").focus(); });
 $("model").addEventListener("change", async () => { try { applyState(await api("/api/model", { model: $("model").value })); } catch (e) { note(e.message, "error"); refresh(); } });
 $("perm").addEventListener("change", async () => { try { if (!st.busy) st.mode = (await api("/api/mode", { mode: $("perm").value })).mode; } catch (e) { note(e.message, "error"); } });
 
@@ -565,8 +576,8 @@ function handle(e) {
   else if (e.kind === "error") { finish(); note(e.message, "error"); }
   else if (e.kind === "turn_end") {
     finish();
-    if (e.stopped) note("Stopped.");
-    else finishAnswer(e);
+    if (e.stopped) { note("Stopped."); announce("Stopped."); }
+    else { finishAnswer(e); announce("Bonny answered."); }
     st.bubble = null; st.wrap = null; st.tools.clear(); st.busy = false; refresh();
   } else if (e.kind === "session") { showSession().then(refresh); }
 }
@@ -641,7 +652,12 @@ function download(name, text) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 document.addEventListener("click", (e) => { if (!e.target.closest(".menuwrap")) document.querySelectorAll(".menu").forEach((m) => { m.hidden = true; }); });
-document.addEventListener("keydown", (e) => { if (e.key === "Escape") { document.querySelectorAll(".menu").forEach((m) => { m.hidden = true; }); if ($("look").open) $("look").close(); } });
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  document.querySelectorAll(".menu").forEach((m) => { m.hidden = true; });
+  if ($("look").open) $("look").close();
+  if (document.body.classList.contains("side-open")) { document.body.classList.remove("side-open"); $("toggle").setAttribute("aria-expanded", "false"); $("toggle").focus(); }
+});
 
 function actionRow(o) {
   const md = () => markdownOf(o);
@@ -668,7 +684,21 @@ function actionRow(o) {
   const retryItem = h("button", { type: "button", role: "menuitem" }, ico("retry"), "Try again");
   const mdItem = h("button", { type: "button", role: "menuitem" }, ico("copy"), "Copy as Markdown");
   const menu = h("div", { class: "menu", role: "menu", hidden: "" }, retryItem, mdItem);
-  const more = actBtn("more", "More", () => { const open = menu.hidden; document.querySelectorAll(".menu").forEach((m) => { m.hidden = true; }); menu.hidden = !open; more.setAttribute("aria-expanded", String(open)); }, { "aria-haspopup": "menu", "aria-expanded": "false" });
+  const items = [retryItem, mdItem];
+  const closeMenu = (back) => { menu.hidden = true; more.setAttribute("aria-expanded", "false"); if (back) more.focus(); };
+  const more = actBtn("more", "More", () => {
+    const open = menu.hidden;
+    document.querySelectorAll(".menu").forEach((m) => { m.hidden = true; });
+    menu.hidden = !open; more.setAttribute("aria-expanded", String(open));
+    if (open) retryItem.focus();
+  }, { "aria-haspopup": "menu", "aria-expanded": "false" });
+  menu.addEventListener("keydown", (e) => {
+    const at = items.indexOf(document.activeElement);
+    if (e.key === "ArrowDown") { e.preventDefault(); items[(at + 1) % items.length].focus(); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); items[(at + items.length - 1) % items.length].focus(); }
+    else if (e.key === "Escape") { e.stopPropagation(); closeMenu(true); }
+    else if (e.key === "Tab") closeMenu(false);
+  });
   retryItem.addEventListener("click", async () => { menu.hidden = true; try { await submit(o.question, !!o.search, o.search ? "plan" : (o.mode || $("perm").value)); } catch (err) { note(err.message, "error"); } });
   mdItem.addEventListener("click", async () => { menu.hidden = true; await copyText(md()); });
   return h("div", { class: "actions", role: "group", "aria-label": "Answer actions", style: o.quiet ? "animation:none" : "" }, kids, h("span", { class: "spacer" }), h("span", { class: "menuwrap" }, more, menu));
@@ -727,6 +757,18 @@ function applyTheme(payload) {
   document.body.dataset.shape = T.shape;
   paintControls(); paintLook();
 }
+function luminance(hex) {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+function contrast(a, b) { const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x); return (hi + 0.05) / (lo + 0.05); }
+function paintContrast() {
+  const cs = getComputedStyle(document.documentElement);
+  const c = (k) => cs.getPropertyValue("--" + k).trim();
+  const weak = [["text", "Text"], ["dim", "Muted text"], ["link", "Links"]].filter(([k]) => /^#[0-9a-f]{6}$/i.test(c(k)) && /^#[0-9a-f]{6}$/i.test(c("bg")) && contrast(c(k), c("bg")) < 4.5)
+    .map(([k, label]) => label + " on the background is " + contrast(c(k), c("bg")).toFixed(1) + ":1");
+  $("contrast").textContent = weak.length ? "Low contrast: " + weak.join("; ") + ". 4.5:1 or higher is easier to read." : "";
+}
 function setIfIdle(el, value) { if (document.activeElement !== el && el.value !== value) el.value = value; }
 function paintLook() {
   document.querySelectorAll("#presets .swatch").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.preset === T.preset)));
@@ -740,6 +782,7 @@ function paintLook() {
   $("bg-note").textContent = hasImage ? "Background set. It stays on this machine." : "PNG, JPEG, GIF or WebP, up to 8 MB. It stays on this machine.";
   document.querySelectorAll("#shapes .chip").forEach((c) => c.setAttribute("aria-pressed", String(c.dataset.shape === T.shape)));
   $("fit").value = T.fit; $("font").value = T.font;
+  paintContrast();
   setIfIdle($("greeting"), T.greeting); setIfIdle($("css"), T.css); setIfIdle($("code"), JSON.stringify(T, null, 2));
 }
 function change(edit) { edit(T); dirty = true; clearTimeout(saveTimer); saveTimer = setTimeout(saveTheme, 80); }
@@ -788,7 +831,8 @@ $("code-apply").addEventListener("click", () => {
   catch (e) { $("bg-note").textContent = "That isn't a valid theme code."; }
 });
 $("reset-all").addEventListener("click", async () => { try { await api("/api/theme/image/remove", {}); T = {}; dirty = true; await saveTheme(); } catch (e) { $("bg-note").textContent = e.message; } });
-$("customize").addEventListener("click", () => { $("look").show(); paintLook(); });
+$("customize").addEventListener("click", () => { $("look").show(); paintLook(); $("look-close").focus(); });
+$("look").addEventListener("close", () => $("customize").focus());
 $("look-close").addEventListener("click", () => $("look").close());
 
 /* The site's pointer glow and card spotlight, only with a mouse and when motion is welcome. */
