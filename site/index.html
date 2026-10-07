@@ -11,99 +11,14 @@
 <meta name="theme-color" content="#0f1a14" media="(prefers-color-scheme: dark)">
 <link rel="icon" type="image/svg+xml" href="brand/clyde-mark.svg">
 <script>document.documentElement.className = "js";</script>
-<style>
-  @font-face { font-family: "Bricolage Grotesque"; src: url(fonts/bricolage-grotesque.woff2) format("woff2");
-               font-weight: 400 800; font-stretch: 75% 100%; font-display: swap; unicode-range: U+0000-00FF, U+2010-2027, U+2190-21FF; }
-  @font-face { font-family: "JetBrains Mono"; src: url(fonts/jetbrains-mono.woff2) format("woff2");
-               font-weight: 400 700; font-display: swap; unicode-range: U+0000-00FF, U+2010-2027, U+2190-21FF; }
-  :root { --bg: #e8e5dd; --text: #16231b; --dim: #566058; --line: #c6c1b4; --link: #1d6a36; --spade: #d0202f; --term: #0a120d;
-          --tint: #dfdbd0; --glow: rgba(208, 32, 47, .12); --spot: rgba(208, 32, 47, .09); --pad: 48px; }
-  @media (prefers-color-scheme: dark) { :root { --bg: #0f1a14; --text: #e3dfd6; --dim: #9aa39c; --line: #24382b; --link: #6cc985;
-          --tint: #13241a; --glow: rgba(108, 201, 133, .13); --spot: rgba(108, 201, 133, .10); } }
-  @media (max-width: 700px) { :root { --pad: 20px; } }
-  * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text); font: 17px/1.65 "Bricolage Grotesque", -apple-system, "Segoe UI", sans-serif; font-optical-sizing: auto; }
-  a { color: var(--link); text-underline-offset: 3px; }
-  a:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
-  code { font: 0.88em "JetBrains Mono", ui-monospace, Menlo, monospace; }
-  .mono { font: 500 13px/1.4 "JetBrains Mono", ui-monospace, Menlo, monospace; letter-spacing: .01em; }
-
-  /* the page: one hairline-framed column, like a sheet laid on the table */
-  .glow { position: fixed; left: 0; top: 0; width: 700px; height: 700px; margin: -350px 0 0 -350px; border-radius: 50%; pointer-events: none; opacity: 0;
-          background: radial-gradient(closest-side, var(--glow), transparent); transform: translate3d(var(--gx, 50vw), var(--gy, 30vh), 0); transition: opacity 1.2s; }
-  .glow.on { opacity: 1; }
-  .frame { position: relative; z-index: 1; max-width: 920px; margin: 0 auto; border-left: 1px solid var(--line); border-right: 1px solid var(--line); min-height: 100vh; }
-  @media (max-width: 960px) { .frame { border-left: 0; border-right: 0; } }
-  header { display: flex; justify-content: space-between; align-items: center; padding: 16px var(--pad); border-bottom: 1px solid var(--line); }
-  header b { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 19px; letter-spacing: -.01em; }
-  header b img { width: 24px; height: 24px; }
-  header nav a { margin-left: 22px; font: 500 13px "JetBrains Mono", monospace; color: var(--text); text-decoration: none; padding: 6px 0; border-bottom: 1px solid transparent; transition: border-color .25s, color .25s; }
-  header nav a:hover { color: var(--link); border-color: currentColor; }
-  .strip { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; justify-content: center; padding: 13px var(--pad); background: var(--tint); border-bottom: 1px solid var(--line); }
-  .strip .chip { --c: 7px; padding: 4px 11px; background: var(--text); color: var(--bg); font: 500 11px/1.4 "JetBrains Mono", monospace; letter-spacing: .06em;
-                 clip-path: polygon(0 0, calc(100% - var(--c)) 0, 100% var(--c), 100% 100%, var(--c) 100%, 0 calc(100% - var(--c))); }
-  main { padding: 0 var(--pad); }
-  p { margin: 0 0 14px; max-width: 68ch; }
-  .dim { color: var(--dim); }
-  h1 { font-size: 68px; line-height: 1; font-weight: 800; font-stretch: 86%; letter-spacing: -0.035em; margin: 0 0 18px; }
-  h2 { font-size: 32px; line-height: 1.12; font-weight: 750; font-stretch: 90%; letter-spacing: -0.025em; margin: 76px 0 12px; }
-  .hero { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 32px; align-items: center; padding: 72px 0 8px; }
-  .hero > div { min-width: 0; }
-  .hero .lead { font-size: 19px; }
-  .hero-mark { width: 210px; }
-  .hero-mark svg { display: block; width: 100%; height: auto; transform: perspective(800px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)); transition: transform .12s linear; }
-  @media (max-width: 760px) { .hero { grid-template-columns: minmax(0, 1fr); padding-top: 40px; } .hero-mark { width: 96px; order: -1; } h1 { font-size: 48px; } }
-
-  /* cut corners: a 1px edge drawn by two stacked shapes, since clip-path would clip a plain border */
-  .cut { --c: 16px; --edge: var(--line); --fill: var(--bg); position: relative; isolation: isolate; background: var(--edge);
-         clip-path: polygon(0 0, calc(100% - var(--c)) 0, 100% var(--c), 100% 100%, var(--c) 100%, 0 calc(100% - var(--c))); transition: background .25s; }
-  .cut::before { content: ""; position: absolute; inset: 1px; z-index: -1; background: var(--fill); transition: background .3s;
-                 clip-path: polygon(0 0, calc(100% - var(--c) + 1px) 0, 100% calc(var(--c) - 1px), 100% 100%, calc(var(--c) - 1px) 100%, 0 calc(100% - var(--c) + 1px)); }
-  .cut::after { content: ""; position: absolute; inset: 1px; z-index: -1; opacity: 0; transition: opacity .35s; pointer-events: none;
-                background: radial-gradient(220px circle at var(--x, 50%) var(--y, 50%), var(--spot), transparent 72%);
-                clip-path: polygon(0 0, calc(100% - var(--c) + 1px) 0, 100% calc(var(--c) - 1px), 100% 100%, calc(var(--c) - 1px) 100%, 0 calc(100% - var(--c) + 1px)); }
-  .cut:hover { --edge: var(--dim); }
-  .cut:hover::after { opacity: 1; }
-  .cut:focus-visible { --edge: var(--link); outline: 0; }
-
-  .install { display: flex; gap: 10px; align-items: stretch; margin: 26px 0 10px; max-width: 640px; }
-  .install code { flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap; background: var(--term); color: #e8e4dc; border: 1px solid var(--line); padding: 13px 15px; font-size: 13.5px; }
-  .install button { --c: 11px; font: 600 13px "JetBrains Mono", monospace; letter-spacing: .02em; color: var(--text); cursor: pointer; border: 0; padding: 0 20px; min-height: 46px; }
-  figure { margin: 22px calc(-1 * var(--pad)) 0; }
-  pre { margin: 0; background: var(--term); color: #e8e4dc; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 20px var(--pad);
-        font: 12.5px/1.55 "JetBrains Mono", ui-monospace, Menlo, monospace; overflow-x: auto; white-space: pre; }
-  pre:focus-visible, .install code:focus-visible { outline: 2px solid var(--link); outline-offset: -2px; }
-  figcaption { color: var(--dim); font: 400 12.5px/1.5 "JetBrains Mono", monospace; margin-top: 12px; padding: 0 var(--pad); }
-  ul { padding-left: 20px; margin: 0 0 14px; }
-  li { margin-bottom: 8px; max-width: 68ch; }
-  .figure { margin: 22px 0 0; }
-  .figure iframe { display: block; width: 552px; max-width: 100%; height: 600px; margin: 0 auto; border: 1px solid var(--line); border-radius: 0; }
-  dl.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 18px 0 20px; }
-  dl.grid > div { padding: 20px 22px 22px; }
-  dl.grid dt { font-weight: 750; margin: 0 0 4px; letter-spacing: -.01em; }
-  dl.grid dd { margin: 0; color: var(--dim); font-size: 16px; line-height: 1.55; }
-  dl.grid dd code { color: var(--text); }
-  @media (max-width: 700px) { dl.grid { grid-template-columns: 1fr; } }
-  footer { border-top: 1px solid var(--line); margin-top: 84px; padding: 22px var(--pad) 48px; color: var(--dim); font: 400 13px/1.6 "JetBrains Mono", monospace; }
-
-  @media (hover: hover) and (pointer: fine) { dl.grid > div:hover { translate: 0 -2px; } dl.grid > div { transition: translate .35s cubic-bezier(.16, 1, .3, 1), background .25s; } }
-  @media (prefers-reduced-motion: no-preference) {
-    @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
-    @keyframes print { from { clip-path: inset(0 0 100% 0); } to { clip-path: inset(0 0 0 0); } }
-    .enter { animation: rise .7s cubic-bezier(.16, 1, .3, 1) both; animation-delay: calc(var(--i) * 90ms); }
-    .js figure pre.rec { clip-path: inset(0 0 100% 0); }
-    .js figure pre.rec.in { animation: print var(--dur) steps(var(--n), end) forwards; }
-    .js dl.grid > div { opacity: 0; transform: translateY(10px); transition: opacity .6s cubic-bezier(.16, 1, .3, 1), transform .6s cubic-bezier(.16, 1, .3, 1), translate .35s cubic-bezier(.16, 1, .3, 1), background .25s; transition-delay: calc(var(--i) * 70ms), calc(var(--i) * 70ms), 0s, 0s; }
-    .js dl.grid.in > div { opacity: 1; transform: none; }
-  }
-</style>
+<link rel="stylesheet" href="site.css">
 </head>
 <body>
 <div class="glow" aria-hidden="true"></div>
 <div class="frame">
 <header>
   <b><img src="brand/clyde-mark.svg" alt="" width="24" height="24">ClydeCLI</b>
-  <nav><a href="https://github.com/dea6cat/ClydeCLI">Source</a><a href="https://github.com/dea6cat/ClydeCLI/blob/main/CHANGELOG.md">Changelog</a><a href="https://github.com/dea6cat/ClydeCLI/issues">Issues</a></nav>
+  <nav><a href="keys.html">API keys</a><a href="https://github.com/dea6cat/ClydeCLI">Source</a><a href="https://github.com/dea6cat/ClydeCLI/blob/main/CHANGELOG.md">Changelog</a><a href="https://github.com/dea6cat/ClydeCLI/issues">Issues</a></nav>
 </header>
 <div class="strip"><span class="chip">SOURCE-AVAILABLE</span><span class="mono">Bring any model. Clyde deals. <a href="https://github.com/dea6cat/ClydeCLI/blob/main/LICENSE">Free for noncommercial use.</a></span></div>
 <main>
@@ -111,7 +26,7 @@
     <div>
       <h1 class="enter" style="--i:0">ClydeCLI</h1>
   <p class="enter lead" style="--i:1">A coding-agent harness for the terminal. Bring any LLM; Clyde gives it tools, permissions, a sandbox, undo and sessions.</p>
-  <div class="install enter" style="--i:2"><code id="cmd" tabindex="0" role="region" aria-label="Install command">curl -fsSL https://raw.githubusercontent.com/dea6cat/ClydeCLI/main/install.sh | sh</code><button type="button" id="copy" class="cut">Copy</button></div>
+  <div class="install enter" style="--i:2"><code id="cmd" tabindex="0" role="region" aria-label="Install command">curl -fsSL https://raw.githubusercontent.com/dea6cat/ClydeCLI/main/install.sh | sh</code><button type="button" id="copy" class="cut" data-copy="cmd">Copy</button></div>
   <p class="enter" style="--i:3">The model can be one of 13 providers, a local model through Ollama or LM Studio, or any OpenAI- or Anthropic-compatible endpoint. Written in Python, free for noncommercial use.</p>
     </div>
     <div class="hero-mark enter" style="--i:2">
@@ -124,6 +39,14 @@
       </svg>
     </div>
   </section>
+
+  <h2>Bring any model</h2>
+  <dl class="grid">
+    <div class="cut"><dt>Local or hosted</dt><dd>Run a model on your own machine with Ollama or LM Studio, or bring your own key for 13 hosted providers or any OpenAI- or Anthropic-compatible service. <a href="keys.html">Where to get a key</a>.</dd></div>
+    <div class="cut"><dt>Switch any time</dt><dd>Pick the model per session with <code>/model</code>, or let cardShuffle deal one each turn from the models that passed your <code>/eval</code>.</dd></div>
+    <div class="cut"><dt>Sessions you can find again</dt><dd>Every turn is saved. <code>/resume</code> or <code>clyde -c</code> picks one up, <code>clyde sessions search</code> finds an old one by what was said, and <code>/rewind</code> undoes a change.</dd></div>
+    <div class="cut"><dt>Memory you control</dt><dd>It reads the memory files you already keep (<code>CLYDE.md</code>, <code>CLAUDE.md</code>, <code>AGENTS.md</code>, <code>GEMINI.md</code>) and keeps notes you ask it to remember, in plain markdown you can edit. It learns nothing on its own.</dd></div>
+  </dl>
 
   <h2>A real session</h2>
   <p>A three-file project with a leap-year bug, NVIDIA's <code>muse-glimmer-30b</code> in all-in mode, then <code>/rewind</code> to undo the fix. The dim italic lines are the model's own thinking.</p>
@@ -243,60 +166,6 @@ Difficulty (shadow turns, split at score 1.62)   turns  avg tool rounds  ran out
 </main>
 <footer><a href="https://github.com/dea6cat/ClydeCLI/blob/main/LICENSE">PolyForm Noncommercial 1.0.0</a> · <a href="https://github.com/dea6cat/ClydeCLI">github.com/dea6cat/ClydeCLI</a></footer>
 </div>
-<script>
-  (function () {
-    if (!("IntersectionObserver" in window) || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    var seen = new IntersectionObserver(function (items) {
-      items.forEach(function (it) {
-        if (!it.isIntersecting) return;
-        // a clipped element never counts as visible, so recordings are watched through their <figure>
-        (it.target.tagName === "FIGURE" ? it.target.querySelector("pre") : it.target).classList.add("in");
-        seen.unobserve(it.target);
-      });
-    }, { threshold: 0.12 });
-    document.querySelectorAll("figure pre").forEach(function (pre) {
-      var n = Math.max(1, pre.textContent.split("\n").length);
-      pre.classList.add("rec");
-      pre.style.setProperty("--n", n);
-      pre.style.setProperty("--dur", Math.min(4.2, Math.max(1.2, n * 0.055)) + "s");
-      seen.observe(pre.closest("figure"));
-    });
-    document.querySelectorAll("dl.grid").forEach(function (dl) {
-      Array.prototype.forEach.call(dl.children, function (c, i) { c.style.setProperty("--i", i % 2 + Math.floor(i / 2)); });
-      seen.observe(dl);
-    });
-  })();
-  (function () {
-    // Desktop pointers only, and never for anyone who asked for less motion. Every effect eases toward the pointer in one rAF loop
-    // that sleeps when nothing moves; no scroll listeners.
-    if (!matchMedia("(hover: hover) and (pointer: fine)").matches || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    var root = document.documentElement, glow = document.querySelector(".glow"), mark = document.getElementById("mark"),
-        prompt = document.getElementById("prompt"), tx = innerWidth / 2, ty = innerHeight * 0.3, x = tx, y = ty, raf = 0;
-    var clamp = function (v) { return Math.max(-1, Math.min(1, v)); };
-    function frame() {
-      x += (tx - x) * 0.08; y += (ty - y) * 0.08;
-      root.style.setProperty("--gx", x.toFixed(1) + "px"); root.style.setProperty("--gy", y.toFixed(1) + "px");
-      if (mark) {
-        var r = mark.getBoundingClientRect(), nx = clamp((x - (r.left + r.width / 2)) / (innerWidth * 0.45)), ny = clamp((y - (r.top + r.height / 2)) / (innerHeight * 0.45));
-        mark.style.setProperty("--ry", (nx * 9).toFixed(2) + "deg"); mark.style.setProperty("--rx", (-ny * 7).toFixed(2) + "deg");
-        prompt.setAttribute("transform", "translate(" + (nx * 3.2).toFixed(2) + " " + (ny * 2.6).toFixed(2) + ")");
-      }
-      raf = Math.abs(tx - x) > 0.4 || Math.abs(ty - y) > 0.4 ? requestAnimationFrame(frame) : 0;
-    }
-    glow.classList.add("on");
-    addEventListener("pointermove", function (e) {
-      tx = e.clientX; ty = e.clientY;
-      if (!raf) raf = requestAnimationFrame(frame);
-      var t = e.target.closest && e.target.closest(".cut");
-      if (t) { var b = t.getBoundingClientRect(); t.style.setProperty("--x", (e.clientX - b.left) + "px"); t.style.setProperty("--y", (e.clientY - b.top) + "px"); }
-    }, { passive: true });
-    requestAnimationFrame(frame);
-  })();
-  document.getElementById("copy").addEventListener("click", function () {
-    var b = this, t = document.getElementById("cmd").textContent;
-    if (!navigator.clipboard) { b.textContent = "Select it"; return; }
-    navigator.clipboard.writeText(t).then(function () { b.textContent = "Copied"; setTimeout(function () { b.textContent = "Copy"; }, 1500); });
-  });
-</script>
+<script src="site.js" defer></script>
 </body>
 </html>
