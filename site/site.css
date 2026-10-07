@@ -119,3 +119,4 @@
   .shots button[aria-pressed="true"] { --edge: var(--text); --fill: var(--text); color: var(--bg); }
   .spotcap { margin: 12px 0 0; max-width: none; }
   @media (hover: none) { .spot { cursor: default; } }
+  h1 .bmark { display: inline-block; height: .82em; width: auto; margin-right: .22em; vertical-align: -.04em; }
