@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ClydeCLI README banner</title>
+<style>
+  @font-face { font-family: "Bricolage Grotesque"; src: url(../fonts/bricolage-grotesque.woff2) format("woff2"); font-weight: 400 800; font-stretch: 75% 100%; }
+  @font-face { font-family: "JetBrains Mono"; src: url(../fonts/jetbrains-mono.woff2) format("woff2"); font-weight: 400 700; }
+  * { box-sizing: border-box; margin: 0; }
+  body { width: 1600px; height: 480px; overflow: hidden; color: #e3dfd6; font-family: "Bricolage Grotesque", sans-serif;
+         background: linear-gradient(115deg, #0b130e 0%, #0f1a14 38%, #1d2e22 100%); position: relative; }
+  /* a quiet halftone, strongest at the far right where the gradient is brightest */
+  .dots { position: absolute; inset: 0; background-image: radial-gradient(circle, rgba(227,223,214,.42) 1.4px, transparent 1.9px); background-size: 14px 14px;
+          -webkit-mask-image: linear-gradient(255deg, rgba(0,0,0,.7) 0%, rgba(0,0,0,.18) 34%, transparent 62%); mask-image: linear-gradient(255deg, rgba(0,0,0,.7) 0%, rgba(0,0,0,.18) 34%, transparent 62%); }
+  .mark { position: absolute; left: 150px; top: 44px; width: 392px; height: 392px; filter: drop-shadow(0 22px 40px rgba(0,0,0,.45)); }
+  .text { position: absolute; left: 640px; top: 0; bottom: 0; right: 80px; display: flex; flex-direction: column; justify-content: center; }
+  h1 { font: 800 148px/0.95 "Bricolage Grotesque"; font-stretch: 86%; letter-spacing: -0.035em; }
+  .sub { margin-top: 26px; font: 500 30px/1.35 "Bricolage Grotesque"; color: #e3dfd6; }
+  .tag { margin-top: 20px; font: 500 21px "JetBrains Mono", monospace; letter-spacing: .02em; color: #9aa39c; }
+  .tag b { color: #6cc985; font-weight: 500; }
+</style>
+</head>
+<body>
+<div class="dots"></div>
+<svg class="mark" viewBox="0 0 100 100" role="img" aria-label="ClydeCLI mark">
+  <defs>
+    <mask id="cut" maskUnits="userSpaceOnUse" x="-10" y="-10" width="120" height="120">
+      <rect x="-10" y="-10" width="120" height="120" fill="#fff"/>
+      <polyline points="34,44 52,57 34,70" fill="none" stroke="#000" stroke-width="7.5"/>
+      <rect x="57" y="66.5" width="15" height="7" fill="#000"/>
+    </mask>
+  </defs>
+  <path mask="url(#cut)" fill="#d0202f" d="M50 5 C50 5 9 36 9 60 C9 74 21 84 34 82 C41 81 46 77 48 72 C48 84 44 92 33 96 L67 96 C56 92 52 84 52 72 C54 77 59 81 66 82 C79 84 91 74 91 60 C91 36 50 5 50 5 Z"/>
+</svg>
+<div class="text">
+  <h1>ClydeCLI</h1>
+  <div class="sub">A coding-agent harness for your terminal.</div>
+  <div class="tag">Bring any model. <b>Clyde deals.</b></div>
+</div>
+</body>
+</html>
