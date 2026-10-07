@@ -75,6 +75,25 @@ def claude_code() -> tuple[str, str] | None:
     return path, lines[0] if done.returncode == 0 and lines else "unknown version"
 
 
+def uninstall_command(info: Install) -> list[str] | None:
+    """The command that removes this install, or None when Clyde does not manage it (a source checkout)."""
+    return {
+        "uv-tool": ["uv", "tool", "uninstall", PACKAGE],
+        "pipx": ["pipx", "uninstall", PACKAGE],
+        "pip": [sys.executable, "-m", "pip", "uninstall", "-y", PACKAGE],
+    }.get(info.method)
+
+
+def purge_target() -> Path | None:
+    """Clyde's own data folder (config, keys, sessions, licence record), or None when the path looks wrong enough that
+    deleting it could hit something else: it must be called `.clyde` or `clyde`, exist, and not be the home folder."""
+    from src.config import clyde_home
+    folder = clyde_home().resolve()
+    if folder.name not in (".clyde", "clyde") or folder == Path.home().resolve() or not folder.is_dir():
+        return None
+    return folder
+
+
 def _check(ok: bool, text: str, hint: str = "") -> str:
     return f"  {'✓' if ok else '✗'} {text}" + (f" — {hint}" if hint and not ok else "")
 

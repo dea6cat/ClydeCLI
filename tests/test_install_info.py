@@ -100,3 +100,83 @@ class TestCli(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestUninstall(unittest.TestCase):
+    def test_the_command_follows_the_install_method(self):
+        make = lambda m: ii.Install(method=m, version="0", location="/x")
+        self.assertEqual(ii.uninstall_command(make("uv-tool")), ["uv", "tool", "uninstall", "clyde-cli"])
+        self.assertEqual(ii.uninstall_command(make("pipx")), ["pipx", "uninstall", "clyde-cli"])
+        self.assertEqual(ii.uninstall_command(make("pip"))[-3:], ["uninstall", "-y", "clyde-cli"])
+        self.assertIsNone(ii.uninstall_command(make("editable")))
+
+    def test_purge_only_targets_a_folder_that_is_really_clydes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve()
+            good = root / ".clyde"
+            good.mkdir()
+            with patch("src.config.clyde_home", return_value=good):
+                self.assertEqual(ii.purge_target(), good)
+            for bad in (root, root / "documents", root / "missing"):
+                bad.mkdir(exist_ok=True) if bad.name == "documents" else None
+                with patch("src.config.clyde_home", return_value=bad):
+                    self.assertIsNone(ii.purge_target(), str(bad))
+            with patch("src.config.clyde_home", return_value=good), patch("pathlib.Path.home", return_value=good):
+                self.assertIsNone(ii.purge_target())
+
+
+class TestUninstallHandler(unittest.TestCase):
+    def setUp(self):
+        from io import StringIO
+        from rich.console import Console
+        self.out = StringIO()
+        self.console = Console(file=self.out, width=140)
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.data = Path(tmp.name).resolve() / ".clyde"
+        self.data.mkdir()
+        (self.data / "keys.json").write_text("{}")
+        self.install = ii.Install(method="uv-tool", version="0", location="/x")
+
+    def _run(self, *, purge=False, yes=False, answer=True, returncode=0, install=None):
+        from src import cli
+        with patch.object(ii, "detect", return_value=install or self.install), \
+                patch("src.config.clyde_home", return_value=self.data), \
+                patch("rich.prompt.Confirm.ask", return_value=answer), \
+                patch("subprocess.run", return_value=subprocess.CompletedProcess([], returncode)) as run:
+            code = cli.handle_uninstall(self.console, purge=purge, assume_yes=yes)
+        return code, run
+
+    def test_declining_removes_nothing(self):
+        code, run = self._run(answer=False)
+        self.assertEqual(code, 0)
+        run.assert_not_called()
+        self.assertTrue((self.data / "keys.json").exists())
+
+    def test_uninstall_keeps_the_data_unless_purged(self):
+        code, run = self._run(yes=True)
+        self.assertEqual(code, 0)
+        self.assertEqual(run.call_args.args[0], ["uv", "tool", "uninstall", "clyde-cli"])
+        self.assertTrue((self.data / "keys.json").exists())
+        code, _ = self._run(yes=True, purge=True)
+        self.assertEqual(code, 0)
+        self.assertFalse(self.data.exists())
+
+    def test_a_failed_removal_leaves_the_data_alone(self):
+        code, _ = self._run(yes=True, purge=True, returncode=1)
+        self.assertEqual(code, 1)
+        self.assertTrue((self.data / "keys.json").exists())
+        self.assertIn("failed", self.out.getvalue())
+
+    def test_a_source_checkout_is_not_managed(self):
+        code, run = self._run(yes=True, install=ii.Install(method="editable", version="0", location="/src/Clyde"))
+        self.assertEqual(code, 2)
+        run.assert_not_called()
+
+    def test_purge_with_a_wrong_folder_is_refused_before_anything_runs(self):
+        self.data = self.data.parent / "documents"
+        self.data.mkdir()
+        code, run = self._run(yes=True, purge=True)
+        self.assertEqual(code, 2)
+        run.assert_not_called()
+        self.assertTrue(self.data.exists())
