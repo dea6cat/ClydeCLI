@@ -261,6 +261,41 @@ body[data-shape="round"] dialog { border-radius: 14px; }
 /* artifacts: the files Clyde wrote or edited, with a sandboxed preview */
 #artifacts-view { display: none; flex: 1; min-height: 0; flex-direction: column; }
 main[data-view="artifacts"] #artifacts-view { display: flex; }
+#prov-view { display: none; flex: 1; min-height: 0; flex-direction: column; overflow-y: auto; }
+main[data-view="prov"] #prov-view { display: flex; }
+.prov-body { width: 100%; max-width: 860px; margin: 0 auto; padding: 18px 22px 40px; display: flex; flex-direction: column; gap: 18px; }
+.prov-body details { font-size: 14px; }
+.prov-body details summary { cursor: pointer; font: 600 12.5px var(--mono); color: var(--link); }
+.prov-body details p, .prov-body details li { color: var(--dim); max-width: 64ch; }
+.pgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+.pcard { --c: 12px; display: flex; flex-direction: column; gap: 8px; padding: 14px 16px 16px; text-align: left; color: var(--text); font: inherit; border: 0; }
+.pcard .nm { font-weight: 750; letter-spacing: -.01em; }
+.pcard .st { display: inline-flex; align-items: center; gap: 7px; font: 500 12px var(--mono); color: var(--dim); }
+.pcard .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--line); }
+.pcard.on .dot { background: var(--link); box-shadow: 0 0 0 3px color-mix(in srgb, var(--link) 22%, transparent); }
+.pcard .go { margin-top: auto; font: 600 12px var(--mono); color: var(--link); }
+.pcard:hover:not(:disabled) { --edge: var(--link); }
+dialog#prov { width: min(560px, 96vw); }
+.steps { display: flex; gap: 6px; padding: 12px 18px 0; font: 500 11.5px var(--mono); color: var(--dim); }
+.steps span { flex: 1; padding-top: 6px; border-top: 2px solid var(--line); transition-property: border-color, color; transition-duration: .2s; }
+.steps span[aria-current="step"] { border-color: var(--link); color: var(--text); }
+.steps span.done { border-color: var(--link); }
+.pstep { display: flex; flex-direction: column; gap: 12px; animation: rise .22s ease-out both; }
+.pstep h3 { margin: 0; font-size: 16px; }
+.pstep ol { margin: 0; padding-left: 1.3em; display: flex; flex-direction: column; gap: 8px; }
+.pstep .tip { padding: 9px 12px; border-left: 2px solid var(--link); background: color-mix(in srgb, var(--link) 8%, transparent); font-size: 13.5px; }
+.pstep .keyrow { display: flex; gap: 8px; }
+.pstep input[type="password"], .pstep input[type="text"], .pstep select { flex: 1; min-width: 0; height: 38px; padding: 0 10px; background: none; color: var(--text); border: 1px solid var(--line); font: 14px var(--mono); }
+.pstep .fb { min-height: 1.4em; font: 500 12.5px var(--mono); color: var(--dim); }
+.pstep .fb.ok { color: var(--link); }
+.pstep .fb.err { color: var(--danger); }
+.pstep .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.mchips { display: flex; flex-wrap: wrap; gap: 6px; }
+.mchips .chip { height: 26px; font-size: 11.5px; display: inline-flex; align-items: center; line-height: 1; }
+.okmark { width: 46px; height: 46px; color: var(--link); }
+.okmark path { stroke-dasharray: 40; stroke-dashoffset: 40; animation: draw .5s .1s ease-out forwards; }
+@keyframes draw { to { stroke-dashoffset: 0; } }
+@media (prefers-reduced-motion: reduce) { .pstep { animation: none; } .okmark path { animation: none; stroke-dashoffset: 0; } }
 main:not([data-view="chat"]) #thread, main:not([data-view="chat"]) .dock { display: none; }
 #auto-view { display: none; flex: 1; min-height: 0; flex-direction: column; overflow-y: auto; }
 main[data-view="auto"] #auto-view { display: flex; }
@@ -389,6 +424,7 @@ input[type="color"] { width: 36px; height: 24px; padding: 0; border: 1px solid v
     <button class="nav" id="nav-computer" aria-current="true"><span aria-hidden="true">&gt;_</span> Computer</button>
     <button class="nav" id="nav-auto"><span aria-hidden="true">&#9719;</span> Automations</button>
     <button class="nav" id="nav-artifacts"><span aria-hidden="true">&#9635;</span> Artifacts</button>
+    <button class="nav" id="nav-prov"><span aria-hidden="true">&#9674;</span> Providers</button>
     <button class="nav" id="customize"><span aria-hidden="true">&#9998;</span> Customize</button>
   </nav>
   <div class="label">Project</div>
@@ -432,6 +468,18 @@ input[type="color"] { width: 36px; height: 24px; padding: 0; border: 1px solid v
         </div>
       </form>
     </div>
+    <section id="prov-view" aria-label="Providers">
+      <div class="art-top"><h2>Providers</h2><span class="hint" id="prov-count"></span></div>
+      <div class="prov-body">
+        <details><summary>What is a key, and where does it go?</summary>
+          <p>A key is a long password that a model service gives you. It lets Bonny ask that service for answers on your account, and the service bills you, not Clyde.</p>
+          <ul><li>Bonny sends it only to that service.</li><li>It is saved on this computer in <code>~/.clyde/keys.json</code>, readable only by you, and is never shown again.</li><li>Treat it like a password: don't paste it into chats or commits.</li></ul></details>
+        <details><summary>Which one should I pick?</summary>
+          <ul><li><b>Ollama or LM Studio</b> run models on this machine: no key, nothing leaves it.</li><li><b>OpenRouter</b> is one key for many models from many makers.</li><li>Already pay for <b>Anthropic, OpenAI or Google</b>? Use that one.</li></ul>
+          <p>Pricing and free allowances belong to each service, so check their pages.</p></details>
+        <div class="pgrid" id="pgrid" aria-label="Providers"></div>
+      </div>
+    </section>
     <section id="auto-view" aria-label="Automations">
       <div class="art-top"><h2>Automations</h2><span class="hint" id="auto-hint">Prompts Bonny runs on a schedule, in this project. They run only while Bonny is open, each in its own session.</span></div>
       <div class="auto-body">
@@ -469,6 +517,12 @@ input[type="color"] { width: 36px; height: 24px; padding: 0; border: 1px solid v
 <dialog id="council" aria-labelledby="council-title">
   <div class="dlg-head"><h2 id="council-title">Council</h2><button class="btn cut" id="council-close">Close</button></div>
   <div class="dlg-body" id="council-body"></div>
+</dialog>
+
+<dialog id="prov" aria-labelledby="prov-title">
+  <div class="dlg-head"><h2 id="prov-title">Connect</h2><button class="btn cut" id="prov-close">Close</button></div>
+  <div class="steps" id="prov-steps" aria-label="Steps"></div>
+  <div class="dlg-body" id="prov-body" aria-live="polite"></div>
 </dialog>
 
 <dialog id="proj" aria-labelledby="proj-title">
@@ -906,6 +960,136 @@ function openSources(info) {
 }
 $("sources-close").addEventListener("click", () => $("sources").close());
 
+/* Providers: cards, and a three-step dialog (get a key, paste it, test it). The key lives only in the input until it is sent. */
+let provData = null, prov = null;
+const STEP_NAMES = ["1  Get a key", "2  Paste it", "3  Test it"];
+async function loadProviders() { provData = await api("/api/providers"); paintProviders(); }
+function paintProviders() {
+  const all = [...provData.providers, ...provData.custom.map((c) => ({ ...c, kind: "custom" }))];
+  const on = all.filter((p) => p.connected && p.kind !== "local").length;
+  $("prov-count").textContent = on ? on + " connected" : "None connected yet";
+  const card = (p) => {
+    const b = h("button", { type: "button", class: "pcard cut" + (p.connected ? " on" : "") },
+      h("span", { class: "nm" }, p.label),
+      h("span", { class: "st" }, h("i", { class: "dot", "aria-hidden": "true" }),
+        p.kind === "local" ? (p.connected ? "Running" : "Not running") : p.connected ? "Connected" + (p.source === "shell" ? " (from your shell)" : "") : "Not connected"),
+      h("span", { class: "go" }, p.kind === "local" ? "How to set up" : p.connected ? "Manage" : "Connect"));
+    b.addEventListener("click", () => openProvider(p));
+    return b;
+  };
+  const add = h("button", { type: "button", class: "pcard cut" }, h("span", { class: "nm" }, "Any other service"),
+    h("span", { class: "st" }, "OpenAI- or Anthropic-compatible"), h("span", { class: "go" }, "Add"));
+  add.addEventListener("click", () => openProvider({ id: "", kind: "new", label: "Another service" }));
+  $("pgrid").replaceChildren(...all.map(card), add);
+}
+async function openProviders() {
+  showView("prov"); document.body.classList.remove("side-open"); $("toggle").setAttribute("aria-expanded", "false");
+  try { await loadProviders(); } catch (e) { toast(e.message); }
+}
+function stepBar(n) { $("prov-steps").replaceChildren(...STEP_NAMES.map((t, i) => h("span", { ...(i === n ? { "aria-current": "step" } : {}), class: i < n ? "done" : "" }, t))); }
+function showStep(n, ...kids) {
+  stepBar(n); $("prov-steps").hidden = prov.kind === "local";
+  $("prov-body").replaceChildren(h("div", { class: "pstep" }, ...kids));
+  const first = $("prov-body").querySelector("input, select, button"); if (first) first.focus();
+}
+function openProvider(p) {
+  prov = p; $("prov-title").textContent = p.kind === "new" ? "Add a service" : (p.connected && p.kind !== "local" ? "Manage " : "Connect ") + p.label;
+  $("prov").showModal();
+  if (p.kind === "local") stepLocal();
+  else if (p.kind === "new") stepCustom();
+  else if (p.connected) stepManage();
+  else stepGet();
+}
+function stepLocal() {
+  showStep(0, h("p", {}, prov.how), h("div", { class: "tip" }, prov.connected ? "It is running, so its models are already available." : "Not running yet. Start it, then check again."),
+    h("div", { class: "row" }, h("a", { class: "btn cut", href: prov.url, target: "_blank", rel: "noopener noreferrer" }, "Open " + prov.label + " \u2197"),
+      (() => { const b = h("button", { type: "button", class: "btn cut" }, "Check again"); b.addEventListener("click", async () => { await loadProviders(); prov = [...provData.providers].find((x) => x.id === prov.id); stepLocal(); }); return b; })()));
+}
+function stepGet() {
+  const go = h("button", { type: "button", class: "btn cut primary" }, "I have my key \u2192"); go.addEventListener("click", () => stepPaste());
+  showStep(0, h("h3", {}, "Get a key from " + prov.label),
+    h("ol", {}, h("li", {}, "Open the key page below and sign in, or make an account."), h("li", {}, "Choose Create key (the wording varies)."), h("li", {}, "Copy it right away: many sites show it only once.")),
+    prov.note ? h("div", { class: "tip" }, prov.note) : null,
+    h("div", { class: "row" }, h("a", { class: "btn cut", href: prov.url, target: "_blank", rel: "noopener noreferrer" }, "Open " + prov.label + "\u2019s key page \u2197"), go),
+    h("div", { class: "fb" }, "Pricing and free allowances belong to " + prov.label + "."));
+}
+function stepPaste(extra) {
+  const input = h("input", { type: "password", id: "pk", autocomplete: "off", spellcheck: "false", "aria-label": prov.label + " key", placeholder: "Paste the key here" });
+  const show = h("button", { type: "button", class: "btn cut", "aria-pressed": "false" }, "Show");
+  const fb = h("div", { class: "fb", role: "status" }, prov.prefix ? prov.label + " keys usually start with " + prov.prefix : "Paste the whole key.");
+  const acct = prov.extra ? h("input", { type: "text", id: "pe", autocomplete: "off", "aria-label": prov.extra.label, placeholder: prov.extra.label, value: extra || "" }) : null;
+  const go = h("button", { type: "button", class: "btn cut primary", disabled: "" }, "Connect");
+  const check = () => {
+    const v = input.value.trim();
+    const whole = /^[\x21-\x7e]{8,512}$/.test(v);
+    fb.className = "fb" + (whole ? " ok" : ""); fb.textContent = !v ? (prov.prefix ? prov.label + " keys usually start with " + prov.prefix : "Paste the whole key.")
+      : !whole ? "That has spaces or is too short; copy it again." : prov.prefix && !v.startsWith(prov.prefix) ? "Looks like a whole key, though " + prov.label + " keys usually start with " + prov.prefix + "." : "Looks like a whole key.";
+    go.disabled = !whole || (acct && !acct.value.trim() && !prov.extra.set);
+  };
+  input.addEventListener("input", check); if (acct) acct.addEventListener("input", check);
+  show.addEventListener("click", () => { const open = input.type === "password"; input.type = open ? "text" : "password"; show.textContent = open ? "Hide" : "Show"; show.setAttribute("aria-pressed", String(open)); });
+  go.addEventListener("click", () => stepTest(input.value.trim(), acct ? acct.value.trim() : "", input));
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter" && !go.disabled) go.click(); });
+  const back = h("button", { type: "button", class: "btn cut" }, "\u2190 Back"); back.addEventListener("click", stepGet);
+  showStep(1, h("h3", {}, "Paste your " + prov.label + " key"), h("div", { class: "keyrow" }, input, show), acct, fb,
+    h("div", { class: "tip" }, "It is saved only on this computer and never shown again."), h("div", { class: "row" }, back, go));
+}
+async function stepTest(key, extra, input) {
+  showStep(2, h("div", { class: "status" }, h("span", { class: "spade", "aria-hidden": "true" }, "\u2660"), h("span", {}, "Checking the key with " + prov.label + "\u2026")));
+  try {
+    const r = await api(prov.kind === "new" ? "/api/providers/custom" : "/api/providers/connect", prov.kind === "new" ? { ...prov.draft, key } : { provider: prov.id, key, extra: extra || undefined });
+    input.value = ""; key = ""; if (prov.kind === "new") prov.id = prov.draft.name;
+    await loadProviders(); await refreshModels();
+    stepDone(r);
+  } catch (e) {
+    showStep(2, h("div", { class: "fb err", role: "alert" }, e.message), h("div", { class: "row" }, (() => { const b = h("button", { type: "button", class: "btn cut primary" }, "\u2190 Try again"); b.addEventListener("click", () => (prov.kind === "new" ? stepCustom(prov.draft) : stepPaste(extra))); return b; })()));
+  }
+}
+function stepDone(r) {
+  const use = h("button", { type: "button", class: "btn cut primary" }, r.suggested ? "Use " + r.suggested : "Done");
+  use.addEventListener("click", async () => {
+    if (r.suggested) { try { await api("/api/model", { model: prov.id + ":" + r.suggested }); await refreshModels(); toast("Now using " + prov.id + ":" + r.suggested); } catch (e) { toast(e.message); } }
+    $("prov").close();
+  });
+  const later = h("button", { type: "button", class: "btn cut" }, "Not now"); later.addEventListener("click", () => $("prov").close());
+  const svg = ico("check"); svg.classList.add("okmark");
+  stepBar(3);
+  $("prov-body").replaceChildren(h("div", { class: "pstep" }, svg, h("h3", {}, prov.label + " is connected"),
+    h("div", { class: "fb ok" }, r.verified ? "The key works" + (r.models.length ? ": " + r.models.length + " models found." : ".") : "Saved. This service can't check a key without sending a message, so send one to try it."),
+    r.models.length ? h("div", { class: "mchips", "aria-label": "Some of its models" }, ...r.models.slice(0, 8).map((m) => h("span", { class: "chip cut" }, m))) : null,
+    h("div", { class: "row" }, later, use)));
+  use.focus();
+}
+function stepManage() {
+  const replace = h("button", { type: "button", class: "btn cut" }, "Replace key"); replace.addEventListener("click", () => stepPaste());
+  const drop = h("button", { type: "button", class: "btn cut danger" }, "Disconnect");
+  drop.addEventListener("click", async () => {
+    try { const r = await api("/api/providers/disconnect", { provider: prov.id }); await loadProviders(); await refreshModels(); $("prov").close(); toast(r.from_shell ? prov.label + " is off for now; the key in your shell returns next launch" : prov.label + " disconnected"); }
+    catch (e) { toast(e.message); }
+  });
+  showStep(1, h("h3", {}, prov.label + " is connected"), h("div", { class: "fb ok" }, "Key " + prov.masked + (prov.source === "shell" ? ", exported in your shell" : ", saved on this computer")),
+    prov.source === "shell" ? h("div", { class: "tip" }, "This key comes from your shell (" + prov.env + "). Disconnecting turns it off until the next launch.") : null, h("div", { class: "row" }, replace, drop));
+}
+function stepCustom(draft) {
+  const d = draft || { name: "", protocol: "openai", base_url: "" };
+  const name = h("input", { type: "text", "aria-label": "Name", placeholder: "Name, for example together", value: d.name, maxlength: "31" });
+  const proto = h("select", { "aria-label": "Protocol" }, h("option", { value: "openai" }, "OpenAI-compatible"), h("option", { value: "anthropic" }, "Anthropic-compatible")); proto.value = d.protocol;
+  const url = h("input", { type: "text", "aria-label": "Base URL", placeholder: "Base URL, starting with https and ending before /chat/completions", value: d.base_url });
+  const key = h("input", { type: "password", id: "pk", autocomplete: "off", spellcheck: "false", "aria-label": "Key", placeholder: "Key (leave empty if it needs none)" });
+  const go = h("button", { type: "button", class: "btn cut primary" }, "Connect");
+  go.addEventListener("click", () => { prov.draft = { name: name.value, protocol: proto.value, base_url: url.value }; stepTest(key.value.trim(), "", key); });
+  showStep(1, h("h3", {}, "Add another service"), h("p", {}, "Together, Fireworks, Groq, vLLM, LiteLLM or a proxy of your own. The base URL is the part before /chat/completions (OpenAI) or /v1/messages (Anthropic)."), name, proto, url, key, h("div", { class: "row" }, go));
+}
+async function refreshModels() {
+  const [{ models }, state] = await Promise.all([api("/api/models"), api("/api/state")]);
+  $("model").replaceChildren(...models.map((m) => h("option", { value: m }, m)));
+  if (!models.includes(state.model)) $("model").prepend(h("option", { value: state.model }, state.model));
+  applyState(state);
+}
+$("nav-prov").addEventListener("click", openProviders);
+$("prov-close").addEventListener("click", () => $("prov").close());
+$("prov").addEventListener("close", () => { const k = $("pk"); if (k) k.value = ""; });
+
 /* Project chooser: browse folders, make one, use one. Switching opens a fresh session in it. */
 let pjHere = "";
 async function pjBrowse(path) {
@@ -1016,6 +1200,7 @@ const rawUrl = (path, extra) => "/artifact/raw?t=" + encodeURIComponent(TOKEN) +
 function showView(name) {
   $("main").dataset.view = name;
   $("nav-artifacts").setAttribute("aria-current", String(name === "artifacts"));
+  $("nav-prov").setAttribute("aria-current", String(name === "prov"));
   $("nav-auto").setAttribute("aria-current", String(name === "auto"));
   paintControls();
 }

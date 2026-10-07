@@ -221,6 +221,13 @@ button: it opens a folder chooser where you browse, make a new folder where you 
 sessions follow. On a phone the model and permission pickers sit behind **Options**, so the message box is one row. MCP servers and
 hooks are loaded for the folder Bonny started in, so restart her to pick up a new project's own.
 
+**Providers** in the sidebar connects a model service without the terminal. Each provider is a card; a short guide walks you through
+getting a key (with a link to its key page), pasting it (hidden, with a check that it looks whole), and testing it. A key is tested
+before it is saved, so a wrong one is refused with a plain reason and nothing is stored. Saved keys go where `clyde login` puts them
+(`~/.clyde/keys.json`, readable only by you) and are never sent back to the page, only a masked form. You can replace or disconnect a
+key, add any OpenAI- or Anthropic-compatible service, and pick a connected model with one click. Ollama and LM Studio show whether
+they are running. Services that can't check a key without sending a message are saved as "unverified" and say so.
+
 ### Laya
 
 *I read the table, not just the cards.*

@@ -32,8 +32,9 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 from src import activity
 from src.config import clyde_home
+from src.providers import keys
 from src.agent.session import Session
-from src.bonny import artifacts, attachments, automations, pins, projects, theme
+from src.bonny import artifacts, attachments, automations, pins, projects, providers, theme
 from src.bonny.page import PAGE
 from src.providers import model_ref
 from src.providers.card_shuffle import record_vote
@@ -505,6 +506,8 @@ def make_server(bonny: Bonny, host: str = "127.0.0.1", port: int = 0) -> Threadi
                 self._artifact_preview(query.get("path", [""])[0])
             elif url.path == "/api/automations":
                 self._json(200, {"automations": [{**a, "when": automations.describe(a["schedule"])} for a in automations.listing(bonny.project)]})
+            elif url.path == "/api/providers":
+                self._json(200, providers.listing(bonny.repl.registry))
             elif url.path == "/api/dirs":
                 try:
                     self._json(200, projects.browse(query.get("path", [bonny.project])[0]))
@@ -616,6 +619,8 @@ def make_server(bonny: Bonny, host: str = "127.0.0.1", port: int = 0) -> Threadi
                     self._json(400, {"error": str(e)})
             elif path == "/api/project":
                 self._project(data)
+            elif path in ("/api/providers/connect", "/api/providers/disconnect", "/api/providers/custom"):
+                self._providers(path.rsplit("/", 1)[1], data)
             elif path.startswith("/api/automation/"):
                 self._automation(path.rsplit("/", 1)[1], data)
             else:
@@ -779,6 +784,25 @@ def make_server(bonny: Bonny, host: str = "127.0.0.1", port: int = 0) -> Threadi
             else:
                 automations.update(bonny.project, automation_id, action)
                 self._json(200, {"ok": True})
+
+        def _providers(self, action: str, data: dict) -> None:
+            """Connect, disconnect or add a provider. Idle only: it swaps the registry the running turn uses."""
+            if bonny.control.busy:
+                self._json(409, {"error": "Bonny is working. Stop her, or wait, then try again."})
+                return
+            try:
+                if action == "connect":
+                    result = providers.connect(bonny.repl, data.get("provider"), data.get("key"), data.get("extra"))
+                elif action == "custom":
+                    result = providers.add_custom(bonny.repl, data.get("name"), data.get("protocol"), data.get("base_url"), data.get("key"))
+                else:
+                    result = providers.disconnect(bonny.repl, data.get("provider"))
+            except ValueError as e:
+                self._json(400, {"error": str(e)})
+            except (OSError, keys.KeysFileError) as e:
+                self._json(500, {"error": f"couldn't save the key: {e}"})
+            else:
+                self._json(200, result)
 
         def _project(self, data: dict) -> None:
             if bonny.control.busy:
