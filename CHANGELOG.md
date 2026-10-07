@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   token and a matching Host and Origin. Her page has a sessions sidebar, Search and Computer modes, a model and permissions picker, permission cards,
   queue / steer / stop and the council popup with votes.
   Search turns run a web search first and show a Sources list; a status line shows what a running turn is waiting on.
+  Each answer has an action row (copy, export, rate, council, sources, try again), and sessions show when they were last used.
 - A steer: text sent to a running turn is added as a user message before the model's next call (`RunControl` in
   `src/run_control.py`, polled by the agent loop). ACP's stop uses the same interrupt.
 - cardShuffle council: `cardShuffle:<tier> council` (for example `/model cardShuffle:high-roller council`) asks the tier's top four

@@ -102,6 +102,7 @@ class TestPage(BonnyCase):
         self.assertNotIn("http://", PAGE)
         self.assertNotIn("https://", PAGE)
         self.assertNotIn("innerHTML", PAGE)   # replies reach the page as text only
+        self.assertNotIn("transition: all", PAGE)
 
     def test_models_lists_graded_models_and_state_carries_the_latest_event_id(self):
         graded = {"a:m": {"passed": True}, "b:m": {"passed": False}, "cardShuffle:house": {"passed": True}}
@@ -262,6 +263,22 @@ class TestChanges(BonnyCase):
             vote.assert_called_once_with(self.provider.last_council, "a:m", -1)
         self.assertEqual(self.call("POST", "/api/vote", {"ref": "zzz", "vote": "up"})[0], 400)
         self.assertEqual(self.call("POST", "/api/vote", {"ref": "a:m", "vote": "maybe"})[0], 400)
+
+
+class TestFeedback(BonnyCase):
+    def test_a_thumb_is_saved_locally_as_a_hash_never_the_text(self):
+        from src.config import clyde_home
+
+        self.assertEqual(self.call("POST", "/api/feedback", {"vote": "up", "question": "secret question text"})[0], 200)
+        self.assertEqual(self.call("POST", "/api/feedback", {"vote": "down", "question": "another"})[0], 200)
+        lines = [json.loads(l) for l in (clyde_home() / "answer_feedback.jsonl").read_text().splitlines()]
+        self.assertEqual([l["vote"] for l in lines[-2:]], [1, -1])
+        self.assertNotIn("secret question text", json.dumps(lines))
+        self.assertEqual(lines[-1]["session"], self.repl.session.session_id)
+
+    def test_bad_feedback_is_refused(self):
+        self.assertEqual(self.call("POST", "/api/feedback", {"vote": "meh", "question": "q"})[0], 400)
+        self.assertEqual(self.call("POST", "/api/feedback", {"vote": "up"})[0], 400)
 
 
 class TestEventLog(unittest.TestCase):
