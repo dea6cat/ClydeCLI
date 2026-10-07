@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `clyde luv bonny` starts Bonny, the web mode of Clyde, on 127.0.0.1 with her own persona. The local API queues prompts, steers
+  or stops a running turn, lists and reopens sessions, shows permission cards and takes council votes; requests need a per-run
+  token and a matching Host and Origin. Her interface is still under review, so `/` is a placeholder for now.
+- A steer: text sent to a running turn is added as a user message before the model's next call (`RunControl` in
+  `src/run_control.py`, polled by the agent loop). ACP's stop uses the same interrupt.
 - cardShuffle council: `cardShuffle:<tier> council` (for example `/model cardShuffle:high-roller council`) asks the tier's top four
   models the same question at once, tools off, and Laya picks the best answer. `/council` shows every answer with its score and
   `/council up N` / `/council down N` records a vote in `~/.clyde/council_votes.jsonl` (kept on your machine). Models that fail
