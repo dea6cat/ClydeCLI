@@ -103,6 +103,8 @@ class TestPage(BonnyCase):
         self.assertNotIn("https://", PAGE)
         self.assertNotIn("innerHTML", PAGE)   # replies reach the page as text only
         self.assertNotIn("transition: all", PAGE)
+        self.assertIn('data-i="trash"', PAGE)
+        self.assertIn('id="toast" role="status"', PAGE)
 
     def test_the_page_keeps_its_accessibility_structure(self):
         from src.bonny.page import PAGE
@@ -365,6 +367,69 @@ class TestTheme(BonnyCase):
         self.assertEqual(self.raw("GET", "/static/../server.py", token=False)[0], 404)
         self.assertEqual(self.raw("GET", "/static/page.py", token=False)[0], 404)
         self.assertEqual(self.raw("GET", "/static/jetbrains-mono.woff2", headers={"Host": "evil.example"}, token=False)[0], 403)
+
+
+class TestSessionRows(BonnyCase):
+    def make_two(self):
+        """Two saved sessions, the first one open again at the end; returns (first id, second id)."""
+        self.call("POST", "/api/prompt", {"text": "first question"})
+        self.wait_for("turn_end")
+        first = self.call("GET", "/api/state")[1]["session"]
+        self.call("POST", "/api/session/new", {})
+        self.call("POST", "/api/prompt", {"text": "second question"})
+        self.wait_for("turn_end", after=self.bonny.events.last() - 1)
+        second = self.call("GET", "/api/state")[1]["session"]
+        self.assertNotEqual(first, second)
+        return first, second
+
+    def listed(self):
+        return [s["id"] for s in self.call("GET", "/api/sessions")[1]["sessions"]]
+
+    def test_opening_a_session_returns_its_messages_so_the_page_needs_no_second_request(self):
+        first, second = self.make_two()
+        status, body = self.call("POST", "/api/session/open", {"id": first})
+        self.assertEqual(status, 200)
+        self.assertEqual((body["session"], [(m["role"], m["text"]) for m in body["messages"]]),
+                         (first, [("user", "first question"), ("assistant", "hello there")]))
+
+    def test_a_new_session_is_opened_empty_and_returned_at_once(self):
+        self.make_two()
+        body = self.call("POST", "/api/session/new", {})[1]
+        self.assertEqual(body["messages"], [])
+        self.assertEqual(body["session"], self.repl.session.session_id)
+
+    def test_deleting_moves_a_session_to_the_archive_and_undo_brings_it_back(self):
+        first, second = self.make_two()
+        self.call("POST", "/api/session/open", {"id": first})
+        status, body = self.call("POST", "/api/session/delete", {"id": second})
+        self.assertEqual((status, body["ok"]), (200, True))
+        self.assertNotIn(second, self.listed())
+        self.assertIn(first, self.listed())
+        from src.agent.session import _archive_dir
+        self.assertTrue((_archive_dir() / f"{second}.json").is_file())          # moved, not shredded
+        self.assertEqual(self.call("POST", "/api/session/restore", {"id": second})[0], 200)
+        self.assertIn(second, self.listed())
+
+    def test_deleting_the_open_session_opens_a_fresh_one(self):
+        first, second = self.make_two()
+        self.call("POST", "/api/session/open", {"id": first})
+        status, body = self.call("POST", "/api/session/delete", {"id": first})
+        self.assertEqual(status, 200)
+        self.assertNotEqual(body["state"]["session"], first)
+        self.assertEqual(self.call("GET", "/api/state")[1]["session"], body["state"]["session"])
+        self.assertNotIn(first, self.listed())
+
+    def test_while_a_turn_runs_another_session_can_go_but_the_open_one_cannot(self):
+        first, second = self.make_two()
+        self.bonny.control.busy = True
+        self.assertEqual(self.call("POST", "/api/session/delete", {"id": second})[0], 409)   # second is the open one
+        self.assertEqual(self.call("POST", "/api/session/delete", {"id": first})[0], 200)
+        self.bonny.control.busy = False
+
+    def test_bad_or_unknown_ids_are_404(self):
+        for bad in ("../x", "", 5, "nosuchsession"):
+            self.assertEqual(self.call("POST", "/api/session/delete", {"id": bad})[0], 404)
+            self.assertEqual(self.call("POST", "/api/session/restore", {"id": bad})[0], 404)
 
 
 class TestEventLog(unittest.TestCase):

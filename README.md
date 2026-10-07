@@ -192,7 +192,7 @@ unsourced. While a turn runs, the page shows what Clyde is waiting on and for ho
 Under each answer sits a row of actions: copy, export as Markdown, good and poor ratings (saved on your machine in
 `~/.clyde/answer_feedback.jsonl` as a hash of the question, never its text), the council popup when a council ran, a sources
 chip that opens the list of what the answer cites and what else the search found, and a menu with Try again. Sessions in
-the sidebar show when they were last used, so two with the same first message can be told apart.
+the sidebar show when they were last used, so two with the same first message can be told apart. A trash icon on each session (always visible on touch screens) deletes it: it moves to the archive folder and an Undo appears for a few seconds; `clyde sessions unarchive <id>` brings it back later.
 
 Bonny looks like the site (its two fonts, hairlines, corner-cut controls) and the look is yours to change. **Customize** in
 the sidebar opens a panel that changes the page as you go: a theme (Auto follows light or dark; Paper, Night, Felt, Slate),
