@@ -69,9 +69,11 @@ class TestAutomations(ts.BonnyCase):
     def test_a_due_run_is_read_only_gets_its_own_session_and_is_not_repeated(self):
         row = self.create()[1]["automation"]
         due_at = datetime.strptime(row["next_run"], STAMP)
-        before = self.repl.session.session_id
-        self.bonny.tick(due_at)
+        self.call("POST", "/api/prompt", {"text": "hi"})   # a saved session, so a run has to leave it
         self.wait_for("turn_end")
+        before, seen = self.repl.session.session_id, self.bonny.events.last()
+        self.bonny.tick(due_at)
+        self.wait_for("turn_end", after=seen)
         self.assertNotEqual(self.repl.session.session_id, before)
         self.assertTrue(self.repl.tool_context.plan_mode)
         self.assertIsNotNone(au.get(str(self.root), row["id"])["last_run"])
