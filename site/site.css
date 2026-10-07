@@ -1,0 +1,107 @@
+  @font-face { font-family: "Bricolage Grotesque"; src: url(fonts/bricolage-grotesque.woff2) format("woff2");
+               font-weight: 400 800; font-stretch: 75% 100%; font-display: swap; unicode-range: U+0000-00FF, U+2010-2027, U+2190-21FF; }
+  @font-face { font-family: "JetBrains Mono"; src: url(fonts/jetbrains-mono.woff2) format("woff2");
+               font-weight: 400 700; font-display: swap; unicode-range: U+0000-00FF, U+2010-2027, U+2190-21FF; }
+  :root { --bg: #e8e5dd; --text: #16231b; --dim: #566058; --line: #c6c1b4; --link: #1d6a36; --spade: #d0202f; --term: #0a120d;
+          --tint: #dfdbd0; --glow: rgba(208, 32, 47, .12); --spot: rgba(208, 32, 47, .09); --pad: 48px; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #0f1a14; --text: #e3dfd6; --dim: #9aa39c; --line: #24382b; --link: #6cc985;
+          --tint: #13241a; --glow: rgba(108, 201, 133, .13); --spot: rgba(108, 201, 133, .10); } }
+  @media (max-width: 700px) { :root { --pad: 20px; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 17px/1.65 "Bricolage Grotesque", -apple-system, "Segoe UI", sans-serif; font-optical-sizing: auto; }
+  a { color: var(--link); text-underline-offset: 3px; }
+  a:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+  code { font: 0.88em "JetBrains Mono", ui-monospace, Menlo, monospace; }
+  .mono { font: 500 13px/1.4 "JetBrains Mono", ui-monospace, Menlo, monospace; letter-spacing: .01em; }
+
+  /* the page: one hairline-framed column, like a sheet laid on the table */
+  .glow { position: fixed; left: 0; top: 0; width: 700px; height: 700px; margin: -350px 0 0 -350px; border-radius: 50%; pointer-events: none; opacity: 0;
+          background: radial-gradient(closest-side, var(--glow), transparent); transform: translate3d(var(--gx, 50vw), var(--gy, 30vh), 0); transition: opacity 1.2s; }
+  .glow.on { opacity: 1; }
+  .frame { position: relative; z-index: 1; max-width: 920px; margin: 0 auto; border-left: 1px solid var(--line); border-right: 1px solid var(--line); min-height: 100vh; }
+  @media (max-width: 960px) { .frame { border-left: 0; border-right: 0; } }
+  header { display: flex; justify-content: space-between; align-items: center; padding: 16px var(--pad); border-bottom: 1px solid var(--line); }
+  header b { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 19px; letter-spacing: -.01em; }
+  header b img { width: 24px; height: 24px; }
+  header nav a { margin-left: 22px; font: 500 13px "JetBrains Mono", monospace; color: var(--text); text-decoration: none; padding: 6px 0; border-bottom: 1px solid transparent; transition: border-color .25s, color .25s; }
+  header nav a:hover { color: var(--link); border-color: currentColor; }
+  .strip { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; justify-content: center; padding: 13px var(--pad); background: var(--tint); border-bottom: 1px solid var(--line); }
+  .strip .chip { --c: 7px; padding: 4px 11px; background: var(--text); color: var(--bg); font: 500 11px/1.4 "JetBrains Mono", monospace; letter-spacing: .06em;
+                 clip-path: polygon(0 0, calc(100% - var(--c)) 0, 100% var(--c), 100% 100%, var(--c) 100%, 0 calc(100% - var(--c))); }
+  main { padding: 0 var(--pad); }
+  p { margin: 0 0 14px; max-width: 68ch; }
+  .dim { color: var(--dim); }
+  h1 { font-size: 68px; line-height: 1; font-weight: 800; font-stretch: 86%; letter-spacing: -0.035em; margin: 0 0 18px; }
+  h2 { font-size: 32px; line-height: 1.12; font-weight: 750; font-stretch: 90%; letter-spacing: -0.025em; margin: 76px 0 12px; }
+  .hero { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 32px; align-items: center; padding: 72px 0 8px; }
+  .hero > div { min-width: 0; }
+  .hero .lead { font-size: 19px; }
+  .hero-mark { width: 210px; }
+  .hero-mark svg { display: block; width: 100%; height: auto; transform: perspective(800px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)); transition: transform .12s linear; }
+  @media (max-width: 760px) { .hero { grid-template-columns: minmax(0, 1fr); padding-top: 40px; } .hero-mark { width: 96px; order: -1; } h1 { font-size: 48px; } }
+
+  /* cut corners: a 1px edge drawn by two stacked shapes, since clip-path would clip a plain border */
+  .cut { --c: 16px; --edge: var(--line); --fill: var(--bg); position: relative; isolation: isolate; background: var(--edge);
+         clip-path: polygon(0 0, calc(100% - var(--c)) 0, 100% var(--c), 100% 100%, var(--c) 100%, 0 calc(100% - var(--c))); transition: background .25s; }
+  .cut::before { content: ""; position: absolute; inset: 1px; z-index: -1; background: var(--fill); transition: background .3s;
+                 clip-path: polygon(0 0, calc(100% - var(--c) + 1px) 0, 100% calc(var(--c) - 1px), 100% 100%, calc(var(--c) - 1px) 100%, 0 calc(100% - var(--c) + 1px)); }
+  .cut::after { content: ""; position: absolute; inset: 1px; z-index: -1; opacity: 0; transition: opacity .35s; pointer-events: none;
+                background: radial-gradient(220px circle at var(--x, 50%) var(--y, 50%), var(--spot), transparent 72%);
+                clip-path: polygon(0 0, calc(100% - var(--c) + 1px) 0, 100% calc(var(--c) - 1px), 100% 100%, calc(var(--c) - 1px) 100%, 0 calc(100% - var(--c) + 1px)); }
+  .cut:hover { --edge: var(--dim); }
+  .cut:hover::after { opacity: 1; }
+  .cut:focus-visible { --edge: var(--link); outline: 0; }
+
+  .install { display: flex; gap: 10px; align-items: stretch; margin: 26px 0 10px; max-width: 640px; }
+  .install code { flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap; background: var(--term); color: #e8e4dc; border: 1px solid var(--line); padding: 13px 15px; font-size: 13.5px; }
+  .install button { --c: 11px; font: 600 13px "JetBrains Mono", monospace; letter-spacing: .02em; color: var(--text); cursor: pointer; border: 0; padding: 0 20px; min-height: 46px; }
+  figure { margin: 22px calc(-1 * var(--pad)) 0; }
+  pre { margin: 0; background: var(--term); color: #e8e4dc; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 20px var(--pad);
+        font: 12.5px/1.55 "JetBrains Mono", ui-monospace, Menlo, monospace; overflow-x: auto; white-space: pre; }
+  pre:focus-visible, .install code:focus-visible { outline: 2px solid var(--link); outline-offset: -2px; }
+  figcaption { color: var(--dim); font: 400 12.5px/1.5 "JetBrains Mono", monospace; margin-top: 12px; padding: 0 var(--pad); }
+  ul { padding-left: 20px; margin: 0 0 14px; }
+  li { margin-bottom: 8px; max-width: 68ch; }
+  .figure { margin: 22px 0 0; }
+  .figure iframe { display: block; width: 552px; max-width: 100%; height: 600px; margin: 0 auto; border: 1px solid var(--line); border-radius: 0; }
+  dl.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 18px 0 20px; }
+  dl.grid > div { padding: 20px 22px 22px; }
+  dl.grid dt { font-weight: 750; margin: 0 0 4px; letter-spacing: -.01em; }
+  dl.grid dd { margin: 0; color: var(--dim); font-size: 16px; line-height: 1.55; }
+  dl.grid dd code { color: var(--text); }
+  @media (max-width: 700px) { dl.grid { grid-template-columns: 1fr; } }
+  footer { border-top: 1px solid var(--line); margin-top: 84px; padding: 22px var(--pad) 48px; color: var(--dim); font: 400 13px/1.6 "JetBrains Mono", monospace; }
+
+  @media (hover: hover) and (pointer: fine) { dl.grid > div:hover { translate: 0 -2px; } dl.grid > div { transition: translate .35s cubic-bezier(.16, 1, .3, 1), background .25s; } }
+  @media (prefers-reduced-motion: no-preference) {
+    @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+    @keyframes print { from { clip-path: inset(0 0 100% 0); } to { clip-path: inset(0 0 0 0); } }
+    .enter { animation: rise .7s cubic-bezier(.16, 1, .3, 1) both; animation-delay: calc(var(--i) * 90ms); }
+    .js figure pre.rec { clip-path: inset(0 0 100% 0); }
+    .js figure pre.rec.in { animation: print var(--dur) steps(var(--n), end) forwards; }
+    .js dl.grid > div { opacity: 0; transform: translateY(10px); transition: opacity .6s cubic-bezier(.16, 1, .3, 1), transform .6s cubic-bezier(.16, 1, .3, 1), translate .35s cubic-bezier(.16, 1, .3, 1), background .25s; transition-delay: calc(var(--i) * 70ms), calc(var(--i) * 70ms), 0s, 0s; }
+    .js dl.grid.in > div { opacity: 1; transform: none; }
+  }
+
+  /* nav tab state, steps and the providers table */
+  header nav { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0 22px; }
+  header nav a { margin-left: 0; }
+  header nav a[aria-current="page"] { color: var(--link); border-color: currentColor; }
+  @media (max-width: 700px) { header { flex-direction: column; align-items: flex-start; gap: 8px; } header nav { justify-content: flex-start; gap: 0 16px; } header nav a { font-size: 12.5px; } }
+  ol.steps { list-style: none; counter-reset: step; padding: 0; margin: 18px 0 8px; display: grid; gap: 14px; }
+  ol.steps li { counter-increment: step; position: relative; padding-left: 46px; margin: 0; max-width: 68ch; }
+  ol.steps li::before { content: counter(step); position: absolute; left: 0; top: 1px; width: 30px; height: 30px; display: grid; place-items: center; background: var(--text); color: var(--bg);
+                        font: 600 13px "JetBrains Mono", monospace; clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 8px 100%, 0 calc(100% - 8px)); }
+  .tablewrap { overflow-x: auto; margin: 18px 0 10px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .tablewrap:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+  table { width: 100%; min-width: 660px; border-collapse: collapse; font-size: 15px; line-height: 1.5; }
+  th, td { text-align: left; vertical-align: top; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+  tbody tr:last-child > * { border-bottom: 0; }
+  thead th { background: var(--tint); color: var(--dim); font: 600 12px "JetBrains Mono", monospace; letter-spacing: .04em; }
+  tbody th { font-weight: 750; white-space: nowrap; }
+  tbody tr { transition: background .25s; }
+  tbody tr:hover { background: var(--tint); }
+  td a { font: 500 13px "JetBrains Mono", monospace; overflow-wrap: anywhere; }
+  td code { white-space: nowrap; }
+  main > h1:first-child { padding-top: 64px; }
+  @media (max-width: 700px) { main > h1:first-child { padding-top: 36px; } }
