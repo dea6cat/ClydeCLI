@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - `clyde luv bonny` now opens at `http://localhost:8080` and takes the port as an argument (`clyde luv bonny 7090`; `--port` still works). If 8080 is taken she moves to a free port and says so; a port you ask for must be free.
 - A second command, `bonny`: `bonny luv clyde [options]` starts the terminal Clyde, the same as `clyde [options]`.
-- `clyde luv bonny` starts Bonny, Clyde's wife and lover, on localhost with her own persona. The local API queues prompts, steers
+- `clyde luv bonny` starts Bonny, Clyde's luv accomplice, on localhost with her own persona. The local API queues prompts, steers
   or stops a running turn, lists and reopens sessions, shows permission cards and takes council votes; requests need a per-run
   token and a matching Host and Origin. Her page has a sessions sidebar, Search and Computer modes, a model and permissions picker, permission cards,
   queue / steer / stop and the council popup with votes.
