@@ -21,6 +21,7 @@ PAGE = r"""<!doctype html>
 }
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
+html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
 body { font: 15px/1.55 var(--font); background: var(--bg); color: var(--text); display: flex; }
 button, select, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; }
@@ -36,10 +37,12 @@ aside { width: 264px; flex: none; background: var(--side); border-right: 1px sol
 .nav[aria-current="true"] { background: var(--raised); }
 .nav:disabled { color: var(--dim); cursor: default; }
 .nav small { margin-left: auto; color: var(--dim); font-size: 11px; }
-.label { color: var(--dim); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; padding: 14px 10px 4px; }
+.label { color: var(--dim); font-size: 12.5px; font-weight: 600; padding: 16px 10px 4px; }
 .project { padding: 4px 10px; color: var(--dim); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #sessions { overflow-y: auto; flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 1px; }
-.session { flex: none; background: none; border: 0; border-radius: 8px; padding: 7px 10px; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.session { flex: none; display: flex; flex-direction: column; gap: 1px; background: none; border: 0; border-radius: 8px; padding: 7px 10px; text-align: left; color: var(--text); min-width: 0; transition-property: background-color; transition-duration: 120ms; }
+.session .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.session .m { font-size: 12px; color: var(--dim); font-variant-numeric: tabular-nums; }
 .session:hover { background: var(--raised); }
 .session[aria-current="true"] { background: var(--raised); color: var(--accent); }
 .empty-note { color: var(--dim); padding: 6px 10px; font-size: 13px; }
@@ -80,11 +83,8 @@ main { flex: 1; min-width: 0; display: flex; flex-direction: column; height: 100
 .status .spade { color: var(--spade); font-size: 16px; animation: pulse 1.3s ease-in-out infinite; }
 @keyframes pulse { 0%, 100% { opacity: .35; transform: scale(.9); } 50% { opacity: 1; transform: scale(1.1); } }
 @media (prefers-reduced-motion: reduce) { .status .spade { animation: none; } }
-.msg a, .sources a { color: var(--accent); text-underline-offset: 2px; }
+a { color: var(--accent); text-underline-offset: 2px; }
 .cite { margin: 0 .12em; font-size: .8em; vertical-align: super; text-decoration: none; }
-.sources { border-top: 1px solid var(--line); padding-top: 10px; display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
-.sources h4 { margin: 0 0 2px; font-size: 12px; color: var(--dim); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
-.sources .host { color: var(--dim); font-size: 12px; margin-left: 6px; }
 
 /* composer */
 .dock { padding: 0 18px 18px; }
@@ -93,7 +93,7 @@ main.empty .dock { margin: auto 0; padding-bottom: 12vh; }
 .hero { text-align: center; margin: 0 auto 18px; max-width: 760px; display: none; }
 main.empty .hero { display: block; }
 .hero small { display: block; color: var(--accent); font-size: 13px; margin-bottom: 4px; }
-.hero h1 { margin: 0; font-weight: 500; font-size: 28px; }
+.hero h1 { margin: 0; font-weight: 500; font-size: 28px; text-wrap: balance; }
 .box { max-width: 760px; margin: 0 auto; background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 12px 14px 10px; }
 .box:focus-within { border-color: var(--dim); }
 textarea:focus-visible { outline: none; }
@@ -103,6 +103,43 @@ textarea { width: 100%; resize: none; border: 0; background: none; outline: none
 .chip { border: 0; background: none; border-radius: 99px; padding: 4px 13px; color: var(--dim); }
 .chip[aria-pressed="true"] { background: var(--panel); color: var(--text); box-shadow: 0 0 0 1px var(--line); }
 select { background: var(--raised); border: 1px solid var(--line); border-radius: 9px; padding: 5px 8px; max-width: 220px; }
+
+/* answer actions */
+.answer { display: flex; flex-direction: column; gap: 6px; }
+.actions { display: flex; align-items: center; gap: 2px; margin-left: -8px; animation: rise .24s ease-out both; }
+@keyframes rise { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.act, .src { position: relative; display: inline-grid; place-items: center; height: 34px; min-width: 34px; padding: 0 8px; border: 0; background: none; color: var(--dim); border-radius: 10px;
+  transition-property: background-color, color, transform; transition-duration: 150ms; transition-timing-function: ease-out; }
+.act::before { content: ""; position: absolute; inset: -3px; }
+.act:hover, .src:hover { background: var(--raised); color: var(--text); }
+.act:active, .src:active { transform: scale(.96); }
+.act[aria-pressed="true"] { color: var(--accent); }
+.act[data-i="down"][aria-pressed="true"] { color: var(--danger); }
+.act.council { color: var(--accent); display: inline-flex; gap: 6px; align-items: center; }
+.act .count { font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.ico { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; display: block; }
+.act[data-i="down"] .ico { transform: rotate(180deg); }
+.act .ico + .ico { position: absolute; opacity: 0; transform: scale(.6); filter: blur(3px); }
+.act .ico { transition-property: opacity, transform, filter; transition-duration: 150ms; transition-timing-function: ease-out; }
+.act.done .ico:first-child { opacity: 0; transform: scale(.6); filter: blur(3px); }
+.act.done .ico + .ico { opacity: 1; transform: none; filter: none; }
+.act[data-tip]::after { content: attr(data-tip); position: absolute; bottom: calc(100% + 7px); left: 50%; transform: translate(-50%, 3px); background: var(--raised); color: var(--text); border: 1px solid var(--line);
+  font-size: 12px; line-height: 1; padding: 6px 9px; border-radius: 8px; white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity 120ms ease-out, transform 120ms ease-out; z-index: 4; }
+.act:hover::after, .act:focus-visible::after { opacity: 1; transform: translate(-50%, 0); transition-delay: 300ms; }
+.src { display: inline-flex; align-items: center; gap: 9px; margin-left: 6px; font-size: 13px; font-variant-numeric: tabular-nums; }
+.faces { display: inline-flex; }
+.face { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; font-size: 10.5px; font-weight: 700; color: #fff; box-shadow: 0 0 0 2px var(--bg); margin-left: -6px; }
+.face:first-child { margin-left: 0; }
+.menuwrap { position: relative; }
+.menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 5; min-width: 190px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 4px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .28), 0 1px 2px rgba(0, 0, 0, .22); }
+.menu button { display: flex; gap: 10px; align-items: center; width: 100%; border: 0; background: none; padding: 8px 10px; border-radius: 8px; text-align: left; transition-property: background-color; transition-duration: 120ms; }
+.menu button:hover { background: var(--raised); }
+.menu .ico { width: 16px; height: 16px; color: var(--dim); }
+.dlg-body h3 { margin: 0 0 8px; font-size: 14px; }
+.dlg-body ol, .dlg-body ul { margin: 0; padding-left: 1.3em; display: flex; flex-direction: column; gap: 7px; }
+.dlg-body li .host { color: var(--dim); font-size: 12.5px; margin-left: 8px; }
+@media (prefers-reduced-motion: reduce) { .actions { animation: none; } .act, .src, .act .ico, .act::after { transition: none !important; } }
 
 /* council popup */
 dialog { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 16px; padding: 0; width: min(720px, 94vw); max-height: 86vh; }
@@ -178,13 +215,28 @@ dialog::backdrop { background: rgba(0, 0, 0, .55); }
   <div class="dlg-body" id="council-body"></div>
 </dialog>
 
+<template id="icons">
+  <svg data-i="copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2.5"/><path d="M5 15V6.5A2.5 2.5 0 0 1 7.5 4H15"/></svg>
+  <svg data-i="check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+  <svg data-i="export" viewBox="0 0 24 24"><path d="M12 15V4M8 8l4-4 4 4"/><path d="M5 13v4.5A2.5 2.5 0 0 0 7.5 20h9a2.5 2.5 0 0 0 2.5-2.5V13"/></svg>
+  <svg data-i="up" viewBox="0 0 24 24"><path d="M7 11v9H4.5A1.5 1.5 0 0 1 3 18.5v-6A1.5 1.5 0 0 1 4.5 11H7z"/><path d="M7 11l3.4-6.1A1.8 1.8 0 0 1 14 5.8V9h4.6a2 2 0 0 1 2 2.3l-1.1 6.5a2 2 0 0 1-2 1.7H7"/></svg>
+  <svg data-i="council" viewBox="0 0 24 24"><circle cx="6" cy="5.5" r="2"/><circle cx="18" cy="5.5" r="2"/><circle cx="12" cy="19" r="2"/><path d="M6 7.5v1.2a3 3 0 0 0 3 3h6a3 3 0 0 0 3-3V7.5M12 11.7V17"/></svg>
+  <svg data-i="retry" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 5v6h-6"/></svg>
+  <svg data-i="more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.5" fill="currentColor" stroke="none"/></svg>
+</template>
+
+<dialog id="sources" aria-labelledby="sources-title">
+  <div class="dlg-head"><h2 id="sources-title">Sources</h2><button class="btn" id="sources-close">Close</button></div>
+  <div class="dlg-body" id="sources-body"></div>
+</dialog>
+
 <script>window.BONNY_TOKEN = "__TOKEN__";</script>
 <script>
 "use strict";
 const TOKEN = window.BONNY_TOKEN;
 const $ = (id) => document.getElementById(id);
 const st = { busy: false, ui: "computer", mode: "hold", bubble: null, bubbleText: "", tools: new Map(), session: "", queued: 0,
-  status: null, since: 0, activity: "", ticker: 0, titles: new Map(), fetched: [], pending: new Map(), queries: [] };
+  status: null, since: 0, activity: "", ticker: 0, titles: new Map(), fetched: [], pending: new Map(), queries: [], wrap: null, turn: null, sent: new Map() };
 
 async function api(path, body) {
   const res = await fetch(path, {
@@ -254,7 +306,10 @@ const col = $("col"), thread = $("thread");
 function scroll() { placeStatus(); thread.scrollTop = thread.scrollHeight; }
 function setEmpty(empty) { $("main").classList.toggle("empty", empty); }
 function addUser(text) { setEmpty(false); col.append(h("div", { class: "msg user" }, text)); scroll(); }
-function startBubble() { st.bubble = h("div", { class: "msg bonny" }); st.bubbleText = ""; col.append(st.bubble); }
+function startBubble() {
+  st.bubble = h("div", { class: "msg bonny" }); st.bubbleText = "";
+  st.wrap = h("div", { class: "answer" }, st.bubble); col.append(st.wrap);
+}
 function paintBubble() { if (st.bubble) { st.bubble.replaceChildren(markdown(st.bubbleText)); scroll(); } }
 function note(text, cls) { setEmpty(false); col.append(h("div", { class: "note " + (cls || "") }, text)); scroll(); }
 
@@ -302,19 +357,30 @@ function applyState(s) {
   if (s.mode === "all_in" || s.mode === "hold") $("perm").value = s.mode;
   paintControls();
 }
+function when(iso) {
+  const d = new Date(iso), now = new Date();
+  if (isNaN(d)) return "";
+  const time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const days = Math.round((new Date(now.getFullYear(), now.getMonth(), now.getDate()) - new Date(d.getFullYear(), d.getMonth(), d.getDate())) / 864e5);
+  return days === 0 ? "Today, " + time : days === 1 ? "Yesterday, " + time : d.toLocaleDateString([], { month: "short", day: "numeric" }) + ", " + time;
+}
 async function refresh() {
   applyState(await api("/api/state"));
   const { sessions } = await api("/api/sessions");
   $("sessions").replaceChildren(...(sessions.length
-    ? sessions.map((s) => h("button", { class: "session", title: s.title, "aria-current": String(s.id === st.session), onclick: () => openSession(s.id) }, s.title))
+    ? sessions.map((s) => h("button", { class: "session", title: s.title, "aria-current": String(s.id === st.session), onclick: () => openSession(s.id) },
+        h("span", { class: "t" }, s.title), h("span", { class: "m" }, when(s.updated))))
     : [h("div", { class: "empty-note" }, "No saved sessions yet")]));
 }
 async function showSession() {
   col.replaceChildren(); st.bubble = null;
   const { messages } = await api("/api/sessions/" + encodeURIComponent(st.session));
+  let question = "";
   for (const m of messages) {
-    if (m.role === "user") addUser(m.text);
-    else { setEmpty(false); col.append(h("div", { class: "msg bonny" }, markdown(m.text))); }
+    if (m.role === "user") { question = m.text; addUser(m.text); continue; }
+    setEmpty(false);
+    col.append(h("div", { class: "answer" }, h("div", { class: "msg bonny" }, markdown(m.text)),
+      actionRow({ text: m.text, question, search: false, mode: null, info: sourceInfo(m.text, new Map(), []), council: null, quiet: true })));
   }
   setEmpty(!messages.length); scroll();
 }
@@ -327,13 +393,17 @@ async function send() {
   const input = $("input"), text = input.value.trim();
   if (!text) return;
   try {
-    const queuedBehind = st.busy;
     const search = st.ui === "search";
-    await api("/api/prompt", { text, search, mode: search ? "plan" : $("perm").value });
+    await submit(text, search, search ? "plan" : $("perm").value);
     input.value = ""; autosize();
-    if (queuedBehind) note("Queued: " + text); else begin();
-    st.queued = (await api("/api/state")).queued; paintControls();
   } catch (e) { note(e.message, "error"); }
+}
+async function submit(text, search, mode) {
+  const queuedBehind = st.busy;
+  st.sent.set(text, { search, mode });
+  await api("/api/prompt", { text, search, mode });
+  if (queuedBehind) note("Queued: " + text); else begin();
+  st.queued = (await api("/api/state")).queued; paintControls();
 }
 $("form").addEventListener("submit", (e) => { e.preventDefault(); send(); });
 $("input").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); } });
@@ -381,7 +451,8 @@ function toolLine(e) {
 }
 function handle(e) {
   if (e.kind === "turn_start") {
-    addUser(e.text); begin(); st.bubble = null; st.titles.clear(); st.fetched = []; st.pending.clear(); st.queries = [];
+    addUser(e.text); begin(); st.bubble = null; st.wrap = null; st.titles.clear(); st.fetched = []; st.pending.clear(); st.queries = [];
+    st.turn = { text: e.text, ...(st.sent.get(e.text) || { search: false, mode: null }) };
   }
   else if (e.kind === "text") { if (!st.bubble) startBubble(); st.bubbleText += e.text; paintBubble(); }
   else if (e.kind === "tool") toolLine(e);
@@ -390,9 +461,8 @@ function handle(e) {
   else if (e.kind === "turn_end") {
     finish();
     if (e.stopped) note("Stopped.");
-    else showSources(e.answer || "");
-    if (e.council) councilButton(e.council);
-    st.bubble = null; st.tools.clear(); st.busy = false; refresh();
+    else finishAnswer(e);
+    st.bubble = null; st.wrap = null; st.tools.clear(); st.busy = false; refresh();
   } else if (e.kind === "session") { showSession().then(refresh); }
 }
 async function poll(after) {
@@ -405,25 +475,108 @@ async function poll(after) {
   }
 }
 
-/* Sources: the addresses the answer cites, plus pages it fetched, with titles from the search results. */
-function showSources(answer) {
-  const urls = [];
-  const add = (u) => { try { const n = new URL(u); if (/^https?:$/.test(n.protocol) && !urls.includes(n.href)) urls.push(n.href); } catch (e) { /* not a URL */ } };
-  for (const m of answer.matchAll(/https?:\/\/[^\s<>)\]]+/g)) add(m[0].replace(/[.,;:!?]+$/, ""));
-  st.fetched.forEach(add);
-  if (!urls.length) { if (st.queries.length) note("Searched the web for \u201c" + st.queries.join("\u201d, \u201c") + "\u201d, but the answer cites no sources."); return; }
-  col.append(h("div", { class: "sources" }, h("h4", {}, "Sources"), urls.map((u, i) => {
-    const host = new URL(u).hostname.replace(/^www\./, "");
-    return h("div", {}, i + 1 + ". ", link(u, st.titles.get(u) || host), h("span", { class: "host" }, host));
-  })));
+/* Answer actions: copy, export, rate, council and sources under each reply. */
+const icons = $("icons").content;
+function ico(name) { const n = icons.querySelector('[data-i="' + name + '"]').cloneNode(true); n.classList.add("ico"); n.setAttribute("aria-hidden", "true"); return n; }
+function actBtn(name, tip, onclick, extra) {
+  const b = h("button", { class: "act", type: "button", "data-i": name, "data-tip": tip, "aria-label": tip, ...(extra || {}) }, ico(name));
+  b.addEventListener("click", onclick);
+  return b;
+}
+function flash(btn, text) {
+  const was = btn.dataset.tip;
+  const swap = !!btn.querySelector(".ico + .ico");   // only the copy button has a check icon to cross-fade to
+  btn.dataset.tip = text; if (swap) btn.classList.add("done");
+  setTimeout(() => { btn.dataset.tip = was; btn.classList.remove("done"); }, 1600);
+}
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); }
+  catch (e) { const t = h("textarea", {}, text); document.body.append(t); t.select(); document.execCommand("copy"); t.remove(); }
+}
+function hostOf(u) { try { return new URL(u).hostname.replace(/^www\./, ""); } catch (e) { return ""; } }
+function sourceInfo(text, titles, fetched) {
+  const cited = [], seen = new Set();
+  const add = (u) => {
+    let n; try { n = new URL(u); } catch (e) { return; }
+    if (!/^https?:$/.test(n.protocol) || seen.has(n.href)) return;
+    seen.add(n.href); cited.push({ url: n.href, title: titles.get(n.href) || titles.get(u) || "", host: hostOf(n.href) });
+  };
+  for (const m of text.matchAll(/https?:\/\/[^\s<>)\]]+/g)) add(m[0].replace(/[.,;:!?]+$/, ""));
+  fetched.forEach(add);
+  const others = [...titles].filter(([u]) => !seen.has(u) && !seen.has(new URL(u).href)).map(([u, t]) => ({ url: u, title: t, host: hostOf(u) }));
+  return { cited, others };
+}
+function hue(host) { let x = 0; for (const c of host) x = (x * 31 + c.charCodeAt(0)) % 360; return x; }
+function sourcesChip(info) {
+  const n = info.cited.length;
+  const label = n ? n + (n === 1 ? " source" : " sources") : info.others.length + " results, none cited";
+  const faces = n ? h("span", { class: "faces", "aria-hidden": "true" }, info.cited.slice(0, 3).map((s) => h("span", { class: "face", style: "background:hsl(" + hue(s.host) + " 34% 38%)" }, (s.host[0] || "?").toUpperCase()))) : null;
+  const b = h("button", { class: "src", type: "button", "aria-label": label + ", show the list" }, faces, h("span", {}, label));
+  b.addEventListener("click", () => openSources(info));
+  return b;
+}
+function openSources(info) {
+  const row = (s) => h("li", {}, link(s.url, s.title || s.host), h("span", { class: "host" }, s.host));
+  $("sources-body").replaceChildren(
+    info.cited.length ? h("div", {}, h("h3", {}, "Cited in the answer"), h("ol", {}, info.cited.map(row))) : h("p", { class: "note" }, "The answer cites no sources."),
+    info.others.length ? h("div", {}, h("h3", {}, "Also found"), h("ul", {}, info.others.map(row))) : null);
+  $("sources").showModal();
+}
+$("sources-close").addEventListener("click", () => $("sources").close());
+
+function markdownOf(o) {
+  const lines = ["# " + o.question, "", o.text];
+  const used = o.info ? o.info.cited : [];
+  if (used.length) lines.push("", "## Sources", ...used.map((s, i) => (i + 1) + ". [" + (s.title || s.host) + "](" + s.url + ")"));
+  return lines.join("\n") + "\n";
+}
+function download(name, text) {
+  const url = URL.createObjectURL(new Blob([text], { type: "text/markdown" }));
+  const a = h("a", { href: url, download: name }); document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+document.addEventListener("click", (e) => { if (!e.target.closest(".menuwrap")) document.querySelectorAll(".menu").forEach((m) => { m.hidden = true; }); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") document.querySelectorAll(".menu").forEach((m) => { m.hidden = true; }); });
+
+function actionRow(o) {
+  const md = () => markdownOf(o);
+  const copy = actBtn("copy", "Copy answer", async () => { await copyText(o.text); flash(copy, "Copied"); });
+  copy.append(ico("check"));
+  const exp = actBtn("export", "Export as Markdown", () => download((o.question.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 48) || "answer") + ".md", md()));
+  const rate = async (vote) => {
+    try {
+      await api("/api/feedback", { vote, question: o.question });
+      up.setAttribute("aria-pressed", String(vote === "up")); down.setAttribute("aria-pressed", String(vote === "down"));
+      flash(vote === "up" ? up : down, "Saved on this machine");
+    } catch (err) { note(err.message, "error"); }
+  };
+  const up = actBtn("up", "Good answer", () => rate("up"), { "aria-pressed": "false" });
+  const down = actBtn("up", "Poor answer", () => rate("down"), { "aria-pressed": "false" });
+  down.dataset.i = "down";
+  const kids = [copy, exp, up, down];
+  if (o.council) {
+    const c = actBtn("council", "See every council answer", () => openCouncil(o.council));
+    c.classList.add("council"); c.append(h("span", { class: "count" }, String(o.council.answers.length)));
+    kids.push(c);
+  }
+  if (o.info && (o.info.cited.length || o.info.others.length)) kids.push(sourcesChip(o.info));
+  const retryItem = h("button", { type: "button", role: "menuitem" }, ico("retry"), "Try again");
+  const mdItem = h("button", { type: "button", role: "menuitem" }, ico("copy"), "Copy as Markdown");
+  const menu = h("div", { class: "menu", role: "menu", hidden: "" }, retryItem, mdItem);
+  const more = actBtn("more", "More", () => { const open = menu.hidden; document.querySelectorAll(".menu").forEach((m) => { m.hidden = true; }); menu.hidden = !open; more.setAttribute("aria-expanded", String(open)); }, { "aria-haspopup": "menu", "aria-expanded": "false" });
+  retryItem.addEventListener("click", async () => { menu.hidden = true; try { await submit(o.question, !!o.search, o.search ? "plan" : (o.mode || $("perm").value)); } catch (err) { note(err.message, "error"); } });
+  mdItem.addEventListener("click", async () => { menu.hidden = true; await copyText(md()); });
+  return h("div", { class: "actions", role: "group", "aria-label": "Answer actions", style: o.quiet ? "animation:none" : "" }, kids, h("span", { class: "spacer" }), h("span", { class: "menuwrap" }, more, menu));
+}
+function finishAnswer(e) {
+  if (!st.wrap || !e.answer) return;
+  const info = sourceInfo(e.answer, st.titles, st.fetched);
+  st.wrap.append(actionRow({ text: e.answer, question: st.turn ? st.turn.text : "", search: !!(st.turn && st.turn.search), mode: st.turn && st.turn.mode, info, council: e.council }));
+  if (!info.cited.length && st.queries.length) note("Searched the web for “" + st.queries.join("”, “") + "”, but the answer cites no sources.");
   scroll();
 }
 
 /* council popup */
-function councilButton(c) {
-  col.append(h("button", { class: "link", onclick: () => openCouncil(c) }, "Council · " + c.answers.length + " answers · see all and vote"));
-  scroll();
-}
 function openCouncil(c) {
   const best = c.answers.reduce((a, b) => ((b.p ?? -1) > (a.p ?? -1) ? b : a), c.answers[0]);
   $("council-body").replaceChildren(

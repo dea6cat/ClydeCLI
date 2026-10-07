@@ -12,6 +12,7 @@ bodies, and caps body and prompt size. The token does not protect against other 
 from __future__ import annotations
 
 import collections
+import hashlib
 import hmac
 import json
 import re
@@ -26,6 +27,7 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 from src import activity
+from src.config import clyde_home
 from src.agent.session import Session
 from src.bonny.page import PAGE
 from src.providers import model_ref
@@ -57,6 +59,19 @@ def search_context(results: list[dict], error: str | None) -> str:
         return f"{_SEARCH_RULE}\n\nThe web search {('failed: ' + error) if error else 'found nothing'}. Answer from what you know and say the answer is unsourced."
     rows = [f"[{i}] {r['title']}\n    {r['url']}\n    {r['snippet']}" for i, r in enumerate(results, 1)]
     return f"{_SEARCH_RULE}\n\nWeb results:\n" + "\n".join(rows)
+
+
+FEEDBACK_FILE = "answer_feedback.jsonl"
+
+
+def record_feedback(session_id: str, model: str, question: str, vote: int) -> None:
+    """Append a thumbs up (+1) or down (-1) on an answer to ~/.clyde/answer_feedback.jsonl. Keeps a hash of the question, never its
+    text or the answer, and nothing leaves the machine."""
+    line = {"ts": time.time(), "session": session_id, "model": model, "prompt": hashlib.sha256(question.encode()).hexdigest()[:16], "vote": vote}
+    path = clyde_home() / FEEDBACK_FILE
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(line) + "\n")
 
 
 class Prompt(collections.namedtuple("Prompt", "text search mode")):
@@ -396,6 +411,19 @@ def make_server(bonny: Bonny, host: str = "127.0.0.1", port: int = 0) -> Threadi
                 self._json(200, {"ok": True}) if ok else self._json(404, {"error": "no such card"})
             elif path == "/api/vote":
                 self._vote(data)
+            elif path == "/api/feedback":
+                vote = {"up": 1, "down": -1}.get(data.get("vote"))
+                question = data.get("question")
+                if vote is None or not isinstance(question, str) or len(question) > MAX_PROMPT:
+                    self._json(400, {"error": "vote is up or down, and the question is text"})
+                    return
+                try:
+                    state = bonny.state()
+                    record_feedback(state["session"], state["model"], question, vote)
+                except OSError as e:
+                    self._json(500, {"error": f"couldn't save that: {e}"})
+                else:
+                    self._json(200, {"ok": True})
             elif path in ("/api/session/open", "/api/session/new", "/api/mode", "/api/model"):
                 self._change(path, data)
             else:

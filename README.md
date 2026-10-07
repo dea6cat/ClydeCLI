@@ -189,6 +189,11 @@ Search turns search the web first (DuckDuckGo, no key) and hand the numbered res
 links; the page lists those sources under the answer. If the search is blocked or finds nothing, the answer says it is
 unsourced. While a turn runs, the page shows what Clyde is waiting on and for how long.
 
+Under each answer sits a row of actions: copy, export as Markdown, good and poor ratings (saved on your machine in
+`~/.clyde/answer_feedback.jsonl` as a hash of the question, never its text), the council popup when a council ran, a sources
+chip that opens the list of what the answer cites and what else the search found, and a menu with Try again. Sessions in
+the sidebar show when they were last used, so two with the same first message can be told apart.
+
 ### Laya
 
 *I read the table, not just the cards.*
