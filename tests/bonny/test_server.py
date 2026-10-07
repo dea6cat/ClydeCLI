@@ -94,6 +94,24 @@ class TestGuards(BonnyCase):
         self.assertEqual(self.call("POST", "/api/session/open", {"id": "../etc"})[0], 404)
 
 
+class TestPage(BonnyCase):
+    def test_the_page_has_one_token_slot_and_makes_no_outside_requests(self):
+        from src.bonny.page import PAGE
+
+        self.assertEqual(PAGE.count("__TOKEN__"), 1)
+        self.assertNotIn("http://", PAGE)
+        self.assertNotIn("https://", PAGE)
+        self.assertNotIn("innerHTML", PAGE)   # replies reach the page as text only
+
+    def test_models_lists_graded_models_and_state_carries_the_latest_event_id(self):
+        graded = {"a:m": {"passed": True}, "b:m": {"passed": False}, "cardShuffle:house": {"passed": True}}
+        with patch("src.providers.model_eval.load_results", return_value=graded):
+            self.assertEqual(self.call("GET", "/api/models")[1]["models"], ["a:m"])
+        before = self.call("GET", "/api/state")[1]["event"]
+        self.bonny.events.emit("x")
+        self.assertEqual(self.call("GET", "/api/state")[1]["event"], before + 1)
+
+
 class TestTurns(BonnyCase):
     def test_a_prompt_runs_streams_events_and_is_saved_as_a_session(self):
         self.assertEqual(self.call("POST", "/api/prompt", {"text": "hi bonny"})[0], 200)
