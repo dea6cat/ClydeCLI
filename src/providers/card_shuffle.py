@@ -41,6 +41,7 @@ LOCAL = ("ollama", "lmstudio")
 COUNCIL = "council"
 COUNCIL_SIZE = 4
 COUNCIL_DEADLINE_S = 90     # ponytail: one fixed deadline; make it adaptive if slow providers are common
+COUNCIL_LAYA_WAIT_S = 60    # a council turn waits this long for Laya to finish loading; ranking is its point
 REPLY_CHARS = 4000          # of each answer shown to Laya
 VOTES_FILE = "council_votes.jsonl"
 _JUDGE = "Which reply answers `request` most correctly and helpfully?"
@@ -311,7 +312,8 @@ class CardShuffle:
         if not answers:
             raise ProviderError(NAME, "council: no model answered (" + "; ".join(f"{r}: {why}" for r, why in failed.items()) + ")")
         order = [r for r in roster if r in answers]
-        self._await_laya()
+        activity.set(f"waiting up to {COUNCIL_LAYA_WAIT_S}s for Laya to load")
+        self.wait(COUNCIL_LAYA_WAIT_S)
         activity.set("asking Laya which answer is best")
         chances = rank(self.ask, request, {r: answers[r].message.text for r in order}) if len(order) > 1 else None
         winner = max(order, key=lambda r: chances[r]) if chances else order[0]
@@ -319,7 +321,7 @@ class CardShuffle:
                              "answers": [{"ref": r, "text": answers[r].message.text, "p": chances[r] if chances else None} for r in order]}
         self.dealt = winner
         if self.on_deal is not None:
-            self.on_deal(winner, f"council of {len(roster)} · " + (f"{chances[winner]:.0%} best" if chances else "unranked"))
+            self.on_deal(winner, f"council, {len(order)} of {len(roster)} answered · " + (f"{chances[winner]:.0%} best" if chances else "unranked"))
         on_text(answers[winner].message.text)
         return answers[winner]
 

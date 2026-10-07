@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- cardShuffle council: `cardShuffle:<tier> council` (for example `/model cardShuffle:high-roller council`) asks the tier's top four
+  models the same question at once, tools off, and Laya picks the best answer. `/council` shows every answer with its score and
+  `/council up N` / `/council down N` records a vote in `~/.clyde/council_votes.jsonl` (kept on your machine). Models that fail
+  or miss the 90 s deadline are left out; without Laya the answers come back unranked.
+
 ### Changed
 - Clyde asks you to accept its licence before its first command: type `I accept` (Enter alone declines, status 3). Saved in
   `~/.clyde/license.json`, so installs that update from an earlier version are asked on their next run, once. `clyde license
