@@ -150,7 +150,7 @@ def isolated_env(server: FakeModel | None, home: Path, *, with_key: bool = True,
         "HOME": str(home), "TERM": "xterm-256color", "PYTHONPATH": str(REPO),
         "PATH": f"{Path(sys.executable).parent}:/usr/bin:/bin",     # no Ollama or LM Studio command line tools
         "OLLAMA_HOST": "http://127.0.0.1:1", "OLLAMA_API_BASE": "http://127.0.0.1:1",   # both: the second wins when set
-        "CLYDE_NO_MODEL_FETCH": "1", "CLYDE_ACCEPT_LICENSE": "1",   # the licence gate has its own tests
+        "CLYDE_NO_MODEL_FETCH": "1", "CLYDE_ACCEPT_LICENSE": "1", "CLYDE_NO_UPDATE_CHECK": "1",   # the licence gate and the update check have their own tests
         "CLYDE_TRACE": "off", "PYTHONDONTWRITEBYTECODE": "1",
     })
     return env
