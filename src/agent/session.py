@@ -122,7 +122,12 @@ class Session:
     @classmethod
     def create(cls, provider: str, model: str) -> 'Session':
         """Create a new session."""
-        session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        session_id, n = stamp, 1
+        # Ids are to the second: a session saved (or archived) in the same second must not be overwritten by this one.
+        while (_sessions_dir() / f"{session_id}.json").exists() or (_archive_dir() / f"{session_id}.json").exists():
+            n += 1
+            session_id = f"{stamp}_{n}"
         return cls(
             session_id=session_id,
             provider=provider,

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
@@ -24,6 +25,26 @@ class TestSessionArchive(unittest.TestCase):
         session.conversation.add_user_message(text)
         session.save()
         return session
+
+    def test_two_sessions_in_the_same_second_get_different_ids_even_after_one_is_archived(self):
+        fixed = "20260101_120000"
+
+        class Frozen(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return datetime(2026, 1, 1, 12, 0, 0)
+
+        with patch("src.agent.session.datetime", Frozen):
+            first = Session.create("p", "m")
+            self.assertEqual(first.session_id, fixed)
+            first.save()
+            second = Session.create("p", "m")
+            self.assertEqual(second.session_id, fixed + "_2")
+            second.save()
+            Session.archive(second.session_id)
+            third = Session.create("p", "m")                      # the archived one still counts as taken
+            self.assertEqual(third.session_id, fixed + "_3")
+        self.assertEqual(Session.load(first.session_id).session_id, fixed)   # the first was never overwritten
 
     def test_archive_hides_a_session_and_unarchive_brings_it_back(self):
         self._saved("a1", "hello")
