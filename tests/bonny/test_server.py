@@ -281,6 +281,81 @@ class TestFeedback(BonnyCase):
         self.assertEqual(self.call("POST", "/api/feedback", {"vote": "up"})[0], 400)
 
 
+class TestTheme(BonnyCase):
+    PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
+
+    def setUp(self):
+        super().setUp()
+        from src.bonny import theme
+        self.theme = theme
+        theme.remove_image()
+        (theme.folder() / "theme.json").unlink(missing_ok=True)
+        self.addCleanup(theme.remove_image)
+
+    def raw(self, method, path, body=b"", headers=None, token=True):
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
+        h = {"Host": f"127.0.0.1:{self.port}", **(headers or {})}
+        if token:
+            h["X-Bonny-Token"] = self.token
+        conn.request(method, path, body=body or None, headers=h)
+        resp = conn.getresponse()
+        data = resp.read()
+        conn.close()
+        return resp.status, dict(resp.getheaders()), data
+
+    def test_the_theme_api_needs_the_token(self):
+        self.assertEqual(self.call("GET", "/api/theme", token=False)[0], 403)
+        self.assertEqual(self.call("POST", "/api/theme", {"preset": "felt"}, token=False)[0], 403)
+
+    def test_a_saved_theme_is_cleaned_and_read_back(self):
+        status, body = self.call("POST", "/api/theme", {"preset": "felt", "shape": "round", "dim": 5, "colors": {"link": "#FFAA00", "bad": "red"}})
+        self.assertEqual(status, 200)
+        self.assertEqual((body["theme"]["dim"], body["theme"]["shape"], body["theme"]["colors"]), (0.9, "round", {"link": "#ffaa00"}))
+        self.assertEqual((body["vars"]["--bg"], body["vars"]["--link"]), ("#0b2a1c", "#ffaa00"))
+        self.assertEqual(self.call("GET", "/api/theme")[1]["theme"], body["theme"])
+        self.assertIn("slate", body["presets"])
+
+    def test_the_page_is_served_with_the_saved_theme_and_the_css_cannot_break_out(self):
+        self.call("POST", "/api/theme", {"preset": "night", "shape": "square", "css": "a{color:red}</style><b id=x>"})
+        page = self.call("GET", "/", token=False)[1]
+        self.assertIn('data-shape="square"', page)
+        self.assertIn("--bg:#0f1a14", page)
+        self.assertIn("a{color:red}", page)
+        self.assertNotIn("</style><b", page)
+        for placeholder in ("__THEME__", "__CUSTOM__", "__SHAPE__", "__TOKEN__"):
+            self.assertNotIn(placeholder, page)
+
+    def test_a_background_image_is_stored_served_with_its_real_type_and_removable(self):
+        status, _, data = self.raw("POST", "/api/theme/image", self.PNG, {"Content-Type": "text/plain"})   # the header is not trusted
+        self.assertEqual(status, 200)
+        payload = json.loads(data)
+        self.assertTrue(payload["image"])
+        url = payload["vars"]["--bg-image"].split('"')[1]
+        self.assertIn("/theme/background?t=" + self.token, url)
+        status, headers, body = self.raw("GET", url, token=False)
+        self.assertEqual((status, headers["Content-Type"], body), (200, "image/png", self.PNG))
+        self.assertEqual(headers["X-Content-Type-Options"], "nosniff")
+        self.assertEqual(self.raw("GET", "/theme/background?t=wrong", token=False)[0], 403)
+        self.assertEqual(self.raw("GET", "/theme/background", token=False)[0], 403)
+        self.assertFalse(self.call("POST", "/api/theme/image/remove", {})[1]["image"])
+        self.assertEqual(self.raw("GET", url, token=False)[0], 404)
+
+    def test_uploads_that_are_not_images_or_are_too_big_are_refused(self):
+        self.assertEqual(self.raw("POST", "/api/theme/image", b"<svg xmlns='x'><script>1</script></svg>", {"Content-Type": "image/svg+xml"})[0], 400)
+        self.assertEqual(self.raw("POST", "/api/theme/image", b"", {})[0], 400)
+        self.assertEqual(self.raw("POST", "/api/theme/image", b"x", {"Content-Length": str(self.theme.MAX_IMAGE + 1)})[0], 413)
+        self.assertEqual(self.raw("POST", "/api/theme/image", self.PNG, token=False)[0], 403)
+        self.assertIsNone(self.theme.image_path())
+
+    def test_only_the_two_fonts_are_served_and_the_host_is_still_checked(self):
+        status, headers, body = self.raw("GET", "/static/bricolage-grotesque.woff2", token=False)
+        self.assertEqual((status, headers["Content-Type"], body[:4]), (200, "font/woff2", b"wOF2"))
+        self.assertEqual(self.raw("GET", "/static/jetbrains-mono.woff2", token=False)[0], 200)
+        self.assertEqual(self.raw("GET", "/static/../server.py", token=False)[0], 404)
+        self.assertEqual(self.raw("GET", "/static/page.py", token=False)[0], 404)
+        self.assertEqual(self.raw("GET", "/static/jetbrains-mono.woff2", headers={"Host": "evil.example"}, token=False)[0], 403)
+
+
 class TestEventLog(unittest.TestCase):
     def test_readers_get_only_newer_events_and_a_long_poll_wakes_on_emit(self):
         log = EventLog()

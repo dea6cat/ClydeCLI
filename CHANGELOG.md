@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   queue / steer / stop and the council popup with votes.
   Search turns run a web search first and show a Sources list; a status line shows what a running turn is waiting on.
   Each answer has an action row (copy, export, rate, council, sources, try again), and sessions show when they were last used.
+  Bonny now uses the site's fonts, hairlines and corner-cut controls, and **Customize** changes her look: presets, seven colours, a
+  background image (dim, blur, see-through panels), shape, font, greeting, custom CSS and a copyable theme code, saved in
+  `~/.clyde/bonny/`.
 - A steer: text sent to a running turn is added as a user message before the model's next call (`RunControl` in
   `src/run_control.py`, polled by the agent loop). ACP's stop uses the same interrupt.
 - cardShuffle council: `cardShuffle:<tier> council` (for example `/model cardShuffle:high-roller council`) asks the tier's top four
