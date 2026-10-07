@@ -856,19 +856,38 @@ def make_server(bonny: Bonny, host: str = "127.0.0.1", port: int = 0) -> Threadi
     return server
 
 
-def main(model: str | None = None, port: int = 0, open_browser: bool = True) -> int:
+DEFAULT_PORT = 8080
+
+
+def open_server(bonny: Bonny, port: int | None) -> ThreadingHTTPServer:
+    """Bind 127.0.0.1. With no port asked for: 8080, or any free port when something else has it. A port asked for is exact,
+    so a taken one raises OSError rather than quietly moving."""
+    if port:
+        return make_server(bonny, "127.0.0.1", port)
+    try:
+        return make_server(bonny, "127.0.0.1", DEFAULT_PORT)
+    except OSError:
+        return make_server(bonny, "127.0.0.1", 0)
+
+
+def main(model: str | None = None, port: int | None = None, open_browser: bool = True) -> int:
     from rich.console import Console
 
     from src.repl.core import ClydeREPL
 
     repl = ClydeREPL(model=model, console=Console(stderr=True, soft_wrap=True), headless=True)
     bonny = Bonny(repl)
-    server = make_server(bonny, "127.0.0.1", port)
-    url = f"http://127.0.0.1:{server.server_address[1]}/"
+    try:
+        server = open_server(bonny, port)
+    except OSError as e:
+        print(f"Can't use port {port}: {e.strerror or e}. Pick another, for example `clyde luv bonny {port + 1}`.", file=sys.stderr)
+        return 1
+    url = f"http://localhost:{server.server_address[1]}/"
     threading.Thread(target=server.serve_forever, name="bonny-http", daemon=True).start()
     bonny.start_scheduler()
     projects.remember(Path.cwd())
-    print(f"Bonny is running at {url}  (Ctrl+C to stop)")
+    moved = f"  (port {DEFAULT_PORT} was taken; `clyde luv bonny PORT` picks one)" if not port and server.server_address[1] != DEFAULT_PORT else ""
+    print(f"Bonny is running at {url}  (Ctrl+C to stop){moved}")
     if open_browser:
         webbrowser.open(url)
     try:
