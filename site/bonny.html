@@ -18,7 +18,7 @@
   <b><img src="brand/clyde-mark.svg" alt="" width="24" height="24">ClydeCLI</b>
   <nav><a href="./">Home</a><a href="bonny.html" aria-current="page">Bonny</a><a href="keys.html">API keys</a><a href="https://github.com/dea6cat/ClydeCLI">Source</a><a href="https://github.com/dea6cat/ClydeCLI/blob/main/CHANGELOG.md">Changelog</a></nav>
 </header>
-<div class="strip"><span class="chip">RUNS ON YOUR MACHINE</span><span class="mono">Local only: the page listens on 127.0.0.1 and nothing leaves it unless a model does.</span></div>
+<div class="strip"><span class="chip">RUNS ON YOUR MACHINE</span><span class="mono">Local only: the page is reachable from this computer alone, and nothing leaves it unless a model does.</span></div>
 <main>
   <h1 class="enter" style="--i:0"><img class="bmark" src="brand/bonny-mark.svg" alt="" width="102" height="60">Bonny</h1>
   <p class="enter lead" style="--i:1">The web side of Clyde. The same engine, tools, memory and sessions as the terminal, in a page that opens on your own machine, with a plainer way to use them and a voice of her own.</p>
@@ -57,7 +57,7 @@
 
   <h2>Good to know</h2>
   <ul>
-    <li>It listens on <code>127.0.0.1</code> only. Each run has its own token, and requests must carry it and a matching Host and Origin.</li>
+    <li>It is reachable from this computer only (<code>localhost</code>), not from your network, and there is no fixed address to set up. Each run has its own token, and requests must carry it and a matching Host and Origin.</li>
     <li>What she can do depends on the model. A small local model can answer and search but may stumble on tool use in Computer mode; a stronger model does better.</li>
     <li>Previews of files Clyde wrote run in a sandbox that cannot reach Bonny, your files or the network.</li>
     <li>MCP servers and hooks load for the folder Bonny started in. Restart her to pick up another project's own.</li>
