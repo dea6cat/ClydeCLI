@@ -194,6 +194,12 @@ Under each answer sits a row of actions: copy, export as Markdown, good and poor
 chip that opens the list of what the answer cites and what else the search found, and a menu with Try again. Sessions in
 the sidebar show when they were last used, so two with the same first message can be told apart. A trash icon on each session (always visible on touch screens) deletes it: it moves to the archive folder and an Undo appears for a few seconds; `clyde sessions unarchive <id>` brings it back later.
 
+**Artifacts** in the sidebar lists the files Clyde wrote or edited in this project, newest first, with filters for pages, documents,
+images and code. Clicking one previews it beside the list: pages in a sandboxed frame (scripts off unless you turn them on, and even
+then they can't reach Bonny, your files or the network), Markdown rendered, images shown, code and text as text. Each has Download and
+Show in folder, and a card appears in the chat the moment Clyde writes a file. The list is built from your saved sessions, so earlier work
+shows up too. Files made by shell commands aren't included, and only files inside the project are ever read.
+
 Bonny looks like the site (its two fonts, hairlines, corner-cut controls) and the look is yours to change. **Customize** in
 the sidebar opens a panel that changes the page as you go: a theme (Auto follows light or dark; Paper, Night, Felt, Slate),
 any of seven colours, a full background image with dim, blur and see-through panels, cut, round or square corners, the font,

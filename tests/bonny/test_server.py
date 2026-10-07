@@ -105,6 +105,9 @@ class TestPage(BonnyCase):
         self.assertNotIn("transition: all", PAGE)
         self.assertIn('data-i="trash"', PAGE)
         self.assertIn('id="toast" role="status"', PAGE)
+        self.assertIn('id="nav-artifacts"', PAGE)                                  # Artifacts is a real view now, not "soon"
+        self.assertIn('sandbox: artScripts ? "allow-scripts" : ""', PAGE)          # previews are always sandboxed
+        self.assertNotIn("allow-same-origin", PAGE)                                # so a previewed page can never reach Bonny's API
 
     def test_the_page_keeps_its_accessibility_structure(self):
         from src.bonny.page import PAGE
@@ -156,6 +159,15 @@ class TestSearchAndStatus(BonnyCase):
             self.call("POST", "/api/prompt", {"text": "search the history of eliza", "search": True})   # "search" skips the direct-stream shortcut
             self.wait_for("turn_end")
         self.assertIn("[1] ELIZA - Wikipedia", self._system_prompts()[0])
+
+    def test_computer_mode_always_has_tools_even_for_a_short_chatty_prompt_and_search_does_not(self):
+        self.call("POST", "/api/prompt", {"text": "make me a bakery page", "mode": "hold"})          # no "file" or "code" word in it
+        self.wait_for("turn_end")
+        self.assertTrue(self.provider.requests[0]["tools"])
+        with patch.object(server.WebSearchTool, "run", side_effect=RuntimeError("offline")):
+            self.call("POST", "/api/prompt", {"text": "hello there", "search": True, "mode": "plan"})
+            self.wait_for("turn_end", after=self.bonny.events.last() - 1)
+        self.assertEqual(self.provider.requests[1]["tools"], ())
 
     def test_a_failed_search_still_answers_and_says_it_is_unsourced(self):
         with patch.object(server.WebSearchTool, "run", side_effect=RuntimeError("blocked")):
@@ -430,6 +442,104 @@ class TestSessionRows(BonnyCase):
         for bad in ("../x", "", 5, "nosuchsession"):
             self.assertEqual(self.call("POST", "/api/session/delete", {"id": bad})[0], 404)
             self.assertEqual(self.call("POST", "/api/session/restore", {"id": bad})[0], 404)
+
+
+class TestArtifacts(BonnyCase):
+    def setUp(self):
+        super().setUp()
+        from tests.bonny.test_artifacts import session, temp_dir
+
+        self.root = temp_dir(self)
+        self.repl.tool_context.workspace_root = self.root
+        (self.root / "page.html").write_text("<h1>hello</h1><script>1</script>")
+        (self.root / "notes.md").write_text("# notes\nbody")
+        (self.root / "pic.svg").write_text("<svg></svg>")
+        (self.root / "blob.bin").write_bytes(b"\x00\x01")
+        self.outside = temp_dir(self)
+        (self.outside / "secret.txt").write_text("secret")
+        calls = [(str(i), "Write", {"file_path": str(self.root / n)}, False) for i, n in enumerate(("page.html", "notes.md", "pic.svg", "blob.bin"))]
+        calls.append(("x", "Write", {"file_path": str(self.outside / "secret.txt")}, False))   # a write that named a file elsewhere
+        session("art1", self.root, calls).save()
+
+    def raw(self, path, query="", token=True, headers=None):
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
+        url = "/artifact/raw?" + ("t=" + self.token + "&" if token else "") + "path=" + str(path) + query
+        conn.request("GET", url, headers={"Host": f"127.0.0.1:{self.port}", **(headers or {})})
+        resp = conn.getresponse()
+        data = resp.read()
+        conn.close()
+        return resp.status, dict(resp.getheaders()), data
+
+    def test_the_list_has_the_files_clyde_wrote_without_the_project_folder(self):
+        status, body = self.call("GET", "/api/artifacts")
+        self.assertEqual(status, 200)
+        names = sorted(a["name"] for a in body["artifacts"])
+        self.assertEqual(names, ["blob.bin", "notes.md", "page.html", "pic.svg", "secret.txt"])
+        self.assertTrue(all("cwd" not in a for a in body["artifacts"]))
+        self.assertEqual(self.call("GET", "/api/artifacts", token=False)[0], 403)
+
+    def test_a_text_preview_returns_the_text_and_an_unlisted_file_is_refused(self):
+        notes = self.call("GET", f"/api/artifact?path={self.root / 'notes.md'}")[1]
+        self.assertEqual((notes["kind"], notes["text"], notes["truncated"]), ("markdown", "# notes\nbody", False))
+        page = self.call("GET", f"/api/artifact?path={self.root / 'page.html'}")[1]
+        self.assertNotIn("text", page)                                  # a page is shown in a frame, not as text
+        self.assertEqual(self.call("GET", f"/api/artifact?path={self.root / 'unlisted.md'}")[0], 404)
+        self.assertEqual(self.call("GET", "/api/artifact?path=/etc/passwd")[0], 404)
+        self.assertEqual(self.call("GET", f"/api/artifact?path={self.root}/../{self.outside.name}/secret.txt")[0], 404)
+        self.assertEqual(self.call("GET", f"/api/artifact?path={self.outside / 'secret.txt'}")[0], 404)   # listed, but outside the project
+
+    def test_a_binary_file_has_no_text_preview(self):
+        self.assertEqual(self.call("GET", f"/api/artifact?path={self.root / 'blob.bin'}")[1]["kind"], "other")
+
+    def test_a_page_is_served_sandboxed_with_scripts_off_unless_asked(self):
+        status, headers, body = self.raw(self.root / "page.html")
+        self.assertEqual((status, headers["Content-Type"], body), (200, "text/html; charset=utf-8", b"<h1>hello</h1><script>1</script>"))
+        csp = headers["Content-Security-Policy"]
+        self.assertTrue(csp.startswith("sandbox;"))
+        self.assertNotIn("allow-scripts", csp)
+        self.assertIn("connect-src 'none'", csp)
+        self.assertEqual(headers["X-Content-Type-Options"], "nosniff")
+        with_scripts = self.raw(self.root / "page.html", "&scripts=1")[1]["Content-Security-Policy"]
+        self.assertIn("sandbox allow-scripts", with_scripts)
+        self.assertIn("connect-src 'none'", with_scripts)                # even with scripts on, it can't call out or call Bonny
+        self.assertNotIn("allow-same-origin", with_scripts)
+
+    def test_raw_needs_the_token_and_a_listed_file_and_downloads_are_attachments(self):
+        self.assertEqual(self.raw(self.root / "page.html", token=False)[0], 403)
+        self.assertEqual(self.raw(self.root / "unlisted.md")[0], 404)
+        self.assertEqual(self.raw(self.outside / "secret.txt")[0], 404)
+        self.assertEqual(self.raw(self.root / "page.html", headers={"Host": "evil.example"})[0], 403)
+        status, headers, _ = self.raw(self.root / "notes.md", "&download=1")
+        self.assertIn('attachment; filename="notes.md"', headers["Content-Disposition"])
+        self.assertIn("attachment", self.raw(self.root / "blob.bin")[1]["Content-Disposition"])      # unknown types are never rendered
+        self.assertEqual(self.raw(self.root / "pic.svg")[1]["Content-Type"], "image/svg+xml")
+        self.assertTrue(self.raw(self.root / "pic.svg")[1]["Content-Security-Policy"].startswith("sandbox"))
+
+    def test_show_in_folder_only_works_for_listed_files(self):
+        with patch("src.bonny.server.artifacts.reveal", return_value=True) as reveal:
+            self.assertEqual(self.call("POST", "/api/artifact/reveal", {"path": str(self.root / "notes.md")})[0], 200)
+            reveal.assert_called_once()
+            self.assertEqual(self.call("POST", "/api/artifact/reveal", {"path": "/etc/passwd"})[0], 404)
+            self.assertEqual(reveal.call_count, 1)
+        with patch("src.bonny.server.artifacts.reveal", return_value=False):
+            self.assertEqual(self.call("POST", "/api/artifact/reveal", {"path": str(self.root / "notes.md")})[0], 404)
+
+    def test_a_successful_write_during_a_turn_announces_an_artifact_and_a_failed_one_does_not(self):
+        from src.agent.agent_loop import ToolEvent
+
+        def call(use_id, tool, inp, error=False):
+            self.bonny._on_tool(ToolEvent(kind="tool_use", tool_name=tool, tool_input=inp, tool_use_id=use_id))
+            self.bonny._on_tool(ToolEvent(kind="tool_result", tool_name=tool, tool_output={}, tool_use_id=use_id, is_error=error))
+
+        before = self.bonny.events.last()
+        call("w1", "Write", {"file_path": "made.html"})
+        call("w2", "Edit", {"file_path": str(self.root / "notes.md")})
+        call("w3", "Write", {"file_path": "failed.md"}, error=True)
+        call("r1", "Read", {"file_path": "notes.md"})
+        found = [e for e in self.bonny.events.after(before)[0] if e["kind"] == "artifact"]
+        self.assertEqual([(e["name"], e["tool"], e["filetype"], e["group"]) for e in found],
+                         [("made.html", "Write", "html", "page"), ("notes.md", "Edit", "markdown", "document")])
+        self.assertEqual(found[0]["path"], str(self.root / "made.html"))      # a relative path is made absolute against the project
 
 
 class TestEventLog(unittest.TestCase):

@@ -20,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Accessibility pass: a skip link, one page title, streamed text no longer read out chunk by chunk (progress and completion are announced instead), keyboard
   navigation for the answer menu and the Customize panel with focus returned on close, labelled controls, and a low-contrast warning when your colours are hard to read.
   Sessions in the sidebar can be deleted (moved to the archive, with Undo), and opening one is instant and always marked, including from a brand-new session.
+  **Artifacts**: a view of the files Clyde wrote or edited, with a sandboxed preview (pages, Markdown, images, code), download, show in folder, and a card in the chat when a file is written.
+  Bonny's Computer mode now always gives the model its tools (a short chatty request such as "make me a bakery page" used to take a tool-free shortcut and could not create a file).
   Bonny has her own mark: Clyde's spade with `>_` beside a flipped spade with `</>`. Clyde's half follows the Spade colour, hers follows the text colour; the tab icon is the same pair.
 - A steer: text sent to a running turn is added as a user message before the model's next call (`RunControl` in
   `src/run_control.py`, polled by the agent loop). ACP's stop uses the same interrupt.
