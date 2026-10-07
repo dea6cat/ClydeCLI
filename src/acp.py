@@ -14,7 +14,6 @@ from __future__ import annotations
 import json
 import os
 import queue
-import signal
 import sys
 import threading
 import uuid
@@ -74,7 +73,7 @@ class Server:
         self.work.put(None)                                          # the client closed stdin
 
     def _cancel(self) -> None:
-        from src.providers.base import abort_all_connections
+        from src.run_control import interrupt_turn
 
         self.cancelled.set()
         for rid in list(self.replies):                               # a turn waiting on a permission answer
@@ -82,8 +81,7 @@ class Server:
             if box is not None:
                 box.put({"result": {"outcome": {"outcome": "cancelled"}}})
         if self.busy:                                                # idle: nothing to interrupt
-            abort_all_connections()
-            os.kill(os.getpid(), signal.SIGINT)                      # the same path Esc takes
+            interrupt_turn()                                         # the same path Esc takes
 
     def serve(self) -> int:
         if self.stdin.isatty():
