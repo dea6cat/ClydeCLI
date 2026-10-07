@@ -20,7 +20,7 @@
   body { margin: 0; background: var(--bg); color: var(--text); font: 17px/1.65 "Bricolage Grotesque", -apple-system, "Segoe UI", sans-serif; font-optical-sizing: auto; }
   main, header, footer { max-width: 760px; margin: 0 auto; padding: 0 20px; }
   a { color: var(--link); text-underline-offset: 3px; }
-  a:focus-visible, button:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+  a:focus-visible, button:focus-visible, pre:focus-visible, .install code:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
   header { display: flex; justify-content: space-between; align-items: baseline; padding-top: 28px; }
   header b { font-weight: 800; font-size: 19px; }
   header b span { color: var(--spade); }
@@ -43,6 +43,10 @@
   figcaption { color: var(--dim); font-size: 14.5px; margin-top: 10px; }
   ul { padding-left: 20px; margin: 0 0 14px; }
   li { margin-bottom: 6px; }
+  dl.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px 36px; margin: 14px 0 18px; }
+  dl.grid dt { font-weight: 700; margin: 0 0 2px; }
+  dl.grid dd { margin: 0; }
+  @media (max-width: 700px) { dl.grid { grid-template-columns: 1fr; gap: 14px; } }
   footer { border-top: 1px solid var(--line); margin-top: 72px; padding-top: 22px; padding-bottom: 48px; color: var(--dim); font-size: 15px; }
 </style>
 </head>
@@ -54,12 +58,12 @@
 <main>
   <h1>ClydeCLI</h1>
   <p>A coding-agent harness for the terminal. Bring any LLM; Clyde gives it tools, permissions, a sandbox, undo and sessions.</p>
-  <div class="install"><code id="cmd">curl -fsSL https://raw.githubusercontent.com/dea6cat/ClydeCLI/main/install.sh | sh</code><button type="button" id="copy">Copy</button></div>
-  <p>The model can be one of 13 providers, a local model through Ollama or LM Studio, or any OpenAI- or Anthropic-compatible endpoint. Written in Python. Source-available: free for noncommercial use under the PolyForm Noncommercial License, and it asks you to accept that on first run.</p>
+  <div class="install"><code id="cmd" tabindex="0" role="region" aria-label="Install command">curl -fsSL https://raw.githubusercontent.com/dea6cat/ClydeCLI/main/install.sh | sh</code><button type="button" id="copy">Copy</button></div>
+  <p>The model can be one of 13 providers, a local model through Ollama or LM Studio, or any OpenAI- or Anthropic-compatible endpoint. Written in Python, free for noncommercial use.</p>
 
   <h2>A real session</h2>
   <p>A three-file project with a leap-year bug, NVIDIA's <code>muse-glimmer-30b</code> in all-in mode, then <code>/rewind</code> to undo the fix. The dim italic lines are the model's own thinking.</p>
-  <figure><pre aria-label="Recorded Clyde session fixing a leap-year bug"><span style="color: #f5f1e8"> ______ </span>
+  <figure><pre role="region" tabindex="0" aria-label="Recorded Clyde session fixing a leap-year bug"><span style="color: #f5f1e8"> ______ </span>
 <span style="color: #f5f1e8; text-decoration-color: #f5f1e8">|</span><span style="color: #111111; text-decoration-color: #111111; background-color: #f5f1e8; font-weight: bold">A /\  </span><span style="color: #f5f1e8; text-decoration-color: #f5f1e8">|</span>
 <span style="color: #f5f1e8; text-decoration-color: #f5f1e8">|</span><span style="color: #111111; text-decoration-color: #111111; background-color: #f5f1e8; font-weight: bold"> /  \ </span><span style="color: #f5f1e8; text-decoration-color: #f5f1e8">|</span>
 <span style="color: #f5f1e8; text-decoration-color: #f5f1e8">|</span><span style="color: #111111; text-decoration-color: #111111; background-color: #f5f1e8; font-weight: bold">(    )</span><span style="color: #f5f1e8; text-decoration-color: #f5f1e8">|</span>
@@ -140,7 +144,7 @@ c = code and conversation, f = files only, m = conversation only <span style="co
 
   <h2>When a model fails mid-turn</h2>
   <p>With <code>cardShuffle:house</code> as the model, Clyde picks a real model for each turn from the ones that passed <code>/eval</code>. Here Google answered HTTP 503 halfway through, so the turn moved to the next model and finished.</p>
-  <figure><pre aria-label="Recorded cardShuffle turn re-dealing after an HTTP 503"><span style="color: #4eba65; font-weight: bold">❯</span> how many tests does test_dates.py have, and which one fails?
+  <figure><pre role="region" tabindex="0" aria-label="Recorded cardShuffle turn re-dealing after an HTTP 503"><span style="color: #4eba65; font-weight: bold">❯</span> how many tests does test_dates.py have, and which one fails?
 
 
 <span style="color: #4eba65; text-decoration-color: #4eba65">♠ dealt </span><span style="color: #e8e4dc; text-decoration-color: #e8e4dc">google:gemini-3.1-flash-lite</span><span style="color: #8a8a8a; text-decoration-color: #8a8a8a">  house · laya difficulty 1.6/3 (shadow)</span>
@@ -157,7 +161,7 @@ c = code and conversation, f = files only, m = conversation only <span style="co
 
   <h2>Checking which models work</h2>
   <p><code>/eval</code> runs a tool call, a round trip and a hand of 11 graded tasks against every model your keys reach. Broken ones disappear from <code>/models</code>. The red line is a model that scored lower than at its last run.</p>
-  <figure><pre aria-label="Recorded /eval run on codestral models"><span style="color: #4eba65; font-weight: bold">❯</span> <span style="color: #be78c8; text-decoration-color: #be78c8">/</span><span style="color: #be78c8; text-decoration-color: #be78c8">eval</span> codestral
+  <figure><pre role="region" tabindex="0" aria-label="Recorded /eval run on codestral models"><span style="color: #4eba65; font-weight: bold">❯</span> <span style="color: #be78c8; text-decoration-color: #be78c8">/</span><span style="color: #be78c8; text-decoration-color: #be78c8">eval</span> codestral
 
 <span style="color: #50b4b4; text-decoration-color: #50b4b4; font-weight: bold">4</span> <span style="color: #be78c8; text-decoration-color: #be78c8; font-weight: bold">model</span><span style="font-weight: bold">(</span>s<span style="font-weight: bold">)</span> to test on your own keys: two short requests, then a hand of <span style="color: #50b4b4; text-decoration-color: #50b4b4; font-weight: bold">11</span> harder tasks for each
 that passes.
@@ -174,7 +178,7 @@ Run the evaluation? <span style="color: #be78c8; text-decoration-color: #be78c8;
 
   <h2>Laya, and why it isn't steering yet</h2>
   <p>Laya is a small decision model bundled with Clyde that runs locally. It watches for a model repeating itself and hands the turn on when it is confident. It also scores each request's difficulty, but that score only starts choosing models once your own sessions show it means something. <code>/laya</code> shows where that stands:</p>
-  <figure><pre aria-label="Recorded /laya output"><span style="color: #4eba65; font-weight: bold">❯</span> <span style="color: #be78c8; text-decoration-color: #be78c8">/</span><span style="color: #be78c8; text-decoration-color: #be78c8">laya</span>
+  <figure><pre role="region" tabindex="0" aria-label="Recorded /laya output"><span style="color: #4eba65; font-weight: bold">❯</span> <span style="color: #be78c8; text-decoration-color: #be78c8">/</span><span style="color: #be78c8; text-decoration-color: #be78c8">laya</span>
 
 Laya: not started · from <span style="color: #50b4b4; text-decoration-color: #50b4b4; font-weight: bold">42</span> traced <span style="color: #be78c8; text-decoration-color: #be78c8; font-weight: bold">session</span><span style="font-weight: bold">(</span>s<span style="font-weight: bold">)</span>
 
@@ -193,25 +197,24 @@ Difficulty (shadow turns, split at score 1.62)   turns  avg tool rounds  ran out
   <figcaption>Recorded 2026-10-05 on the maintainer's machine, which so far has only a handful of scored turns.</figcaption></figure>
 
   <h2>What else it does</h2>
-  <ul>
-    <li><code>clyde -p</code> runs one turn for scripts and CI, with JSON output and exit codes.</li>
-    <li>Shell commands run in a sandbox that writes only inside the project, and reading a <code>.env</code> or key file asks first.</li>
-    <li>MCP servers work over stdio, HTTP and SSE, with OAuth sign-in.</li>
-    <li>Sub-agents and teams run in parallel, in the background if you like.</li>
-    <li>It reads the memory files, skills, hooks and MCP servers you already set up for Claude Code, Codex, Cursor or Gemini CLI.</li>
-    <li>Plan mode saves the plan you approve for the session and puts its phases back into every turn, so it survives <code>/compact</code> and <code>--resume</code>. <code>/plan</code> shows it and marks phases done.</li>
-    <li><code>/review</code> reads your uncommitted changes, a commit or a branch without editing anything. <code>clyde sessions</code> finds old sessions by what was said in them.</li>
-    <li><code>clyde doctor</code>, <code>update</code> and <code>uninstall</code> manage the install. Updates follow <code>main</code> or tagged releases, and nothing installs by itself.</li>
-  </ul>
+  <dl class="grid">
+    <div><dt>Scripts and CI</dt><dd><code>clyde -p</code> runs one turn with JSON output and exit codes.</dd></div>
+    <div><dt>Sandbox</dt><dd>Shell commands write only inside the project. Reading a <code>.env</code> or key file asks first.</dd></div>
+    <div><dt>MCP</dt><dd>Servers work over stdio, HTTP and SSE, with OAuth sign-in.</dd></div>
+    <div><dt>Sub-agents</dt><dd>Agents and teams run in parallel, in the background if you like.</dd></div>
+    <div><dt>Your existing setup</dt><dd>Reads the memory files, skills, hooks and MCP servers you set up for Claude Code, Codex, Cursor or Gemini CLI.</dd></div>
+    <div><dt>Saved plans</dt><dd>The plan you approve in plan mode survives <code>/compact</code> and <code>--resume</code>. <code>/plan</code> marks phases done.</dd></div>
+    <div><dt>Review and sessions</dt><dd><code>/review</code> reads your changes, a commit or a branch without editing. <code>clyde sessions</code> searches old sessions.</dd></div>
+    <div><dt>The install</dt><dd><code>clyde doctor</code>, <code>update</code> and <code>uninstall</code>. Updates follow <code>main</code> or tagged releases and never install by themselves.</dd></div>
+  </dl>
   <p>Editor support over the Agent Client Protocol, a read-only SQL tool and the rest are in the <a href="https://github.com/dea6cat/ClydeCLI#readme">README</a>.</p>
 
   <h2>Limits</h2>
   <ul>
-    <li>Source-available, not open source: free for noncommercial use under the PolyForm Noncommercial License 1.0.0, and commercial use needs written permission. The first run asks you to type "I accept"; nothing runs until you do.</li>
+    <li>Source-available, not open source: free for noncommercial use under the PolyForm Noncommercial License 1.0.0. Commercial use needs written permission. The first run asks you to type "I accept".</li>
     <li>One maintainer, and few users so far. Expect rough edges.</li>
     <li>Needs Python 3.14+ on macOS or Linux. The install is about 850 MB, mostly PyTorch for the bundled Laya model.</li>
-    <li>Editor support through ACP is new and hasn't been tried in a real editor yet. Android Studio doesn't support ACP agents.</li>
-    <li>The Linux sandbox (bubblewrap) has only been tested through its arguments, not on a Linux machine.</li>
+    <li>Not tried in the wild yet: editor support over ACP (Android Studio doesn't support ACP agents) and the Linux sandbox (bubblewrap), which has only been tested through its arguments.</li>
     <li>Some providers don't report token usage, so cost tracking can't count them.</li>
   </ul>
 </main>
