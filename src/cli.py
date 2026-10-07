@@ -35,6 +35,7 @@ Examples:
   clyde --resume [SESSION_ID]         Pick a recent session to resume, or resume one by id
   clyde --list-models                 List models from every connected provider
   clyde --debug                       Start REPL and print trace events (model/tool calls) to stderr
+  clyde luv bonny                     Start Bonny, the web mode of Clyde, on localhost
   clyde login                         Connect a provider and pick a default model
   clyde logout openai                 Remove a saved API key
   clyde config                        Show current configuration
@@ -102,6 +103,11 @@ Examples:
     sessions_parser.add_argument('action', choices=['list', 'search', 'archive', 'unarchive'])
     sessions_parser.add_argument('target', nargs='*', help='search: the words to look for; archive/unarchive: a session id')
 
+    luv_parser = subparsers.add_parser('luv', help='clyde luv bonny: start Bonny, the web mode of Clyde, on localhost')
+    luv_parser.add_argument('who', choices=['bonny'])
+    luv_parser.add_argument('--port', type=int, default=0, help='port on 127.0.0.1 (default: any free one)')
+    luv_parser.add_argument('--no-open', action='store_true', help="don't open the browser")
+
     subparsers.add_parser('doctor', help='How Clyde is installed: method, version, PATH, other installs, Claude Code, licence')
     update_parser = subparsers.add_parser('update', help='Move Clyde to the newest version, the way it was installed')
     update_parser.add_argument('--channel', choices=['latest', 'stable'], help='follow every commit on main (latest) or tagged releases (stable); saved')
@@ -131,6 +137,10 @@ Examples:
         from src.repl import headless
         return headless.run(args.print_prompt, model=args.model, mode=args.mode,
                             output_format=args.output_format, max_turns=args.max_turns)
+
+    if args.command == 'luv':
+        from src.bonny import server
+        return server.main(model=args.model, port=args.port, open_browser=not args.no_open)
 
     if args.command == 'sessions':
         return handle_sessions(Console(), args.action, ' '.join(args.target))
