@@ -10,7 +10,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - `clyde luv bonny` starts Bonny, the web mode of Clyde, on 127.0.0.1 with her own persona. The local API queues prompts, steers
   or stops a running turn, lists and reopens sessions, shows permission cards and takes council votes; requests need a per-run
-  token and a matching Host and Origin. Her interface is still under review, so `/` is a placeholder for now.
+  token and a matching Host and Origin. Her page has a sessions sidebar, Search and Computer modes, a model and permissions picker, permission cards,
+  queue / steer / stop and the council popup with votes.
+  Search turns run a web search first and show a Sources list; a status line shows what a running turn is waiting on.
+  Each answer has an action row (copy, export, rate, council, sources, try again), and sessions show when they were last used.
+  Bonny now uses the site's fonts, hairlines and corner-cut controls, and **Customize** changes her look: presets, seven colours, a
+  background image (dim, blur, see-through panels), shape, font, greeting, custom CSS and a copyable theme code, saved in
+  `~/.clyde/bonny/`.
+  Accessibility pass: a skip link, one page title, streamed text no longer read out chunk by chunk (progress and completion are announced instead), keyboard
+  navigation for the answer menu and the Customize panel with focus returned on close, labelled controls, and a low-contrast warning when your colours are hard to read.
+  Sessions in the sidebar can be deleted (moved to the archive, with Undo), and opening one is instant and always marked, including from a brand-new session.
+  **Attachments**: a paperclip, drag and drop and paste attach images and text files (up to six) to a message, with thumbnails in the thread and in reopened sessions; unsupported files are refused with a reason.
+  **Artifacts**: a view of the files Clyde wrote or edited, with a sandboxed preview (pages, Markdown, images, code), download, show in folder, and a card in the chat when a file is written.
+  Bonny's Computer mode now always gives the model its tools (a short chatty request such as "make me a bakery page" used to take a tool-free shortcut and could not create a file).
+  Bonny has her own mark: Clyde's spade with `>_` beside a flipped spade with `</>`. Clyde's half follows the Spade colour, hers follows the text colour; the tab icon is the same pair.
 - A steer: text sent to a running turn is added as a user message before the model's next call (`RunControl` in
   `src/run_control.py`, polled by the agent loop). ACP's stop uses the same interrupt.
 - cardShuffle council: `cardShuffle:<tier> council` (for example `/model cardShuffle:high-roller council`) asks the tier's top four
