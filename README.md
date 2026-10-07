@@ -180,8 +180,38 @@ voice and a plainer way to use them. Start her on a model with `clyde --model <p
 Everything the page does goes through a small local API: queue prompts, steer or stop a running turn, list and
 reopen sessions, answer permission cards, change mode or model, vote on council answers. Requests need a
 per-run token and a matching Host and Origin, and the server never listens on anything but your machine. One
-turn runs at a time; prompts queue behind it. Bonny's interface is still being reviewed: today `/` shows a
-placeholder and the API is what's live.
+turn runs at a time; prompts queue behind it. The page is a sidebar of your sessions (click one to reopen it and keep talking),
+Search and Computer modes (Search is read-only), a model and permissions picker, permission cards for anything that
+needs a yes, queue, steer and stop buttons, and the council popup with up and down votes. It is one file with no
+outside requests.
+
+Search turns search the web first (DuckDuckGo, no key) and hand the numbered results to the model, which cites them as
+links; the page lists those sources under the answer. If the search is blocked or finds nothing, the answer says it is
+unsourced. While a turn runs, the page shows what Clyde is waiting on and for how long.
+
+Under each answer sits a row of actions: copy, export as Markdown, good and poor ratings (saved on your machine in
+`~/.clyde/answer_feedback.jsonl` as a hash of the question, never its text), the council popup when a council ran, a sources
+chip that opens the list of what the answer cites and what else the search found, and a menu with Try again. Sessions in
+the sidebar show when they were last used, so two with the same first message can be told apart. A trash icon on each session (always visible on touch screens) deletes it: it moves to the archive folder and an Undo appears for a few seconds; `clyde sessions unarchive <id>` brings it back later.
+
+**Attachments:** the paperclip next to the message box (or dragging files onto the page, or pasting a screenshot) attaches images
+(PNG, JPEG, GIF, WebP) and text or code files, up to six per message. Images go to the model the way the terminal's pasted images
+do, so a model that can't see pictures is named instead of silently ignoring them, and one over 5 MB is shrunk on macOS. Text files are
+put into the message. Your sent message shows thumbnails and file names, and reopening the session shows them again. PDFs and other
+binary files aren't supported yet; Bonny says so when you try.
+
+**Artifacts** in the sidebar lists the files Clyde wrote or edited in this project, newest first, with filters for pages, documents,
+images and code. Clicking one previews it beside the list: pages in a sandboxed frame (scripts off unless you turn them on, and even
+then they can't reach Bonny, your files or the network), Markdown rendered, images shown, code and text as text. Each has Download and
+Show in folder, and a card appears in the chat the moment Clyde writes a file. The list is built from your saved sessions, so earlier work
+shows up too. Files made by shell commands aren't included, and only files inside the project are ever read.
+
+Bonny looks like the site (its two fonts, hairlines, corner-cut controls) and the look is yours to change. **Customize** in
+the sidebar opens a panel that changes the page as you go: a theme (Auto follows light or dark; Paper, Night, Felt, Slate),
+any of seven colours, a full background image with dim, blur and see-through panels, cut, round or square corners, the font,
+your own greeting, and a box for custom CSS, the way old profile pages let you. A theme code, plain text, lets you copy a look
+or paste someone else's. Everything is saved in `~/.clyde/bonny/` on your machine, and the background image never leaves it
+(PNG, JPEG, GIF or WebP up to 8 MB, checked by content; SVG is refused). Custom CSS can't load anything from other sites.
 
 ### Laya
 

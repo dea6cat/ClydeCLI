@@ -350,6 +350,8 @@ class ClydeREPL:
     # Listeners for a turn's streamed text and tool events (used by --acp); None in the terminal.
     on_text_hook = None
     on_event_hook = None
+    system_extra: str | None = None   # extra system-prompt text for the next turns only (Bonny's search results); not stored
+    direct_stream = True              # short chat-like prompts may skip the tools for a quicker streamed reply; Bonny's Computer mode turns this off
 
     # Esc cancels a running turn or command; prompts pause it (see src/repl/esc.py).
     _esc = WATCHER
@@ -1650,7 +1652,7 @@ class ClydeREPL:
         return False
 
     def _should_try_direct_stream(self, user_input: str) -> bool:
-        if not self.stream:
+        if not self.stream or not self.direct_stream:
             return False
         text = user_input.strip().lower()
         if not text or text.startswith("/"):
@@ -1676,6 +1678,8 @@ class ClydeREPL:
         style_name = getattr(self.tool_context, "output_style_name", None)
         style_dir = getattr(self.tool_context, "output_style_dir", None)
         style_prompt = resolve_output_style(style_name, style_dir).prompt
+        if self.system_extra:
+            style_prompt += "\n\n" + self.system_extra
         streamed_chunks: list[str] = []
 
         def emit(chunk: str) -> None:
@@ -2133,6 +2137,7 @@ class ClydeREPL:
                     reasoning=self.reasoning,
                     on_thinking=on_thinking,
                     steer=self.control.take_steer,
+                    system_extra=self.system_extra,
                 )
 
             self._current_status = self.console.status(_spin_text(word, turn_started), spinner="dots", spinner_style=_CARD_ACCENT)
