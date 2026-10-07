@@ -11,6 +11,7 @@ bodies, and caps body and prompt size. The token does not protect against other 
 """
 from __future__ import annotations
 
+import base64
 import collections
 import hashlib
 import hmac
@@ -25,12 +26,12 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 from src import activity
 from src.config import clyde_home
 from src.agent.session import Session
-from src.bonny import artifacts, theme
+from src.bonny import artifacts, attachments, theme
 from src.bonny.page import PAGE
 from src.providers import model_ref
 from src.providers.card_shuffle import record_vote
@@ -46,7 +47,7 @@ _ID = re.compile(r"^[\w-]{1,80}$")
 # A previewed file is untrusted: it runs in an opaque origin (sandbox), can't make requests, and scripts are off unless asked for.
 _ARTIFACT_CSP = "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:; connect-src 'none'; form-action 'none'"
 _ARTIFACT_CSP_SCRIPTS = "sandbox allow-scripts; default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; font-src data:; connect-src 'none'; form-action 'none'"
-_CSP = "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self'"
+_CSP = "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'"
 
 
 _SEARCH_RULE = (
@@ -81,8 +82,9 @@ def record_feedback(session_id: str, model: str, question: str, vote: int) -> No
         f.write(json.dumps(line) + "\n")
 
 
-class Prompt(collections.namedtuple("Prompt", "text search mode")):
-    """A queued message: Search turns get the sourcing rules, and each turn runs in the mode it was sent with."""
+class Prompt(collections.namedtuple("Prompt", "text search mode files", defaults=((),))):
+    """A queued message: Search turns get the sourcing rules, each turn runs in the mode it was sent with, and `files` are
+    the attachments (already taken from the upload store) that go with it."""
 
 
 class EventLog:
@@ -123,6 +125,7 @@ class Bonny:
         self.events = EventLog()
         self.stopped_at = float("-inf")
         self._stop_requested = False
+        self.attachments = attachments.Store()
         self._writes: dict[str, tuple[str, str]] = {}   # tool call id -> (tool, path) for file writes still in flight
         self._waiters: dict[str, list] = {}          # permission id -> [Event, allowed]
         self._lock = threading.Lock()
@@ -178,12 +181,15 @@ class Bonny:
 
     def _turn(self, prompt: Prompt) -> None:
         repl, text = self.repl, prompt.text
+        message, images = attachments.apply_to_turn(repl, text, list(prompt.files))
         repl.direct_stream = prompt.search   # Computer mode always has its tools; only Search takes the quick tool-free path
         if prompt.mode:
             repl._set_mode(prompt.mode)
         self._stop_requested = False
         self.control.busy = True
-        self.events.emit("turn_start", text=text)
+        self.events.emit("turn_start", text=text, files=[{"name": f.name, "kind": f.kind} for f in prompt.files])
+        if images and repl._reads_images() is False:
+            self.events.emit("notice", message=f"{model_ref(repl.provider, repl.model)} can't read images, so it gets your words but not the picture. Switch the model to include it.")
         chunks: list[str] = []   # in stream mode chat() leaves last_result unset, so the answer is what streamed
 
         def on_text(chunk: str) -> None:
@@ -194,8 +200,8 @@ class Bonny:
         self._writes.clear()
         repl.on_event_hook = self._on_tool
         try:
-            repl.system_extra = self._search(text) if prompt.search else None
-            repl.chat(text)
+            repl.system_extra = self._search(text or "attached files") if prompt.search else None
+            repl.chat(message)
         except KeyboardInterrupt:
             self._stop_requested = True
         finally:
@@ -223,9 +229,7 @@ class Bonny:
             self.events.emit("artifact", path=str(path), name=path.name, tool=tool, **dict(zip(("filetype", "group"), artifacts.classify(path))))   # not "kind": the event's own kind is "artifact"
 
     def artifact_rows(self) -> list[dict]:
-        from src.repl.core import _first_prompt
-
-        return artifacts.collect(Session.list_recent(str(self.repl.tool_context.workspace_root)), _first_prompt)
+        return artifacts.collect(Session.list_recent(str(self.repl.tool_context.workspace_root)), session_title)
 
     def find_artifact(self, path: str) -> dict | None:
         return artifacts.find(path, self.artifact_rows())
@@ -267,10 +271,8 @@ class Bonny:
 
     # -- sessions ------------------------------------------------------------------------------------
     def sessions(self) -> list[dict]:
-        from src.repl.core import _first_prompt
-
         found = Session.list_recent(str(self.repl.tool_context.workspace_root))
-        return [{"id": s.session_id, "title": _first_prompt(s), "updated": s.updated_at, "messages": len(s.conversation.messages)}
+        return [{"id": s.session_id, "title": session_title(s), "updated": s.updated_at, "messages": len(s.conversation.messages)}
                 for s in found]
 
     def messages(self, session_id: str) -> list[dict] | None:
@@ -279,8 +281,27 @@ class Bonny:
         session = self.repl.session if session_id == self.repl.session.session_id else Session.load(session_id)
         if session is None:
             return None
-        return [{"role": m.role, "text": text} for m in session.conversation.messages
-                if m.role in ("user", "assistant") and (text := _message_text(m))]
+        out = []
+        for i, m in enumerate(session.conversation.messages):
+            if m.role not in ("user", "assistant") or not (text := _message_text(m)):
+                continue
+            row: dict = {"i": i, "role": m.role, "text": text}
+            if m.role == "user":
+                row["text"], row["files"] = attachments.split(text)
+                row["images"] = sum(1 for b in (m.content if isinstance(m.content, list) else []) if getattr(b, "type", None) == "image")
+            out.append(row)
+        return out
+
+    def session_image(self, session_id: str, index: int, n: int) -> tuple[bytes, str] | None:
+        """The n-th picture attached to message `index` of a session, for the thumbnails in the thread."""
+        session = self.repl.session if session_id == self.repl.session.session_id else Session.load(session_id)
+        try:
+            blocks = [b for b in session.conversation.messages[index].content if getattr(b, "type", None) == "image"] if session else []
+            block = blocks[n]
+            media = block.media_type if block.media_type in attachments.IMAGE_TYPES.values() else None
+            return (base64.b64decode(block.data), media) if media else None
+        except (IndexError, TypeError, ValueError, AttributeError):
+            return None
 
     def open_session(self, session_id: str) -> bool:
         session = Session.load(session_id)
@@ -302,6 +323,17 @@ class Bonny:
     def new_session(self) -> None:
         self.repl._switch_session(Session.create(self.repl.provider_name, self.repl.model))
         self.events.emit("session", session=self.repl.session.session_id)
+
+
+def session_title(session: Session) -> str:
+    """What the sidebar calls a session: the first thing the user typed, without attachment markers, or the file's name."""
+    from src.repl.core import _message_text, _preview
+
+    for message in session.conversation.messages:
+        if message.role == "user" and (text := _message_text(message)):
+            visible, files = attachments.split(text)
+            return _preview(visible or (files[0] if files else "Picture"))
+    return "(no prompt)"
 
 
 def _tool_event(ev: Any) -> dict:
@@ -412,7 +444,7 @@ def make_server(bonny: Bonny, host: str = "127.0.0.1", port: int = 0) -> Threadi
                 if self._guard(api=False):
                     self._send(200, render_page().encode(), "text/html; charset=utf-8")
                 return
-            if url.path.startswith("/static/") or url.path in ("/theme/background", "/artifact/raw"):
+            if url.path.startswith("/static/") or url.path in ("/theme/background", "/artifact/raw", "/session/image"):
                 self._asset(url)
                 return
             if not url.path.startswith("/api/") or not self._guard(api=True):
@@ -453,19 +485,31 @@ def make_server(bonny: Bonny, host: str = "127.0.0.1", port: int = 0) -> Threadi
             if path == "/api/theme/image":
                 self._upload()
                 return
+            if path == "/api/attachments":
+                self._attach()
+                return
             data = self._body()
             if data is None:
                 return
             text = data.get("text")
+            ids = data.get("attachments") or []
             if path in ("/api/prompt", "/api/steer"):
-                if not isinstance(text, str) or not text.strip() or len(text) > MAX_PROMPT:
+                if not isinstance(text, str) or len(text) > MAX_PROMPT or not (text.strip() or (ids and path == "/api/prompt")):
                     self._json(400, {"error": f"text must be 1 to {MAX_PROMPT} characters"})
                 elif path == "/api/prompt":
                     mode = data.get("mode")
                     if mode not in (None, "hold", "plan", "all_in"):
                         self._json(400, {"error": "mode is hold, plan or all_in"})
                         return
-                    bonny.control.queue(Prompt(text.strip(), data.get("search") is True, mode))
+                    if not isinstance(ids, list) or not all(isinstance(i, str) for i in ids):
+                        self._json(400, {"error": "attachments is a list of ids"})
+                        return
+                    try:
+                        files = bonny.attachments.take(ids)
+                    except ValueError as e:
+                        self._json(400, {"error": str(e)})
+                        return
+                    bonny.control.queue(Prompt(text.strip(), data.get("search") is True, mode, tuple(files)))
                     self._json(200, {"queued": bonny.control.prompts.qsize()})
                 elif not bonny.control.busy:
                     self._json(409, {"error": "nothing is running; send it as a prompt"})
@@ -521,7 +565,7 @@ def make_server(bonny: Bonny, host: str = "127.0.0.1", port: int = 0) -> Threadi
             since an <img>, an <iframe> or a CSS url() can't send headers."""
             if not self._guard(api=False):
                 return
-            if url.path in ("/theme/background", "/artifact/raw") and not hmac.compare_digest(parse_qs(url.query).get("t", [""])[0], token):
+            if url.path in ("/theme/background", "/artifact/raw", "/session/image") and not hmac.compare_digest(parse_qs(url.query).get("t", [""])[0], token):
                 self._json(403, {"error": "bad token"})
                 return
             if url.path == "/theme/background":
@@ -533,6 +577,18 @@ def make_server(bonny: Bonny, host: str = "127.0.0.1", port: int = 0) -> Threadi
                 return
             if url.path == "/artifact/raw":
                 self._artifact_raw(url)
+                return
+            if url.path == "/session/image":
+                query = parse_qs(url.query)
+                try:
+                    session_id, index, n = query["session"][0], int(query["i"][0]), int(query["n"][0])
+                except (KeyError, ValueError, IndexError):
+                    session_id, index, n = "", 0, 0
+                found = bonny.session_image(session_id, index, n) if _ID.match(session_id) else None
+                if found is None:
+                    self._json(404, {"error": "no such picture"})
+                else:
+                    self._send(200, found[0], found[1], csp=_ARTIFACT_CSP, cache="private, max-age=3600")
                 return
             name = url.path.removeprefix("/static/")
             if name not in FONTS:
@@ -574,18 +630,36 @@ def make_server(bonny: Bonny, host: str = "127.0.0.1", port: int = 0) -> Threadi
             extra = {"Content-Disposition": 'attachment; filename="' + path.name.replace('"', "") + '"'} if download else None
             self._send(200, path.read_bytes(), ctype, csp=csp, extra=extra)
 
-        def _upload(self) -> None:
-            """The background image arrives as the raw request body; its type is read from its bytes, not from the headers."""
+        def _raw_body(self, limit: int, what: str) -> bytes | None:
+            """A raw (not JSON) request body up to `limit` bytes; None after answering an error. The type comes from the bytes."""
             try:
                 length = int(self.headers.get("Content-Length", "0"))
             except ValueError:
                 length = -1
-            if not 0 < length <= theme.MAX_IMAGE:
-                self.close_connection = True
-                self._json(413 if length > 0 else 400, {"error": f"send an image up to {theme.MAX_IMAGE // 1_000_000} MB"})
+            if not 0 < length <= limit:
+                self.close_connection = True   # the body is left unread
+                self._json(413 if length > 0 else 400, {"error": f"send {what} up to {limit // 1_000_000} MB"})
+                return None
+            return self.rfile.read(length)
+
+        def _attach(self) -> None:
+            data = self._raw_body(attachments.MAX_FILE, "a file")
+            if data is None:
                 return
             try:
-                theme.save_image(self.rfile.read(length))
+                item = bonny.attachments.add(unquote(self.headers.get("X-File-Name", "")), data)
+            except ValueError as e:
+                self._json(400, {"error": str(e)})
+            else:
+                self._json(200, item.public())
+
+        def _upload(self) -> None:
+            """The background image arrives as the raw request body; its type is read from its bytes, not from the headers."""
+            data = self._raw_body(theme.MAX_IMAGE, "an image")
+            if data is None:
+                return
+            try:
+                theme.save_image(data)
             except ValueError as e:
                 self._json(400, {"error": str(e)})
             except OSError as e:
