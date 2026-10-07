@@ -162,6 +162,28 @@ textarea:focus-visible { outline: none; }
 .bar { display: flex; align-items: center; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
 .bar .right { margin-left: auto; display: flex; gap: 8px; }
 
+/* attachments: the tray above the message box, drag and drop, and files shown in a sent message */
+.btn.icon { padding: 0; width: 30px; }
+.btn.icon .ico { width: 16px; height: 16px; }
+.tray { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 0 10px; }
+.att { --c: 6px; display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 4px 0 5px; max-width: 230px; font: 500 12px/1.2 var(--mono); }
+.att img, .att .ft { width: 26px; height: 26px; flex: none; object-fit: cover; }
+.att .ft { display: grid; place-items: center; color: var(--link); }
+.att .ft .ico { width: 16px; height: 16px; }
+.att .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.att .sz { color: var(--dim); font-size: 11px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.att .rm { width: 22px; height: 22px; flex: none; border: 0; background: none; color: var(--dim); display: grid; place-items: center; transition-property: color; transition-duration: .12s; }
+.att .rm:hover { color: var(--danger); }
+.att .rm .ico { width: 12px; height: 12px; }
+.att[data-state="uploading"] { opacity: .65; }
+#drop { position: fixed; inset: 0; z-index: 40; display: none; place-items: center; pointer-events: none; background: color-mix(in srgb, var(--bg) 82%, transparent); font: 600 17px/1.4 var(--mono); }
+#drop span { padding: 18px 28px; border: 2px dashed var(--link); }
+body.dragging #drop { display: grid; }
+.msg.user .thumbs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; justify-content: flex-end; }
+.msg.user .thumbs:last-child { margin-bottom: 0; }
+.msg.user .thumbs img { max-width: 220px; max-height: 160px; object-fit: cover; display: block; border: 1px solid var(--line); }
+.msg.user .fchip { font: 500 11.5px/1.4 var(--mono); color: var(--dim); padding: 3px 9px; border: 1px solid var(--line); white-space: nowrap; }
+
 /* dialogs: square, hairline, like the site's own panels */
 dialog { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 0; padding: 0; width: min(720px, 94vw); max-height: 86vh; }
 dialog::backdrop { background: rgba(0, 0, 0, .5); }
@@ -298,6 +320,7 @@ input[type="color"] { width: 36px; height: 24px; padding: 0; border: 1px solid v
 <div class="sr" id="announce" role="status" aria-live="polite"></div>
 <div id="bg" aria-hidden="true"></div>
 <div class="glow" id="glow" aria-hidden="true"></div>
+<div id="drop" aria-hidden="true"><span>Drop to attach</span></div>
 <div class="app">
 <aside id="side" aria-label="Bonny">
   <div class="brand">
@@ -336,9 +359,12 @@ input[type="color"] { width: 36px; height: 24px; padding: 0; border: 1px solid v
     <div class="dock">
       <div class="hero"><div class="kind" id="hero-kind">Computer</div><h2 id="hero-title">What should we work on?</h2></div>
       <form class="box cut" id="form">
-        <label class="sr" for="input">Message Bonny</label>
+        <div class="tray" id="tray" role="list" aria-label="Attached files" hidden></div>
+      <label class="sr" for="input">Message Bonny</label>
         <textarea id="input" rows="1" placeholder="Describe what you want done"></textarea>
         <div class="bar">
+          <button type="button" class="btn cut icon" id="attach" aria-label="Attach images or text files" title="Attach images or text files"></button>
+          <input class="sr" id="files" type="file" multiple tabindex="-1" aria-hidden="true" accept="image/png,image/jpeg,image/gif,image/webp,text/*,.md,.markdown,.json,.csv,.log,.py,.js,.mjs,.ts,.tsx,.jsx,.css,.html,.htm,.xml,.yaml,.yml,.toml,.ini,.sh,.sql,.svg,.txt">
           <div class="seg" role="group" aria-label="Mode">
             <button type="button" class="chip cut" data-mode="search" aria-pressed="false">Search</button>
             <button type="button" class="chip cut" data-mode="computer" aria-pressed="true">Computer</button>
@@ -414,6 +440,8 @@ input[type="color"] { width: 36px; height: 24px; padding: 0; border: 1px solid v
   <svg data-i="council" viewBox="0 0 24 24"><circle cx="6" cy="5.5" r="2"/><circle cx="18" cy="5.5" r="2"/><circle cx="12" cy="19" r="2"/><path d="M6 7.5v1.2a3 3 0 0 0 3 3h6a3 3 0 0 0 3-3V7.5M12 11.7V17"/></svg>
   <svg data-i="retry" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 5v6h-6"/></svg>
   <svg data-i="trash" viewBox="0 0 24 24"><path d="M4.5 7h15"/><path d="M9.5 7V4.5h5V7"/><path d="M6.5 7l.9 12.5h9.2L17.5 7"/><path d="M10.2 11v5.2M13.8 11v5.2"/></svg>
+  <svg data-i="clip" viewBox="0 0 24 24"><path d="M19 11.5l-6.8 6.8a4.2 4.2 0 0 1-6-6l7.2-7.2a2.8 2.8 0 0 1 4 4l-7.2 7.2a1.4 1.4 0 0 1-2-2l6.5-6.5"/></svg>
+  <svg data-i="x" viewBox="0 0 24 24"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg>
   <svg data-i="file" viewBox="0 0 24 24"><path d="M6.5 3.5h7l4 4v13h-11z"/><path d="M13.5 3.5v4h4"/></svg>
   <svg data-i="more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.5" fill="currentColor" stroke="none"/></svg>
 </template>
@@ -493,7 +521,16 @@ function markdown(src) {
 const col = $("col"), thread = $("thread");
 function scroll() { placeStatus(); thread.scrollTop = thread.scrollHeight; }
 function setEmpty(empty) { $("main").classList.toggle("empty", empty); }
-function addUser(text) { setEmpty(false); col.append(h("div", { class: "msg user cut" }, text)); scroll(); }
+function addUser(text, atts) {
+  setEmpty(false);
+  const files = (atts || []).filter((a) => a.kind !== "image" || !a.url);
+  const pics = (atts || []).filter((a) => a.kind === "image" && a.url);
+  col.append(h("div", { class: "msg user cut" },
+    pics.length ? h("div", { class: "thumbs" }, pics.map((a) => h("img", { src: a.url, alt: a.name }))) : null,
+    files.length ? h("div", { class: "thumbs" }, files.map((a) => h("span", { class: "fchip" }, a.name))) : null,
+    text ? h("div", {}, text) : null));
+  scroll();
+}
 function startBubble() {
   st.bubble = h("div", { class: "msg bonny" }); st.bubbleText = "";
   st.wrap = h("div", { class: "answer" }, st.bubble); col.append(st.wrap);
@@ -574,7 +611,12 @@ function renderMessages(messages) {
   col.replaceChildren(); st.bubble = null; st.wrap = null;
   let question = "";
   for (const m of messages) {
-    if (m.role === "user") { question = m.text; addUser(m.text); continue; }
+    if (m.role === "user") {
+      question = m.text;
+      addUser(m.text, [...(m.files || []).map((name) => ({ name, kind: "text" })),
+        ...Array.from({ length: m.images || 0 }, (_, n) => ({ name: "Picture", kind: "image", url: "/session/image?t=" + encodeURIComponent(TOKEN) + "&session=" + encodeURIComponent(st.session) + "&i=" + m.i + "&n=" + n }))]);
+      continue;
+    }
     setEmpty(false);
     col.append(h("div", { class: "answer" }, h("div", { class: "msg bonny" }, markdown(m.text)),
       actionRow({ text: m.text, question, search: false, mode: null, info: sourceInfo(m.text, new Map(), []), council: null, quiet: true })));
@@ -625,17 +667,20 @@ async function deleteSession(s, row) {
 /* sending */
 async function send() {
   const input = $("input"), text = input.value.trim();
-  if (!text) return;
+  if (pending.some((p) => p.state === "uploading")) { toast("Still uploading your files."); return; }
+  const atts = pending.filter((p) => p.state === "ready");
+  if (!text && !atts.length) return;
   try {
     const search = st.ui === "search";
-    await submit(text, search, search ? "plan" : $("perm").value);
+    await submit(text, search, search ? "plan" : $("perm").value, atts);
     input.value = ""; autosize();
+    pending = pending.filter((p) => !atts.includes(p)); paintTray();   // the pictures stay alive for the sent bubble
   } catch (e) { note(e.message, "error"); }
 }
-async function submit(text, search, mode) {
+async function submit(text, search, mode, atts) {
   const queuedBehind = st.busy;
-  st.sent.set(text, { search, mode });
-  await api("/api/prompt", { text, search, mode });
+  st.sent.set(text, { search, mode, atts: atts || [] });
+  await api("/api/prompt", { text, search, mode, attachments: (atts || []).map((a) => a.id) });
   if (queuedBehind) note("Queued: " + text); else begin();
   st.queued = (await api("/api/state")).queued; paintControls();
 }
@@ -693,11 +738,14 @@ function toolLine(e) {
 }
 function handle(e) {
   if (e.kind === "turn_start") {
-    addUser(e.text); begin(); st.bubble = null; st.wrap = null; st.titles.clear(); st.fetched = []; st.pending.clear(); st.queries = [];
+    const sent = st.sent.get(e.text);
+    addUser(e.text, sent && sent.atts && sent.atts.length ? sent.atts : (e.files || []).map((f) => ({ name: f.name, kind: f.kind })));
+    begin(); st.bubble = null; st.wrap = null; st.titles.clear(); st.fetched = []; st.pending.clear(); st.queries = [];
     st.turn = { text: e.text, ...(st.sent.get(e.text) || { search: false, mode: null }) };
   }
   else if (e.kind === "text") { if (!st.bubble) startBubble(); st.bubbleText += e.text; paintBubble(); }
   else if (e.kind === "tool") toolLine(e);
+  else if (e.kind === "notice") note(e.message);
   else if (e.kind === "permission") permissionCard(e);
   else if (e.kind === "artifact") { artifactCard(e); if ($("main").dataset.view === "artifacts") loadArtifacts().catch(() => {}); }
   else if (e.kind === "error") { finish(); note(e.message, "error"); }
@@ -918,6 +966,57 @@ function artifactCard(e) {
   st.bubble = null; scroll();
 }
 $("nav-artifacts").addEventListener("click", () => openArtifacts());
+
+/* Attachments: images and text files, from the button, a drop or a paste. Each is uploaded as soon as it is chosen. */
+const MAX_ATTACH = 6, MAX_ATTACH_BYTES = 12_000_000;
+let pending = [];
+const fmtSize = (n) => (n < 1024 ? n + " B" : n < 1048576 ? Math.round(n / 1024) + " KB" : (n / 1048576).toFixed(1) + " MB");
+function paintTray() {
+  $("tray").hidden = !pending.length;
+  $("tray").replaceChildren(...pending.map((p) => {
+    const rm = h("button", { class: "rm", type: "button", "aria-label": "Remove " + p.name }, ico("x"));
+    rm.addEventListener("click", () => { pending = pending.filter((x) => x !== p); paintTray(); $("input").focus(); });
+    return h("div", { class: "att cut", role: "listitem", "data-state": p.state },
+      p.kind === "image" && p.url ? h("img", { src: p.url, alt: "" }) : h("span", { class: "ft", "aria-hidden": "true" }, ico("file")),
+      h("span", { class: "nm", title: p.name }, p.name), h("span", { class: "sz" }, p.state === "uploading" ? "Uploading…" : fmtSize(p.size)), rm);
+  }));
+}
+async function attachFiles(files) {
+  for (const file of files) {
+    if (pending.length >= MAX_ATTACH) { toast("You can attach up to " + MAX_ATTACH + " files to a message."); break; }
+    if (file.size > MAX_ATTACH_BYTES) { toast((file.name || "That file") + " is over 12 MB."); continue; }
+    const isImage = file.type.startsWith("image/") && file.type !== "image/svg+xml";
+    const item = { name: file.name || "pasted-image.png", size: file.size, state: "uploading", kind: isImage ? "image" : "text", url: isImage ? URL.createObjectURL(file) : "" };
+    pending.push(item); paintTray();
+    try {
+      const res = await fetch("/api/attachments", { method: "POST", headers: { "X-Bonny-Token": TOKEN, "X-File-Name": encodeURIComponent(item.name), "Content-Type": "application/octet-stream" }, body: file });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || res.statusText);
+      Object.assign(item, { id: data.id, kind: data.kind, size: data.size, state: "ready" });
+      if (data.note) toast(data.note);
+    } catch (e) { pending = pending.filter((x) => x !== item); if (item.url) URL.revokeObjectURL(item.url); toast(e.message); }
+    paintTray();
+  }
+}
+$("attach").append(ico("clip"));
+$("attach").addEventListener("click", () => $("files").click());
+$("files").addEventListener("change", () => { attachFiles([...$("files").files]); $("files").value = ""; });
+$("input").addEventListener("paste", (e) => {
+  const files = [...((e.clipboardData && e.clipboardData.files) || [])];
+  if (!files.length) return;
+  if (!e.clipboardData.getData("text")) e.preventDefault();
+  attachFiles(files);
+});
+let dragDepth = 0;
+const dragsFiles = (e) => [...((e.dataTransfer && e.dataTransfer.types) || [])].includes("Files");
+addEventListener("dragenter", (e) => { if (dragsFiles(e)) { e.preventDefault(); dragDepth++; document.body.classList.add("dragging"); } });
+addEventListener("dragover", (e) => { if (dragsFiles(e)) e.preventDefault(); });
+addEventListener("dragleave", (e) => { if (dragsFiles(e)) { dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) document.body.classList.remove("dragging"); } });
+addEventListener("drop", (e) => {
+  if (!dragsFiles(e)) return;
+  e.preventDefault(); dragDepth = 0; document.body.classList.remove("dragging");
+  showView("chat"); attachFiles([...e.dataTransfer.files]);
+});
 
 /* council popup */
 function openCouncil(c) {

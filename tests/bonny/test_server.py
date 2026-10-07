@@ -105,6 +105,7 @@ class TestPage(BonnyCase):
         self.assertNotIn("transition: all", PAGE)
         self.assertIn('data-i="trash"', PAGE)
         self.assertIn('id="toast" role="status"', PAGE)
+        self.assertIn('id="attach"', PAGE)
         self.assertIn('id="nav-artifacts"', PAGE)                                  # Artifacts is a real view now, not "soon"
         self.assertIn('sandbox: artScripts ? "allow-scripts" : ""', PAGE)          # previews are always sandboxed
         self.assertNotIn("allow-same-origin", PAGE)                                # so a previewed page can never reach Bonny's API
@@ -540,6 +541,108 @@ class TestArtifacts(BonnyCase):
         self.assertEqual([(e["name"], e["tool"], e["filetype"], e["group"]) for e in found],
                          [("made.html", "Write", "html", "page"), ("notes.md", "Edit", "markdown", "document")])
         self.assertEqual(found[0]["path"], str(self.root / "made.html"))      # a relative path is made absolute against the project
+
+
+class TestAttachments(BonnyCase):
+    PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 40
+
+    def post_file(self, name, data, token=True, headers=None):
+        from urllib.parse import quote
+
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
+        h = {"Host": f"127.0.0.1:{self.port}", "X-File-Name": quote(name), **(headers or {})}
+        if token:
+            h["X-Bonny-Token"] = self.token
+        conn.request("POST", "/api/attachments", body=data or None, headers=h)
+        resp = conn.getresponse()
+        body = resp.read()
+        conn.close()
+        return resp.status, json.loads(body)
+
+    def get(self, path):
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
+        conn.request("GET", path, headers={"Host": f"127.0.0.1:{self.port}"})
+        resp = conn.getresponse()
+        data = resp.read()
+        conn.close()
+        return resp.status, dict(resp.getheaders()), data
+
+    def test_uploads_are_checked_by_content_and_refused_with_a_reason(self):
+        status, image = self.post_file("shot.png", self.PNG)
+        self.assertEqual((status, image["kind"], image["name"], image["size"]), (200, "image", "shot.png", len(self.PNG)))
+        status, text = self.post_file("my notes.txt", b"hello")
+        self.assertEqual((status, text["kind"]), (200, "text"))
+        status, body = self.post_file("report.pdf", b"%PDF-1.7\x00\x01 binary")
+        self.assertEqual(status, 400)
+        self.assertIn("Images and text files work", body["error"])
+        self.assertEqual(self.post_file("empty.txt", b"")[0], 400)
+        self.assertEqual(self.post_file("big.bin", b"x", headers={"Content-Length": str(12_000_001)})[0], 413)
+        self.assertEqual(self.post_file("shot.png", self.PNG, token=False)[0], 403)
+
+    def test_a_message_carries_the_image_to_the_model_and_the_file_as_a_block_and_history_shows_it_cleanly(self):
+        image = self.post_file("shot.png", self.PNG)[1]
+        notes = self.post_file("notes.txt", b"line one\nline two")[1]
+        self.call("POST", "/api/prompt", {"text": "what is this?", "attachments": [image["id"], notes["id"]], "mode": "hold"})
+        events = self.wait_for("turn_end")
+        start = next(e for e in events if e["kind"] == "turn_start")
+        self.assertEqual((start["text"], start["files"]), ("what is this?", [{"name": "shot.png", "kind": "image"}, {"name": "notes.txt", "kind": "text"}]))
+        sent = self.provider.requests[0]["conversation"].messages[0]
+        self.assertEqual([m for m, _ in sent.images], ["image/png"])
+        self.assertTrue(sent.text.startswith("what is this? [Image #1]"))
+        self.assertIn('<attached_file name="notes.txt">\nline one\nline two\n</attached_file>', sent.text)
+        sid = self.call("GET", "/api/state")[1]["session"]
+        first = self.call("GET", f"/api/sessions/{sid}")[1]["messages"][0]
+        self.assertEqual((first["role"], first["text"], first["files"], first["images"]), ("user", "what is this?", ["notes.txt"], 1))
+        status, headers, data = self.get(f"/session/image?t={self.token}&session={sid}&i={first['i']}&n=0")
+        self.assertEqual((status, headers["Content-Type"], data), (200, "image/png", self.PNG))
+        self.assertEqual(headers["X-Content-Type-Options"], "nosniff")
+
+    def test_thumbnails_need_the_token_and_a_real_picture(self):
+        image = self.post_file("shot.png", self.PNG)[1]
+        self.call("POST", "/api/prompt", {"text": "look", "attachments": [image["id"]]})
+        self.wait_for("turn_end")
+        sid = self.call("GET", "/api/state")[1]["session"]
+        self.assertEqual(self.get(f"/session/image?session={sid}&i=0&n=0")[0], 403)
+        self.assertEqual(self.get(f"/session/image?t={self.token}&session={sid}&i=0&n=5")[0], 404)       # no such picture
+        self.assertEqual(self.get(f"/session/image?t={self.token}&session={sid}&i=1&n=0")[0], 404)       # that message has none
+        self.assertEqual(self.get(f"/session/image?t={self.token}&session=..%2Fx&i=0&n=0")[0], 404)
+        self.assertEqual(self.get(f"/session/image?t={self.token}&session={sid}&i=x&n=0")[0], 404)
+
+    def test_the_sidebar_title_is_what_was_typed_not_the_markers_or_file_text(self):
+        image = self.post_file("shot.png", self.PNG)[1]
+        notes = self.post_file("notes.txt", b"secret file body")[1]
+        self.call("POST", "/api/prompt", {"text": "what are these?", "attachments": [image["id"], notes["id"]]})
+        self.wait_for("turn_end")
+        self.assertEqual(self.call("GET", "/api/sessions")[1]["sessions"][0]["title"], "what are these?")
+        self.call("POST", "/api/session/new", {})
+        self.call("POST", "/api/prompt", {"text": "", "attachments": [self.post_file("only.txt", b"abc")[1]["id"]]})
+        self.wait_for("turn_end", after=self.bonny.events.last() - 1)
+        self.assertEqual(self.call("GET", "/api/sessions")[1]["sessions"][0]["title"], "only.txt")        # nothing typed: the file's name
+
+    def test_an_image_alone_is_a_message_and_a_blank_message_is_not(self):
+        image = self.post_file("shot.png", self.PNG)[1]
+        self.assertEqual(self.call("POST", "/api/prompt", {"text": "", "attachments": [image["id"]]})[0], 200)
+        self.wait_for("turn_end")
+        self.assertEqual(self.call("POST", "/api/prompt", {"text": "  "})[0], 400)
+
+    def test_attachments_that_are_unknown_reused_or_too_many_are_refused(self):
+        item = self.post_file("a.txt", b"x")[1]
+        self.assertEqual(self.call("POST", "/api/prompt", {"text": "hi", "attachments": ["nope"]})[0], 400)
+        self.assertEqual(self.call("POST", "/api/prompt", {"text": "hi", "attachments": [item["id"]]})[0], 200)
+        self.wait_for("turn_end")
+        self.assertEqual(self.call("POST", "/api/prompt", {"text": "again", "attachments": [item["id"]]})[0], 400)    # already sent
+        self.assertEqual(self.call("POST", "/api/prompt", {"text": "hi", "attachments": "a.txt"})[0], 400)
+        many = [self.post_file(f"f{i}.txt", b"x")[1]["id"] for i in range(7)]
+        self.assertEqual(self.call("POST", "/api/prompt", {"text": "hi", "attachments": many})[0], 400)
+
+    def test_a_model_that_cannot_read_images_is_named_and_the_turn_still_runs(self):
+        image = self.post_file("shot.png", self.PNG)[1]
+        with patch.object(self.repl, "_reads_images", return_value=False):
+            self.call("POST", "/api/prompt", {"text": "look", "attachments": [image["id"]]})
+            events = self.wait_for("turn_end")
+        notice = next(e for e in events if e["kind"] == "notice")
+        self.assertIn("can't read images", notice["message"])
+        self.assertTrue(events[-1]["ok"])
 
 
 class TestEventLog(unittest.TestCase):
