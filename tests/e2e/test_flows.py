@@ -414,6 +414,18 @@ class TestF04Plan(Case):
         t.send_line("/plan done 1")
         t.expect("1 of 2 phases complete", 10)
 
+    def test_F04_E3_remember_asks_first_saves_a_note_and_it_rides_in_later_turns(self):
+        server = self.model(call("Remember", text="prefers short answers", scope="user"), say("done"), say("next"))
+        t = self.app(server)
+        t.send_line("remember that I prefer short answers")
+        self.approve(t, "y")                                    # hold mode asks before saving a memory
+        t.turn_done()
+        t.send_line("continue")
+        t.turn_done()
+        self.assertNotIn("About the user", server.system_prompt(0))
+        self.assertIn("About the user:\n- prefers short answers", server.system_prompt(2))
+        self.assertEqual((t.home / ".clyde" / "memory.md").read_text(), "- prefers short answers\n")
+
     def test_F04_E1_shift_tab_cycles_through_all_three_modes_and_back_to_hold(self):
         # The status line is redrawn cell by cell, so the modes are checked by what they do to a doc write:
         # hold asks, plan refuses without asking, all in writes without asking.
