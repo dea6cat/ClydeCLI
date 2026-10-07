@@ -25,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ignored and hidden folders and stops after 1 s.
 
 ### Added
+- `clyde update` installs the exact commit or release tag it just checked (not whatever `main` is a moment later), and `install.sh`
+  accepts `CLYDE_REF=<tag or commit>` to pin an install; a ref with anything but letters, digits, `.`, `-`, `_` is refused before
+  anything runs.
 - Update channels: `clyde update --channel latest|stable` (saved as `update_channel`). `latest` follows `main`; `stable` follows the newest
   `vX.Y.Z` tag and never suggests a downgrade. The once-a-day check and its note follow the saved channel.
 - `clyde update [--check]` updates Clyde the way it was installed. A once-a-day background check (cached in `~/.clyde/update_check.json`,
