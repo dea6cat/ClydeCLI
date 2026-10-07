@@ -13,6 +13,7 @@ from ..tool_system.checks import edit_check_for
 from . import trace
 from ..tool_system.registry import ToolRegistry
 from ..tool_system.context import ToolContext
+from ..memory import memory_prompt
 from ..tool_system.plan_file import PLAN_SHAPE, plan_prompt, read_plan
 from ..tool_system.deferral import advertised, index_prompt, is_deferred
 from .conversation import Conversation
@@ -147,6 +148,7 @@ def _build_effective_system_prompt(style_prompt: str, tool_context: ToolContext)
         context_prompt += "\n\n" + section
     if section := goal_prompt(getattr(tool_context, "goal", None)):
         context_prompt += "\n\n" + section
+    context_prompt += "\n\n" + memory_prompt(tool_context.workspace_root)
     if not context_prompt.strip():
         return style_prompt
     return f"{style_prompt}\n\n{context_prompt}"

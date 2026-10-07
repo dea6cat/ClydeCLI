@@ -476,6 +476,8 @@ That's all it takes: clone, configure, run.
 | `/review [commit SHA \| base BRANCH]` | Read-only review of uncommitted changes (and untracked files), one commit, or this branch against its base |
 | `/status`    | Model, mode, directory, session, goal, terse and token totals, plus plan progress |
 | `/goal [text\|plan\|clear]` | A goal for this session, kept in the system prompt every turn (500 characters at most); `plan` makes it "every phase of the saved plan is complete" and it clears itself when the last phase is done |
+| `/remember [project] TEXT` | Keep a note between sessions, about you (default) or this project. The model can save one too when you ask it to remember something |
+| `/memory` / `/forget [project] N` | List the notes with numbers; drop one |
 | `/plan [done\|start\|pending N \| clear]` | Show the saved plan; set phase N's status; or delete the plan |
 | `/debug [path]` | The last turn's model and tool calls, or the trace file path |
 | `/skills scan` / `/skills allow <name>` | Rescan skills with SkillSpector (LLM review when your model allows) and show verdicts; let a held-back skill, plugin or `mcp:<server>` in |
@@ -679,6 +681,23 @@ with `CLYDE_NO_UPDATE_CHECK=1`. It does not run for `-p`, `--acp` or other comma
 What you get instead: `clyde update` installs the exact commit (or release tag) it just checked, so the install cannot differ from
 what it reported; `CLYDE_REF` pins the installer the same way; and `clyde doctor` shows which commit you run. Trust rests on
 GitHub over HTTPS and the commit hash. The one-line installer is `curl | sh`: read it first if that matters to you.
+
+### Memory
+
+Clyde has two kinds of memory, and both go into every turn.
+
+- **Memory files you write.** Clyde reads `CLYDE.md`, `CLAUDE.md`, `AGENTS.md` and `GEMINI.md` (and `.cursorrules` and Copilot's
+  instructions) from your project and from `~/.clyde/`, the first name that exists in each place. This is how it worked before
+  and it still does, so files written for other agents keep working.
+- **Notes Clyde keeps for you.** Say "remember that I prefer short answers" and the model saves a note with its `Remember` tool,
+  or type `/remember TEXT` yourself (`/remember project TEXT` for a note about the codebase). `/memory` lists the notes with
+  numbers and `/forget N` drops one. In hold mode Clyde asks before the model saves a note, and plan mode refuses it.
+
+Notes are plain markdown, one bullet each, that you can edit by hand: `~/.clyde/memory.md` for you, and one file per project under
+`~/.clyde/memory/projects/`, so nothing is written into your repositories. Each note is at most 300 characters, each file holds 40,
+and about 2,000 characters ride in the prompt, fenced as data: a note is context about you, never an instruction that overrides what
+you ask or Clyde's safety rules. Clyde does not learn anything on its own; a note exists only because you or you-approved-the-model
+saved it. The saved session, plan and memory notes together are what carry over from one conversation to the next.
 
 ### Plans
 

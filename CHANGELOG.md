@@ -25,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ignored and hidden folders and stops after 1 s.
 
 ### Added
+- Memory notes between sessions: `/remember [project] TEXT`, `/memory` and `/forget [project] N`, and a `Remember` tool the model uses when you ask it to remember
+  something (hold mode asks first, plan mode refuses). Notes are markdown at `~/.clyde/memory.md` and `~/.clyde/memory/projects/`, never inside a
+  repository, bounded (300 characters a note, 40 a file) and fenced as data in the prompt. The hand-written memory files (`CLYDE.md`, `CLAUDE.md`,
+  `AGENTS.md`, `GEMINI.md`) are read exactly as before.
 - `clyde update` installs the exact commit or release tag it just checked (not whatever `main` is a moment later), and `install.sh`
   accepts `CLYDE_REF=<tag or commit>` to pin an install; a ref with anything but letters, digits, `.`, `-`, `_` is refused before
   anything runs.

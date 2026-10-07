@@ -12,6 +12,7 @@ from .grep import GrepTool
 from .code_map import MapTool
 from .lsp import LSPTool
 from .mcp import MCPTool
+from .memory import RememberTool
 from .mcp_resources import ListMcpResourcesTool, ReadMcpResourceTool
 from .data import DataTool
 from .misc import NotebookEditTool, PowerShellTool, SendMessageTool
@@ -45,6 +46,7 @@ __all__ = [
     "EnterWorktreeTool",
     "ExitPlanModeTool",
     "ExitWorktreeTool",
+    "RememberTool",
     "FileEditTool",
     "FileReadTool",
     "FileWriteTool",
