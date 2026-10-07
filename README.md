@@ -389,6 +389,8 @@ uv pip install -r requirements.txt
 
 ### Configure
 
+> **Where to get an API key** for each provider, and a one-minute tutorial for adding it: [dea6cat.github.io/ClydeCLI/keys.html](https://dea6cat.github.io/ClydeCLI/keys.html).
+
 #### Option 1: Just export a key (no login needed)
 
 If a provider key is already in your environment (see the table above), run `clyde`. With no

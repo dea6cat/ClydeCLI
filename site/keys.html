@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>API keys · ClydeCLI</title>
+<meta name="description" content="Where to get an API key for each provider ClydeCLI supports, and how to give it to Clyde in a minute. Local models need no key.">
+<meta name="theme-color" content="#e8e5dd" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f1a14" media="(prefers-color-scheme: dark)">
+<link rel="icon" type="image/svg+xml" href="brand/clyde-mark.svg">
+<script>document.documentElement.className = "js";</script>
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<div class="glow" aria-hidden="true"></div>
+<div class="frame">
+<header>
+  <b><img src="brand/clyde-mark.svg" alt="" width="24" height="24">ClydeCLI</b>
+  <nav><a href="./">Home</a><a href="keys.html" aria-current="page">API keys</a><a href="https://github.com/dea6cat/ClydeCLI">Source</a><a href="https://github.com/dea6cat/ClydeCLI/blob/main/CHANGELOG.md">Changelog</a></nav>
+</header>
+<div class="strip"><span class="chip">NO KEY NEEDED</span><span class="mono">Local models on Ollama or LM Studio run without one.</span></div>
+<main>
+  <h1 class="enter" style="--i:0">Get an API key</h1>
+  <p class="enter lead" style="--i:1">Clyde works with a hosted provider when you bring a key, and with a model on your own machine when you don't. Pick one, get the key from its page below, and give it to Clyde in a minute.</p>
+
+  <h2>Add a key in three steps</h2>
+  <ol class="steps">
+    <li><b>Get the key.</b> Open your provider's key page from the table below, sign in, create a key and copy it. Treat it like a password.</li>
+    <li><b>Run <code>clyde login</code>.</b> Pick the provider from the list (type to filter), paste the key when it asks (nothing shows as you type), then pick a model. Clyde saves the key and your choice.</li>
+    <li><b>Start working.</b> Run <code>clyde</code> in your project. Switch models any time with <code>/model</code>.</li>
+  </ol>
+  <div class="install"><code id="login" tabindex="0" role="region" aria-label="Login command">clyde login</code><button type="button" class="cut" data-copy="login">Copy</button></div>
+  <p class="dim">Prefer the shell? Export the provider's variable instead, for example <code>export OPENAI_API_KEY=your-key</code> (the names are in the table). A key exported in your shell always wins over a saved one. Inside Clyde, <code>/login</code> does the same as <code>clyde login</code>.</p>
+
+  <h2>Providers</h2>
+  <p>Thirteen hosted providers have a built-in place for their key. Pricing and free allowances belong to each provider, so check their pages; Clyde does not sell keys or credits.</p>
+  <div class="tablewrap" tabindex="0" role="region" aria-label="Providers, key pages and environment variables">
+  <table>
+    <thead><tr><th>Provider</th><th>Get the key</th><th>Environment variable</th></tr></thead>
+    <tbody>
+      <tr><th scope="row">Anthropic</th><td><a href="https://platform.claude.com/settings/keys">platform.claude.com/settings/keys</a></td><td><code>ANTHROPIC_API_KEY</code></td></tr>
+      <tr><th scope="row">OpenAI</th><td><a href="https://platform.openai.com/api-keys">platform.openai.com/api-keys</a></td><td><code>OPENAI_API_KEY</code></td></tr>
+      <tr><th scope="row">Google (Gemini)</th><td><a href="https://aistudio.google.com/apikey">aistudio.google.com/apikey</a></td><td><code>GEMINI_API_KEY</code></td></tr>
+      <tr><th scope="row">OpenRouter</th><td><a href="https://openrouter.ai/keys">openrouter.ai/keys</a></td><td><code>OPENROUTER_API_KEY</code></td></tr>
+      <tr><th scope="row">Mistral</th><td><a href="https://console.mistral.ai/api-keys">console.mistral.ai/api-keys</a></td><td><code>MISTRAL_API_KEY</code></td></tr>
+      <tr><th scope="row">NVIDIA</th><td><a href="https://build.nvidia.com/settings/api-keys">build.nvidia.com/settings/api-keys</a></td><td><code>NVIDIA_API_KEY</code></td></tr>
+      <tr><th scope="row">DeepSeek</th><td><a href="https://platform.deepseek.com/api_keys">platform.deepseek.com/api_keys</a></td><td><code>DEEPSEEK_API_KEY</code></td></tr>
+      <tr><th scope="row">Cerebras</th><td><a href="https://cloud.cerebras.ai/platform">cloud.cerebras.ai/platform</a></td><td><code>CEREBRAS_API_KEY</code></td></tr>
+      <tr><th scope="row">GLM (Zhipu)</th><td><a href="https://open.bigmodel.cn/usercenter/apikeys">open.bigmodel.cn/usercenter/apikeys</a></td><td><code>GLM_API_KEY</code></td></tr>
+      <tr><th scope="row">MiniMax</th><td><a href="https://platform.minimax.io/console/access">platform.minimax.io/console/access</a></td><td><code>MINIMAX_API_KEY</code></td></tr>
+      <tr><th scope="row">Cloudflare Workers AI</th><td><a href="https://dash.cloudflare.com/profile/api-tokens">dash.cloudflare.com/profile/api-tokens</a><br>also needs your account ID (<code>wrangler whoami</code> shows it); <code>clyde login</code> asks for it</td><td><code>CLOUDFLARE_API_TOKEN</code></td></tr>
+      <tr><th scope="row">Pollinations</th><td><a href="https://enter.pollinations.ai">enter.pollinations.ai</a></td><td><code>POLLINATIONS_API_KEY</code></td></tr>
+      <tr><th scope="row">Ollama Cloud</th><td><a href="https://ollama.com/settings/keys">ollama.com/settings/keys</a><br>only for Ollama's hosted models; a local Ollama needs no key</td><td><code>OLLAMA_API_KEY</code></td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h2>No key: models on your machine</h2>
+  <dl class="grid">
+    <div class="cut"><dt>Ollama</dt><dd>Install it from <a href="https://ollama.com/download">ollama.com/download</a> and run <code>ollama serve</code>. Clyde finds it on its own.</dd></div>
+    <div class="cut"><dt>LM Studio</dt><dd>Install it from <a href="https://lmstudio.ai">lmstudio.ai</a>, load a model and start its local server. Clyde finds that too.</dd></div>
+  </dl>
+  <p>Inside Clyde, <code>/models local</code> searches ollama.com and Hugging Face for models that fit your machine, rates each one, and downloads the one you pick.</p>
+
+  <h2>Any other service</h2>
+  <p>Together, Fireworks, Groq, vLLM, LiteLLM, a proxy of your own: anything that speaks the OpenAI or Anthropic API works. Run <code>clyde login</code> and choose <b>custom</b>. Clyde asks for a name (for example <code>together</code>), the protocol, and the base URL, which is the part before <code>/chat/completions</code> (OpenAI) or <code>/v1/messages</code> (Anthropic), then the key. A server that needs no key takes an empty one.</p>
+
+  <h2>Good to know</h2>
+  <dl class="grid">
+    <div class="cut"><dt>Where it is kept</dt><dd>Saved keys live in <code>~/.clyde/keys.json</code>, readable only by you. <code>/doctor</code> inside Clyde checks that.</dd></div>
+    <div class="cut"><dt>Check it worked</dt><dd><code>clyde --list-models</code> lists every model you can use right now, from each connected provider.</dd></div>
+    <div class="cut"><dt>Change or remove it</dt><dd>Run <code>clyde login</code> again to replace a key, or <code>clyde logout openai</code> to forget one.</dd></div>
+    <div class="cut"><dt>Keep it private</dt><dd>Never paste a key into a prompt, a chat or a commit. Clyde redacts saved keys from its trace files.</dd></div>
+  </dl>
+  <p class="dim">Provider pages change. If a link no longer lands on the key page, sign in to the provider's dashboard and look for "API keys".</p>
+</main>
+<footer><a href="https://github.com/dea6cat/ClydeCLI/blob/main/LICENSE">PolyForm Noncommercial 1.0.0</a> · <a href="https://github.com/dea6cat/ClydeCLI">github.com/dea6cat/ClydeCLI</a></footer>
+</div>
+<script src="site.js" defer></script>
+</body>
+</html>
