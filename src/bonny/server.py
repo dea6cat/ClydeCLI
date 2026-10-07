@@ -23,12 +23,14 @@ import time
 import uuid
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 from src import activity
 from src.config import clyde_home
 from src.agent.session import Session
+from src.bonny import theme
 from src.bonny.page import PAGE
 from src.providers import model_ref
 from src.providers.card_shuffle import record_vote
@@ -61,6 +63,8 @@ def search_context(results: list[dict], error: str | None) -> str:
     return f"{_SEARCH_RULE}\n\nWeb results:\n" + "\n".join(rows)
 
 
+STATIC = Path(__file__).parent / "static"
+FONTS = {"bricolage-grotesque.woff2", "jetbrains-mono.woff2"}   # the only static files served; the site's fonts, under the OFL
 FEEDBACK_FILE = "answer_feedback.jsonl"
 
 
@@ -287,6 +291,20 @@ class _Server(ThreadingHTTPServer):
 def make_server(bonny: Bonny, host: str = "127.0.0.1", port: int = 0) -> ThreadingHTTPServer:
     token = secrets.token_urlsafe(24)
 
+    def background_url() -> str | None:
+        path = theme.image_path()
+        return f"/theme/background?t={token}&v={path.stat().st_mtime_ns}" if path else None
+
+    def theme_payload() -> dict:
+        saved, url = theme.load(), background_url()
+        return {"theme": saved, "vars": theme.css_vars(saved, url), "image": url is not None, "presets": theme.PRESETS}
+
+    def render_page() -> str:
+        saved = theme.load()
+        # the user's own CSS goes in last, so nothing after it can be rewritten by it
+        return (PAGE.replace("__TOKEN__", token).replace("__SHAPE__", saved["shape"])
+                .replace("__THEME__", theme.root_block(theme.css_vars(saved, background_url()))).replace("__CUSTOM__", theme.safe_css(saved["css"])))
+
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
 
@@ -298,11 +316,11 @@ def make_server(bonny: Bonny, host: str = "127.0.0.1", port: int = 0) -> Threadi
             port_ = self.server.server_address[1]
             return {f"127.0.0.1:{port_}", f"localhost:{port_}"}
 
-        def _send(self, status: int, body: bytes, ctype: str) -> None:
+        def _send(self, status: int, body: bytes, ctype: str, cache: str = "no-store") -> None:
             self.send_response(status)
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(body)))
-            self.send_header("Cache-Control", "no-store")
+            self.send_header("Cache-Control", cache)
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Content-Security-Policy", _CSP)
             self.end_headers()
@@ -353,7 +371,10 @@ def make_server(bonny: Bonny, host: str = "127.0.0.1", port: int = 0) -> Threadi
             url = urlparse(self.path)
             if url.path == "/":
                 if self._guard(api=False):
-                    self._send(200, PAGE.replace("__TOKEN__", token).encode(), "text/html; charset=utf-8")
+                    self._send(200, render_page().encode(), "text/html; charset=utf-8")
+                return
+            if url.path.startswith("/static/") or url.path == "/theme/background":
+                self._asset(url)
                 return
             if not url.path.startswith("/api/") or not self._guard(api=True):
                 if not url.path.startswith("/api/"):
@@ -362,6 +383,8 @@ def make_server(bonny: Bonny, host: str = "127.0.0.1", port: int = 0) -> Threadi
             query = parse_qs(url.query)
             if url.path == "/api/state":
                 self._json(200, bonny.state())
+            elif url.path == "/api/theme":
+                self._json(200, theme_payload())
             elif url.path == "/api/models":
                 self._json(200, {"models": bonny.models()})
             elif url.path == "/api/sessions":
@@ -383,6 +406,9 @@ def make_server(bonny: Bonny, host: str = "127.0.0.1", port: int = 0) -> Threadi
         def do_POST(self) -> None:
             path = urlparse(self.path).path
             if not self._guard(api=True):
+                return
+            if path == "/api/theme/image":
+                self._upload()
                 return
             data = self._body()
             if data is None:
@@ -411,6 +437,16 @@ def make_server(bonny: Bonny, host: str = "127.0.0.1", port: int = 0) -> Threadi
                 self._json(200, {"ok": True}) if ok else self._json(404, {"error": "no such card"})
             elif path == "/api/vote":
                 self._vote(data)
+            elif path == "/api/theme":
+                try:
+                    theme.save(data)
+                except OSError as e:
+                    self._json(500, {"error": f"couldn't save the theme: {e}"})
+                else:
+                    self._json(200, theme_payload())
+            elif path == "/api/theme/image/remove":
+                theme.remove_image()
+                self._json(200, theme_payload())
             elif path == "/api/feedback":
                 vote = {"up": 1, "down": -1}.get(data.get("vote"))
                 question = data.get("question")
@@ -428,6 +464,46 @@ def make_server(bonny: Bonny, host: str = "127.0.0.1", port: int = 0) -> Threadi
                 self._change(path, data)
             else:
                 self._json(404, {"error": "not found"})
+
+        def _asset(self, url: Any) -> None:
+            """The site's fonts, and the user's background image (which needs the token in its address, since an <img> or a
+            CSS url() can't send headers)."""
+            if not self._guard(api=False):
+                return
+            if url.path == "/theme/background":
+                if not hmac.compare_digest(parse_qs(url.query).get("t", [""])[0], token):
+                    self._json(403, {"error": "bad token"})
+                    return
+                path = theme.image_path()
+                if path is None:
+                    self._json(404, {"error": "no background image"})
+                    return
+                self._send(200, path.read_bytes(), theme.CONTENT_TYPES[path.suffix[1:]], cache="private, max-age=3600")
+                return
+            name = url.path.removeprefix("/static/")
+            if name not in FONTS:
+                self._json(404, {"error": "not found"})
+                return
+            self._send(200, (STATIC / name).read_bytes(), "font/woff2", cache="public, max-age=86400")
+
+        def _upload(self) -> None:
+            """The background image arrives as the raw request body; its type is read from its bytes, not from the headers."""
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+            except ValueError:
+                length = -1
+            if not 0 < length <= theme.MAX_IMAGE:
+                self.close_connection = True
+                self._json(413 if length > 0 else 400, {"error": f"send an image up to {theme.MAX_IMAGE // 1_000_000} MB"})
+                return
+            try:
+                theme.save_image(self.rfile.read(length))
+            except ValueError as e:
+                self._json(400, {"error": str(e)})
+            except OSError as e:
+                self._json(500, {"error": f"couldn't save the image: {e}"})
+            else:
+                self._json(200, theme_payload())
 
         def _vote(self, data: dict) -> None:
             council = bonny.council()

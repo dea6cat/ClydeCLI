@@ -194,6 +194,13 @@ Under each answer sits a row of actions: copy, export as Markdown, good and poor
 chip that opens the list of what the answer cites and what else the search found, and a menu with Try again. Sessions in
 the sidebar show when they were last used, so two with the same first message can be told apart.
 
+Bonny looks like the site (its two fonts, hairlines, corner-cut controls) and the look is yours to change. **Customize** in
+the sidebar opens a panel that changes the page as you go: a theme (Auto follows light or dark; Paper, Night, Felt, Slate),
+any of seven colours, a full background image with dim, blur and see-through panels, cut, round or square corners, the font,
+your own greeting, and a box for custom CSS, the way old profile pages let you. A theme code, plain text, lets you copy a look
+or paste someone else's. Everything is saved in `~/.clyde/bonny/` on your machine, and the background image never leaves it
+(PNG, JPEG, GIF or WebP up to 8 MB, checked by content; SVG is refused). Custom CSS can't load anything from other sites.
+
 ### Laya
 
 *I read the table, not just the cards.*
