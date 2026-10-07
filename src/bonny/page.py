@@ -13,7 +13,7 @@ PAGE = r"""<!doctype html>
 <style>
 :root {
   --bg: #151515; --side: #1b1b1b; --panel: #222; --raised: #2a2a2a; --line: #333; --text: #ebe9e4; --dim: #a09d95;
-  --accent: #4eba65; --accent-ink: #0d1f12; --danger: #e5534b; --radius: 14px;
+  --accent: #4eba65; --accent-ink: #0d1f12; --spade: #d0202f; --danger: #e5534b; --radius: 14px;
   --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; --mono: ui-monospace, "SF Mono", Menlo, monospace;
 }
 @media (prefers-color-scheme: light) {
@@ -30,7 +30,7 @@ button { cursor: pointer; }
 /* sidebar */
 aside { width: 264px; flex: none; background: var(--side); border-right: 1px solid var(--line); display: flex; flex-direction: column; padding: 14px 10px; gap: 4px; overflow: hidden; }
 .brand { display: flex; align-items: center; gap: 8px; padding: 4px 8px 12px; font-weight: 600; font-size: 17px; }
-.brand .mark { color: var(--accent); font-size: 20px; }
+.brand .mark { color: var(--spade); font-size: 20px; }
 .nav { display: flex; align-items: center; gap: 10px; width: 100%; background: none; border: 0; border-radius: 10px; padding: 8px 10px; text-align: left; }
 .nav:hover:not(:disabled) { background: var(--raised); }
 .nav[aria-current="true"] { background: var(--raised); }
@@ -75,6 +75,16 @@ main { flex: 1; min-width: 0; display: flex; flex-direction: column; height: 100
 .btn.danger { color: var(--danger); }
 .link { background: none; border: 0; color: var(--accent); padding: 0; text-align: left; }
 .link:hover { text-decoration: underline; }
+
+.status { display: flex; align-items: center; gap: 8px; color: var(--dim); font-size: 13px; }
+.status .spade { color: var(--spade); font-size: 16px; animation: pulse 1.3s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { opacity: .35; transform: scale(.9); } 50% { opacity: 1; transform: scale(1.1); } }
+@media (prefers-reduced-motion: reduce) { .status .spade { animation: none; } }
+.msg a, .sources a { color: var(--accent); text-underline-offset: 2px; }
+.cite { margin: 0 .12em; font-size: .8em; vertical-align: super; text-decoration: none; }
+.sources { border-top: 1px solid var(--line); padding-top: 10px; display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
+.sources h4 { margin: 0 0 2px; font-size: 12px; color: var(--dim); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+.sources .host { color: var(--dim); font-size: 12px; margin-left: 6px; }
 
 /* composer */
 .dock { padding: 0 18px 18px; }
@@ -173,7 +183,8 @@ dialog::backdrop { background: rgba(0, 0, 0, .55); }
 "use strict";
 const TOKEN = window.BONNY_TOKEN;
 const $ = (id) => document.getElementById(id);
-const st = { busy: false, ui: "computer", mode: "hold", bubble: null, bubbleText: "", tools: new Map(), session: "", queued: 0 };
+const st = { busy: false, ui: "computer", mode: "hold", bubble: null, bubbleText: "", tools: new Map(), session: "", queued: 0,
+  status: null, since: 0, activity: "", ticker: 0, titles: new Map(), fetched: [], pending: new Map(), queries: [] };
 
 async function api(path, body) {
   const res = await fetch(path, {
@@ -197,15 +208,29 @@ function h(tag, attrs, ...kids) {
   return node;
 }
 
+/* Links open in a new tab and only ever for http(s) addresses. */
+function link(url, label) {
+  try {
+    const u = new URL(url);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return label;
+    const cite = /^\d{1,3}$/.test(label);   // numbered citations read as spaced [1] marks, so [1][2] doesn't run together as "12"
+    return h("a", { href: u.href, target: "_blank", rel: "noopener noreferrer", class: cite ? "cite" : "" }, cite ? "[" + label + "]" : label);
+  } catch (e) { return label; }
+}
+
 /* A small, safe markdown subset: fences, headings, lists, paragraphs, `code` and **bold**. Text only, no HTML. */
 function inline(text) {
   const out = document.createDocumentFragment();
-  const re = /(`[^`]+`|\*\*[^*]+\*\*)/g;
+  const re = /(`[^`]+`|\*\*[^*]+\*\*|\[[^\]]+\]\(https?:\/\/[^\s)]+\)|https?:\/\/[^\s<>)\]]+)/g;
   let last = 0, m;
   while ((m = re.exec(text))) {
     out.append(text.slice(last, m.index));
-    out.append(m[0][0] === "`" ? h("code", {}, m[0].slice(1, -1)) : h("strong", {}, m[0].slice(2, -2)));
-    last = m.index + m[0].length;
+    const tok = m[0];
+    if (tok[0] === "`") out.append(h("code", {}, tok.slice(1, -1)));
+    else if (tok[0] === "*") out.append(h("strong", {}, tok.slice(2, -2)));
+    else if (tok[0] === "[") { const cut = tok.lastIndexOf("]("); out.append(link(tok.slice(cut + 2, -1), tok.slice(1, cut))); }
+    else { const url = tok.replace(/[.,;:!?]+$/, ""); out.append(link(url, url), tok.slice(url.length)); }
+    last = m.index + tok.length;
   }
   out.append(text.slice(last));
   return out;
@@ -226,12 +251,35 @@ function markdown(src) {
 }
 
 const col = $("col"), thread = $("thread");
-function scroll() { thread.scrollTop = thread.scrollHeight; }
+function scroll() { placeStatus(); thread.scrollTop = thread.scrollHeight; }
 function setEmpty(empty) { $("main").classList.toggle("empty", empty); }
 function addUser(text) { setEmpty(false); col.append(h("div", { class: "msg user" }, text)); scroll(); }
 function startBubble() { st.bubble = h("div", { class: "msg bonny" }); st.bubbleText = ""; col.append(st.bubble); }
 function paintBubble() { if (st.bubble) { st.bubble.replaceChildren(markdown(st.bubbleText)); scroll(); } }
 function note(text, cls) { setEmpty(false); col.append(h("div", { class: "note " + (cls || "") }, text)); scroll(); }
+
+/* Waiting feedback: a pulsing spade, what Clyde says it is doing, and how long it has been. */
+function paintStatus() {
+  if (!st.status) return;
+  const secs = Math.round((Date.now() - st.since) / 1000);
+  st.status.lastChild.textContent = (st.activity || "Thinking…") + (secs ? " · " + secs + "s" : "");
+}
+function placeStatus() { if (st.status) col.append(st.status); }
+function begin() {
+  if (st.status) return;
+  st.busy = true; st.since = Date.now(); st.activity = "Starting…";
+  st.status = h("div", { class: "status", role: "status" }, h("span", { class: "spade", "aria-hidden": "true" }, "\u2660"), h("span", {}));
+  paintStatus(); setEmpty(false); placeStatus(); scroll();
+  st.ticker = setInterval(async () => {
+    try { st.activity = (await api("/api/state")).activity || ""; } catch (e) { /* keep the last words */ }
+    paintStatus();
+  }, 1000);
+  paintControls();
+}
+function finish() {
+  clearInterval(st.ticker); st.ticker = 0;
+  if (st.status) { st.status.remove(); st.status = null; }
+}
 
 /* controls */
 function paintControls() {
@@ -279,12 +327,11 @@ async function send() {
   const input = $("input"), text = input.value.trim();
   if (!text) return;
   try {
-    if (!st.busy) {
-      const want = st.ui === "search" ? "plan" : $("perm").value;
-      if (want !== st.mode) st.mode = (await api("/api/mode", { mode: want })).mode;
-    }
-    await api("/api/prompt", { text });
+    const queuedBehind = st.busy;
+    const search = st.ui === "search";
+    await api("/api/prompt", { text, search, mode: search ? "plan" : $("perm").value });
     input.value = ""; autosize();
+    if (queuedBehind) note("Queued: " + text); else begin();
     st.queued = (await api("/api/state")).queued; paintControls();
   } catch (e) { note(e.message, "error"); }
 }
@@ -315,7 +362,17 @@ function permissionCard(e) {
     h("div", {}, h("b", {}, "Bonny wants to use " + e.tool), h("div", { class: "note" }, e.message)), h("div", { class: "row" }, allow, deny)));
   st.bubble = null; scroll();
 }
+function trackSources(e) {
+  if (e.phase === "start") {
+    if (e.url) st.pending.set(e.call, e.url);
+    if (e.tool === "WebSearch") st.queries.push(e.summary);
+  } else if (!e.error) {
+    if (st.pending.has(e.call)) st.fetched.push(st.pending.get(e.call));
+    for (const r of e.results || []) st.titles.set(r.url, r.title);
+  }
+}
 function toolLine(e) {
+  trackSources(e);
   let row = st.tools.get(e.call);
   if (!row) { row = h("div", { class: "tool" }, h("span", { class: "dot", "aria-hidden": "true" }, "•"), h("span", {})); st.tools.set(e.call, row); col.append(row); }
   row.classList.toggle("bad", !!e.error);
@@ -323,13 +380,17 @@ function toolLine(e) {
   st.bubble = null; scroll();
 }
 function handle(e) {
-  if (e.kind === "turn_start") { addUser(e.text); st.busy = true; st.bubble = null; paintControls(); }
+  if (e.kind === "turn_start") {
+    addUser(e.text); begin(); st.bubble = null; st.titles.clear(); st.fetched = []; st.pending.clear(); st.queries = [];
+  }
   else if (e.kind === "text") { if (!st.bubble) startBubble(); st.bubbleText += e.text; paintBubble(); }
   else if (e.kind === "tool") toolLine(e);
   else if (e.kind === "permission") permissionCard(e);
-  else if (e.kind === "error") note(e.message, "error");
+  else if (e.kind === "error") { finish(); note(e.message, "error"); }
   else if (e.kind === "turn_end") {
+    finish();
     if (e.stopped) note("Stopped.");
+    else showSources(e.answer || "");
     if (e.council) councilButton(e.council);
     st.bubble = null; st.tools.clear(); st.busy = false; refresh();
   } else if (e.kind === "session") { showSession().then(refresh); }
@@ -338,10 +399,24 @@ async function poll(after) {
   for (;;) {
     try {
       const data = await api("/api/events?after=" + after);
-      for (const e of data.events) handle(e);
+      for (const e of data.events) { try { handle(e); } catch (err) { console.error("event", e.kind, err); } }
       after = data.last;
     } catch (err) { await new Promise((r) => setTimeout(r, 1500)); }
   }
+}
+
+/* Sources: the addresses the answer cites, plus pages it fetched, with titles from the search results. */
+function showSources(answer) {
+  const urls = [];
+  const add = (u) => { try { const n = new URL(u); if (/^https?:$/.test(n.protocol) && !urls.includes(n.href)) urls.push(n.href); } catch (e) { /* not a URL */ } };
+  for (const m of answer.matchAll(/https?:\/\/[^\s<>)\]]+/g)) add(m[0].replace(/[.,;:!?]+$/, ""));
+  st.fetched.forEach(add);
+  if (!urls.length) { if (st.queries.length) note("Searched the web for \u201c" + st.queries.join("\u201d, \u201c") + "\u201d, but the answer cites no sources."); return; }
+  col.append(h("div", { class: "sources" }, h("h4", {}, "Sources"), urls.map((u, i) => {
+    const host = new URL(u).hostname.replace(/^www\./, "");
+    return h("div", {}, i + 1 + ". ", link(u, st.titles.get(u) || host), h("span", { class: "host" }, host));
+  })));
+  scroll();
 }
 
 /* council popup */

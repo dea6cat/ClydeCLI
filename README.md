@@ -185,6 +185,10 @@ Search and Computer modes (Search is read-only), a model and permissions picker,
 needs a yes, queue, steer and stop buttons, and the council popup with up and down votes. It is one file with no
 outside requests.
 
+Search turns search the web first (DuckDuckGo, no key) and hand the numbered results to the model, which cites them as
+links; the page lists those sources under the answer. If the search is blocked or finds nothing, the answer says it is
+unsourced. While a turn runs, the page shows what Clyde is waiting on and for how long.
+
 ### Laya
 
 *I read the table, not just the cards.*
