@@ -93,6 +93,7 @@ class TestCli(unittest.TestCase):
             self.assertEqual(self._run(home, "-p", "hi").returncode, gate.EXIT_DECLINED)
             self.assertEqual(self._run(home, "--acp").returncode, gate.EXIT_DECLINED)
             self.assertEqual(self._run(home, "--version").returncode, 0)
+            self.assertIn("ClydeCLI install:", self._run(home, "doctor").stdout)       # read-only: works unaccepted
             shown = self._run(home, "license")
             self.assertEqual(shown.returncode, 0)
             self.assertIn("Not accepted yet", shown.stdout)

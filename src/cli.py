@@ -44,6 +44,7 @@ Examples:
   clyde plugin install <path|git-url> Install a plugin (skills, hooks, MCP servers, tools); asks before enabling it
   clyde plugin import                 Bring over plugins installed for Claude Code, Codex or Cursor
   clyde plugin list                   List installed plugins; also: plugin remove|enable|disable <name>
+  clyde doctor                        How Clyde is installed: method, version, PATH, other installs, Claude Code
   clyde license [accept]              Show the licence terms and whether you accepted them; accept records it
   clyde -p "<prompt>"                 One turn without the prompt, answer on stdout (scripts, CI); also --mode,
                                       --output-format json, --max-turns. Piped input is added: git diff | clyde -p "review"
@@ -99,6 +100,7 @@ Examples:
     sessions_parser.add_argument('action', choices=['list', 'search', 'archive', 'unarchive'])
     sessions_parser.add_argument('target', nargs='*', help='search: the words to look for; archive/unarchive: a session id')
 
+    subparsers.add_parser('doctor', help='How Clyde is installed: method, version, PATH, other installs, Claude Code, licence')
     license_parser = subparsers.add_parser('license', help='Show the licence terms and whether you accepted them; `license accept` records it')
     license_parser.add_argument('action', nargs='?', choices=['show', 'accept'], default='show')
 
@@ -106,7 +108,7 @@ Examples:
 
     if args.command == 'license':
         return handle_license(Console(), args.action)
-    if not args.version:
+    if not args.version and args.command != 'doctor':     # doctor is read-only and reports the licence status itself
         from src import license_gate
         if not license_gate.ensure_accepted(Console()):
             return license_gate.EXIT_DECLINED
@@ -122,6 +124,13 @@ Examples:
 
     if args.command == 'sessions':
         return handle_sessions(Console(), args.action, ' '.join(args.target))
+
+    if args.command == 'doctor':
+        from src import install_info
+        print("ClydeCLI install:")
+        print("\n".join(install_info.report_lines()))
+        print("\nFor the full environment check (keys, providers, sandbox, config) run /doctor inside clyde.")
+        return 1 if any(line.lstrip().startswith("✗") for line in install_info.report_lines()) else 0
 
     if args.command == 'review':
         from src.repl import headless

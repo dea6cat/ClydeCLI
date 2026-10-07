@@ -253,6 +253,7 @@ clyde setup                    # First-run onboarding (provider, other agents' h
 clyde login                    # Connect a provider, pick a default model
 clyde hooks import             # Bring over hooks from Claude Code, Gemini CLI, Cursor, Copilot CLI
 clyde mcp import               # Bring over MCP servers from Claude Code, Cursor, Gemini CLI, Codex, Copilot CLI
+clyde doctor                   # How Clyde is installed: method, version, PATH, other installs, Claude Code, licence
 clyde review [commit SHA | base BRANCH]  # Read-only review of your changes; prints and exits (2 outside a git repo)
 clyde sessions list|search WORDS|archive ID|unarchive ID  # This folder's sessions: find by text, hide old ones from /resume
 clyde plugin install <dir|url> # Install a plugin (then list / enable / disable / remove)
@@ -907,7 +908,7 @@ ask (`uv tool install` runs no prompts), so the first run is where you accept.
 | `CLYDE_ACCEPT_LICENSE=1 clyde -p "..."` | For scripts, CI and editors with no terminal: accepts for that run and saves nothing |
 | `CLYDE_ACCEPT_LICENSE=1 clyde license accept` | The same, but saves the acceptance on that machine |
 
-`clyde --version` and `clyde license` work without accepting. This is a click-through record, not copy protection: the
+`clyde --version`, `clyde license` and `clyde doctor` work without accepting. This is a click-through record, not copy protection: the
 licence is what binds, and the check can be removed from the source by anyone who has it.
 
 ***
