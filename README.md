@@ -175,7 +175,7 @@ whether it is true.
 `clyde luv bonny` starts Bonny, the web mode of Clyde, on `127.0.0.1` and opens your browser. It runs the same
 engine as the terminal, so it has every tool, your sessions, memory, skills and cardShuffle; Bonny adds her own
 voice and a plainer way to use them. Start her on a model with `clyde --model <provider:model> luv bonny`
-(`--port N` picks the port, `--no-open` skips the browser).
+(`--port N` picks the port, `--no-open` skips the browser). The other way round, `bonny luv clyde` starts the terminal Clyde, the same as `clyde`, and takes the same options.
 
 Everything the page does goes through a small local API: queue prompts, steer or stop a running turn, list and
 reopen sessions, answer permission cards, change mode or model, vote on council answers. Requests need a
