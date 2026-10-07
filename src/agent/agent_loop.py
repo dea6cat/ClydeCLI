@@ -233,6 +233,9 @@ def _trace_tool(name: str, tool_input: dict, started: float, is_error: bool, out
 MAX_TURNS_REPLY = "[Max tool turns reached]"
 
 
+_STEERING = "The user sent this while you were working; take it into account from here on:\n"
+
+
 def run_agent_loop(
     conversation: Conversation,
     provider: Provider,
@@ -249,6 +252,7 @@ def run_agent_loop(
     on_thinking: TextChunkHandler | None = None,
     cancel: threading.Event | None = None,
     system_extra: str | None = None,
+    steer: Callable[[], str | None] | None = None,
 ) -> AgentLoopResult:
     """Run agent loop: LLM -> tools -> LLM until no more tools or max turns.
 
@@ -271,6 +275,8 @@ def run_agent_loop(
         reasoning: Optional reasoning level (off | low | medium | high | on).
         on_thinking: Optional callback for streamed reasoning chunks.
         cancel: Optional event; setting it aborts the in-flight request.
+        steer: Optional callback returning text the user sent while the turn runs; it is added as a user
+            message before the next model call (never before the first).
 
     Returns:
         AgentLoopResult with final text response, usage info, and turn count
@@ -296,6 +302,8 @@ def run_agent_loop(
         return total_usage if total_usage["input_tokens"] > 0 or total_usage["output_tokens"] > 0 else None
 
     for _turn in range(max_turns):
+        if _turn and steer is not None and (steering := steer()):
+            conversation.add_user_message(f"{_STEERING}{steering}")
         specs = from_specs(advertised(all_specs, tool_context.loaded_tools))   # again each turn: ToolSearch may have loaded more
         activity.set(f"waiting for {getattr(provider, 'name', '')}:{model}")
         request = to_canonical(conversation, system_prompt)
