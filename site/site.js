@@ -48,6 +48,26 @@
     }, { passive: true });
     requestAnimationFrame(frame);
   })();
+  // Bonny page: the spotlight follows a mouse over the screenshot; the buttons swap the picture and its caption.
+  (function () {
+    var spot = document.getElementById("spot"), img = document.getElementById("spot-img"), cap = document.getElementById("spot-cap");
+    if (!spot) return;
+    if (matchMedia("(hover: hover) and (pointer: fine)").matches) {
+      spot.addEventListener("pointermove", function (e) {
+        var b = spot.getBoundingClientRect();
+        spot.style.setProperty("--sx", (e.clientX - b.left) + "px"); spot.style.setProperty("--sy", (e.clientY - b.top) + "px");
+        spot.classList.add("on");
+      });
+      spot.addEventListener("pointerleave", function () { spot.classList.remove("on"); });
+    }
+    var buttons = document.querySelectorAll(".shots button");
+    buttons.forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        buttons.forEach(function (b) { b.setAttribute("aria-pressed", String(b === btn)); });
+        img.src = btn.dataset.src; img.alt = btn.dataset.alt; cap.textContent = btn.dataset.cap;
+      });
+    });
+  })();
   // copy buttons: <button data-copy="id-of-the-element-with-the-text">
   document.querySelectorAll("button[data-copy]").forEach(function (btn) {
     btn.addEventListener("click", function () {

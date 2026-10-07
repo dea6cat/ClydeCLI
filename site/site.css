@@ -105,3 +105,17 @@
   td code { white-space: nowrap; }
   main > h1:first-child { padding-top: 64px; }
   @media (max-width: 700px) { main > h1:first-child { padding-top: 36px; } }
+
+  /* the Bonny page: screenshots under a pointer spotlight (the shade only exists while a mouse is over the picture) */
+  .stage { margin: 34px 0 0; }
+  .spot { position: relative; overflow: hidden; border: 1px solid var(--line); background: var(--term); --sx: 50%; --sy: 50%; cursor: crosshair; }
+  .spot img { display: block; width: 100%; height: auto; }
+  .spot .shade { position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .35s; background: rgba(6, 12, 9, .78);
+                 -webkit-mask-image: radial-gradient(circle 170px at var(--sx) var(--sy), transparent 0, transparent 52%, #000 100%);
+                 mask-image: radial-gradient(circle 170px at var(--sx) var(--sy), transparent 0, transparent 52%, #000 100%); }
+  .spot.on .shade { opacity: 1; }
+  .shots { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 0; }
+  .shots button { --c: 8px; font: 600 13px "JetBrains Mono", monospace; color: var(--text); cursor: pointer; border: 0; padding: 9px 18px; }
+  .shots button[aria-pressed="true"] { --edge: var(--text); --fill: var(--text); color: var(--bg); }
+  .spotcap { margin: 12px 0 0; max-width: none; }
+  @media (hover: none) { .spot { cursor: default; } }
