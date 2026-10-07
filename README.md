@@ -213,6 +213,14 @@ your own greeting, and a box for custom CSS, the way old profile pages let you. 
 or paste someone else's. Everything is saved in `~/.clyde/bonny/` on your machine, and the background image never leaves it
 (PNG, JPEG, GIF or WebP up to 8 MB, checked by content; SVG is refused). Custom CSS can't load anything from other sites.
 
+**Pin** a session with the pin on its row and it stays at the top of the sidebar. **Automations** run a prompt on a schedule
+(every N minutes or hours, every day, or on chosen days) in the project they were made in, each run in a session of its own, with
+Pause, Run now and Delete. They run only while Bonny is open, a run missed while she was closed is skipped, and they only read
+and report unless you allow edits when you make one, because nobody is there to approve a change. The project in the sidebar is a
+button: it opens a folder chooser where you browse, make a new folder where you want it, and use it; tools, permissions and new
+sessions follow. On a phone the model and permission pickers sit behind **Options**, so the message box is one row. MCP servers and
+hooks are loaded for the folder Bonny started in, so restart her to pick up a new project's own.
+
 ### Laya
 
 *I read the table, not just the cards.*

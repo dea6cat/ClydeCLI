@@ -97,8 +97,9 @@ nav { display: flex; flex-direction: column; padding: 8px 0; border-bottom: 1px 
 .nav[aria-current="true"] { border-left-color: var(--link); background: color-mix(in srgb, var(--link) 9%, transparent); }
 .nav:disabled { color: var(--dim); cursor: default; }
 .nav small { margin-left: auto; color: var(--dim); font-size: 11px; }
+button.project:hover { color: var(--link); }
 .label { padding: 14px 18px 4px; font: 600 11.5px/1.4 var(--mono); color: var(--dim); }
-.project { padding: 2px 18px; font: 400 12px/1.5 var(--mono); color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project { display: block; width: 100%; text-align: left; background: none; border: 0; padding: 2px 18px; font: 400 12px/1.5 var(--mono); color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #sessions { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; margin-top: 4px; }
 .srow { position: relative; flex: none; display: flex; border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent); transition: opacity .18s ease-out, transform .18s ease-out; }
 .srow .session { flex: 1; border-bottom: 0; padding-right: 76px; }
@@ -200,6 +201,14 @@ dialog::backdrop { background: rgba(0, 0, 0, .5); }
 .dlg-head { display: flex; align-items: center; padding: 12px 18px; border-bottom: 1px solid var(--line); background: var(--tint); }
 .dlg-head h2 { margin: 0; font-size: 17px; font-weight: 750; letter-spacing: -.01em; flex: 1; }
 .dlg-body { padding: 16px 18px 20px; overflow-y: auto; max-height: calc(86vh - 56px); display: flex; flex-direction: column; gap: 14px; }
+.hint { font: 400 12px/1.5 var(--mono); color: var(--dim); }
+.pj-path { font: 500 12.5px/1.5 var(--mono); word-break: break-all; padding: 8px 10px; border: 1px solid var(--line); }
+.pj-list { display: flex; flex-direction: column; max-height: 220px; overflow-y: auto; border: 1px solid var(--line); }
+.pj-list button { text-align: left; padding: 8px 10px; background: none; border: 0; border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent); font: 500 12.5px var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pj-list button:hover { background: color-mix(in srgb, var(--text) 6%, transparent); color: var(--link); }
+.pj-list .none { padding: 8px 10px; color: var(--dim); font: 400 12.5px var(--mono); }
+#pj-form input { flex: 1; min-width: 0; height: 32px; padding: 0 10px; background: none; color: var(--text); border: 1px solid var(--line); font: 14px var(--font-body); }
+.dlg-body .line { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .dlg-body h3 { margin: 0 0 8px; font-size: 14px; }
 .dlg-body ol, .dlg-body ul { margin: 0; padding-left: 1.3em; display: flex; flex-direction: column; gap: 7px; }
 .dlg-body li .host { color: var(--dim); font: 400 12px var(--mono); margin-left: 8px; }
@@ -383,7 +392,7 @@ input[type="color"] { width: 36px; height: 24px; padding: 0; border: 1px solid v
     <button class="nav" id="customize"><span aria-hidden="true">&#9998;</span> Customize</button>
   </nav>
   <div class="label">Project</div>
-  <div class="project" id="project" title=""></div>
+  <button class="project" id="project" type="button" title="" aria-haspopup="dialog"></button>
   <div class="label">Sessions</div>
   <div id="sessions"></div>
 </aside>
@@ -460,6 +469,18 @@ input[type="color"] { width: 36px; height: 24px; padding: 0; border: 1px solid v
 <dialog id="council" aria-labelledby="council-title">
   <div class="dlg-head"><h2 id="council-title">Council</h2><button class="btn cut" id="council-close">Close</button></div>
   <div class="dlg-body" id="council-body"></div>
+</dialog>
+
+<dialog id="proj" aria-labelledby="proj-title">
+  <div class="dlg-head"><h2 id="proj-title">Choose a project</h2><button class="btn cut" id="proj-close">Close</button></div>
+  <div class="dlg-body">
+    <div class="hint">Bonny reads and writes files in the project folder. Pick any folder, or make a new one.</div>
+    <div class="pj-path" id="pj-path"></div>
+    <div class="line"><button type="button" class="btn cut" id="pj-up">Up</button><button type="button" class="btn cut" id="pj-home">Home</button><button type="button" class="btn cut primary" id="pj-use">Use this folder</button></div>
+    <div id="pj-recent-wrap"><h3>Recent</h3><div class="pj-list" id="pj-recent"></div></div>
+    <div><h3>Folders here</h3><div class="pj-list" id="pj-dirs"></div></div>
+    <form class="line" id="pj-form"><label class="sr" for="pj-new">New folder name</label><input type="text" id="pj-new" maxlength="100" placeholder="New folder name"><button type="submit" class="btn cut">Create here</button></form>
+  </div>
 </dialog>
 
 <dialog id="sources" aria-labelledby="sources-title">
@@ -884,6 +905,37 @@ function openSources(info) {
   $("sources").showModal();
 }
 $("sources-close").addEventListener("click", () => $("sources").close());
+
+/* Project chooser: browse folders, make one, use one. Switching opens a fresh session in it. */
+let pjHere = "";
+async function pjBrowse(path) {
+  let info;
+  try { info = await api("/api/dirs" + (path ? "?path=" + encodeURIComponent(path) : "")); } catch (e) { toast(e.message); return; }
+  pjHere = info.path; $("pj-path").textContent = info.path;
+  $("pj-up").disabled = !info.parent; $("pj-up").dataset.to = info.parent || ""; $("pj-home").dataset.to = info.home;
+  const go = (name, to) => { const b = h("button", { type: "button", title: to }, name); b.addEventListener("click", () => pjBrowse(to)); return b; };
+  $("pj-dirs").replaceChildren(...(info.dirs.length ? info.dirs.map((d) => go(d, info.path.replace(/\/$/, "") + "/" + d)) : [h("div", { class: "none" }, "No folders here")]));
+  $("pj-recent-wrap").hidden = !info.recent.length;
+  $("pj-recent").replaceChildren(...info.recent.map((r) => go(r, r)));
+}
+async function pjUse() {
+  try {
+    const r = await api("/api/project", { path: pjHere });
+    $("proj").close(); showView("chat"); st.session = r.session; renderMessages([]); applyState(r);
+    arts = []; artSel = ""; await refresh(); $("input").focus();
+    toast("Working in " + r.cwd);
+  } catch (e) { toast(e.message); }
+}
+$("project").addEventListener("click", () => { $("proj").showModal(); pjBrowse(""); });
+$("proj-close").addEventListener("click", () => $("proj").close());
+$("pj-up").addEventListener("click", (e) => pjBrowse(e.currentTarget.dataset.to));
+$("pj-home").addEventListener("click", (e) => pjBrowse(e.currentTarget.dataset.to));
+$("pj-use").addEventListener("click", pjUse);
+$("pj-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  try { const r = await api("/api/dirs/create", { parent: pjHere, name: $("pj-new").value }); $("pj-new").value = ""; await pjBrowse(r.path); }
+  catch (err) { toast(err.message); }
+});
 
 function markdownOf(o) {
   const lines = ["# " + o.question, "", o.text];
