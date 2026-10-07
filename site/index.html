@@ -142,8 +142,12 @@ Difficulty (shadow turns, split at score 1.62)   turns  avg tool rounds  ran out
   <p>Each turn, Clyde deals from the models you have. The pile deals on its own, naming each model as its card comes out. Put your pointer on it and move up and down to pick one yourself.</p>
   <div class="figure"><iframe src="hairline/deal.html?w=520" title="Interactive figure: a loose pile of eight cards, the one at the pointer slides out" loading="lazy"></iframe></div>
 
+  <h2>Bonny, the web side</h2>
+  <p><code>clyde luv bonny</code> opens Bonny on your own machine: the same engine, tools and sessions in a browser page, with her own voice. Queue, steer or stop a turn, attach images and text files, search the web with sources, and see the files Clyde wrote in an Artifacts view. Pin sessions, choose or make the project folder, and set prompts to run on a schedule (read-only unless you allow edits). Make the page yours in Customize. <code>bonny luv clyde</code> goes the other way and starts the terminal.</p>
+
   <h2>What else it does</h2>
   <dl class="grid">
+    <div class="cut"><dt>Council</dt><dd><code>cardShuffle:high-roller council</code> asks the top four models at once with tools off, and Laya rates the answers.</dd></div>
     <div class="cut"><dt>Scripts and CI</dt><dd><code>clyde -p</code> runs one turn with JSON output and exit codes.</dd></div>
     <div class="cut"><dt>Sandbox</dt><dd>Shell commands write only inside the project. Reading a <code>.env</code> or key file asks first.</dd></div>
     <div class="cut"><dt>MCP</dt><dd>Servers work over stdio, HTTP and SSE, with OAuth sign-in.</dd></div>
