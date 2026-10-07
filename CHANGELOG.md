@@ -27,6 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   obtained before this change remain MIT.
 
 ### Fixed
+- `WebSearch` returned no results at all: DuckDuckGo answered its plainly labelled request with an anti-bot page, and the tool
+  reported that as an empty list. It now sends a browser User-Agent to `html.duckduckgo.com`, turns DuckDuckGo's redirect links
+  into the real page URLs, and says so when the search engine blocks it instead of returning nothing.
 - A provider's `Retry-After` (seconds or a date) is read: retries wait that long (up to 30 s); a longer ask skips the retries and
   cardShuffle benches the model for it instead of stalling the turn.
 - cardShuffle benches a model that hit a quota (429: 90 s, 402: 1 h) or answered nothing (10 min), so later turns do not deal it
