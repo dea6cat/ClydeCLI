@@ -51,6 +51,24 @@ class TestAgentLoop(unittest.TestCase):
         self.assertEqual(self.hello.read_text(), "print('hello world')")
         self.assertEqual(len(provider.requests), 2)
 
+    def test_steering_is_added_before_the_next_model_call_and_never_before_the_first(self):
+        conversation = Conversation()
+        conversation.add_user_message("Create hello.py")
+        provider = self._write_then_done()
+        pending = ["use double quotes", None]
+        asked: list[int] = []
+
+        def steer():
+            asked.append(len(provider.requests))
+            return pending.pop(0) if pending else None
+
+        self._run(provider, conversation, steer=steer)
+
+        self.assertEqual(asked, [1])   # not asked before the first call; asked once, before the second
+        texts = [m.text for m in provider.requests[1]["conversation"].messages if m.role == Role.USER and m.text]
+        self.assertTrue(texts[-1].endswith("use double quotes"))
+        self.assertEqual(len([m for m in provider.requests[0]["conversation"].messages if m.role == Role.USER]), 1)
+
     def test_second_turn_replays_tool_call_and_result(self):
         conversation = Conversation()
         conversation.add_user_message("Create hello.py")
