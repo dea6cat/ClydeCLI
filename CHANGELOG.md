@@ -25,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ignored and hidden folders and stops after 1 s.
 
 ### Added
+- `clyde doctor` (and the top of `/doctor`) reports how Clyde was installed (uv tool, pipx, source checkout or pip, with the git commit
+  when known), whether several programs answer to `clyde` on PATH, whether Claude Code is installed, and the licence status.
 - Saving a plan in a git repository adds `.clyde/plans/` to that clone's `.git/info/exclude` (local; no tracked file changes), so plans
   never get committed. The README now has a Plans section, and lists `/review`, `/status`, `/goal`, `/plan`, `clyde review` and
   `clyde sessions`. It notes that a custom `planFilePath` is not reloaded and not excluded.
