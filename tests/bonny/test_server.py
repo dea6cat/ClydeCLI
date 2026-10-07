@@ -112,6 +112,73 @@ class TestPage(BonnyCase):
         self.assertEqual(self.call("GET", "/api/state")[1]["event"], before + 1)
 
 
+class TestSearchAndStatus(BonnyCase):
+    FOUND = [{"title": "ELIZA - Wikipedia", "url": "https://en.wikipedia.org/wiki/ELIZA", "snippet": "A 1966 chatbot."}]
+
+    def _system_prompts(self):
+        return [r["conversation"].system_prompt for r in self.provider.requests]
+
+    def test_a_search_turn_runs_the_search_first_and_hands_the_results_to_the_model(self):
+        from src.tool_system.protocol import ToolResult
+
+        with patch.object(server.WebSearchTool, "run", return_value=ToolResult(name="WebSearch", output={"query": "q", "results": self.FOUND})):
+            self.call("POST", "/api/prompt", {"text": "what is eliza", "search": True, "mode": "plan"})
+            events = self.wait_for("turn_end")
+        tools = [e for e in events if e["kind"] == "tool"]
+        self.assertEqual([(t["phase"], t["tool"]) for t in tools], [("start", "WebSearch"), ("end", "WebSearch")])
+        self.assertEqual(tools[1]["results"], [{"title": "ELIZA - Wikipedia", "url": "https://en.wikipedia.org/wiki/ELIZA"}])
+        prompt = self._system_prompts()[0]
+        self.assertIn("[1] ELIZA - Wikipedia", prompt)
+        self.assertIn("https://en.wikipedia.org/wiki/ELIZA", prompt)
+        self.assertEqual(self.repl.mode, "plan")
+        self.assertIsNone(self.repl.system_extra)                       # only that turn sees the results
+        history = [m["text"] for m in self.call("GET", f"/api/sessions/{self.repl.session.session_id}")[1]["messages"]]
+        self.assertEqual(history[0], "what is eliza")                   # the stored message is the question, not the results
+
+    def test_the_results_reach_the_model_on_the_agent_loop_path_too(self):
+        from src.tool_system.protocol import ToolResult
+
+        with patch.object(server.WebSearchTool, "run", return_value=ToolResult(name="WebSearch", output={"query": "q", "results": self.FOUND})):
+            self.call("POST", "/api/prompt", {"text": "search the history of eliza", "search": True})   # "search" skips the direct-stream shortcut
+            self.wait_for("turn_end")
+        self.assertIn("[1] ELIZA - Wikipedia", self._system_prompts()[0])
+
+    def test_a_failed_search_still_answers_and_says_it_is_unsourced(self):
+        with patch.object(server.WebSearchTool, "run", side_effect=RuntimeError("blocked")):
+            self.call("POST", "/api/prompt", {"text": "what is eliza", "search": True})
+            events = self.wait_for("turn_end")
+        end = [e for e in events if e["kind"] == "tool"][1]
+        self.assertTrue(end["error"])
+        self.assertIn("blocked", end["summary"])
+        self.assertIn("unsourced", self._system_prompts()[0])
+        self.assertTrue(events[-1]["ok"])
+
+    def test_a_plain_turn_carries_no_search_text(self):
+        self.call("POST", "/api/prompt", {"text": "hello", "mode": "hold"})
+        self.wait_for("turn_end")
+        self.assertNotIn("Web results", self._system_prompts()[0])
+        self.assertEqual(self.repl.mode, "hold")
+
+    def test_a_bad_prompt_mode_is_refused(self):
+        self.assertEqual(self.call("POST", "/api/prompt", {"text": "hi", "mode": "yolo"})[0], 400)
+
+    def test_state_says_what_the_turn_is_doing(self):
+        from src import activity
+
+        activity.set("waiting for Laya to load")
+        self.addCleanup(activity.clear)
+        self.assertEqual(self.call("GET", "/api/state")[1]["activity"], "waiting for Laya to load")
+
+    def test_tool_events_carry_fetched_urls_and_search_result_links(self):
+        from types import SimpleNamespace as NS
+
+        start = server._tool_event(NS(kind="tool_use", tool_use_id="c1", tool_name="WebFetch", tool_input={"url": "https://a.example/x"}))
+        self.assertEqual(start["url"], "https://a.example/x")
+        end = server._tool_event(NS(kind="tool_result", tool_use_id="c2", tool_name="WebSearch", is_error=False,
+                                    tool_output={"query": "q", "results": [{"title": "T", "url": "https://b.example/", "snippet": "s"}, {"title": "no url"}]}))
+        self.assertEqual(end["results"], [{"title": "T", "url": "https://b.example/"}])
+
+
 class TestTurns(BonnyCase):
     def test_a_prompt_runs_streams_events_and_is_saved_as_a_session(self):
         self.assertEqual(self.call("POST", "/api/prompt", {"text": "hi bonny"})[0], 200)

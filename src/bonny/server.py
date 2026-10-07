@@ -11,10 +11,12 @@ bodies, and caps body and prompt size. The token does not protect against other 
 """
 from __future__ import annotations
 
+import collections
 import hmac
 import json
 import re
 import secrets
+import sys
 import threading
 import time
 import uuid
@@ -23,11 +25,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
+from src import activity
 from src.agent.session import Session
 from src.bonny.page import PAGE
 from src.providers import model_ref
 from src.providers.card_shuffle import record_vote
 from src.run_control import RunControl
+from src.tool_system.tools.web_search import WebSearchTool
 
 MAX_BODY = 1_000_000
 MAX_PROMPT = 100_000
@@ -36,6 +40,27 @@ POLL_SECONDS = 20
 STOP_GRACE_S = 2.0         # an idle SIGINT this soon after a stop is the stop racing the end of a turn, not a quit
 _ID = re.compile(r"^[\w-]{1,80}$")
 _CSP = "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self'"
+
+
+_SEARCH_RULE = (
+    "This turn is a Search question. Answer it from the numbered web results below, not from memory alone. Cite a result right after "
+    "the claim it supports, as a link with its number, like [1](https://example.com/page), and number only the results you cite, "
+    "in the order you first cite them. Do not write a Sources list; the page adds one from your links. Use only these URLs, or "
+    "pages you open yourself; never invent a URL. If the results don't answer the question, say so plainly. When the question "
+    "is about this conversation or needs no sources, answer it directly."
+)
+
+
+def search_context(results: list[dict], error: str | None) -> str:
+    """The system-prompt block for a Search turn: the rule plus the numbered results, or why there are none."""
+    if error or not results:
+        return f"{_SEARCH_RULE}\n\nThe web search {('failed: ' + error) if error else 'found nothing'}. Answer from what you know and say the answer is unsourced."
+    rows = [f"[{i}] {r['title']}\n    {r['url']}\n    {r['snippet']}" for i, r in enumerate(results, 1)]
+    return f"{_SEARCH_RULE}\n\nWeb results:\n" + "\n".join(rows)
+
+
+class Prompt(collections.namedtuple("Prompt", "text search mode")):
+    """A queued message: Search turns get the sourcing rules, and each turn runs in the mode it was sent with."""
 
 
 class EventLog:
@@ -119,17 +144,19 @@ class Bonny:
     def run(self) -> None:
         while True:
             try:
-                text = self.control.prompts.get()
+                item = self.control.prompts.get()
             except KeyboardInterrupt:
                 if time.monotonic() - self.stopped_at < STOP_GRACE_S:
                     continue
                 return
-            if text is None:
+            if item is None:
                 return
-            self._turn(text)
+            self._turn(item if isinstance(item, Prompt) else Prompt(item, False, None))
 
-    def _turn(self, text: str) -> None:
-        repl = self.repl
+    def _turn(self, prompt: Prompt) -> None:
+        repl, text = self.repl, prompt.text
+        if prompt.mode:
+            repl._set_mode(prompt.mode)
         self._stop_requested = False
         self.control.busy = True
         self.events.emit("turn_start", text=text)
@@ -142,10 +169,12 @@ class Bonny:
         repl.on_text_hook = on_text
         repl.on_event_hook = lambda ev: self.events.emit("tool", **_tool_event(ev))
         try:
+            repl.system_extra = self._search(text) if prompt.search else None
             repl.chat(text)
         except KeyboardInterrupt:
             self._stop_requested = True
         finally:
+            repl.system_extra = None
             self.control.busy = False
         if self._stop_requested:
             self.events.emit("turn_end", stopped=True)
@@ -154,6 +183,23 @@ class Bonny:
             self.events.emit("error", message=str(repl.last_error))
         self.events.emit("turn_end", stopped=False, ok=repl.last_error is None, answer="".join(chunks), council=self.council())
 
+    def _search(self, question: str) -> str:
+        """Search the web for a Search turn and return the system-prompt block that carries the results. The user chose Search,
+        so this runs the read-only tool directly (no permission card) and is shown to the page like any tool call."""
+        query = " ".join(question.split())[:300]
+        call = uuid.uuid4().hex[:8]
+        self.events.emit("tool", phase="start", call=call, tool="WebSearch", summary=query)
+        activity.set("searching the web")
+        results: list[dict] = []
+        error = None
+        try:
+            results = WebSearchTool().run({"query": query, "num": 6}, self.repl.tool_context).output["results"]
+        except Exception as e:   # blocked, offline, timed out: the turn still runs, unsourced, and says why
+            error = str(e) or type(e).__name__
+        self.events.emit("tool", phase="end", call=call, tool="WebSearch", error=error is not None,
+                         summary=error or f"{len(results)} results", **({"results": [{"title": r["title"], "url": r["url"]} for r in results]} if results else {}))
+        return search_context(results, error)
+
     def council(self) -> dict | None:
         return getattr(self.repl.provider, "last_council", None)
 
@@ -161,7 +207,7 @@ class Bonny:
         repl = self.repl
         return {"busy": self.control.busy, "queued": self.control.prompts.qsize(), "model": model_ref(repl.provider, repl.model),
                 "mode": repl.mode, "session": repl.session.session_id, "cwd": str(repl.tool_context.workspace_root),
-                "council": self.council(), "event": self.events.last()}
+                "council": self.council(), "event": self.events.last(), "activity": activity.get()}
 
     def models(self) -> list[str]:
         """What the model picker offers: cardShuffle's tiers (and their council forms), then every model that passed /eval."""
@@ -206,9 +252,21 @@ def _tool_event(ev: Any) -> dict:
     from src.agent.agent_loop import summarize_tool_result, summarize_tool_use
 
     if ev.kind == "tool_use":
-        return {"phase": "start", "call": ev.tool_use_id, "tool": ev.tool_name, "summary": summarize_tool_use(ev.tool_name, ev.tool_input or {})}
+        url = (ev.tool_input or {}).get("url")
+        return {"phase": "start", "call": ev.tool_use_id, "tool": ev.tool_name, "summary": summarize_tool_use(ev.tool_name, ev.tool_input or {}),
+                **({"url": url} if isinstance(url, str) else {})}
+    out = ev.tool_output if isinstance(ev.tool_output, dict) else {}
+    found = [{"title": str(r.get("title", "")), "url": r["url"]} for r in out.get("results", []) if isinstance(r, dict) and isinstance(r.get("url"), str)]
     return {"phase": "end", "call": ev.tool_use_id, "tool": ev.tool_name, "error": bool(ev.is_error),
-            "summary": str(summarize_tool_result(ev.tool_name, ev.tool_output) or "")[:500]}
+            "summary": str(summarize_tool_result(ev.tool_name, ev.tool_output) or "")[:500], **({"results": found[:10]} if found else {})}
+
+
+class _Server(ThreadingHTTPServer):
+    daemon_threads = True
+
+    def handle_error(self, request: Any, client_address: Any) -> None:
+        if not isinstance(sys.exc_info()[1], ConnectionError):   # a closed tab mid-response is not worth a traceback
+            super().handle_error(request, client_address)
 
 
 def make_server(bonny: Bonny, host: str = "127.0.0.1", port: int = 0) -> ThreadingHTTPServer:
@@ -319,7 +377,11 @@ def make_server(bonny: Bonny, host: str = "127.0.0.1", port: int = 0) -> Threadi
                 if not isinstance(text, str) or not text.strip() or len(text) > MAX_PROMPT:
                     self._json(400, {"error": f"text must be 1 to {MAX_PROMPT} characters"})
                 elif path == "/api/prompt":
-                    bonny.control.queue(text.strip())
+                    mode = data.get("mode")
+                    if mode not in (None, "hold", "plan", "all_in"):
+                        self._json(400, {"error": "mode is hold, plan or all_in"})
+                        return
+                    bonny.control.queue(Prompt(text.strip(), data.get("search") is True, mode))
                     self._json(200, {"queued": bonny.control.prompts.qsize()})
                 elif not bonny.control.busy:
                     self._json(409, {"error": "nothing is running; send it as a prompt"})
@@ -375,8 +437,7 @@ def make_server(bonny: Bonny, host: str = "127.0.0.1", port: int = 0) -> Threadi
                 return
             self._json(200, bonny.state())
 
-    server = ThreadingHTTPServer((host, port), Handler)
-    server.daemon_threads = True
+    server = _Server((host, port), Handler)
     server.token = token   # type: ignore[attr-defined]
     return server
 
