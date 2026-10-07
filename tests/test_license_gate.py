@@ -74,6 +74,20 @@ class TestGate(unittest.TestCase):
             self.assertFalse(self._typed("I accept"))
 
 
+class TestExemptCommands(unittest.TestCase):
+    """Someone who declined the terms can still uninstall or update; the handlers are patched so nothing real runs."""
+
+    def test_uninstall_and_update_do_not_ask_for_acceptance(self):
+        from src import cli
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {"HOME": tmp}, clear=False):
+            os.environ.pop(gate.ENV_ACCEPT, None)
+            for argv, handler in ((["clyde", "uninstall", "-y"], "handle_uninstall"), (["clyde", "update", "--check"], "handle_update")):
+                with patch.object(sys, "argv", argv), patch.object(cli, handler, return_value=0) as called, \
+                        patch("src.license_gate.ensure_accepted", side_effect=AssertionError("asked")):
+                    self.assertEqual(cli.main(), 0, argv)
+                called.assert_called_once()
+
+
 class TestCli(unittest.TestCase):
     """The real entry point in a throwaway HOME."""
 

@@ -25,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ignored and hidden folders and stops after 1 s.
 
 ### Added
+- `clyde update [--check]` updates Clyde the way it was installed. A once-a-day background check (cached in `~/.clyde/update_check.json`,
+  off with `CLYDE_NO_UPDATE_CHECK=1`) adds one line at the next start when a newer version exists; nothing installs by itself.
+  `uninstall`, `update` and `doctor` work without accepting the licence, so you can always leave.
 - `clyde uninstall [--purge] [-y]` removes Clyde with the tool that installed it (uv tool, pipx or pip) after a confirmation. Your
   settings, saved keys and sessions stay unless you add `--purge`, which refuses a data folder that is not clearly Clyde's. A source
   checkout is not touched.

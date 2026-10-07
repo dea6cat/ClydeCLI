@@ -44,6 +44,7 @@ Examples:
   clyde plugin install <path|git-url> Install a plugin (skills, hooks, MCP servers, tools); asks before enabling it
   clyde plugin import                 Bring over plugins installed for Claude Code, Codex or Cursor
   clyde plugin list                   List installed plugins; also: plugin remove|enable|disable <name>
+  clyde update [--check]              Move Clyde to the newest version, the way it was installed
   clyde uninstall [--purge] [-y]      Remove Clyde the way it was installed; --purge also deletes ~/.clyde
   clyde doctor                        How Clyde is installed: method, version, PATH, other installs, Claude Code
   clyde license [accept]              Show the licence terms and whether you accepted them; accept records it
@@ -102,6 +103,8 @@ Examples:
     sessions_parser.add_argument('target', nargs='*', help='search: the words to look for; archive/unarchive: a session id')
 
     subparsers.add_parser('doctor', help='How Clyde is installed: method, version, PATH, other installs, Claude Code, licence')
+    update_parser = subparsers.add_parser('update', help='Move Clyde to the newest version, the way it was installed')
+    update_parser.add_argument('--check', action='store_true', help='only say whether a newer version exists (exit 0 current, 1 newer exists, 2 could not check)')
     uninstall_parser = subparsers.add_parser('uninstall', help='Remove Clyde the way it was installed; --purge also deletes ~/.clyde (keys, sessions)')
     uninstall_parser.add_argument('--purge', action='store_true', help="also delete Clyde's data folder: settings, saved keys, sessions, licence record")
     uninstall_parser.add_argument('-y', '--yes', action='store_true', help='no confirmation questions')
@@ -112,7 +115,9 @@ Examples:
 
     if args.command == 'license':
         return handle_license(Console(), args.action)
-    if not args.version and args.command != 'doctor':     # doctor is read-only and reports the licence status itself
+    # These never run the agent: doctor reports the licence status itself, and someone who declined the terms must be able to
+    # uninstall (or update to terms they accept).
+    if not args.version and args.command not in ('doctor', 'uninstall', 'update'):
         from src import license_gate
         if not license_gate.ensure_accepted(Console()):
             return license_gate.EXIT_DECLINED
@@ -135,6 +140,9 @@ Examples:
         print("\n".join(install_info.report_lines()))
         print("\nFor the full environment check (keys, providers, sandbox, config) run /doctor inside clyde.")
         return 1 if any(line.lstrip().startswith("✗") for line in install_info.report_lines()) else 0
+
+    if args.command == 'update':
+        return handle_update(Console(), check_only=args.check)
 
     if args.command == 'uninstall':
         return handle_uninstall(Console(), purge=args.purge, assume_yes=args.yes)
@@ -521,6 +529,41 @@ def _scan_plugin(console: Console, plugin):  # type: ignore[no-untyped-def]
     if verdict.blocked:
         console.print("  [red]SkillSpector recommends not installing it.[/red] Enabling it anyway records your approval.")
     return verdict
+
+
+def handle_update(console: Console, check_only: bool = False) -> int:
+    """`clyde update [--check]`. Exit 0 updated or already current, 1 failed (or, with --check, a newer version exists),
+    2 not managed here (a source checkout) or, with --check, the check could not be made."""
+    import subprocess
+    from src import install_info, updates
+    info = install_info.detect()
+    command = updates.update_command(info)
+    remote = updates.fetch_remote_commit()
+    status = updates.compare(info, remote)
+    if check_only:
+        if remote is None:
+            console.print("[yellow]Couldn't reach GitHub to check.[/yellow]")
+            return 2
+        console.print({"current": f"Up to date ({status.local}).", "behind": f"A newer version exists ({status.local} → {status.remote}). Run: clyde update",
+                       "unknown": f"Newest is {status.remote}; this install did not record its commit, so I can't compare. Run: clyde update"}[status.state])
+        return 1 if status.state == "behind" else 0
+    if command is None:
+        console.print(f"[yellow]This Clyde runs from a source checkout ({info.location}).[/yellow] Update it with git pull there.")
+        return 2
+    if status.state == "current":
+        console.print(f"Already up to date ({status.local}).")
+        return 0
+    console.print(f"Updating with: [bold]{' '.join(command)}[/bold]")
+    try:
+        done = subprocess.run(command, check=False)
+    except OSError as e:
+        console.print(f"[red]Couldn't run {command[0]}: {e}[/red]")
+        return 1
+    if done.returncode != 0:
+        console.print(f"[red]{command[0]} failed (exit {done.returncode}). Clyde was not changed by this command.[/red]")
+        return 1
+    console.print("[green]Updated.[/green] Restart any running clyde to use the new version.")
+    return 0
 
 
 def handle_uninstall(console: Console, purge: bool = False, assume_yes: bool = False) -> int:

@@ -253,6 +253,7 @@ clyde setup                    # First-run onboarding (provider, other agents' h
 clyde login                    # Connect a provider, pick a default model
 clyde hooks import             # Bring over hooks from Claude Code, Gemini CLI, Cursor, Copilot CLI
 clyde mcp import               # Bring over MCP servers from Claude Code, Cursor, Gemini CLI, Codex, Copilot CLI
+clyde update [--check]         # Move Clyde to the newest version, the way it was installed; --check only says whether one exists
 clyde uninstall [--purge] [-y] # Remove Clyde the way it was installed (uv tool, pipx, pip); --purge also deletes ~/.clyde: settings, keys, sessions
 clyde doctor                   # How Clyde is installed: method, version, PATH, other installs, Claude Code, licence
 clyde review [commit SHA | base BRANCH]  # Read-only review of your changes; prints and exits (2 outside a git repo)
@@ -655,6 +656,14 @@ Shift+Tab cycles the mode, shown under the prompt:
 Deny rules and the always-refused commands (like `sudo`) apply in every mode, and writes outside the
 project are refused in every mode.
 
+### Updates
+
+`clyde update` moves Clyde to the newest commit on `main` with the tool that installed it (uv tool, pipx or pip); a source
+checkout is updated with `git pull`. `clyde update --check` only reports (exit 0 current, 1 newer exists, 2 could not check).
+Once a day a background thread asks GitHub for the newest commit and caches the answer in `~/.clyde/update_check.json`; the next
+start shows one line when you are behind. It never delays start-up and never installs anything by itself. Turn the check off
+with `CLYDE_NO_UPDATE_CHECK=1`. It does not run for `-p`, `--acp` or other commands.
+
 ### Plans
 
 When the model presents a plan with `ExitPlanMode` and you approve it, the plan is saved to
@@ -909,7 +918,7 @@ ask (`uv tool install` runs no prompts), so the first run is where you accept.
 | `CLYDE_ACCEPT_LICENSE=1 clyde -p "..."` | For scripts, CI and editors with no terminal: accepts for that run and saves nothing |
 | `CLYDE_ACCEPT_LICENSE=1 clyde license accept` | The same, but saves the acceptance on that machine |
 
-`clyde --version`, `clyde license` and `clyde doctor` work without accepting. This is a click-through record, not copy protection: the
+`clyde --version`, `clyde license`, `clyde doctor`, `clyde update` and `clyde uninstall` work without accepting (so you can leave). This is a click-through record, not copy protection: the
 licence is what binds, and the check can be removed from the source by anyone who has it.
 
 ***
