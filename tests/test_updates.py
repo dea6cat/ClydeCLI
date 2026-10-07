@@ -43,7 +43,8 @@ class TestCompare(unittest.TestCase):
         make = lambda m: ii.Install(method=m, version="0", location="/x")
         self.assertEqual(updates.update_command(make("uv-tool"))[:3], ["uv", "tool", "install"])
         self.assertTrue(updates.update_command(make("uv-tool"), STABLE)[-1].endswith("ClydeCLI@v0.2.0"))
-        self.assertTrue(updates.update_command(make("uv-tool"), LATEST)[-1].endswith("ClydeCLI"))
+        self.assertTrue(updates.update_command(make("uv-tool"), LATEST)[-1].endswith("ClydeCLI@" + FULL))     # the checked commit
+        self.assertTrue(updates.update_command(make("uv-tool"))[-1].endswith("ClydeCLI"))                     # no target: newest main
         self.assertIn("--force", updates.update_command(make("pipx")))
         self.assertIn("--upgrade", updates.update_command(make("pip")))
         self.assertIsNone(updates.update_command(make("editable")))
@@ -213,6 +214,22 @@ class TestChannelConfig(unittest.TestCase):
             with self.assertRaises(ValueError):
                 config.set_update_channel("nightly")
             self.assertEqual(config.get_update_channel(), "stable")
+
+
+class TestInstallScript(unittest.TestCase):
+    SCRIPT = Path(__file__).resolve().parents[1] / "install.sh"
+
+    def test_the_ref_is_checked_before_anything_is_installed(self):
+        for bad in ("v1;rm -rf ~", "main && curl evil", "a b", "$(id)"):
+            done = subprocess.run(["sh", str(self.SCRIPT)], capture_output=True, text=True, timeout=20,
+                                  env={"CLYDE_REF": bad, "PATH": "/usr/bin:/bin", "HOME": tempfile.gettempdir()})
+            self.assertEqual(done.returncode, 1, bad)
+            self.assertIn("CLYDE_REF may only contain", done.stderr)
+            self.assertNotIn("Installing", done.stdout)
+
+    def test_the_ref_is_appended_to_the_repository_url(self):
+        text = self.SCRIPT.read_text()
+        self.assertIn('REPO="git+https://github.com/dea6cat/ClydeCLI${CLYDE_REF:+@$CLYDE_REF}"', text)
 
 
 if __name__ == "__main__":
