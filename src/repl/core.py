@@ -212,6 +212,7 @@ _HELP_TEXT = """
 - `/laya` - Laya's status, and how its stuck checks and difficulty scores lined up with how traced turns ended
 - `/status` - Show the model, mode, directory, session, goal and token totals
 - `/goal [text|plan|clear]` - Set a goal for this session (kept in the system prompt every turn), show it, or clear it; `plan` makes it "every phase of the saved plan is complete"
+- `/remember [project] TEXT` - Keep a note between sessions, about you (default) or this project; `/memory` lists the notes, `/forget [project] N` drops one; the model can save one too when you ask it to remember
 - `/plan [done|start|pending N|clear]` - Show the saved plan and its phases; set phase N's status; or delete the plan
 - `/terse [on|off]` - Shorter replies (fewer tokens, quicker on local models); bare opens a picker; saved
 - `/purge [name]` - Delete local models (Ollama and LM Studio) from disk, all of them or only those matching name; asks first
@@ -429,6 +430,9 @@ class ClydeREPL:
             "/status",
             "/goal",
             "/plan",
+            "/remember",
+            "/memory",
+            "/forget",
             "/eval",
             "/think",
             "/tools",
@@ -1389,6 +1393,15 @@ class ClydeREPL:
         elif cmd == '/goal' or cmd.startswith('/goal '):
             self._handle_goal(raw.split(maxsplit=1)[1].strip() if " " in raw.strip() else "")
 
+        elif cmd == '/memory':
+            self._show_memory()
+
+        elif cmd == '/remember' or cmd.startswith('/remember '):
+            self._handle_remember(raw.split(maxsplit=1)[1].strip() if " " in raw.strip() else "")
+
+        elif cmd == '/forget' or cmd.startswith('/forget '):
+            self._handle_forget(raw.split(maxsplit=1)[1].strip() if " " in raw.strip() else "")
+
         elif cmd == '/plan' or cmd.startswith('/plan '):
             self._handle_plan(raw.split(maxsplit=1)[1].strip() if " " in raw.strip() else "")
 
@@ -2318,6 +2331,47 @@ class ClydeREPL:
             self.console.print(line, markup=False)
         if note := plans.status_note(plans.read_plan(self.tool_context.plan_file)):
             self.console.print(f"  plan:      {note}", markup=False)
+
+    def _show_memory(self) -> None:
+        """/memory: the notes Clyde keeps between sessions, numbered per scope for /forget."""
+        from src import memory
+        root = self.tool_context.workspace_root
+        shown = False
+        for scope, label in (("user", "About you"), ("project", "About this project")):
+            notes = memory.entries(scope, root)
+            if notes:
+                shown = True
+                self.console.print(f"{label} ({memory.path_for(scope, root)}):", markup=False)
+                for i, note in enumerate(notes, 1):
+                    self.console.print(f"  {i}. {note}", markup=False, highlight=False)
+        if not shown:
+            self.console.print("No notes yet. Save one with /remember TEXT, or ask me to remember something.", markup=False)
+
+    def _handle_remember(self, arg: str) -> None:
+        """/remember [project] TEXT: save a note, about the user unless the first word is `project`."""
+        from src import memory
+        scope, _, rest = arg.partition(" ") if arg.split(" ", 1)[0] in ("project", "user") else ("user", "", arg)
+        try:
+            saved = memory.add(scope, self.tool_context.workspace_root, rest)
+        except ValueError as e:
+            self.console.print(f"[red]{e}[/red]")
+            return
+        self.console.print(f"[green]Remembered ({scope}):[/green] {saved}")
+
+    def _handle_forget(self, arg: str) -> None:
+        """/forget [project] N: drop note N of the user's notes, or of the project's."""
+        from src import memory
+        words = arg.split()
+        scope = words.pop(0) if words and words[0] in ("project", "user") else "user"
+        if len(words) != 1 or not words[0].isdigit():
+            self.console.print("[red]Usage: /forget [project] N  (numbers are in /memory)[/red]")
+            return
+        try:
+            gone = memory.forget(scope, self.tool_context.workspace_root, int(words[0]))
+        except ValueError as e:
+            self.console.print(f"[red]{e}[/red]")
+            return
+        self.console.print(f"[green]Forgot ({scope}):[/green] {gone}")
 
     def _handle_plan(self, arg: str) -> None:
         """/plan [done|start|pending N|clear]: show the saved plan, set one phase's status, or delete the plan."""

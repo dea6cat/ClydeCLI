@@ -10,6 +10,7 @@ from .tools import (
     BashTool,
     BriefTool,
     MapTool,
+    RememberTool,
     ConfigTool,
     CronCreateTool,
     CronDeleteTool,
@@ -92,6 +93,7 @@ def build_default_registry(*, include_user_tools: bool = True) -> ToolRegistry:
             PowerShellTool(),
             NotebookEditTool(),
             MapTool(),
+            RememberTool(),
         ]
     )
     registry.register(AgentTool(registry))
