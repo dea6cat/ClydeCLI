@@ -172,7 +172,7 @@ whether it is true.
 
 *The same Clyde, in a browser.*
 
-`clyde luv bonny` starts Bonny, the web mode of Clyde, on `localhost` (only this computer can reach it) and opens your browser. It runs the same
+`clyde luv bonny` starts Bonny, Clyde's wife and lover, on `localhost` (only this computer can reach it) and opens your browser. It runs the same
 engine as the terminal, so it has every tool, your sessions, memory, skills and cardShuffle; Bonny adds her own
 voice and a plainer way to use them. Start her on a model with `clyde --model <provider:model> luv bonny`
 (Bonny opens at `http://localhost:8080`; `clyde luv bonny 7090` picks another port, and if 8080 is taken she moves to a free one and says so. `--no-open` skips the browser.) The other way round, `bonny luv clyde` starts the terminal Clyde, the same as `clyde`, and takes the same options.
