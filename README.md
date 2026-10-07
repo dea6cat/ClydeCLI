@@ -159,6 +159,15 @@ or runs out of tool turns (`[Max tool turns reached]`), the turn goes to the nex
 `♠ dealt <model>` line shows who is playing, and `/cost` counts each real model. No key, no config:
 run `/eval`, then `/model cardShuffle:house`.
 
+**Council.** Add the word `council` to a tier (`/model cardShuffle:high-roller council`) and a turn goes to the
+tier's top four models at once, with tools off. Laya rates the answers against your message, the best one is
+printed, and `/council` shows all four with their scores. `/council up 2` or `/council down 2` votes on an
+answer; votes are written to `~/.clyde/council_votes.jsonl` on your machine and go nowhere else. A model that
+errors or takes longer than 90 seconds is left out, without Laya the strongest model's answer is shown
+unranked, and the answer appears when the council is done, not as it streams. On the command line, quote it:
+`clyde --model "cardShuffle:high-roller council"`. Laya scores how well an answer fits your message, not
+whether it is true.
+
 ### Laya
 
 *I read the table, not just the cards.*

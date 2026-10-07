@@ -454,6 +454,28 @@ class TestREPL(unittest.TestCase):
                     with patch('src.agent.agent_loop.build_context_prompt', return_value=""):
                         self.assertNotIn("Session goal", _build_effective_system_prompt("style", repl.tool_context))
 
+    def test_council_shows_the_answers_and_records_a_vote(self):
+        council = {"tier": "house", "request": "hi", "ranked": True, "failed": {"b:m": "[b] down"},
+                   "answers": [{"ref": "a:m", "text": "alpha text", "p": 0.7}, {"ref": "c:m", "text": "gamma text", "p": 0.3}]}
+        with _fake_provider_env():
+            repl = ClydeREPL(model="glm:glm-4.5")
+        repl.console = Mock()
+        repl._show_council("")
+        self.assertIn("No council turn yet", repl.console.print.call_args[0][0])
+        repl.provider.last_council = council
+        repl.console.reset_mock()
+        repl._show_council("")
+        shown = " ".join(str(c.args[0]) for c in repl.console.print.call_args_list)
+        for text in ("1. a:m", "70% best", "alpha text", "2. c:m", "gamma text", "b:m"):
+            self.assertIn(text, shown)
+        with patch("src.repl.core.record_vote") as vote:
+            repl._show_council("down 2")
+            vote.assert_called_once_with(council, "c:m", -1)
+            repl.console.reset_mock()
+            repl._show_council("up 9")
+            self.assertEqual(vote.call_count, 1)
+        self.assertIn("Use /council up N", repl.console.print.call_args[0][0])
+
     def test_status_lists_the_session_settings(self):
         with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
             with patch('src.repl.core.Session.create'):
