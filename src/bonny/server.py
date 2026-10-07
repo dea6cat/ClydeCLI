@@ -262,6 +262,15 @@ class Bonny:
         self.events.emit("session", session=session_id)
         return True
 
+    def delete_session(self, session_id: str) -> bool:
+        """Move a saved session to the archive folder (restorable with `clyde sessions unarchive`, or Undo here). Deleting the
+        open session opens a fresh one. False when there is no such saved session."""
+        if not Session.archive(session_id):
+            return False
+        if session_id == self.repl.session.session_id:
+            self.new_session()
+        return True
+
     def new_session(self) -> None:
         self.repl._switch_session(Session.create(self.repl.provider_name, self.repl.model))
         self.events.emit("session", session=self.repl.session.session_id)
@@ -462,6 +471,8 @@ def make_server(bonny: Bonny, host: str = "127.0.0.1", port: int = 0) -> Threadi
                     self._json(200, {"ok": True})
             elif path in ("/api/session/open", "/api/session/new", "/api/mode", "/api/model"):
                 self._change(path, data)
+            elif path in ("/api/session/delete", "/api/session/restore"):
+                self._trash(path, data)
             else:
                 self._json(404, {"error": "not found"})
 
@@ -519,10 +530,25 @@ def make_server(bonny: Bonny, host: str = "127.0.0.1", port: int = 0) -> Threadi
             else:
                 self._json(200, {"ok": True})
 
+        def _trash(self, path: str, data: dict) -> None:
+            """Delete (archive) or restore a saved session. Another session can go while a turn runs; the open one cannot."""
+            session_id = data.get("id")
+            if not isinstance(session_id, str) or not _ID.match(session_id):
+                self._json(404, {"error": "no such session"})
+                return
+            if path == "/api/session/delete":
+                if bonny.control.busy and session_id == bonny.repl.session.session_id:
+                    self._json(409, {"error": "Bonny is working in this session. Stop her first."})
+                    return
+                ok = bonny.delete_session(session_id)
+            else:
+                ok = Session.unarchive(session_id)
+            self._json(200, {"ok": True, "state": bonny.state()}) if ok else self._json(404, {"error": "no such session"})
+
         def _change(self, path: str, data: dict) -> None:
             """Session, mode and model changes: refused while a turn runs, since they act on the live REPL."""
             if bonny.control.busy:
-                self._json(409, {"error": "a turn is running; stop it first"})
+                self._json(409, {"error": "Bonny is working. Stop her, or wait, then try again."})
                 return
             if path == "/api/session/new":
                 bonny.new_session()
@@ -539,7 +565,8 @@ def make_server(bonny: Bonny, host: str = "127.0.0.1", port: int = 0) -> Threadi
             elif not isinstance(data.get("model"), str) or not bonny.repl._switch_model(data["model"]):
                 self._json(400, {"error": "that model can't be used right now"})
                 return
-            self._json(200, bonny.state())
+            state = bonny.state()
+            self._json(200, {**state, "messages": bonny.messages(state["session"]) or []} if path.startswith("/api/session/") else state)
 
     server = _Server((host, port), Handler)
     server.token = token   # type: ignore[attr-defined]

@@ -96,7 +96,19 @@ nav { display: flex; flex-direction: column; padding: 8px 0; border-bottom: 1px 
 .label { padding: 14px 18px 4px; font: 600 11.5px/1.4 var(--mono); color: var(--dim); }
 .project { padding: 2px 18px; font: 400 12px/1.5 var(--mono); color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #sessions { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; margin-top: 4px; }
-.session { flex: none; display: flex; flex-direction: column; gap: 1px; background: none; border: 0; border-left: 2px solid transparent; border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent); padding: 8px 18px; text-align: left; min-width: 0; color: var(--text);
+.srow { position: relative; flex: none; display: flex; border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent); transition: opacity .18s ease-out, transform .18s ease-out; }
+.srow .session { flex: 1; border-bottom: 0; padding-right: 46px; }
+.srow.gone { opacity: 0; transform: translateX(-8px); pointer-events: none; }
+.del { position: absolute; right: 8px; top: 50%; translate: 0 -50%; width: 28px; height: 28px; display: grid; place-items: center; border: 0; background: none; color: var(--dim); opacity: 0;
+  transition-property: opacity, color, background-color; transition-duration: .12s; }
+.del::before { content: ""; position: absolute; inset: -6px; }
+.srow:hover .del, .srow:focus-within .del, .del:focus-visible { opacity: 1; }
+.del:hover { color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); }
+@media (hover: none) { .del { opacity: .75; } }
+body[data-shape="round"] .del { border-radius: 8px; }
+.toast { --c: 10px; --fill: var(--text); --edge: var(--text); position: fixed; left: 50%; bottom: 124px; translate: -50% 0; z-index: 30; display: flex; align-items: center; gap: 16px; padding: 9px 16px; color: var(--bg); font: 500 12.5px/1.4 var(--mono); max-width: calc(100vw - 32px); }
+.toast button { color: inherit; background: none; border: 0; padding: 4px 0; font: 700 12.5px var(--mono); text-decoration: underline; text-underline-offset: 3px; }
+.session { flex: none; display: flex; flex-direction: column; gap: 1px; background: none; border: 0; border-left: 2px solid transparent; padding: 8px 18px; text-align: left; min-width: 0; color: var(--text);
   transition-property: background-color; transition-duration: .15s; }
 .session:hover { background: color-mix(in srgb, var(--text) 5%, transparent); }
 .session[aria-current="true"] { border-left-color: var(--link); background: color-mix(in srgb, var(--link) 9%, transparent); }
@@ -295,6 +307,8 @@ input[type="color"] { width: 36px; height: 24px; padding: 0; border: 1px solid v
 </main>
 </div>
 
+<div class="toast cut" id="toast" role="status" hidden></div>
+
 <dialog id="council" aria-labelledby="council-title">
   <div class="dlg-head"><h2 id="council-title">Council</h2><button class="btn cut" id="council-close">Close</button></div>
   <div class="dlg-body" id="council-body"></div>
@@ -340,6 +354,7 @@ input[type="color"] { width: 36px; height: 24px; padding: 0; border: 1px solid v
   <svg data-i="up" viewBox="0 0 24 24"><path d="M7 11v9H4.5A1.5 1.5 0 0 1 3 18.5v-6A1.5 1.5 0 0 1 4.5 11H7z"/><path d="M7 11l3.4-6.1A1.8 1.8 0 0 1 14 5.8V9h4.6a2 2 0 0 1 2 2.3l-1.1 6.5a2 2 0 0 1-2 1.7H7"/></svg>
   <svg data-i="council" viewBox="0 0 24 24"><circle cx="6" cy="5.5" r="2"/><circle cx="18" cy="5.5" r="2"/><circle cx="12" cy="19" r="2"/><path d="M6 7.5v1.2a3 3 0 0 0 3 3h6a3 3 0 0 0 3-3V7.5M12 11.7V17"/></svg>
   <svg data-i="retry" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 5v6h-6"/></svg>
+  <svg data-i="trash" viewBox="0 0 24 24"><path d="M4.5 7h15"/><path d="M9.5 7V4.5h5V7"/><path d="M6.5 7l.9 12.5h9.2L17.5 7"/><path d="M10.2 11v5.2M13.8 11v5.2"/></svg>
   <svg data-i="more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.5" fill="currentColor" stroke="none"/></svg>
 </template>
 
@@ -485,13 +500,18 @@ async function refresh() {
   applyState(await api("/api/state"));
   const { sessions } = await api("/api/sessions");
   $("sessions").replaceChildren(...(sessions.length
-    ? sessions.map((s) => h("button", { class: "session", title: s.title, "aria-current": String(s.id === st.session), onclick: () => openSession(s.id) },
-        h("span", { class: "t" }, s.title), h("span", { class: "m" }, when(s.updated))))
+    ? sessions.map((s) => {
+      const row = h("div", { class: "srow" },
+        h("button", { class: "session", "data-id": s.id, title: s.title, "aria-current": String(s.id === st.session), onclick: () => openSession(s.id) },
+          h("span", { class: "t" }, s.title), h("span", { class: "m" }, when(s.updated))),
+        h("button", { class: "del", type: "button", "aria-label": "Delete session: " + s.title, title: "Delete" }, ico("trash")));
+      row.querySelector(".del").addEventListener("click", () => deleteSession(s, row));
+      return row;
+    })
     : [h("div", { class: "empty-note" }, "No saved sessions yet")]));
 }
-async function showSession() {
-  col.replaceChildren(); st.bubble = null;
-  const { messages } = await api("/api/sessions/" + encodeURIComponent(st.session));
+function renderMessages(messages) {
+  col.replaceChildren(); st.bubble = null; st.wrap = null;
   let question = "";
   for (const m of messages) {
     if (m.role === "user") { question = m.text; addUser(m.text); continue; }
@@ -501,9 +521,46 @@ async function showSession() {
   }
   setEmpty(!messages.length); scroll();
 }
-async function openSession(id) {
-  try { await api("/api/session/open", { id }); document.body.classList.remove("side-open"); } catch (e) { note(e.message, "error"); }
+async function showSession() { renderMessages((await api("/api/sessions/" + encodeURIComponent(st.session))).messages); }
+
+/* A small message with an optional action, for confirmations (Undo) and for things that can't happen right now. */
+let toastTimer = 0;
+function toast(text, action) {
+  const t = $("toast");
+  const kids = [h("span", {}, text)];
+  if (action) { const b = h("button", { type: "button" }, action.label); b.addEventListener("click", () => { t.hidden = true; action.run(); }); kids.push(b); }
+  t.replaceChildren(...kids); t.hidden = false;
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, action ? 8000 : 4500);
 }
+let opening = 0;
+async function openSession(id) {
+  if (st.busy) { toast("Bonny is working. Stop her, or wait, to open another session."); return; }
+  document.body.classList.remove("side-open"); $("toggle").setAttribute("aria-expanded", "false");
+  document.querySelectorAll("#sessions .session").forEach((b) => b.setAttribute("aria-current", String(b.dataset.id === id)));   // answer the tap at once
+  const mine = ++opening;
+  const slow = setTimeout(() => { if (mine === opening) { setEmpty(false); col.replaceChildren(h("div", { class: "status" }, h("span", { class: "spade", "aria-hidden": "true" }, "\u2660"), h("span", {}, "Opening\u2026"))); } }, 120);
+  try {
+    const r = await api("/api/session/open", { id });
+    if (mine !== opening) return;
+    st.session = r.session; renderMessages(r.messages); applyState(r); $("input").focus();
+  } catch (e) { toast(e.message); await refresh(); }
+  finally { clearTimeout(slow); }
+}
+async function deleteSession(s, row) {
+  const wasOpen = s.id === st.session;
+  row.classList.add("gone");
+  let result;
+  try { result = await api("/api/session/delete", { id: s.id }); }
+  catch (e) { row.classList.remove("gone"); toast(e.message); return; }
+  const nextId = row.nextElementSibling ? row.nextElementSibling.querySelector(".session").dataset.id : "";   // the list is rebuilt, so remember it by id
+  if (wasOpen) { st.session = result.state.session; renderMessages([]); }
+  await refresh();
+  ($("sessions").querySelector('[data-id="' + nextId + '"]') || $("new")).focus();
+  toast("Deleted \u201c" + (s.title.length > 34 ? s.title.slice(0, 33) + "\u2026" : s.title) + "\u201d", { label: "Undo", run: async () => {
+    try { await api("/api/session/restore", { id: s.id }); await refresh(); if (wasOpen) await openSession(s.id); } catch (e) { toast(e.message); }
+  } });
+}
+
 
 /* sending */
 async function send() {
@@ -534,7 +591,14 @@ $("steer").addEventListener("click", async () => {
 });
 document.querySelectorAll("#form .chip").forEach((c) => c.addEventListener("click", () => { st.ui = c.dataset.mode; paintControls(); }));
 $("nav-computer").addEventListener("click", () => { st.ui = "computer"; paintControls(); $("input").focus(); });
-$("new").addEventListener("click", async () => { try { await api("/api/session/new", {}); document.body.classList.remove("side-open"); } catch (e) { note(e.message, "error"); } });
+$("new").addEventListener("click", async () => {
+  if (st.busy) { toast("Bonny is working. Stop her, or wait, to start a new session."); return; }
+  try {
+    const r = await api("/api/session/new", {});
+    st.session = r.session; renderMessages(r.messages); applyState(r); document.body.classList.remove("side-open"); $("toggle").setAttribute("aria-expanded", "false"); $("input").focus();
+    await refresh();
+  } catch (e) { toast(e.message); }
+});
 $("toggle").addEventListener("click", () => { const open = document.body.classList.toggle("side-open"); $("toggle").setAttribute("aria-expanded", String(open)); if (open) $("new").focus(); });
 $("model").addEventListener("change", async () => { try { applyState(await api("/api/model", { model: $("model").value })); } catch (e) { note(e.message, "error"); refresh(); } });
 $("perm").addEventListener("change", async () => { try { if (!st.busy) st.mode = (await api("/api/mode", { mode: $("perm").value })).mode; } catch (e) { note(e.message, "error"); } });
@@ -579,7 +643,7 @@ function handle(e) {
     if (e.stopped) { note("Stopped."); announce("Stopped."); }
     else { finishAnswer(e); announce("Bonny answered."); }
     st.bubble = null; st.wrap = null; st.tools.clear(); st.busy = false; refresh();
-  } else if (e.kind === "session") { showSession().then(refresh); }
+  } else if (e.kind === "session") { st.session = e.session; showSession().catch(() => renderMessages([])).then(refresh); }
 }
 async function poll(after) {
   for (;;) {
