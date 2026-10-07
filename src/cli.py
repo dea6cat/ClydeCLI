@@ -15,6 +15,15 @@ from src.picker import Choice, pick
 
 
 
+def bonny_main():
+    """The `bonny` command: `bonny luv clyde [options]` starts the terminal Clyde, as `clyde [options]` does."""
+    if sys.argv[1:3] != ['luv', 'clyde']:
+        print("usage: bonny luv clyde [clyde options]   (Bonny's own page is `clyde luv bonny`)", file=sys.stderr)
+        return 2
+    sys.argv[1:3] = []
+    return main()
+
+
 def main():
     """CLI main entry point."""
     # Quick path for --version
@@ -36,6 +45,7 @@ Examples:
   clyde --list-models                 List models from every connected provider
   clyde --debug                       Start REPL and print trace events (model/tool calls) to stderr
   clyde luv bonny                     Start Bonny, the web mode of Clyde, on localhost
+  bonny luv clyde                     Start Clyde in the terminal, from Bonny's side (same as `clyde`)
   clyde login                         Connect a provider and pick a default model
   clyde logout openai                 Remove a saved API key
   clyde config                        Show current configuration
