@@ -168,6 +168,21 @@ unranked, and the answer appears when the council is done, not as it streams. On
 `clyde --model "cardShuffle:high-roller council"`. Laya scores how well an answer fits your message, not
 whether it is true.
 
+### Bonny
+
+*The same Clyde, in a browser.*
+
+`clyde luv bonny` starts Bonny, the web mode of Clyde, on `127.0.0.1` and opens your browser. It runs the same
+engine as the terminal, so it has every tool, your sessions, memory, skills and cardShuffle; Bonny adds her own
+voice and a plainer way to use them. Start her on a model with `clyde --model <provider:model> luv bonny`
+(`--port N` picks the port, `--no-open` skips the browser).
+
+Everything the page does goes through a small local API: queue prompts, steer or stop a running turn, list and
+reopen sessions, answer permission cards, change mode or model, vote on council answers. Requests need a
+per-run token and a matching Host and Origin, and the server never listens on anything but your machine. One
+turn runs at a time; prompts queue behind it. Bonny's interface is still being reviewed: today `/` shows a
+placeholder and the API is what's live.
+
 ### Laya
 
 *I read the table, not just the cards.*
