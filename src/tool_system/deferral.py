@@ -16,7 +16,7 @@ from .registry import ToolSpec
 
 CORE_TOOLS = frozenset(name.lower() for name in (
     "Bash", "Read", "Write", "Edit", "Glob", "Grep", "WebFetch", "WebSearch", "TodoWrite", "Agent", "Skill",
-    "AskUserQuestion", "EnterPlanMode", "ExitPlanMode", "SendUserMessage", "StructuredOutput", "ToolSearch",
+    "AskUserQuestion", "EnterPlanMode", "ExitPlanMode", "SendUserMessage", "StructuredOutput", "ToolSearch", "Remember",
 ))
 _HINT_CHARS = 55
 _SENTENCE_END = re.compile(r"(?<!e\.g)(?<!i\.e)\.\s")   # not the dots inside "e.g." and "i.e."
