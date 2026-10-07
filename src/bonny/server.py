@@ -30,7 +30,7 @@ from urllib.parse import parse_qs, urlparse
 from src import activity
 from src.config import clyde_home
 from src.agent.session import Session
-from src.bonny import theme
+from src.bonny import artifacts, theme
 from src.bonny.page import PAGE
 from src.providers import model_ref
 from src.providers.card_shuffle import record_vote
@@ -43,6 +43,9 @@ MAX_EVENTS = 5000          # older events are dropped; a client that fell this f
 POLL_SECONDS = 20
 STOP_GRACE_S = 2.0         # an idle SIGINT this soon after a stop is the stop racing the end of a turn, not a quit
 _ID = re.compile(r"^[\w-]{1,80}$")
+# A previewed file is untrusted: it runs in an opaque origin (sandbox), can't make requests, and scripts are off unless asked for.
+_ARTIFACT_CSP = "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:; connect-src 'none'; form-action 'none'"
+_ARTIFACT_CSP_SCRIPTS = "sandbox allow-scripts; default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; font-src data:; connect-src 'none'; form-action 'none'"
 _CSP = "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self'"
 
 
@@ -120,6 +123,7 @@ class Bonny:
         self.events = EventLog()
         self.stopped_at = float("-inf")
         self._stop_requested = False
+        self._writes: dict[str, tuple[str, str]] = {}   # tool call id -> (tool, path) for file writes still in flight
         self._waiters: dict[str, list] = {}          # permission id -> [Event, allowed]
         self._lock = threading.Lock()
         repl.stream = True                            # text chunks reach on_text_hook as they arrive
@@ -174,6 +178,7 @@ class Bonny:
 
     def _turn(self, prompt: Prompt) -> None:
         repl, text = self.repl, prompt.text
+        repl.direct_stream = prompt.search   # Computer mode always has its tools; only Search takes the quick tool-free path
         if prompt.mode:
             repl._set_mode(prompt.mode)
         self._stop_requested = False
@@ -186,7 +191,8 @@ class Bonny:
             self.events.emit("text", text=chunk)
 
         repl.on_text_hook = on_text
-        repl.on_event_hook = lambda ev: self.events.emit("tool", **_tool_event(ev))
+        self._writes.clear()
+        repl.on_event_hook = self._on_tool
         try:
             repl.system_extra = self._search(text) if prompt.search else None
             repl.chat(text)
@@ -201,6 +207,28 @@ class Bonny:
         if repl.last_error:
             self.events.emit("error", message=str(repl.last_error))
         self.events.emit("turn_end", stopped=False, ok=repl.last_error is None, answer="".join(chunks), council=self.council())
+
+    def _on_tool(self, ev: Any) -> None:
+        """Tell the page about each tool call, and about every file a write or edit actually changed."""
+        self.events.emit("tool", **_tool_event(ev))
+        if ev.kind == "tool_use":
+            field = artifacts.EDIT_TOOLS.get(str(ev.tool_name).lower())
+            raw = (ev.tool_input or {}).get(field) if field else None
+            if isinstance(raw, str) and raw.strip():
+                self._writes[ev.tool_use_id] = (ev.tool_name, raw)
+        elif not ev.is_error and ev.tool_use_id in self._writes:
+            tool, raw = self._writes.pop(ev.tool_use_id)
+            path = Path(raw).expanduser()
+            path = path if path.is_absolute() else Path(self.repl.tool_context.workspace_root) / path
+            self.events.emit("artifact", path=str(path), name=path.name, tool=tool, **dict(zip(("filetype", "group"), artifacts.classify(path))))   # not "kind": the event's own kind is "artifact"
+
+    def artifact_rows(self) -> list[dict]:
+        from src.repl.core import _first_prompt
+
+        return artifacts.collect(Session.list_recent(str(self.repl.tool_context.workspace_root)), _first_prompt)
+
+    def find_artifact(self, path: str) -> dict | None:
+        return artifacts.find(path, self.artifact_rows())
 
     def _search(self, question: str) -> str:
         """Search the web for a Search turn and return the system-prompt block that carries the results. The user chose Search,
@@ -325,13 +353,15 @@ def make_server(bonny: Bonny, host: str = "127.0.0.1", port: int = 0) -> Threadi
             port_ = self.server.server_address[1]
             return {f"127.0.0.1:{port_}", f"localhost:{port_}"}
 
-        def _send(self, status: int, body: bytes, ctype: str, cache: str = "no-store") -> None:
+        def _send(self, status: int, body: bytes, ctype: str, cache: str = "no-store", csp: str = _CSP, extra: dict | None = None) -> None:
             self.send_response(status)
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", cache)
             self.send_header("X-Content-Type-Options", "nosniff")
-            self.send_header("Content-Security-Policy", _CSP)
+            self.send_header("Content-Security-Policy", csp)
+            for name, value in (extra or {}).items():
+                self.send_header(name, value)
             self.end_headers()
             self.wfile.write(body)
 
@@ -382,7 +412,7 @@ def make_server(bonny: Bonny, host: str = "127.0.0.1", port: int = 0) -> Threadi
                 if self._guard(api=False):
                     self._send(200, render_page().encode(), "text/html; charset=utf-8")
                 return
-            if url.path.startswith("/static/") or url.path == "/theme/background":
+            if url.path.startswith("/static/") or url.path in ("/theme/background", "/artifact/raw"):
                 self._asset(url)
                 return
             if not url.path.startswith("/api/") or not self._guard(api=True):
@@ -394,6 +424,10 @@ def make_server(bonny: Bonny, host: str = "127.0.0.1", port: int = 0) -> Threadi
                 self._json(200, bonny.state())
             elif url.path == "/api/theme":
                 self._json(200, theme_payload())
+            elif url.path == "/api/artifacts":
+                self._json(200, {"artifacts": [artifacts.public(r) for r in bonny.artifact_rows()]})
+            elif url.path == "/api/artifact":
+                self._artifact_preview(query.get("path", [""])[0])
             elif url.path == "/api/models":
                 self._json(200, {"models": bonny.models()})
             elif url.path == "/api/sessions":
@@ -456,6 +490,12 @@ def make_server(bonny: Bonny, host: str = "127.0.0.1", port: int = 0) -> Threadi
             elif path == "/api/theme/image/remove":
                 theme.remove_image()
                 self._json(200, theme_payload())
+            elif path == "/api/artifact/reveal":
+                row = bonny.find_artifact(str(data.get("path", "")))
+                if row is None or not artifacts.reveal(Path(row["path"])):
+                    self._json(404, {"error": "couldn't show that file"})
+                else:
+                    self._json(200, {"ok": True})
             elif path == "/api/feedback":
                 vote = {"up": 1, "down": -1}.get(data.get("vote"))
                 question = data.get("question")
@@ -477,25 +517,62 @@ def make_server(bonny: Bonny, host: str = "127.0.0.1", port: int = 0) -> Threadi
                 self._json(404, {"error": "not found"})
 
         def _asset(self, url: Any) -> None:
-            """The site's fonts, and the user's background image (which needs the token in its address, since an <img> or a
-            CSS url() can't send headers)."""
+            """The site's fonts, the user's background image and a previewed artifact. The last two need the token in their address,
+            since an <img>, an <iframe> or a CSS url() can't send headers."""
             if not self._guard(api=False):
                 return
+            if url.path in ("/theme/background", "/artifact/raw") and not hmac.compare_digest(parse_qs(url.query).get("t", [""])[0], token):
+                self._json(403, {"error": "bad token"})
+                return
             if url.path == "/theme/background":
-                if not hmac.compare_digest(parse_qs(url.query).get("t", [""])[0], token):
-                    self._json(403, {"error": "bad token"})
-                    return
                 path = theme.image_path()
                 if path is None:
                     self._json(404, {"error": "no background image"})
                     return
                 self._send(200, path.read_bytes(), theme.CONTENT_TYPES[path.suffix[1:]], cache="private, max-age=3600")
                 return
+            if url.path == "/artifact/raw":
+                self._artifact_raw(url)
+                return
             name = url.path.removeprefix("/static/")
             if name not in FONTS:
                 self._json(404, {"error": "not found"})
                 return
             self._send(200, (STATIC / name).read_bytes(), "font/woff2", cache="public, max-age=86400")
+
+        def _artifact_preview(self, path: str) -> None:
+            """What the preview pane needs for one artifact: its details, plus the text for the kinds shown as text."""
+            row = bonny.find_artifact(path)
+            if row is None:
+                self._json(404, {"error": "that file isn't one of Clyde's artifacts"})
+                return
+            info = artifacts.public(row)
+            if row["exists"] and row["kind"] in ("text", "markdown"):
+                try:
+                    info.update(artifacts.read_text(Path(row["path"])))
+                except OSError as e:
+                    info["exists"] = False
+                    info["error"] = str(e)
+            self._json(200, info)
+
+        def _artifact_raw(self, url: Any) -> None:
+            """The file's own bytes for an iframe, an image or a download. Always sandboxed; scripts only when asked for."""
+            query = parse_qs(url.query)
+            row = bonny.find_artifact(query.get("path", [""])[0])
+            path = Path(row["path"]) if row else None
+            if row is None or path is None or not path.is_file():
+                self._json(404, {"error": "no such artifact"})
+                return
+            if path.stat().st_size > artifacts.MAX_RAW:
+                self._json(413, {"error": "that file is too big to preview"})
+                return
+            kind = row["kind"]
+            ctype = ("text/html; charset=utf-8" if kind == "html" else artifacts.IMAGES.get(path.suffix.lower().lstrip("."), "application/octet-stream")
+                     if kind == "image" else "text/plain; charset=utf-8" if kind in ("text", "markdown") else "application/octet-stream")
+            download = query.get("download") == ["1"] or kind == "other"
+            csp = _ARTIFACT_CSP_SCRIPTS if kind == "html" and query.get("scripts") == ["1"] else _ARTIFACT_CSP
+            extra = {"Content-Disposition": 'attachment; filename="' + path.name.replace('"', "") + '"'} if download else None
+            self._send(200, path.read_bytes(), ctype, csp=csp, extra=extra)
 
         def _upload(self) -> None:
             """The background image arrives as the raw request body; its type is read from its bytes, not from the headers."""

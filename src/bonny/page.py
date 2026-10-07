@@ -217,6 +217,48 @@ body[data-shape="round"] .act, body[data-shape="round"] .src, body[data-shape="r
 body[data-shape="round"] .menu, body[data-shape="round"] .msg pre, body[data-shape="round"] .ans { border-radius: 12px; }
 body[data-shape="round"] dialog { border-radius: 14px; }
 
+/* artifacts: the files Clyde wrote or edited, with a sandboxed preview */
+#artifacts-view { display: none; flex: 1; min-height: 0; flex-direction: column; }
+main[data-view="artifacts"] #artifacts-view { display: flex; }
+main[data-view="artifacts"] #thread, main[data-view="artifacts"] .dock { display: none; }
+.art-top { display: flex; align-items: center; gap: 14px; padding: 12px 22px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.art-top h2 { margin: 0; font-size: 20px; font-weight: 800; letter-spacing: -.02em; }
+.art-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(230px, 300px) minmax(0, 1fr); }
+.art-list { overflow-y: auto; border-right: 1px solid var(--line); }
+.art-item { display: flex; flex-direction: column; gap: 2px; width: 100%; text-align: left; padding: 10px 18px; background: none; border: 0; border-left: 2px solid transparent; border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
+  transition-property: background-color; transition-duration: .15s; }
+.art-item:hover { background: color-mix(in srgb, var(--text) 5%, transparent); }
+.art-item[aria-current="true"] { border-left-color: var(--link); background: color-mix(in srgb, var(--link) 9%, transparent); }
+.art-item .n { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.art-item .m { font: 400 11.5px/1.4 var(--mono); color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.art-item.gone .n { text-decoration: line-through; color: var(--dim); }
+.art-pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.art-bar { display: flex; align-items: center; gap: 10px; padding: 10px 18px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.art-bar .t { flex: 1; min-width: 160px; }
+.art-bar .t b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.art-bar .t span { display: block; font: 400 11.5px/1.4 var(--mono); color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.art-bar a.btn { text-decoration: none; }
+.art-back { display: none; }
+.art-view { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; }
+.art-view iframe { flex: 1; width: 100%; min-height: 0; border: 0; background: #fff; }
+.art-view img { max-width: calc(100% - 40px); max-height: calc(100% - 40px); display: block; margin: 20px auto; object-fit: contain; }
+.art-view pre { margin: 0; padding: 16px 20px; font: 12.5px/1.55 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.art-view .doc { padding: 22px 26px; max-width: 760px; margin: 0 auto; width: 100%; font-size: 16px; line-height: 1.65; }
+.art-view .doc p { margin: 0 0 .85em; } .art-view .doc h3 { margin: .8em 0 .3em; font-size: 18px; } .art-view .doc ul { margin: 0 0 .85em; padding-left: 1.3em; }
+.art-view .doc pre { background: var(--term); color: #e8e4dc; border: 1px solid var(--line); margin: 0 0 .85em; }
+.art-empty { padding: 28px 22px; color: var(--dim); font-size: 14.5px; }
+.art-note { padding: 8px 18px; border-bottom: 1px solid var(--line); background: var(--tint); }
+.art-card { flex-direction: row; align-items: center; gap: 12px; }
+.art-card .ico { color: var(--link); width: 20px; height: 20px; flex: none; }
+.art-card .grow { flex: 1; min-width: 0; }
+@media (max-width: 820px) {
+  .art-body { grid-template-columns: minmax(0, 1fr); }
+  .art-pane { display: none; }
+  .art-body.open .art-list { display: none; }
+  .art-body.open .art-pane { display: flex; }
+  .art-back { display: inline-flex; }
+}
+
 /* Customize: a side sheet that leaves the page visible, so changes show as they are made */
 dialog#look { position: fixed; inset: 0 0 0 auto; margin: 0; width: min(392px, 100vw); height: 100vh; max-height: none; border-width: 0 0 0 1px; display: flex; flex-direction: column; }
 dialog#look:not([open]) { display: none; }
@@ -273,7 +315,7 @@ input[type="color"] { width: 36px; height: 24px; padding: 0; border: 1px solid v
     <button class="nav" id="new"><span aria-hidden="true">+</span> New</button>
     <button class="nav" id="nav-computer" aria-current="true"><span aria-hidden="true">&gt;_</span> Computer</button>
     <button class="nav" disabled><span aria-hidden="true">&#9719;</span> Automations <small>soon</small></button>
-    <button class="nav" disabled><span aria-hidden="true">&#9635;</span> Artifacts <small>soon</small></button>
+    <button class="nav" id="nav-artifacts"><span aria-hidden="true">&#9635;</span> Artifacts</button>
     <button class="nav" id="customize"><span aria-hidden="true">&#9998;</span> Customize</button>
   </nav>
   <div class="label">Project</div>
@@ -282,7 +324,7 @@ input[type="color"] { width: 36px; height: 24px; padding: 0; border: 1px solid v
   <div id="sessions"></div>
 </aside>
 
-<main class="empty" id="main">
+<main class="empty" id="main" data-view="chat">
   <div class="frame">
     <div class="top">
       <button id="toggle" aria-label="Show or hide the sidebar" aria-controls="side" aria-expanded="false">&#9776;</button>
@@ -313,6 +355,13 @@ input[type="color"] { width: 36px; height: 24px; padding: 0; border: 1px solid v
         </div>
       </form>
     </div>
+    <section id="artifacts-view" aria-label="Artifacts">
+      <div class="art-top"><h2>Artifacts</h2><div class="seg" id="art-filter" role="group" aria-label="Show"></div></div>
+      <div class="art-body" id="art-body">
+        <div class="art-list" id="art-list" aria-label="Files"></div>
+        <div class="art-pane" id="art-pane"></div>
+      </div>
+    </section>
   </div>
 </main>
 </div>
@@ -365,6 +414,7 @@ input[type="color"] { width: 36px; height: 24px; padding: 0; border: 1px solid v
   <svg data-i="council" viewBox="0 0 24 24"><circle cx="6" cy="5.5" r="2"/><circle cx="18" cy="5.5" r="2"/><circle cx="12" cy="19" r="2"/><path d="M6 7.5v1.2a3 3 0 0 0 3 3h6a3 3 0 0 0 3-3V7.5M12 11.7V17"/></svg>
   <svg data-i="retry" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 5v6h-6"/></svg>
   <svg data-i="trash" viewBox="0 0 24 24"><path d="M4.5 7h15"/><path d="M9.5 7V4.5h5V7"/><path d="M6.5 7l.9 12.5h9.2L17.5 7"/><path d="M10.2 11v5.2M13.8 11v5.2"/></svg>
+  <svg data-i="file" viewBox="0 0 24 24"><path d="M6.5 3.5h7l4 4v13h-11z"/><path d="M13.5 3.5v4h4"/></svg>
   <svg data-i="more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.5" fill="currentColor" stroke="none"/></svg>
 </template>
 
@@ -490,7 +540,7 @@ function paintControls() {
   $("hero-title").textContent = (T && T.greeting) || (search ? "What do you want to know?" : "What should we work on?");
   $("input").placeholder = search ? "Ask anything" : "Describe what you want done";
   document.querySelectorAll("#form .chip").forEach((c) => c.setAttribute("aria-pressed", String(c.dataset.mode === st.ui)));
-  $("nav-computer").setAttribute("aria-current", String(!search));
+  $("nav-computer").setAttribute("aria-current", String(!search && $("main").dataset.view !== "artifacts"));
 }
 function applyState(s) {
   st.busy = s.busy; st.queued = s.queued; st.mode = s.mode; st.session = s.session;
@@ -545,7 +595,7 @@ function toast(text, action) {
 let opening = 0;
 async function openSession(id) {
   if (st.busy) { toast("Bonny is working. Stop her, or wait, to open another session."); return; }
-  document.body.classList.remove("side-open"); $("toggle").setAttribute("aria-expanded", "false");
+  showView("chat"); document.body.classList.remove("side-open"); $("toggle").setAttribute("aria-expanded", "false");
   document.querySelectorAll("#sessions .session").forEach((b) => b.setAttribute("aria-current", String(b.dataset.id === id)));   // answer the tap at once
   const mine = ++opening;
   const slow = setTimeout(() => { if (mine === opening) { setEmpty(false); col.replaceChildren(h("div", { class: "status" }, h("span", { class: "spade", "aria-hidden": "true" }, "\u2660"), h("span", {}, "Opening\u2026"))); } }, 120);
@@ -600,12 +650,12 @@ $("steer").addEventListener("click", async () => {
   try { await api("/api/steer", { text }); $("input").value = ""; autosize(); note("Sent to the running task: " + text); } catch (e) { note(e.message, "error"); }
 });
 document.querySelectorAll("#form .chip").forEach((c) => c.addEventListener("click", () => { st.ui = c.dataset.mode; paintControls(); }));
-$("nav-computer").addEventListener("click", () => { st.ui = "computer"; paintControls(); $("input").focus(); });
+$("nav-computer").addEventListener("click", () => { showView("chat"); st.ui = "computer"; paintControls(); $("input").focus(); });
 $("new").addEventListener("click", async () => {
   if (st.busy) { toast("Bonny is working. Stop her, or wait, to start a new session."); return; }
   try {
     const r = await api("/api/session/new", {});
-    st.session = r.session; renderMessages(r.messages); applyState(r); document.body.classList.remove("side-open"); $("toggle").setAttribute("aria-expanded", "false"); $("input").focus();
+    showView("chat"); st.session = r.session; renderMessages(r.messages); applyState(r); document.body.classList.remove("side-open"); $("toggle").setAttribute("aria-expanded", "false"); $("input").focus();
     await refresh();
   } catch (e) { toast(e.message); }
 });
@@ -636,7 +686,9 @@ function toolLine(e) {
   let row = st.tools.get(e.call);
   if (!row) { row = h("div", { class: "tool" }, h("span", { class: "dot", "aria-hidden": "true" }, "•"), h("span", {})); st.tools.set(e.call, row); col.append(row); }
   row.classList.toggle("bad", !!e.error);
-  row.lastChild.textContent = e.tool + (e.summary ? " · " + e.summary : "") + (e.phase === "end" ? (e.error ? " — failed" : " — done") : " …");
+  const project = $("project").textContent;   // show paths inside the project as short ones, and don't say the tool name twice
+  const said = (e.summary || "").split(project + "/").join("").replace(new RegExp("^" + e.tool + "\\s*[·:]?\\s*"), "");
+  row.lastChild.textContent = e.tool + (said ? " · " + said : "") + (e.phase === "end" ? (e.error ? " — failed" : " — done") : " …");
   st.bubble = null; scroll();
 }
 function handle(e) {
@@ -647,6 +699,7 @@ function handle(e) {
   else if (e.kind === "text") { if (!st.bubble) startBubble(); st.bubbleText += e.text; paintBubble(); }
   else if (e.kind === "tool") toolLine(e);
   else if (e.kind === "permission") permissionCard(e);
+  else if (e.kind === "artifact") { artifactCard(e); if ($("main").dataset.view === "artifacts") loadArtifacts().catch(() => {}); }
   else if (e.kind === "error") { finish(); note(e.message, "error"); }
   else if (e.kind === "turn_end") {
     finish();
@@ -784,6 +837,87 @@ function finishAnswer(e) {
   if (!info.cited.length && st.queries.length) note("Searched the web for “" + st.queries.join("”, “") + "”, but the answer cites no sources.");
   scroll();
 }
+
+/* Artifacts: the files Clyde wrote or edited, with a preview that can't reach your files, your network or Bonny. */
+const KINDS = { page: "Page", document: "Document", image: "Image", code: "Code", other: "File" };
+const FILTERS = [["all", "All"], ["page", "Pages"], ["document", "Documents"], ["image", "Images"], ["code", "Code"]];
+let arts = [], artFilter = "all", artSel = "", artScripts = false;
+const rawUrl = (path, extra) => "/artifact/raw?t=" + encodeURIComponent(TOKEN) + "&path=" + encodeURIComponent(path) + (extra || "");
+function showView(name) {
+  $("main").dataset.view = name;
+  $("nav-artifacts").setAttribute("aria-current", String(name === "artifacts"));
+  paintControls();
+}
+function paintArtFilters() {
+  $("art-filter").replaceChildren(...FILTERS.map(([key, label]) => {
+    const b = h("button", { type: "button", class: "chip cut", "aria-pressed": String(artFilter === key) }, label);
+    b.addEventListener("click", () => { artFilter = key; paintArtFilters(); paintArtList(); });
+    return b;
+  }));
+}
+function paintArtList() {
+  const shown = arts.filter((a) => artFilter === "all" || a.group === artFilter);
+  $("art-list").replaceChildren(...(shown.length ? shown.map((a) => {
+    const b = h("button", { type: "button", class: "art-item" + (a.exists ? "" : " gone"), "aria-current": String(a.path === artSel), title: a.path },
+      h("span", { class: "n" }, a.name), h("span", { class: "m" }, (a.folder ? a.folder + " · " : "") + KINDS[a.group] + " · " + when(a.updated)));
+    b.addEventListener("click", () => selectArtifact(a.path));
+    return b;
+  }) : [h("div", { class: "art-empty" }, arts.length ? "Nothing in this filter." : "Nothing here yet. Files Clyde writes or edits for you will show up here.")]));
+}
+async function loadArtifacts() {
+  arts = (await api("/api/artifacts")).artifacts;
+  paintArtFilters(); paintArtList();
+  if (!arts.length) paintPane(null);
+  else if (!artSel && matchMedia("(min-width: 821px)").matches) await selectArtifact(arts[0].path);
+}
+async function openArtifacts(path) {
+  showView("artifacts"); document.body.classList.remove("side-open"); $("toggle").setAttribute("aria-expanded", "false");
+  try { await loadArtifacts(); if (path) await selectArtifact(path); } catch (e) { toast(e.message); }
+}
+async function selectArtifact(path) {
+  artSel = path; paintArtList(); $("art-body").classList.add("open");
+  const row = arts.find((a) => a.path === path);
+  paintPane(row ? { ...row, loading: row.kind === "text" || row.kind === "markdown" } : null);
+  try { const info = await api("/api/artifact?path=" + encodeURIComponent(path)); if (artSel === path) paintPane(info); }
+  catch (e) { if (artSel === path) paintPane(row ? { ...row, error: e.message } : null); }
+}
+function paintPane(info) {
+  const pane = $("art-pane");
+  if (!info) { pane.replaceChildren(h("div", { class: "art-empty" }, "Pick a file to preview it.")); return; }
+  const back = h("button", { class: "btn cut art-back", type: "button" }, "Back");
+  back.addEventListener("click", () => $("art-body").classList.remove("open"));
+  const download = h("a", { class: "btn cut", href: rawUrl(info.path, "&download=1"), download: info.name }, "Download");
+  const show = h("button", { class: "btn cut", type: "button" }, "Show in folder");
+  show.addEventListener("click", async () => { try { await api("/api/artifact/reveal", { path: info.path }); } catch (e) { toast(e.message); } });
+  const tools = [];
+  if (info.kind === "html" && info.exists) {
+    const scripts = h("button", { class: "btn cut", type: "button", "aria-pressed": String(artScripts) }, "Scripts: " + (artScripts ? "on" : "off"));
+    scripts.addEventListener("click", () => { artScripts = !artScripts; paintPane(info); });
+    tools.push(scripts);
+  }
+  const view = h("div", { class: "art-view" });
+  const notes = [];
+  if (!info.exists) view.append(h("div", { class: "art-empty" }, "This file is no longer on disk."));
+  else if (info.error) view.append(h("div", { class: "art-empty" }, "Couldn't open it: " + info.error));
+  else if (info.kind === "html") {
+    notes.push(artScripts ? "Scripts run in a sandbox: they can't reach Bonny, your files or the network." : "Previews can't load pictures, fonts or scripts from other sites, and scripts are off.");
+    view.append(h("iframe", { sandbox: artScripts ? "allow-scripts" : "", src: rawUrl(info.path, artScripts ? "&scripts=1" : ""), title: "Preview of " + info.name }));
+  } else if (info.kind === "image") view.append(h("img", { src: rawUrl(info.path), alt: info.name }));
+  else if (info.loading) view.append(h("div", { class: "art-empty" }, "Loading…"));
+  else if (info.kind === "markdown" && info.text != null) view.append(h("div", { class: "doc" }, markdown(info.text)));
+  else if (info.kind === "text" && info.text != null) view.append(h("pre", {}, info.text));
+  else view.append(h("div", { class: "art-empty" }, "There's no preview for this kind of file. Use Download to open it."));
+  if (info.truncated) notes.push("Showing the first part of a large file. Download it to see everything.");
+  pane.replaceChildren(h("div", { class: "art-bar" }, back, h("div", { class: "t" }, h("b", {}, info.name), h("span", {}, info.path)), ...tools, download, show),
+    ...notes.map((n) => h("div", { class: "art-note note" }, n)), view);
+}
+function artifactCard(e) {
+  const open = h("button", { class: "btn cut", type: "button" }, "Preview");
+  open.addEventListener("click", () => openArtifacts(e.path));
+  col.append(h("div", { class: "card cut art-card" }, ico("file"), h("div", { class: "grow" }, h("b", {}, e.name), h("div", { class: "note" }, (e.tool === "Write" ? "Written" : "Edited") + " by Bonny")), open));
+  st.bubble = null; scroll();
+}
+$("nav-artifacts").addEventListener("click", () => openArtifacts());
 
 /* council popup */
 function openCouncil(c) {

@@ -351,6 +351,7 @@ class ClydeREPL:
     on_text_hook = None
     on_event_hook = None
     system_extra: str | None = None   # extra system-prompt text for the next turns only (Bonny's search results); not stored
+    direct_stream = True              # short chat-like prompts may skip the tools for a quicker streamed reply; Bonny's Computer mode turns this off
 
     # Esc cancels a running turn or command; prompts pause it (see src/repl/esc.py).
     _esc = WATCHER
@@ -1651,7 +1652,7 @@ class ClydeREPL:
         return False
 
     def _should_try_direct_stream(self, user_input: str) -> bool:
-        if not self.stream:
+        if not self.stream or not self.direct_stream:
             return False
         text = user_input.strip().lower()
         if not text or text.startswith("/"):
