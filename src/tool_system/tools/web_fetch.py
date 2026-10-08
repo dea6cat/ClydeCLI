@@ -34,6 +34,29 @@ def _is_private_host(hostname: str) -> bool:
     return False
 
 
+def _check_url(url: str) -> urllib.parse.ParseResult:
+    """The same rules for the URL asked for and for every redirect it leads to: http(s) only, never a local or private address.
+    A public host the user approved must not be able to bounce Clyde into localhost, the LAN or a cloud metadata address."""
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme not in {"http", "https"}:
+        raise ToolPermissionError("only http/https URLs are allowed")
+    if not parsed.netloc:
+        raise ToolInputError("url must include a network location")
+    hostname = parsed.hostname or ""
+    if hostname in {"localhost"} or hostname.endswith(".localhost") or _is_private_host(hostname):
+        raise ToolPermissionError("refusing to fetch localhost/private network URLs")
+    return parsed
+
+
+class _CheckedRedirects(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        try:
+            _check_url(newurl)
+        except (ToolPermissionError, ToolInputError) as e:
+            raise ToolPermissionError(f"refusing a redirect to {newurl}: {e}") from e
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
 def _html_to_text(raw: str) -> str:
     without_tags = _TAG_RE.sub(" ", raw)
     without_tags = re.sub(r"\s+", " ", without_tags).strip()
@@ -68,18 +91,9 @@ class WebFetchTool:
         if not isinstance(url, str) or not url:
             raise ToolInputError("url must be a non-empty string")
 
-        parsed = urllib.parse.urlparse(url)
-        if parsed.scheme not in {"http", "https"}:
-            raise ToolPermissionError("only http/https URLs are allowed")
-        if not parsed.netloc:
-            raise ToolInputError("url must include a network location")
-
-        hostname = parsed.hostname or ""
-        if hostname in {"localhost"} or hostname.endswith(".localhost") or _is_private_host(hostname):
-            raise ToolPermissionError("refusing to fetch localhost/private network URLs")
-
+        _check_url(url)
         req = urllib.request.Request(url, headers={"User-Agent": "clyde-cli/0.1"})
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        with urllib.request.build_opener(_CheckedRedirects).open(req, timeout=15) as resp:
             raw_bytes = resp.read(1_000_000)
             content_type = resp.headers.get("Content-Type", "")
 
