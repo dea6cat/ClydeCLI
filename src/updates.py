@@ -2,6 +2,8 @@
 
 Clyde is installed from its git repository. The `latest` channel follows the newest commit on `main`; `stable` follows the
 newest `vX.Y.Z` tag. Stable never suggests a downgrade: it compares versions.
+Versions are read from the git server itself (`git ls-remote`), not the GitHub web API, so a push shows up at once; the API is
+only the fallback when git is missing.
 The note never slows start-up: a background thread refreshes a cache at most once a day, and the next start reads it.
 Nothing is installed without the user running `clyde update`.
 """
@@ -11,6 +13,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import subprocess
 import sys
 import threading
 import time
@@ -23,12 +26,14 @@ from typing import Callable
 from src import install_info
 from src.config import clyde_home
 
-REPO_URL = "git+https://github.com/dea6cat/ClydeCLI"
+REMOTE_URL = "https://github.com/dea6cat/ClydeCLI"
+REPO_URL = "git+" + REMOTE_URL
 COMMIT_API = "https://api.github.com/repos/dea6cat/ClydeCLI/commits/main"
 TAGS_API = "https://api.github.com/repos/dea6cat/ClydeCLI/tags?per_page=100"
 CHECK_EVERY_S = 24 * 3600
 ENV_DISABLE = "CLYDE_NO_UPDATE_CHECK"      # "1" turns the start-up check off
 _TIMEOUT_S = 5
+_GIT_TIMEOUT_S = 10
 
 
 @dataclass(frozen=True)
@@ -68,25 +73,57 @@ def _is_sha(text: str) -> bool:
     return len(text) == 40 and all(c in "0123456789abcdef" for c in text)
 
 
+def _ls_remote(*patterns: str) -> list[tuple[str, str]] | None:
+    """(sha, ref) pairs the repository's git server lists for these ref patterns, or None when git itself can't answer (not
+    installed, offline, timed out). Asking git rather than the GitHub web API matters: the API answers from a 60-second public
+    cache, so right after a push it still names the old commit, and without a token it allows 60 requests an hour per IP address.
+    git ls-remote reads the refs themselves, and `clyde` is installed with git anyway."""
+    try:
+        done = subprocess.run(["git", "ls-remote", REMOTE_URL, *patterns], capture_output=True, text=True, timeout=_GIT_TIMEOUT_S,
+                              env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})   # never stop to ask for a password
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if done.returncode != 0:
+        return None
+    pairs = [tuple(line.split("\t", 1)) for line in done.stdout.splitlines() if "\t" in line]
+    return [(sha, ref) for sha, ref in pairs if _is_sha(sha)]
+
+
 def fetch_remote_commit() -> str | None:
-    """The full sha of the newest commit on main, or None when GitHub cannot be reached or answers oddly."""
-    sha = (_get(COMMIT_API, "application/vnd.github.sha") or "").strip()
+    """The full sha of the newest commit on main, or None when it cannot be learned."""
+    listed = _ls_remote("refs/heads/main")
+    if listed is not None:
+        return next((sha for sha, ref in listed if ref == "refs/heads/main"), None)
+    sha = (_get(COMMIT_API, "application/vnd.github.sha") or "").strip()   # no git: the web API, which can lag a minute
     return sha if _is_sha(sha) else None
 
 
-def fetch_newest_tag() -> Target | None:
-    """The highest `vX.Y.Z` tag, or None when there is none or GitHub cannot be reached."""
-    try:
-        tags = json.loads(_get(TAGS_API, "application/vnd.github+json") or "")
-    except ValueError:
-        return None
+def _newest_release(tags: dict[str, str]) -> Target | None:
     best: tuple[tuple[int, int, int], Target] | None = None
-    for tag in tags if isinstance(tags, list) else []:
-        name, sha = tag.get("name", ""), (tag.get("commit") or {}).get("sha", "")
-        version = _semver(name) if isinstance(name, str) else None
+    for name, sha in tags.items():
+        version = _semver(name)
         if version and _is_sha(sha) and (best is None or version > best[0]):
             best = (version, Target("stable", sha, ".".join(map(str, version)), name))
     return best[1] if best else None
+
+
+def fetch_newest_tag() -> Target | None:
+    """The highest `vX.Y.Z` tag, or None when there is none or it cannot be learned."""
+    listed = _ls_remote("refs/tags/v*")
+    if listed is not None:
+        tags: dict[str, str] = {}
+        for sha, ref in listed:
+            name = ref.removeprefix("refs/tags/")
+            peeled = name.endswith("^{}")                 # an annotated tag also lists the commit it points at: that one wins
+            if peeled or name not in tags:
+                tags[name.removesuffix("^{}")] = sha
+        return _newest_release(tags)
+    try:
+        listed_api = json.loads(_get(TAGS_API, "application/vnd.github+json") or "")
+    except ValueError:
+        return None
+    return _newest_release({tag.get("name", ""): (tag.get("commit") or {}).get("sha", "")
+                            for tag in listed_api if isinstance(tag, dict)} if isinstance(listed_api, list) else {})
 
 
 def fetch_target(channel: str) -> Target | None:
