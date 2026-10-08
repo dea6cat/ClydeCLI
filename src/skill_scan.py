@@ -160,7 +160,15 @@ def scan(path: Path, *, recursive: bool = False, env: dict[str, str] | None = No
         return [Verdict(path.name, ERROR, findings=["skillspector is not installed"])]
     if sys.stderr.isatty():
         print(f"\x1b[2m♠ SkillSpector is scanning {path.name}{' with an LLM review (up to 5 minutes; Ctrl+C skips it)' if env else ''}…\x1b[0m",
-              file=sys.stderr)
+              end="", file=sys.stderr, flush=True)
+    try:
+        return _run_scan(exe, path, recursive, env)
+    finally:
+        if sys.stderr.isatty():
+            print("\r\x1b[2K", end="", file=sys.stderr, flush=True)   # the status line must not stay on screen
+
+
+def _run_scan(exe: list[str], path: Path, recursive: bool, env: dict[str, str] | None) -> list[Verdict]:
     with tempfile.TemporaryDirectory() as tmp:
         report = Path(tmp) / "report.json"
         cmd = [*exe, "scan", str(path), "--format", "json", "--output", str(report)]
