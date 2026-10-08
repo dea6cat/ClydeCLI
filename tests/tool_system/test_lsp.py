@@ -138,5 +138,35 @@ class TestLSPTool(unittest.TestCase):
             self._run("hover", line=0)
 
 
+class TestLSPApproval(TestLSPTool):
+    """Starting a language server runs the project's code, so it asks once per project, not once per query."""
+
+    def _check(self):
+        return LSPTool().check_permissions({"operation": "hover", "filePath": "mod.py", "line": 1, "character": 5}, self.ctx)
+
+    def test_an_untrusted_project_asks_before_the_server_starts(self) -> None:
+        self._install_fake_pylsp()
+        ask = self._check()
+        self.assertEqual(ask.behavior.value, "ask")
+        self.assertIn("pylsp", ask.message)
+        self.assertFalse(self.log.exists())                       # nothing was started by asking
+
+    def test_once_the_server_runs_later_queries_do_not_ask_again(self) -> None:
+        self._install_fake_pylsp()
+        self._run("goToDefinition")                               # approved: the server is now running
+        self.assertEqual(self._check().behavior.value, "allow")
+
+    def test_a_trusted_folder_starts_without_asking(self) -> None:
+        self._install_fake_pylsp()
+        with patch.object(lsp, "trusted", return_value=True):
+            self.assertEqual(self._check().behavior.value, "allow")
+
+    def test_with_no_server_installed_there_is_nothing_to_approve(self) -> None:
+        self.assertEqual(self._check().behavior.value, "allow")   # run() reports what to install
+
+    def test_a_missing_file_path_is_left_to_input_validation(self) -> None:
+        self.assertEqual(LSPTool().check_permissions({"operation": "hover"}, self.ctx).behavior.value, "allow")
+
+
 if __name__ == "__main__":
     unittest.main()

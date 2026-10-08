@@ -32,7 +32,7 @@ from pathlib import Path
 from typing import Any
 
 SAFE, CAUTION, BLOCK, ERROR = "SAFE", "CAUTION", "DO_NOT_INSTALL", "ERROR"
-_TIMEOUT_STATIC, _TIMEOUT_LLM = 120, 1800
+_TIMEOUT_STATIC, _TIMEOUT_LLM = 120, 300   # a review that takes longer is skipped, not waited for
 
 
 @dataclass
@@ -159,7 +159,7 @@ def scan(path: Path, *, recursive: bool = False, env: dict[str, str] | None = No
     if exe is None:
         return [Verdict(path.name, ERROR, findings=["skillspector is not installed"])]
     if sys.stderr.isatty():
-        print(f"\x1b[2m♠ SkillSpector is scanning {path.name}{' with an LLM review (this can take minutes)' if env else ''}…\x1b[0m",
+        print(f"\x1b[2m♠ SkillSpector is scanning {path.name}{' with an LLM review (up to 5 minutes; Ctrl+C skips it)' if env else ''}…\x1b[0m",
               file=sys.stderr)
     with tempfile.TemporaryDirectory() as tmp:
         report = Path(tmp) / "report.json"
@@ -188,6 +188,8 @@ def check(kind: str, name: str, path: Path, *, env: dict[str, str] | None = None
         return cached
     verdict = next(iter(scan(path, env=env)), Verdict(name, ERROR, findings=["empty report"]))
     verdict.name, verdict.approved = name, bool(cached and cached.approved)
+    if verdict.recommendation == ERROR:
+        return verdict   # a timeout or a missing report says nothing about the content: scan again next time
     cache[key] = {"hash": content, "verdict": asdict(verdict)}
     _save_cache(cache)
     return verdict
