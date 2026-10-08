@@ -7,20 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Bonny is now Bonnie**, everywhere: the command (`clyde luv bonnie`, and `bonnie luv clyde` for the second command), the page, the site, the docs and the code. The old commands are gone, so use `bonnie`. Her saved look, projects, pins and automations move from `~/.clyde/bonny/` to `~/.clyde/bonnie/` the first time she starts, so nothing is lost. The Notify me choice is kept in the browser and starts off again once. The old site address `bonny.html` forwards to `bonnie.html`.
+
 ### Fixed
-- Bonny's conversation now uses all the width from the side menu to the edge of the window instead of a narrow centred column; the message box and its heading stay centred.
-- Bonny now renders markdown tables (they showed as rows of pipes on one line), plus numbered and nested lists, `#`/`##`/`###` heading levels, quotes, rules and *italics*.
+- Bonnie's conversation now uses all the width from the side menu to the edge of the window instead of a narrow centred column; the message box and its heading stay centred.
+- Bonnie now renders markdown tables (they showed as rows of pipes on one line), plus numbered and nested lists, `#`/`##`/`###` heading levels, quotes, rules and *italics*.
 
 ### Security
 - Reading a secret now always asks, whichever tool does it: `cat ~/.ssh/id_rsa`, `cat ~/.clyde/keys.json`, `echo $OPENAI_API_KEY` or a `grep -r` of your whole home folder ask like the Read tool already did (committed `.env.example` files don't). `WebFetch` shows the whole URL in its prompt, not just the host.
 - A project's own tooling no longer runs before you've said yes. The check after an edit used to run the project's `.venv/bin/ruff`, `uv run` tools and mypy before the permission prompt; now it uses only your own `ruff` unless the folder is listed under `trustedFolders` in `~/.clyde/settings.json`. The language-server tool asks once per project to start a server, unless the folder is trusted. `/check` is unchanged.
 - `WebFetch` applies its localhost/private-network rule to every redirect and to the address it actually connects to, so a public host can't bounce it into your network or rebind its DNS.
-- A file name with a newline in it can no longer inject headers into a Bonny download.
+- A file name with a newline in it can no longer inject headers into a Bonnie download.
 - The plugin scan's LLM review gives up after 5 minutes (it was 30) and falls back to the static scan; a failed scan is never cached, and importing a plugin defaults to "no" unless its scan came back SAFE.
 
 ### Added
-- Bonny has a **Notify me** toggle in the top bar: a browser notification when an answer is ready while her tab is in the background. It asks for permission once, names your question (never the answer), stays silent for a stopped turn, and is kept in the browser beside the permission.
-- The site's home page shows the pair of spades, Clyde's and Bonny's, as one mark (they ship in one install), and the hero says so. The two cut-outs follow the pointer in opposite directions.
+- Bonnie has a **Notify me** toggle in the top bar: a browser notification when an answer is ready while her tab is in the background. It asks for permission once, names your question (never the answer), stays silent for a stopped turn, and is kept in the browser beside the permission.
+- The site's home page shows the pair of spades, Clyde's and Bonnie's, as one mark (they ship in one install), and the hero says so. The two cut-outs follow the pointer in opposite directions.
 - A Features page on the site (a new tab in the nav) holds everything beyond the basics, moved off the home page: the feature overview, the recorded sessions (model failover, `/eval`, Laya) and a full section on `clyde tune` (what it asks, the settings it tries, the checks each must pass, measured results, and how to turn a setting on). The home page keeps the story and links to it.
 - `clyde tune` finds the best Ollama setup for how you use a local model without losing the quality you rely on. It asks what you
   use it for (coding, chat, research and fact-checking, long documents, quick answers), what matters most and how much RAM to keep
@@ -28,28 +31,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   it unloads a model you have loaded only after a yes. A setting is dropped if it uses more memory, runs slower than your priority allows,
   loses tool calling or a fact buried in a long prompt, or makes the model's answers drift from the baseline's. It prints how to apply the
   winner, or says to keep what you have. `clyde setup` and a model download offer it; `clyde tune --ask` redoes the questions.
-- `clyde luv bonny` now opens at `http://localhost:8080` and takes the port as an argument (`clyde luv bonny 7090`; `--port` still works). If 8080 is taken she moves to a free port and says so; a port you ask for must be free.
-- A second command, `bonny`: `bonny luv clyde [options]` starts the terminal Clyde, the same as `clyde [options]`.
-- `clyde luv bonny` starts Bonny, Clyde's luv accomplice, on localhost with her own persona. The local API queues prompts, steers
+- `clyde luv bonnie` now opens at `http://localhost:8080` and takes the port as an argument (`clyde luv bonnie 7090`; `--port` still works). If 8080 is taken she moves to a free port and says so; a port you ask for must be free.
+- A second command, `bonnie`: `bonnie luv clyde [options]` starts the terminal Clyde, the same as `clyde [options]`.
+- `clyde luv bonnie` starts Bonnie, Clyde's luv accomplice, on localhost with her own persona. The local API queues prompts, steers
   or stops a running turn, lists and reopens sessions, shows permission cards and takes council votes; requests need a per-run
   token and a matching Host and Origin. Her page has a sessions sidebar, Search and Computer modes, a model and permissions picker, permission cards,
   queue / steer / stop and the council popup with votes.
   Search turns run a web search first and show a Sources list; a status line shows what a running turn is waiting on.
   Each answer has an action row (copy, export, rate, council, sources, try again), and sessions show when they were last used.
-  Bonny now uses the site's fonts, hairlines and corner-cut controls, and **Customize** changes her look: presets, seven colours, a
+  Bonnie now uses the site's fonts, hairlines and corner-cut controls, and **Customize** changes her look: presets, seven colours, a
   background image (dim, blur, see-through panels), shape, font, greeting, custom CSS and a copyable theme code, saved in
-  `~/.clyde/bonny/`.
+  `~/.clyde/bonnie/`.
   Accessibility pass: a skip link, one page title, streamed text no longer read out chunk by chunk (progress and completion are announced instead), keyboard
   navigation for the answer menu and the Customize panel with focus returned on close, labelled controls, and a low-contrast warning when your colours are hard to read.
   Sessions in the sidebar can be deleted (moved to the archive, with Undo), and opening one is instant and always marked, including from a brand-new session.
   Sessions can be pinned to the top of the sidebar. **Automations** run a saved prompt on a schedule (every N minutes or hours,
-  daily, or on chosen days) in the project they were made in, each run in its own session; they run only while Bonny is open,
+  daily, or on chosen days) in the project they were made in, each run in its own session; they run only while Bonnie is open,
   skip runs missed while she was closed, and are read-only unless edits are allowed. The sidebar's project opens a folder chooser
   (browse, make a new folder, use it). On phones the message box is one row, with the model and permissions behind Options.
   **Attachments**: a paperclip, drag and drop and paste attach images and text files (up to six) to a message, with thumbnails in the thread and in reopened sessions; unsupported files are refused with a reason.
   **Artifacts**: a view of the files Clyde wrote or edited, with a sandboxed preview (pages, Markdown, images, code), download, show in folder, and a card in the chat when a file is written.
-  Bonny's Computer mode now always gives the model its tools (a short chatty request such as "make me a bakery page" used to take a tool-free shortcut and could not create a file).
-  Bonny has her own mark: Clyde's spade with `>_` beside a flipped spade with `</>`. Clyde's half follows the Spade colour, hers follows the text colour; the tab icon is the same pair.
+  Bonnie's Computer mode now always gives the model its tools (a short chatty request such as "make me a bakery page" used to take a tool-free shortcut and could not create a file).
+  Bonnie has her own mark: Clyde's spade with `>_` beside a flipped spade with `</>`. Clyde's half follows the Spade colour, hers follows the text colour; the tab icon is the same pair.
 - A steer: text sent to a running turn is added as a user message before the model's next call (`RunControl` in
   `src/run_control.py`, polled by the agent loop). ACP's stop uses the same interrupt.
 - cardShuffle council: `cardShuffle:<tier> council` (for example `/model cardShuffle:high-roller council`) asks the tier's top four

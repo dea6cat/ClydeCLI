@@ -1,4 +1,4 @@
-"""clyde luv bonny: Clyde as a local web app.
+"""clyde luv bonnie: Clyde as a local web app.
 
 One ClydeREPL runs turns on the main thread, fed from a RunControl queue, exactly as the ACP server does. A
 threaded HTTP server on 127.0.0.1 only takes requests from the browser and answers from that state: queue,
@@ -6,7 +6,7 @@ steer and stop a run, list and open sessions, read the event feed, answer permis
 answers. The browser polls /api/events (long poll), so no websocket or extra dependency is needed.
 
 Guards, because any web page the user visits can try to talk to a localhost port: the server binds 127.0.0.1,
-checks the Host and Origin headers, requires a per-run token (put in the page, sent as X-Bonny-Token) and JSON
+checks the Host and Origin headers, requires a per-run token (put in the page, sent as X-Bonnie-Token) and JSON
 bodies, and caps body and prompt size. The token does not protect against other programs on the same machine.
 """
 from __future__ import annotations
@@ -34,8 +34,8 @@ from src import activity
 from src.config import clyde_home
 from src.providers import keys
 from src.agent.session import Session
-from src.bonny import artifacts, attachments, automations, pins, projects, providers, theme
-from src.bonny.page import PAGE
+from src.bonnie import artifacts, attachments, automations, pins, projects, providers, theme
+from src.bonnie.page import PAGE
 from src.providers import model_ref
 from src.providers.card_shuffle import record_vote
 from src.run_control import RunControl
@@ -119,7 +119,7 @@ class EventLog:
             return events, (events[-1]["id"] if events else last)
 
 
-class Bonny:
+class Bonnie:
     """What the web front end drives: the REPL, its run control, the event feed and pending permission cards."""
 
     def __init__(self, repl: Any) -> None:
@@ -133,7 +133,7 @@ class Bonny:
         self._waiters: dict[str, list] = {}          # permission id -> [Event, allowed]
         self._lock = threading.Lock()
         repl.stream = True                            # text chunks reach on_text_hook as they arrive
-        repl.tool_context.output_style_name = "bonny"
+        repl.tool_context.output_style_name = "bonnie"
         repl.tool_context.permission_handler = self.ask_permission
         repl.tool_context.ask_user = None             # ponytail: no question cards yet; the agent decides without asking
 
@@ -280,7 +280,7 @@ class Bonny:
                 except Exception as e:   # a bad file must not stop the clock; the page shows nothing, the log shows why
                     self.events.emit("notice", message=f"Automations couldn't check the schedule: {e}")
 
-        threading.Thread(target=loop, name="bonny-automations", daemon=True).start()
+        threading.Thread(target=loop, name="bonnie-automations", daemon=True).start()
 
     def council(self) -> dict | None:
         return getattr(self.repl.provider, "last_council", None)
@@ -356,7 +356,7 @@ class Bonny:
     def set_project(self, path: Path) -> None:
         """Work in another folder: tools, permissions and new sessions follow it, and a fresh session opens there. The caller has
         checked that nothing is running."""
-        # ponytail: MCP servers and hooks were loaded for the folder Bonny started in; restart Bonny to pick up a new project's own
+        # ponytail: MCP servers and hooks were loaded for the folder Bonnie started in; restart Bonnie to pick up a new project's own
         os.chdir(path)
         context = self.repl.tool_context
         context.workspace_root = context.cwd = path
@@ -408,7 +408,7 @@ def _attachment(name: str) -> str:
     return f"attachment; filename=\"{plain}\"; filename*=UTF-8''{quote(name, safe='')}"
 
 
-def make_server(bonny: Bonny, host: str = "127.0.0.1", port: int = 0) -> ThreadingHTTPServer:
+def make_server(bonnie: Bonnie, host: str = "127.0.0.1", port: int = 0) -> ThreadingHTTPServer:
     token = secrets.token_urlsafe(24)
 
     def background_url() -> str | None:
@@ -460,7 +460,7 @@ def make_server(bonny: Bonny, host: str = "127.0.0.1", port: int = 0) -> Threadi
             if origin is not None and origin.removeprefix("http://") not in self._allowed_hosts():
                 self._json(403, {"error": "bad origin"})
                 return False
-            if api and not hmac.compare_digest(self.headers.get("X-Bonny-Token", ""), token):
+            if api and not hmac.compare_digest(self.headers.get("X-Bonnie-Token", ""), token):
                 self._json(403, {"error": "bad token"})
                 return False
             return True
@@ -504,36 +504,36 @@ def make_server(bonny: Bonny, host: str = "127.0.0.1", port: int = 0) -> Threadi
                 return
             query = parse_qs(url.query)
             if url.path == "/api/state":
-                self._json(200, bonny.state())
+                self._json(200, bonnie.state())
             elif url.path == "/api/theme":
                 self._json(200, theme_payload())
             elif url.path == "/api/artifacts":
-                self._json(200, {"artifacts": [artifacts.public(r) for r in bonny.artifact_rows()]})
+                self._json(200, {"artifacts": [artifacts.public(r) for r in bonnie.artifact_rows()]})
             elif url.path == "/api/artifact":
                 self._artifact_preview(query.get("path", [""])[0])
             elif url.path == "/api/automations":
-                self._json(200, {"automations": [{**a, "when": automations.describe(a["schedule"])} for a in automations.listing(bonny.project)]})
+                self._json(200, {"automations": [{**a, "when": automations.describe(a["schedule"])} for a in automations.listing(bonnie.project)]})
             elif url.path == "/api/providers":
-                self._json(200, providers.listing(bonny.repl.registry))
+                self._json(200, providers.listing(bonnie.repl.registry))
             elif url.path == "/api/dirs":
                 try:
-                    self._json(200, projects.browse(query.get("path", [bonny.project])[0]))
+                    self._json(200, projects.browse(query.get("path", [bonnie.project])[0]))
                 except ValueError as e:
                     self._json(400, {"error": str(e)})
             elif url.path == "/api/models":
-                self._json(200, {"models": bonny.models()})
+                self._json(200, {"models": bonnie.models()})
             elif url.path == "/api/sessions":
-                self._json(200, {"sessions": bonny.sessions()})
+                self._json(200, {"sessions": bonnie.sessions()})
             elif url.path.startswith("/api/sessions/"):
                 session_id = url.path.rsplit("/", 1)[1]
-                messages = bonny.messages(session_id) if _ID.match(session_id) else None
+                messages = bonnie.messages(session_id) if _ID.match(session_id) else None
                 self._json(200, {"messages": messages}) if messages is not None else self._json(404, {"error": "no such session"})
             elif url.path == "/api/events":
                 try:
                     after = int(query.get("after", ["0"])[0])
                 except ValueError:
                     after = 0
-                events, last = bonny.events.after(after, POLL_SECONDS)
+                events, last = bonnie.events.after(after, POLL_SECONDS)
                 self._json(200, {"events": events, "last": last})
             else:
                 self._json(404, {"error": "not found"})
@@ -565,22 +565,22 @@ def make_server(bonny: Bonny, host: str = "127.0.0.1", port: int = 0) -> Threadi
                         self._json(400, {"error": "attachments is a list of ids"})
                         return
                     try:
-                        files = bonny.attachments.take(ids)
+                        files = bonnie.attachments.take(ids)
                     except ValueError as e:
                         self._json(400, {"error": str(e)})
                         return
-                    bonny.control.queue(Prompt(text.strip(), data.get("search") is True, mode, tuple(files)))
-                    self._json(200, {"queued": bonny.control.prompts.qsize()})
-                elif not bonny.control.busy:
+                    bonnie.control.queue(Prompt(text.strip(), data.get("search") is True, mode, tuple(files)))
+                    self._json(200, {"queued": bonnie.control.prompts.qsize()})
+                elif not bonnie.control.busy:
                     self._json(409, {"error": "nothing is running; send it as a prompt"})
                 else:
-                    bonny.control.steer(text.strip())
+                    bonnie.control.steer(text.strip())
                     self._json(200, {"steering": True})
             elif path == "/api/stop":
-                bonny.stop()
+                bonnie.stop()
                 self._json(200, {"stopped": True})
             elif path == "/api/permission":
-                ok = isinstance(data.get("card"), str) and bonny.answer_permission(data["card"], data.get("allow") is True)
+                ok = isinstance(data.get("card"), str) and bonnie.answer_permission(data["card"], data.get("allow") is True)
                 self._json(200, {"ok": True}) if ok else self._json(404, {"error": "no such card"})
             elif path == "/api/vote":
                 self._vote(data)
@@ -595,7 +595,7 @@ def make_server(bonny: Bonny, host: str = "127.0.0.1", port: int = 0) -> Threadi
                 theme.remove_image()
                 self._json(200, theme_payload())
             elif path == "/api/artifact/reveal":
-                row = bonny.find_artifact(str(data.get("path", "")))
+                row = bonnie.find_artifact(str(data.get("path", "")))
                 if row is None or not artifacts.reveal(Path(row["path"])):
                     self._json(404, {"error": "couldn't show that file"})
                 else:
@@ -607,7 +607,7 @@ def make_server(bonny: Bonny, host: str = "127.0.0.1", port: int = 0) -> Threadi
                     self._json(400, {"error": "vote is up or down, and the question is text"})
                     return
                 try:
-                    state = bonny.state()
+                    state = bonnie.state()
                     record_feedback(state["session"], state["model"], question, vote)
                 except OSError as e:
                     self._json(500, {"error": f"couldn't save that: {e}"})
@@ -657,7 +657,7 @@ def make_server(bonny: Bonny, host: str = "127.0.0.1", port: int = 0) -> Threadi
                     session_id, index, n = query["session"][0], int(query["i"][0]), int(query["n"][0])
                 except (KeyError, ValueError, IndexError):
                     session_id, index, n = "", 0, 0
-                found = bonny.session_image(session_id, index, n) if _ID.match(session_id) else None
+                found = bonnie.session_image(session_id, index, n) if _ID.match(session_id) else None
                 if found is None:
                     self._json(404, {"error": "no such picture"})
                 else:
@@ -671,7 +671,7 @@ def make_server(bonny: Bonny, host: str = "127.0.0.1", port: int = 0) -> Threadi
 
         def _artifact_preview(self, path: str) -> None:
             """What the preview pane needs for one artifact: its details, plus the text for the kinds shown as text."""
-            row = bonny.find_artifact(path)
+            row = bonnie.find_artifact(path)
             if row is None:
                 self._json(404, {"error": "that file isn't one of Clyde's artifacts"})
                 return
@@ -687,7 +687,7 @@ def make_server(bonny: Bonny, host: str = "127.0.0.1", port: int = 0) -> Threadi
         def _artifact_raw(self, url: Any) -> None:
             """The file's own bytes for an iframe, an image or a download. Always sandboxed; scripts only when asked for."""
             query = parse_qs(url.query)
-            row = bonny.find_artifact(query.get("path", [""])[0])
+            row = bonnie.find_artifact(query.get("path", [""])[0])
             path = Path(row["path"]) if row else None
             if row is None or path is None or not path.is_file():
                 self._json(404, {"error": "no such artifact"})
@@ -720,7 +720,7 @@ def make_server(bonny: Bonny, host: str = "127.0.0.1", port: int = 0) -> Threadi
             if data is None:
                 return
             try:
-                item = bonny.attachments.add(unquote(self.headers.get("X-File-Name", "")), data)
+                item = bonnie.attachments.add(unquote(self.headers.get("X-File-Name", "")), data)
             except ValueError as e:
                 self._json(400, {"error": str(e)})
             else:
@@ -741,7 +741,7 @@ def make_server(bonny: Bonny, host: str = "127.0.0.1", port: int = 0) -> Threadi
                 self._json(200, theme_payload())
 
         def _vote(self, data: dict) -> None:
-            council = bonny.council()
+            council = bonnie.council()
             if council is None:
                 self._json(409, {"error": "no council turn to vote on"})
                 return
@@ -761,18 +761,18 @@ def make_server(bonny: Bonny, host: str = "127.0.0.1", port: int = 0) -> Threadi
                 self._json(404, {"error": "no such session"})
                 return
             if path == "/api/session/delete":
-                if bonny.control.busy and session_id == bonny.repl.session.session_id:
-                    self._json(409, {"error": "Bonny is working in this session. Stop her first."})
+                if bonnie.control.busy and session_id == bonnie.repl.session.session_id:
+                    self._json(409, {"error": "Bonnie is working in this session. Stop her first."})
                     return
-                ok = bonny.delete_session(session_id)
+                ok = bonnie.delete_session(session_id)
             else:
                 ok = Session.unarchive(session_id)
-            self._json(200, {"ok": True, "state": bonny.state()}) if ok else self._json(404, {"error": "no such session"})
+            self._json(200, {"ok": True, "state": bonnie.state()}) if ok else self._json(404, {"error": "no such session"})
 
         def _automation(self, action: str, data: dict) -> None:
             if action == "create":
                 try:
-                    row = automations.add(bonny.project, data.get("name"), data.get("prompt"), data.get("schedule"), data.get("edits"), datetime.datetime.now())
+                    row = automations.add(bonnie.project, data.get("name"), data.get("prompt"), data.get("schedule"), data.get("edits"), datetime.datetime.now())
                 except ValueError as e:
                     self._json(400, {"error": str(e)})
                 else:
@@ -782,28 +782,28 @@ def make_server(bonny: Bonny, host: str = "127.0.0.1", port: int = 0) -> Threadi
             if action not in ("pause", "resume", "delete", "run") or not isinstance(automation_id, str) or not _ID.match(automation_id):
                 self._json(400, {"error": "unknown automation action"})
                 return
-            row = automations.get(bonny.project, automation_id)
+            row = automations.get(bonnie.project, automation_id)
             if row is None:
                 self._json(404, {"error": "no such automation"})
             elif action == "run":
-                bonny.fire(row)
-                self._json(200, {"queued": bonny.control.prompts.qsize()})
+                bonnie.fire(row)
+                self._json(200, {"queued": bonnie.control.prompts.qsize()})
             else:
-                automations.update(bonny.project, automation_id, action)
+                automations.update(bonnie.project, automation_id, action)
                 self._json(200, {"ok": True})
 
         def _providers(self, action: str, data: dict) -> None:
             """Connect, disconnect or add a provider. Idle only: it swaps the registry the running turn uses."""
-            if bonny.control.busy:
-                self._json(409, {"error": "Bonny is working. Stop her, or wait, then try again."})
+            if bonnie.control.busy:
+                self._json(409, {"error": "Bonnie is working. Stop her, or wait, then try again."})
                 return
             try:
                 if action == "connect":
-                    result = providers.connect(bonny.repl, data.get("provider"), data.get("key"), data.get("extra"))
+                    result = providers.connect(bonnie.repl, data.get("provider"), data.get("key"), data.get("extra"))
                 elif action == "custom":
-                    result = providers.add_custom(bonny.repl, data.get("name"), data.get("protocol"), data.get("base_url"), data.get("key"))
+                    result = providers.add_custom(bonnie.repl, data.get("name"), data.get("protocol"), data.get("base_url"), data.get("key"))
                 else:
-                    result = providers.disconnect(bonny.repl, data.get("provider"))
+                    result = providers.disconnect(bonnie.repl, data.get("provider"))
             except ValueError as e:
                 self._json(400, {"error": str(e)})
             except (OSError, keys.KeysFileError) as e:
@@ -812,15 +812,15 @@ def make_server(bonny: Bonny, host: str = "127.0.0.1", port: int = 0) -> Threadi
                 self._json(200, result)
 
         def _project(self, data: dict) -> None:
-            if bonny.control.busy:
-                self._json(409, {"error": "Bonny is working. Stop her, or wait, then try again."})
+            if bonnie.control.busy:
+                self._json(409, {"error": "Bonnie is working. Stop her, or wait, then try again."})
                 return
             try:
-                bonny.set_project(projects.choose(data.get("path")))
+                bonnie.set_project(projects.choose(data.get("path")))
             except ValueError as e:
                 self._json(400, {"error": str(e)})
             else:
-                state = bonny.state()
+                state = bonnie.state()
                 self._json(200, {**state, "messages": []})
 
         def _pin(self, data: dict) -> None:
@@ -837,26 +837,26 @@ def make_server(bonny: Bonny, host: str = "127.0.0.1", port: int = 0) -> Threadi
 
         def _change(self, path: str, data: dict) -> None:
             """Session, mode and model changes: refused while a turn runs, since they act on the live REPL."""
-            if bonny.control.busy:
-                self._json(409, {"error": "Bonny is working. Stop her, or wait, then try again."})
+            if bonnie.control.busy:
+                self._json(409, {"error": "Bonnie is working. Stop her, or wait, then try again."})
                 return
             if path == "/api/session/new":
-                bonny.new_session()
+                bonnie.new_session()
             elif path == "/api/session/open":
                 session_id = data.get("id")
-                if not isinstance(session_id, str) or not _ID.match(session_id) or not bonny.open_session(session_id):
+                if not isinstance(session_id, str) or not _ID.match(session_id) or not bonnie.open_session(session_id):
                     self._json(404, {"error": "no such session"})
                     return
             elif path == "/api/mode":
                 if data.get("mode") not in ("hold", "plan", "all_in"):
                     self._json(400, {"error": "mode is hold, plan or all_in"})
                     return
-                bonny.repl._set_mode(data["mode"])
-            elif not isinstance(data.get("model"), str) or not bonny.repl._switch_model(data["model"]):
+                bonnie.repl._set_mode(data["mode"])
+            elif not isinstance(data.get("model"), str) or not bonnie.repl._switch_model(data["model"]):
                 self._json(400, {"error": "that model can't be used right now"})
                 return
-            state = bonny.state()
-            self._json(200, {**state, "messages": bonny.messages(state["session"]) or []} if path.startswith("/api/session/") else state)
+            state = bonnie.state()
+            self._json(200, {**state, "messages": bonnie.messages(state["session"]) or []} if path.startswith("/api/session/") else state)
 
     server = _Server((host, port), Handler)
     server.token = token   # type: ignore[attr-defined]
@@ -866,15 +866,15 @@ def make_server(bonny: Bonny, host: str = "127.0.0.1", port: int = 0) -> Threadi
 DEFAULT_PORT = 8080
 
 
-def open_server(bonny: Bonny, port: int | None) -> ThreadingHTTPServer:
+def open_server(bonnie: Bonnie, port: int | None) -> ThreadingHTTPServer:
     """Bind 127.0.0.1. With no port asked for: 8080, or any free port when something else has it. A port asked for is exact,
     so a taken one raises OSError rather than quietly moving."""
     if port:
-        return make_server(bonny, "127.0.0.1", port)
+        return make_server(bonnie, "127.0.0.1", port)
     try:
-        return make_server(bonny, "127.0.0.1", DEFAULT_PORT)
+        return make_server(bonnie, "127.0.0.1", DEFAULT_PORT)
     except OSError:
-        return make_server(bonny, "127.0.0.1", 0)
+        return make_server(bonnie, "127.0.0.1", 0)
 
 
 def main(model: str | None = None, port: int | None = None, open_browser: bool = True) -> int:
@@ -883,22 +883,22 @@ def main(model: str | None = None, port: int | None = None, open_browser: bool =
     from src.repl.core import ClydeREPL
 
     repl = ClydeREPL(model=model, console=Console(stderr=True, soft_wrap=True), headless=True)
-    bonny = Bonny(repl)
+    bonnie = Bonnie(repl)
     try:
-        server = open_server(bonny, port)
+        server = open_server(bonnie, port)
     except OSError as e:
-        print(f"Can't use port {port}: {e.strerror or e}. Pick another, for example `clyde luv bonny {port + 1}`.", file=sys.stderr)
+        print(f"Can't use port {port}: {e.strerror or e}. Pick another, for example `clyde luv bonnie {port + 1}`.", file=sys.stderr)
         return 1
     url = f"http://localhost:{server.server_address[1]}/"
-    threading.Thread(target=server.serve_forever, name="bonny-http", daemon=True).start()
-    bonny.start_scheduler()
+    threading.Thread(target=server.serve_forever, name="bonnie-http", daemon=True).start()
+    bonnie.start_scheduler()
     projects.remember(Path.cwd())
-    moved = f"  (port {DEFAULT_PORT} was taken; `clyde luv bonny PORT` picks one)" if not port and server.server_address[1] != DEFAULT_PORT else ""
-    print(f"Bonny is running at {url}  (Ctrl+C to stop){moved}")
+    moved = f"  (port {DEFAULT_PORT} was taken; `clyde luv bonnie PORT` picks one)" if not port and server.server_address[1] != DEFAULT_PORT else ""
+    print(f"Bonnie is running at {url}  (Ctrl+C to stop){moved}")
     if open_browser:
         webbrowser.open(url)
     try:
-        bonny.run()
+        bonnie.run()
     finally:
         server.shutdown()
     return 0

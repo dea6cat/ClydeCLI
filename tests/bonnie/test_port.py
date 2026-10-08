@@ -1,11 +1,11 @@
-"""Which port Bonny takes: 8080 by default, a free one when that is taken, and exactly the one asked for."""
+"""Which port Bonnie takes: 8080 by default, a free one when that is taken, and exactly the one asked for."""
 from __future__ import annotations
 
 import socket
 import unittest
 from unittest.mock import patch
 
-from src.bonny import server
+from src.bonnie import server
 
 
 def free_port():

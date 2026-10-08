@@ -1,5 +1,5 @@
-"""Bonny's look, chosen by the user: a preset, colour overrides, a background image, corner shape, font, a greeting and
-free-form CSS. Saved in ~/.clyde/bonny/theme.json (the image next to it), so it survives restarts and changes of port.
+"""Bonnie's look, chosen by the user: a preset, colour overrides, a background image, corner shape, font, a greeting and
+free-form CSS. Saved in ~/.clyde/bonnie/theme.json (the image next to it), so it survives restarts and changes of port.
 
 Everything here is validated before it is kept: colours are #rrggbb, numbers are clamped, choices come from fixed lists,
 and the image is identified by its first bytes, never by what the browser claimed. SVG is refused because it can carry
@@ -41,7 +41,16 @@ DEFAULT: dict[str, Any] = {"preset": "auto", "colors": {}, "dim": 0.4, "blur": 0
 
 
 def folder() -> Path:
-    return clyde_home() / "bonny"
+    """Bonnie's folder. Her saved look, projects, pins and automations used to live in ~/.clyde/bonny (her old spelling); the
+    first call moves them over, once, so a rename never costs anyone their settings. If the move fails, the old folder is still used."""
+    home = clyde_home()
+    new, old = home / "bonnie", home / "bonny"
+    if old.is_dir() and not new.exists():
+        try:
+            old.rename(new)
+        except OSError:
+            return old
+    return new
 
 
 def _clamp(value: Any, low: float, high: float, fallback: float) -> float:

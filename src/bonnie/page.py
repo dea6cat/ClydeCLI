@@ -1,4 +1,4 @@
-"""The page `clyde luv bonny` serves at /: one self-contained HTML file (no build step, no external requests).
+"""The page `clyde luv bonnie` serves at /: one self-contained HTML file (no build step, no external requests).
 
 It talks to the local API in server.py with the per-run token that is substituted for __TOKEN__. Every piece of
 model or tool text reaches the page through textContent (never innerHTML), so a reply can't inject markup.
@@ -9,7 +9,7 @@ PAGE = r"""<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Bonny</title>
+<title>Bonnie</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20170%20100%22%3E%3Cstyle%3E.b%7Bfill%3A%2316231b%7D%40media%20%28prefers-color-scheme%3Adark%29%7B.b%7Bfill%3A%23e3dfd6%7D%7D%3C%2Fstyle%3E%3Cdefs%3E%3Cmask%20id%3D%22p%22%20maskUnits%3D%22userSpaceOnUse%22%20x%3D%220%22%20y%3D%220%22%20width%3D%22100%22%20height%3D%22100%22%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22%23fff%22%2F%3E%3Cpolyline%20points%3D%2234%2C44%2052%2C57%2034%2C70%22%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%227.5%22%2F%3E%3Crect%20x%3D%2257%22%20y%3D%2266.5%22%20width%3D%2215%22%20height%3D%227%22%20fill%3D%22%23000%22%2F%3E%3C%2Fmask%3E%3Cmask%20id%3D%22c%22%20maskUnits%3D%22userSpaceOnUse%22%20x%3D%220%22%20y%3D%220%22%20width%3D%22100%22%20height%3D%22100%22%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22%23fff%22%2F%3E%3Cpolyline%20points%3D%2237%2C36%2024%2C48%2037%2C60%22%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%227%22%2F%3E%3Cpolyline%20points%3D%2263%2C36%2076%2C48%2063%2C60%22%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%227%22%2F%3E%3Cline%20x1%3D%2256%22%20y1%3D%2235%22%20x2%3D%2244%22%20y2%3D%2263%22%20stroke%3D%22%23000%22%20stroke-width%3D%227%22%2F%3E%3C%2Fmask%3E%3C%2Fdefs%3E%3Cpath%20fill%3D%22%23d0202f%22%20mask%3D%22url%28%23p%29%22%20d%3D%22M50%205%20C50%205%209%2036%209%2060%20C9%2074%2021%2084%2034%2082%20C41%2081%2046%2077%2048%2072%20C48%2084%2044%2092%2033%2096%20L67%2096%20C56%2092%2052%2084%2052%2072%20C54%2077%2059%2081%2066%2082%20C79%2084%2091%2074%2091%2060%20C91%2036%2050%205%2050%205%20Z%22%2F%3E%3Cg%20transform%3D%22translate%2870%200%29%22%3E%3Cg%20mask%3D%22url%28%23c%29%22%3E%3Cpath%20class%3D%22b%22%20transform%3D%22rotate%28180%2050%2050%29%22%20d%3D%22M50%205%20C50%205%209%2036%209%2060%20C9%2074%2021%2084%2034%2082%20C41%2081%2046%2077%2048%2072%20C48%2084%2044%2092%2033%2096%20L67%2096%20C56%2092%2052%2084%2052%2072%20C54%2077%2059%2081%2066%2082%20C79%2084%2091%2074%2091%2060%20C91%2036%2050%205%2050%205%20Z%22%2F%3E%3C%2Fg%3E%3C%2Fg%3E%3C%2Fsvg%3E">
 <style>
 @font-face { font-family: "Bricolage Grotesque"; src: url(/static/bricolage-grotesque.woff2) format("woff2"); font-weight: 400 800; font-stretch: 75% 100%; font-display: swap; unicode-range: U+0000-00FF, U+2010-2027, U+2190-21FF; }
@@ -89,7 +89,7 @@ aside { width: 268px; flex: none; background: var(--side); border-right: 1px sol
 .brand { display: flex; align-items: center; gap: 10px; padding: 0 18px 16px; font-weight: 800; font-size: 19px; letter-spacing: -.01em; border-bottom: 1px solid var(--line); }
 .brand svg { height: 24px; width: auto; display: block; }
 .brand .clyde { fill: var(--spade); }
-.brand .bonny { fill: var(--text); }
+.brand .bonnie { fill: var(--text); }
 nav { display: flex; flex-direction: column; padding: 8px 0; border-bottom: 1px solid var(--line); }
 .nav { display: flex; align-items: center; gap: 10px; width: 100%; background: none; border: 0; border-left: 2px solid transparent; padding: 7px 18px; font: 500 13px/1.4 var(--mono); text-align: left; color: var(--text);
   transition-property: color, background-color, border-color; transition-duration: .2s; }
@@ -137,21 +137,21 @@ main { flex: 1; min-width: 0; display: flex; justify-content: center; }
 #thread { flex: 1; overflow-y: auto; padding: 22px 26px 30px; }
 .col { display: flex; flex-direction: column; gap: 22px; }   /* the whole width beside the menu; only the composer and the heading stay centred */
 .msg.user { --c: 10px; --fill: var(--tint); align-self: flex-end; padding: 8px 16px; max-width: 82%; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 15.5px; }
-.msg.bonny { overflow-wrap: anywhere; font-size: 16.5px; line-height: 1.65; }
-.msg.bonny p { margin: 0 0 .85em; } .msg.bonny p:last-child { margin-bottom: 0; }
-.msg.bonny h2, .msg.bonny h3, .msg.bonny h4 { margin: .9em 0 .3em; font-weight: 750; letter-spacing: -.01em; line-height: 1.25; }
-.msg.bonny h2 { font-size: 20px; } .msg.bonny h3 { font-size: 17.5px; } .msg.bonny h4 { font-size: 16.5px; }
-.msg.bonny ul, .msg.bonny ol { margin: 0 0 .85em; padding-left: 1.4em; }
-.msg.bonny li > ul, .msg.bonny li > ol { margin: .25em 0 0; }
-.msg.bonny li { margin: 0 0 .2em; }
-.msg.bonny blockquote { margin: 0 0 .85em; padding-left: 14px; border-left: 2px solid var(--line); color: var(--dim); }
-.msg.bonny hr { border: 0; border-top: 1px solid var(--line); margin: 1.1em 0; }
+.msg.bonnie { overflow-wrap: anywhere; font-size: 16.5px; line-height: 1.65; }
+.msg.bonnie p { margin: 0 0 .85em; } .msg.bonnie p:last-child { margin-bottom: 0; }
+.msg.bonnie h2, .msg.bonnie h3, .msg.bonnie h4 { margin: .9em 0 .3em; font-weight: 750; letter-spacing: -.01em; line-height: 1.25; }
+.msg.bonnie h2 { font-size: 20px; } .msg.bonnie h3 { font-size: 17.5px; } .msg.bonnie h4 { font-size: 16.5px; }
+.msg.bonnie ul, .msg.bonnie ol { margin: 0 0 .85em; padding-left: 1.4em; }
+.msg.bonnie li > ul, .msg.bonnie li > ol { margin: .25em 0 0; }
+.msg.bonnie li { margin: 0 0 .2em; }
+.msg.bonnie blockquote { margin: 0 0 .85em; padding-left: 14px; border-left: 2px solid var(--line); color: var(--dim); }
+.msg.bonnie hr { border: 0; border-top: 1px solid var(--line); margin: 1.1em 0; }
 .tablewrap { overflow-x: auto; margin: 0 0 .9em; }
-.msg.bonny table, .art-view .doc table { border-collapse: collapse; font-size: .92em; line-height: 1.45; }
-.msg.bonny th, .msg.bonny td, .art-view .doc th, .art-view .doc td { border: 1px solid var(--line); padding: 7px 12px; text-align: left; vertical-align: top; }
-.msg.bonny th, .art-view .doc th { background: color-mix(in srgb, var(--text) 7%, transparent); font-weight: 650; }
-.msg.bonny th.r, .msg.bonny td.r, .art-view .doc th.r, .art-view .doc td.r { text-align: right; }
-.msg.bonny th.c, .msg.bonny td.c, .art-view .doc th.c, .art-view .doc td.c { text-align: center; }
+.msg.bonnie table, .art-view .doc table { border-collapse: collapse; font-size: .92em; line-height: 1.45; }
+.msg.bonnie th, .msg.bonnie td, .art-view .doc th, .art-view .doc td { border: 1px solid var(--line); padding: 7px 12px; text-align: left; vertical-align: top; }
+.msg.bonnie th, .art-view .doc th { background: color-mix(in srgb, var(--text) 7%, transparent); font-weight: 650; }
+.msg.bonnie th.r, .msg.bonnie td.r, .art-view .doc th.r, .art-view .doc td.r { text-align: right; }
+.msg.bonnie th.c, .msg.bonnie td.c, .art-view .doc th.c, .art-view .doc td.c { text-align: center; }
 .msg code { font: .86em var(--mono); background: color-mix(in srgb, var(--text) 8%, transparent); padding: .1em .35em; }
 .msg pre { background: var(--term); color: #e8e4dc; border: 1px solid var(--line); padding: 14px 16px; overflow-x: auto; margin: 0 0 .85em; font: 12.5px/1.55 var(--mono); }
 .msg pre code { background: none; padding: 0; font: inherit; }
@@ -411,23 +411,23 @@ input[type="color"] { width: 36px; height: 24px; padding: 0; border: 1px solid v
 </head>
 <body data-shape="__SHAPE__">
 <a class="skip" href="#input">Skip to the message box</a>
-<h1 class="sr">Bonny</h1>
+<h1 class="sr">Bonnie</h1>
 <div class="sr" id="announce" role="status" aria-live="polite"></div>
 <div id="bg" aria-hidden="true"></div>
 <div class="glow" id="glow" aria-hidden="true"></div>
 <div id="drop" aria-hidden="true"><span>Drop to attach</span></div>
 <div class="app">
-<aside id="side" aria-label="Bonny">
+<aside id="side" aria-label="Bonnie">
   <div class="brand">
-    <svg class="mark" viewBox="0 0 170 100" role="img" aria-label="Bonny">
+    <svg class="mark" viewBox="0 0 170 100" role="img" aria-label="Bonnie">
       <defs>
         <mask id="bm-prompt" maskUnits="userSpaceOnUse" x="0" y="0" width="100" height="100"><rect width="100" height="100" fill="#fff"/><polyline points="34,44 52,57 34,70" fill="none" stroke="#000" stroke-width="7.5"/><rect x="57" y="66.5" width="15" height="7" fill="#000"/></mask>
         <mask id="bm-code" maskUnits="userSpaceOnUse" x="0" y="0" width="100" height="100"><rect width="100" height="100" fill="#fff"/><polyline points="37,36 24,48 37,60" fill="none" stroke="#000" stroke-width="7"/><polyline points="63,36 76,48 63,60" fill="none" stroke="#000" stroke-width="7"/><line x1="56" y1="35" x2="44" y2="63" stroke="#000" stroke-width="7"/></mask>
       </defs>
       <path class="clyde" mask="url(#bm-prompt)" d="M50 5 C50 5 9 36 9 60 C9 74 21 84 34 82 C41 81 46 77 48 72 C48 84 44 92 33 96 L67 96 C56 92 52 84 52 72 C54 77 59 81 66 82 C79 84 91 74 91 60 C91 36 50 5 50 5 Z"/>
-      <g transform="translate(70 0)"><g mask="url(#bm-code)"><path class="bonny" transform="rotate(180 50 50)" d="M50 5 C50 5 9 36 9 60 C9 74 21 84 34 82 C41 81 46 77 48 72 C48 84 44 92 33 96 L67 96 C56 92 52 84 52 72 C54 77 59 81 66 82 C79 84 91 74 91 60 C91 36 50 5 50 5 Z"/></g></g>
+      <g transform="translate(70 0)"><g mask="url(#bm-code)"><path class="bonnie" transform="rotate(180 50 50)" d="M50 5 C50 5 9 36 9 60 C9 74 21 84 34 82 C41 81 46 77 48 72 C48 84 44 92 33 96 L67 96 C56 92 52 84 52 72 C54 77 59 81 66 82 C79 84 91 74 91 60 C91 36 50 5 50 5 Z"/></g></g>
     </svg>
-    Bonny
+    Bonnie
   </div>
   <nav>
     <button class="nav" id="new"><span aria-hidden="true">+</span> New</button>
@@ -457,7 +457,7 @@ input[type="color"] { width: 36px; height: 24px; padding: 0; border: 1px solid v
       <div class="hero"><div class="kind" id="hero-kind">Computer</div><h2 id="hero-title">What should we work on?</h2></div>
       <form class="box cut" id="form">
         <div class="tray" id="tray" role="list" aria-label="Attached files" hidden></div>
-      <label class="sr" for="input">Message Bonny</label>
+      <label class="sr" for="input">Message Bonnie</label>
         <textarea id="input" rows="1" placeholder="Describe what you want done"></textarea>
         <div class="bar">
           <button type="button" class="btn cut icon" id="attach" aria-label="Attach images or text files" title="Attach images or text files"></button>
@@ -483,8 +483,8 @@ input[type="color"] { width: 36px; height: 24px; padding: 0; border: 1px solid v
       <div class="art-top"><h2>Providers</h2><span class="hint" id="prov-count"></span></div>
       <div class="prov-body">
         <details><summary>What is a key, and where does it go?</summary>
-          <p>A key is a long password that a model service gives you. It lets Bonny ask that service for answers on your account, and the service bills you, not Clyde.</p>
-          <ul><li>Bonny sends it only to that service.</li><li>It is saved on this computer in <code>~/.clyde/keys.json</code>, readable only by you, and is never shown again.</li><li>Treat it like a password: don't paste it into chats or commits.</li></ul></details>
+          <p>A key is a long password that a model service gives you. It lets Bonnie ask that service for answers on your account, and the service bills you, not Clyde.</p>
+          <ul><li>Bonnie sends it only to that service.</li><li>It is saved on this computer in <code>~/.clyde/keys.json</code>, readable only by you, and is never shown again.</li><li>Treat it like a password: don't paste it into chats or commits.</li></ul></details>
         <details><summary>Which one should I pick?</summary>
           <ul><li><b>Ollama or LM Studio</b> run models on this machine: no key, nothing leaves it.</li><li><b>OpenRouter</b> is one key for many models from many makers.</li><li>Already pay for <b>Anthropic, OpenAI or Google</b>? Use that one.</li></ul>
           <p>Pricing and free allowances belong to each service, so check their pages.</p></details>
@@ -492,11 +492,11 @@ input[type="color"] { width: 36px; height: 24px; padding: 0; border: 1px solid v
       </div>
     </section>
     <section id="auto-view" aria-label="Automations">
-      <div class="art-top"><h2>Automations</h2><span class="hint" id="auto-hint">Prompts Bonny runs on a schedule, in this project. They run only while Bonny is open, each in its own session.</span></div>
+      <div class="art-top"><h2>Automations</h2><span class="hint" id="auto-hint">Prompts Bonnie runs on a schedule, in this project. They run only while Bonnie is open, each in its own session.</span></div>
       <div class="auto-body">
         <form class="af cut" id="af">
           <label class="fld">Name<input type="text" id="af-name" maxlength="80" placeholder="Morning look (optional)"></label>
-          <label class="fld">What should Bonny do?<textarea id="af-prompt" maxlength="4000" required placeholder="Summarise what changed in the repo since yesterday"></textarea></label>
+          <label class="fld">What should Bonnie do?<textarea id="af-prompt" maxlength="4000" required placeholder="Summarise what changed in the repo since yesterday"></textarea></label>
           <div class="fld" id="af-when-wrap">When
             <div class="line">
               <span class="sel cut"><select id="af-kind" aria-label="How often"><option value="every">Every</option><option value="daily">Every day</option><option value="weekly">On certain days</option></select><i class="caret" aria-hidden="true">&#9662;</i></span>
@@ -539,7 +539,7 @@ input[type="color"] { width: 36px; height: 24px; padding: 0; border: 1px solid v
 <dialog id="proj" aria-labelledby="proj-title">
   <div class="dlg-head"><h2 id="proj-title">Choose a project</h2><button class="btn cut" id="proj-close">Close</button></div>
   <div class="dlg-body">
-    <div class="hint">Bonny reads and writes files in the project folder. Pick any folder, or make a new one.</div>
+    <div class="hint">Bonnie reads and writes files in the project folder. Pick any folder, or make a new one.</div>
     <div class="pj-path" id="pj-path"></div>
     <div class="line"><button type="button" class="btn cut" id="pj-up">Up</button><button type="button" class="btn cut" id="pj-home">Home</button><button type="button" class="btn cut primary" id="pj-use">Use this folder</button></div>
     <div id="pj-recent-wrap"><h3>Recent</h3><div class="pj-list" id="pj-recent"></div></div>
@@ -596,10 +596,10 @@ input[type="color"] { width: 36px; height: 24px; padding: 0; border: 1px solid v
   <svg data-i="more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.5" fill="currentColor" stroke="none"/></svg>
 </template>
 
-<script>window.BONNY_TOKEN = "__TOKEN__";</script>
+<script>window.BONNIE_TOKEN = "__TOKEN__";</script>
 <script>
 "use strict";
-const TOKEN = window.BONNY_TOKEN;
+const TOKEN = window.BONNIE_TOKEN;
 const $ = (id) => document.getElementById(id);
 const st = { busy: false, ui: "computer", mode: "hold", bubble: null, bubbleText: "", tools: new Map(), session: "", queued: 0,
   status: null, since: 0, activity: "", ticker: 0, titles: new Map(), fetched: [], pending: new Map(), queries: [], wrap: null, turn: null, sent: new Map(), said: "" };
@@ -607,7 +607,7 @@ const st = { busy: false, ui: "computer", mode: "hold", bubble: null, bubbleText
 async function api(path, body) {
   const res = await fetch(path, {
     method: body === undefined ? "GET" : "POST",
-    headers: { "X-Bonny-Token": TOKEN, "Content-Type": "application/json" },
+    headers: { "X-Bonnie-Token": TOKEN, "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const data = await res.json().catch(() => ({}));
@@ -756,7 +756,7 @@ function addUser(text, atts) {
   scroll();
 }
 function startBubble() {
-  st.bubble = h("div", { class: "msg bonny" }); st.bubbleText = "";
+  st.bubble = h("div", { class: "msg bonnie" }); st.bubbleText = "";
   st.wrap = h("div", { class: "answer" }, st.bubble); col.append(st.wrap);
 }
 function paintBubble() { if (st.bubble) { st.bubble.replaceChildren(markdown(st.bubbleText)); scroll(); } }
@@ -844,7 +844,7 @@ function renderMessages(messages) {
       continue;
     }
     setEmpty(false);
-    col.append(h("div", { class: "answer" }, h("div", { class: "msg bonny" }, markdown(m.text)),
+    col.append(h("div", { class: "answer" }, h("div", { class: "msg bonnie" }, markdown(m.text)),
       actionRow({ text: m.text, question, search: false, mode: null, info: sourceInfo(m.text, new Map(), []), council: null, quiet: true })));
   }
   setEmpty(!messages.length); scroll();
@@ -862,7 +862,7 @@ function toast(text, action) {
 }
 let opening = 0;
 async function openSession(id) {
-  if (st.busy) { toast("Bonny is working. Stop her, or wait, to open another session."); return; }
+  if (st.busy) { toast("Bonnie is working. Stop her, or wait, to open another session."); return; }
   showView("chat"); document.body.classList.remove("side-open"); $("toggle").setAttribute("aria-expanded", "false");
   document.querySelectorAll("#sessions .session").forEach((b) => b.setAttribute("aria-current", String(b.dataset.id === id)));   // answer the tap at once
   const mine = ++opening;
@@ -927,7 +927,7 @@ $("steer").addEventListener("click", async () => {
 document.querySelectorAll("#form .chip[data-mode]").forEach((c) => c.addEventListener("click", () => { st.ui = c.dataset.mode; paintControls(); }));
 $("nav-computer").addEventListener("click", () => { showView("chat"); st.ui = "computer"; paintControls(); $("input").focus(); });
 $("new").addEventListener("click", async () => {
-  if (st.busy) { toast("Bonny is working. Stop her, or wait, to start a new session."); return; }
+  if (st.busy) { toast("Bonnie is working. Stop her, or wait, to start a new session."); return; }
   try {
     const r = await api("/api/session/new", {});
     showView("chat"); st.session = r.session; renderMessages(r.messages); applyState(r); document.body.classList.remove("side-open"); $("toggle").setAttribute("aria-expanded", "false"); $("input").focus();
@@ -944,7 +944,7 @@ function permissionCard(e) {
   const answer = (ok) => async () => { allow.disabled = deny.disabled = true; try { await api("/api/permission", { card: e.card, allow: ok }); } catch (err) { note(err.message, "error"); } };
   allow.addEventListener("click", answer(true)); deny.addEventListener("click", answer(false));
   col.append(h("div", { class: "card cut", role: "group", "aria-label": "Permission needed" },
-    h("div", {}, h("b", {}, "Bonny wants to use " + e.tool), h("div", { class: "note" }, e.message)), h("div", { class: "row" }, allow, deny)));
+    h("div", {}, h("b", {}, "Bonnie wants to use " + e.tool), h("div", { class: "note" }, e.message)), h("div", { class: "row" }, allow, deny)));
   st.bubble = null; scroll();
 }
 function trackSources(e) {
@@ -982,14 +982,14 @@ function handle(e) {
   else if (e.kind === "turn_end") {
     finish();
     if (e.stopped) { note("Stopped."); announce("Stopped."); }
-    else { finishAnswer(e); announce("Bonny answered."); notifyAnswer(e, st.turn && st.turn.text); }
+    else { finishAnswer(e); announce("Bonnie answered."); notifyAnswer(e, st.turn && st.turn.text); }
     st.bubble = null; st.wrap = null; st.tools.clear(); st.busy = false; refresh();
   } else if (e.kind === "session") { st.session = e.session; showSession().catch(() => renderMessages([])).then(refresh); }
 }
 /* notify:start
    A browser notification when an answer is ready, only while this tab is in the background. It names your question, not the answer,
    so nothing private shows on a lock screen. The permission belongs to this address, so the on/off choice is kept in this browser beside it. */
-const NOTIFY_KEY = "bonny.notify";
+const NOTIFY_KEY = "bonnie.notify";
 function notifyOn() {
   try { return "Notification" in window && Notification.permission === "granted" && localStorage.getItem(NOTIFY_KEY) === "1"; } catch (err) { return false; }
 }
@@ -1003,7 +1003,7 @@ function notifyAnswer(e, prompt) {
   if (e.stopped || !notifyOn() || (!document.hidden && document.hasFocus())) return;
   try {
     const said = String(prompt || "").replace(/\s+/g, " ").trim();
-    const n = new Notification(e.ok === false ? "Bonny hit a problem" : "Bonny answered", { body: said.length > 80 ? said.slice(0, 79) + "…" : said, tag: "bonny-answer" });
+    const n = new Notification(e.ok === false ? "Bonnie hit a problem" : "Bonnie answered", { body: said.length > 80 ? said.slice(0, 79) + "…" : said, tag: "bonnie-answer" });
     n.onclick = () => { window.focus(); n.close(); };
   } catch (err) { /* a browser that refuses (some phones) simply doesn't notify */ }
 }
@@ -1015,7 +1015,7 @@ async function toggleNotify() {
     if (permission !== "granted") { note("Notifications are blocked for this page. Allow them in your browser's site settings, then try again."); return; }
     localStorage.setItem(NOTIFY_KEY, "1");
     announce("Notifications on.");
-    new Notification("Bonny", { body: "I'll tell you here when an answer is ready.", tag: "bonny-answer" });
+    new Notification("Bonnie", { body: "I'll tell you here when an answer is ready.", tag: "bonnie-answer" });
   } catch (err) { note("Couldn't change notifications: " + err.message); }
   finally { paintNotify(); }
 }
@@ -1313,7 +1313,7 @@ function finishAnswer(e) {
   scroll();
 }
 
-/* Artifacts: the files Clyde wrote or edited, with a preview that can't reach your files, your network or Bonny. */
+/* Artifacts: the files Clyde wrote or edited, with a preview that can't reach your files, your network or Bonnie. */
 const KINDS = { page: "Page", document: "Document", image: "Image", code: "Code", other: "File" };
 const FILTERS = [["all", "All"], ["page", "Pages"], ["document", "Documents"], ["image", "Images"], ["code", "Code"]];
 let arts = [], artFilter = "all", artSel = "", artScripts = false;
@@ -1377,7 +1377,7 @@ function paintPane(info) {
   if (!info.exists) view.append(h("div", { class: "art-empty" }, "This file is no longer on disk."));
   else if (info.error) view.append(h("div", { class: "art-empty" }, "Couldn't open it: " + info.error));
   else if (info.kind === "html") {
-    notes.push(artScripts ? "Scripts run in a sandbox: they can't reach Bonny, your files or the network." : "Previews can't load pictures, fonts or scripts from other sites, and scripts are off.");
+    notes.push(artScripts ? "Scripts run in a sandbox: they can't reach Bonnie, your files or the network." : "Previews can't load pictures, fonts or scripts from other sites, and scripts are off.");
     view.append(h("iframe", { sandbox: artScripts ? "allow-scripts" : "", src: rawUrl(info.path, artScripts ? "&scripts=1" : ""), title: "Preview of " + info.name }));
   } else if (info.kind === "image") view.append(h("img", { src: rawUrl(info.path), alt: info.name }));
   else if (info.loading) view.append(h("div", { class: "art-empty" }, "Loading…"));
@@ -1391,7 +1391,7 @@ function paintPane(info) {
 function artifactCard(e) {
   const open = h("button", { class: "btn cut", type: "button" }, "Preview");
   open.addEventListener("click", () => openArtifacts(e.path));
-  col.append(h("div", { class: "card cut art-card" }, ico("file"), h("div", { class: "grow" }, h("b", {}, e.name), h("div", { class: "note" }, (e.tool === "Write" ? "Written" : "Edited") + " by Bonny")), open));
+  col.append(h("div", { class: "card cut art-card" }, ico("file"), h("div", { class: "grow" }, h("b", {}, e.name), h("div", { class: "note" }, (e.tool === "Write" ? "Written" : "Edited") + " by Bonnie")), open));
   st.bubble = null; scroll();
 }
 $("nav-artifacts").addEventListener("click", () => openArtifacts());
@@ -1469,7 +1469,7 @@ async function attachFiles(files) {
     const item = { name: file.name || "pasted-image.png", size: file.size, state: "uploading", kind: isImage ? "image" : "text", url: isImage ? URL.createObjectURL(file) : "" };
     pending.push(item); paintTray();
     try {
-      const res = await fetch("/api/attachments", { method: "POST", headers: { "X-Bonny-Token": TOKEN, "X-File-Name": encodeURIComponent(item.name), "Content-Type": "application/octet-stream" }, body: file });
+      const res = await fetch("/api/attachments", { method: "POST", headers: { "X-Bonnie-Token": TOKEN, "X-File-Name": encodeURIComponent(item.name), "Content-Type": "application/octet-stream" }, body: file });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || res.statusText);
       Object.assign(item, { id: data.id, kind: data.kind, size: data.size, state: "ready" });
@@ -1605,7 +1605,7 @@ $("bgfile").addEventListener("change", async () => {
   const file = $("bgfile").files[0];
   if (!file) return;
   try {
-    const res = await fetch("/api/theme/image", { method: "POST", headers: { "X-Bonny-Token": TOKEN, "Content-Type": file.type || "application/octet-stream" }, body: file });
+    const res = await fetch("/api/theme/image", { method: "POST", headers: { "X-Bonnie-Token": TOKEN, "Content-Type": file.type || "application/octet-stream" }, body: file });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || res.statusText);
     applyTheme(data);
@@ -1644,7 +1644,7 @@ if (matchMedia("(hover: hover) and (pointer: fine)").matches && !matchMedia("(pr
     await showSession();
     await refresh();
     poll(state.event);
-  } catch (e) { note("Couldn't reach Bonny: " + e.message, "error"); }
+  } catch (e) { note("Couldn't reach Bonnie: " + e.message, "error"); }
 })();
 </script>
 </body>

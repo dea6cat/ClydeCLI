@@ -1,12 +1,12 @@
 """Pinned sessions: stored locally, shown first, validated."""
 from __future__ import annotations
 
-from src.bonny import pins
-from tests.bonny import test_server as ts
-from tests.bonny.test_artifacts import session, temp_dir
+from src.bonnie import pins
+from tests.bonnie import test_server as ts
+from tests.bonnie.test_artifacts import session, temp_dir
 
 
-class TestPins(ts.BonnyCase):
+class TestPins(ts.BonnieCase):
     def setUp(self):
         super().setUp()
         self.root = temp_dir(self)

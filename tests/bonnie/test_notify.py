@@ -1,4 +1,4 @@
-"""Bonny's "Notify me" toggle: the page's own notification code, run under Node against a stand-in for the browser's
+"""Bonnie's "Notify me" toggle: the page's own notification code, run under Node against a stand-in for the browser's
 Notification API, permission and storage. Skipped without Node."""
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import shutil
 import subprocess
 import unittest
 
-from src.bonny.page import PAGE
+from src.bonnie.page import PAGE
 
 _PREAMBLE = r"""
 const opts = %s;
@@ -46,7 +46,7 @@ def run(opts: dict, actions: str = "") -> dict:
     return json.loads(done.stdout)
 
 
-ON = {"permission": "granted", "stored": {"bonny.notify": "1"}, "hidden": True}
+ON = {"permission": "granted", "stored": {"bonnie.notify": "1"}, "hidden": True}
 
 
 @unittest.skipUnless(shutil.which("node"), "Node is not installed")
@@ -58,7 +58,7 @@ class TestNotify(unittest.TestCase):
     def test_an_answer_in_a_background_tab_notifies_with_the_question_not_the_answer(self):
         out = run(ON, 'notifyAnswer({ ok: true, answer: "the secret answer" }, "what is\\n  my   plan?");')
         self.assertEqual(len(out["shown"]), 1)
-        self.assertEqual(out["shown"][0]["title"], "Bonny answered")
+        self.assertEqual(out["shown"][0]["title"], "Bonnie answered")
         self.assertEqual(out["shown"][0]["body"], "what is my plan?")        # whitespace collapsed, and no answer text
         self.assertNotIn("secret", json.dumps(out["shown"]))
         self.assertEqual(out["pressed"], "true")
@@ -70,7 +70,7 @@ class TestNotify(unittest.TestCase):
     def test_a_stopped_turn_is_silent_and_a_failed_one_says_so(self):
         self.assertEqual(run(ON, 'notifyAnswer({ stopped: true }, "q");')["shown"], [])
         out = run(ON, 'notifyAnswer({ ok: false }, "q");')
-        self.assertEqual(out["shown"][0]["title"], "Bonny hit a problem")
+        self.assertEqual(out["shown"][0]["title"], "Bonnie hit a problem")
 
     def test_a_long_question_is_cut_short(self):
         out = run(ON, 'notifyAnswer({ ok: true }, "x".repeat(300));')
@@ -84,9 +84,9 @@ class TestNotify(unittest.TestCase):
     def test_turning_it_on_asks_the_browser_once_and_confirms(self):
         out = run({"permission": "default", "grant": True, "hidden": True}, "await clickHandler();")
         self.assertEqual(out["requests"], 1)
-        self.assertEqual(out["store"]["bonny.notify"], "1")
+        self.assertEqual(out["store"]["bonnie.notify"], "1")
         self.assertEqual((out["pressed"], out["announces"]), ("true", ["Notifications on."]))
-        self.assertEqual(out["shown"][0]["title"], "Bonny")                # the confirmation proves it works
+        self.assertEqual(out["shown"][0]["title"], "Bonnie")                # the confirmation proves it works
 
     def test_a_refusal_leaves_it_off_and_says_how_to_allow_it(self):
         out = run({"permission": "default", "grant": False}, "await clickHandler();")
@@ -101,7 +101,7 @@ class TestNotify(unittest.TestCase):
 
     def test_clicking_it_when_on_turns_it_off(self):
         out = run(ON, "await clickHandler();")
-        self.assertEqual((out["store"]["bonny.notify"], out["pressed"], out["announces"]), ("0", "false", ["Notifications off."]))
+        self.assertEqual((out["store"]["bonnie.notify"], out["pressed"], out["announces"]), ("0", "false", ["Notifications off."]))
 
     def test_a_browser_without_notifications_says_so_and_nothing_throws(self):
         out = run({"noApi": True}, 'await clickHandler(); notifyAnswer({ ok: true }, "q");')
