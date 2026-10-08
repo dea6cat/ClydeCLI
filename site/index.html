@@ -18,7 +18,7 @@
 <div class="frame">
 <header>
   <b><img src="brand/clyde-mark.svg" alt="" width="24" height="24">ClydeCLI</b>
-  <nav><a href="bonny.html">Bonny</a><a href="keys.html">API keys</a><a href="https://github.com/dea6cat/ClydeCLI">Source</a><a href="https://github.com/dea6cat/ClydeCLI/blob/main/CHANGELOG.md">Changelog</a><a href="https://github.com/dea6cat/ClydeCLI/issues">Issues</a></nav>
+  <nav><a href="features.html">Features</a><a href="bonny.html">Bonny</a><a href="keys.html">API keys</a><a href="https://github.com/dea6cat/ClydeCLI">Source</a><a href="https://github.com/dea6cat/ClydeCLI/blob/main/CHANGELOG.md">Changelog</a><a href="https://github.com/dea6cat/ClydeCLI/issues">Issues</a></nav>
 </header>
 <div class="strip"><span class="chip">SOURCE-AVAILABLE</span><span class="mono">Bring any model. Clyde deals. <a href="https://github.com/dea6cat/ClydeCLI/blob/main/LICENSE">Free for noncommercial use.</a></span></div>
 <main>
@@ -84,60 +84,6 @@ c = code and conversation, f = files only, m = conversation only <span style="co
   Conversation rewound; your message is back in the prompt to edit or resend.</pre>
   <figcaption>Recorded 2026-10-05 from Clyde's own console output, then shortened for this page: the model's repeated echo of the request, most of its reasoning, the test output, the code echo and the <code>/rewind</code> table are cut. Startup warnings about the recording machine's MCP setup are trimmed and its home folder is shown as <code>~</code>; nothing else is edited.</figcaption></figure>
 
-  <h2>When a model fails mid-turn</h2>
-  <p>With <code>cardShuffle:house</code> as the model, Clyde picks a real model for each turn from the ones that passed <code>/eval</code>. Here Google answered HTTP 503 halfway through, so the turn moved to the next model and finished.</p>
-  <figure><pre role="region" tabindex="0" aria-label="Recorded cardShuffle turn re-dealing after an HTTP 503"><span style="color: #4eba65; font-weight: bold">❯</span> how many tests does test_dates.py have, and which one fails?
-
-
-<span style="color: #4eba65; text-decoration-color: #4eba65">♠ dealt </span><span style="color: #e8e4dc; text-decoration-color: #e8e4dc">google:gemini-3.1-flash-lite</span><span style="color: #8a8a8a; text-decoration-color: #8a8a8a">  house · laya difficulty 1.6/3 (shadow)</span>
-<span style="color: #797b74; text-decoration-color: #797b74">•</span> <span style="color: #4eba65; text-decoration-color: #4eba65">Read</span> <span style="color: #797b74; text-decoration-color: #797b74; font-weight: bold">(</span><span style="color: #797b74; text-decoration-color: #797b74">test_dates.py</span><span style="color: #797b74; text-decoration-color: #797b74; font-weight: bold">)</span> <span style="color: #797b74; text-decoration-color: #797b74">running</span><span style="color: #78693c; text-decoration-color: #78693c">...</span>
-<span style="color: #8a8a8a; text-decoration-color: #8a8a8a">  ↳ ./test_dates.py · lines=1-18/18 · 0.0s</span>
-<span style="color: #4eba65; text-decoration-color: #4eba65">♠ dealt </span><span style="color: #e8e4dc; text-decoration-color: #e8e4dc">google:gemini-3-flash-preview</span><span style="color: #8a8a8a; text-decoration-color: #8a8a8a">  google:gemini-3.1-flash-lite failed: [google] HTTP 503 — </span>
-<span style="color: #8a8a8a; text-decoration-color: #8a8a8a">provider error, usually temporary: This model is currently e</span>
-<span style="color: #797b74; text-decoration-color: #797b74">•</span> <span style="color: #4eba65; text-decoration-color: #4eba65">Bash</span> <span style="color: #797b74; text-decoration-color: #797b74; font-weight: bold">(</span><span style="color: #797b74; text-decoration-color: #797b74">python3 test_dates.py</span><span style="color: #797b74; text-decoration-color: #797b74; font-weight: bold">)</span> <span style="color: #797b74; text-decoration-color: #797b74">running</span><span style="color: #78693c; text-decoration-color: #78693c">...</span>
-<span style="color: #d0202f; text-decoration-color: #d0202f">  ↳ exit=1 · FAILED (failures=1) · 0.1s</span>
-`test_dates.py` has 3 tests. `test_february_in_a_leap_year` fails.
-
-<span style="color: #4eba65; text-decoration-color: #4eba65">♠ </span><span style="color: #8a8a8a; text-decoration-color: #8a8a8a">Pondered for 14s · 10:45 AM · 18.1k in, 68 out</span></pre>
-  <figcaption>Recorded 2026-10-05, same project. Google returned the 503 during the recording.</figcaption></figure>
-
-  <h2>Checking which models work</h2>
-  <p><code>/eval</code> runs a tool call, a round trip and a hand of 11 graded tasks against every model your keys reach. Broken ones disappear from <code>/models</code>. The red line is a model that scored lower than at its last run.</p>
-  <figure><pre role="region" tabindex="0" aria-label="Recorded /eval run on codestral models"><span style="color: #4eba65; font-weight: bold">❯</span> <span style="color: #be78c8; text-decoration-color: #be78c8">/</span><span style="color: #be78c8; text-decoration-color: #be78c8">eval</span> codestral
-
-<span style="color: #50b4b4; text-decoration-color: #50b4b4; font-weight: bold">4</span> <span style="color: #be78c8; text-decoration-color: #be78c8; font-weight: bold">model</span><span style="font-weight: bold">(</span>s<span style="font-weight: bold">)</span> to test on your own keys: two short requests, then a hand of <span style="color: #50b4b4; text-decoration-color: #50b4b4; font-weight: bold">11</span> harder tasks for each
-that passes.
-Run the evaluation? <span style="color: #be78c8; text-decoration-color: #be78c8; font-weight: bold">[y/n]</span> <span style="color: #50b4b4; text-decoration-color: #50b4b4; font-weight: bold">(y)</span>: <span style="font-weight: bold">y</span>
-<span style="color: #8a8a8a; text-decoration-color: #8a8a8a">   model                             tool  trip  hand  secs  tok/s  note                 </span>
-<span style="color: #4eba65; text-decoration-color: #4eba65">●</span>  <span style="color: #e8e4dc; text-decoration-color: #e8e4dc; font-weight: bold">mistral:codestral-latest        </span>  <span style="color: #4eba65; text-decoration-color: #4eba65">   ✓</span>  <span style="color: #4eba65; text-decoration-color: #4eba65">   ✓</span>  2/11   0.6     30  <span style="color: #8a8a8a; text-decoration-color: #8a8a8a">                     </span>
-   <span style="color: #e8e4dc; text-decoration-color: #e8e4dc; font-weight: bold">mistral:codestral-2508          </span>  <span style="color: #4eba65; text-decoration-color: #4eba65">   ✓</span>  <span style="color: #4eba65; text-decoration-color: #4eba65">   ✓</span>  1/11   0.6     30  <span style="color: #8a8a8a; text-decoration-color: #8a8a8a">                     </span>
-   <span style="color: #8a8a8a; text-decoration-color: #8a8a8a">openrouter:mistralai/codestral-…</span>  <span style="color: #d0202f; text-decoration-color: #d0202f">   ✗</span>  <span style="color: #d0202f; text-decoration-color: #d0202f">   ✗</span>     -     -      -  <span style="color: #8a8a8a; text-decoration-color: #8a8a8a">credits or rate limit</span>
-   <span style="color: #8a8a8a; text-decoration-color: #8a8a8a">nvidia:mistralai/codestral-22b-…</span>  <span style="color: #d0202f; text-decoration-color: #d0202f">   ✗</span>  <span style="color: #d0202f; text-decoration-color: #d0202f">   ✗</span>     -     -      -  <span style="color: #8a8a8a; text-decoration-color: #8a8a8a">not available        </span>
-<span style="color: #d0202f; text-decoration-color: #d0202f">↓ mistral:codestral-latest: 3/11 → 2/11 since 2026-10-02</span>
-<span style="color: #4eba65; text-decoration-color: #4eba65; font-weight: bold">2/4 passed</span><span style="color: #8a8a8a; text-decoration-color: #8a8a8a">  ·  1 not available  ·  1 credits or rate limits (kept, retry later)</span>
-<span style="color: #8a8a8a; text-decoration-color: #8a8a8a">/models now hides the 1 that don&#x27;t work · /models all shows them</span></pre>
-  <figcaption>Recorded 2026-10-05. The OpenRouter account had run out of credits; that result is kept and retried later.</figcaption></figure>
-
-  <h2>Laya, and why it isn't steering yet</h2>
-  <p>Laya is a small decision model bundled with Clyde that runs locally. It watches for a model repeating itself and hands the turn on when it is confident. It also scores each request's difficulty, but that score only starts choosing models once your own sessions show it means something. <code>/laya</code> shows where that stands:</p>
-  <figure><pre role="region" tabindex="0" aria-label="Recorded /laya output"><span style="color: #4eba65; font-weight: bold">❯</span> <span style="color: #be78c8; text-decoration-color: #be78c8">/</span><span style="color: #be78c8; text-decoration-color: #be78c8">laya</span>
-
-Laya: not started · from <span style="color: #50b4b4; text-decoration-color: #50b4b4; font-weight: bold">42</span> traced <span style="color: #be78c8; text-decoration-color: #be78c8; font-weight: bold">session</span><span style="font-weight: bold">(</span>s<span style="font-weight: bold">)</span>
-
-Stuck checks (re-deal at 0.80)   checks  re-dealt  turn ran out anyway
-  below 0.50                           0         0                    0
-  0.50 to 0.80                         0         0                    0
-  0.80 and up                          0         0                    0
-  Loops that ran out under the threshold argue for lowering it; re-dealt turns that ran out 
-anyway, or many re-deals, argue for raising it.
-
-Difficulty (shadow turns, split at score 1.62)   turns  avg tool rounds  ran out
-  easier half                                  1              1.0        0
-  harder half                                  2              3.0        0
-  Difficulty stays in shadow: the harder half took 3.0 tool rounds on average, the easier half 
-1.0; it needs 9 more scored turn(s) in the smaller half.</pre>
-  <figcaption>Recorded 2026-10-05 on the maintainer's machine, which so far has only a handful of scored turns.</figcaption></figure>
-
   <h2>The deal</h2>
   <p>Each turn, Clyde deals from the models you have. The pile deals on its own, naming each model as its card comes out. Put your pointer on it and move up and down to pick one yourself.</p>
   <div class="figure"><iframe src="hairline/deal.html?w=520" title="Interactive figure: a loose pile of eight cards, the one at the pointer slides out" loading="lazy"></iframe></div>
@@ -145,20 +91,9 @@ Difficulty (shadow turns, split at score 1.62)   turns  avg tool rounds  ran out
   <h2>Bonny, Clyde’s luv accomplice</h2>
   <p><code>clyde luv bonny</code> opens Bonny at <code>localhost:8080</code> on your own machine: the same engine, tools and sessions in a browser page, with her own voice. Queue, steer or stop a turn, attach images and text files, search the web with sources, and see the files Clyde wrote in an Artifacts view. Connect a model provider with a guided, tested key flow, pin sessions, choose or make the project folder, and set prompts to run on a schedule (read-only unless you allow edits). Make the page yours in Customize. <code>bonny luv clyde</code> goes the other way and starts the terminal. <a href="bonny.html">See Bonny</a>.</p>
 
-  <h2>What else it does</h2>
-  <dl class="grid">
-    <div class="cut"><dt>Council</dt><dd><code>cardShuffle:high-roller council</code> asks the top four models at once with tools off, and Laya rates the answers.</dd></div>
-    <div class="cut"><dt>Scripts and CI</dt><dd><code>clyde -p</code> runs one turn with JSON output and exit codes.</dd></div>
-    <div class="cut"><dt>Sandbox</dt><dd>Shell commands write only inside the project. Reading a <code>.env</code> or key file asks first.</dd></div>
-    <div class="cut"><dt>MCP</dt><dd>Servers work over stdio, HTTP and SSE, with OAuth sign-in.</dd></div>
-    <div class="cut"><dt>Sub-agents</dt><dd>Agents and teams run in parallel, in the background if you like.</dd></div>
-    <div class="cut"><dt>Your existing setup</dt><dd>Reads the memory files, skills, hooks and MCP servers you set up for Claude Code, Codex, Cursor or Gemini CLI.</dd></div>
-    <div class="cut"><dt>Saved plans</dt><dd>The plan you approve in plan mode survives <code>/compact</code> and <code>--resume</code>. <code>/plan</code> marks phases done.</dd></div>
-    <div class="cut"><dt>Review and sessions</dt><dd><code>/review</code> reads your changes, a commit or a branch without editing. <code>clyde sessions</code> searches old sessions.</dd></div>
-    <div class="cut"><dt>Tune a local model</dt><dd><code>clyde tune</code> asks what you use it for, tries flash attention and a smaller KV cache on throwaway servers, and keeps a setting only if it saves memory or opens a longer window without changing what the model says or losing tool calls.</dd></div>
-    <div class="cut"><dt>The install</dt><dd><code>clyde doctor</code>, <code>update</code> and <code>uninstall</code>. Updates follow <code>main</code> or tagged releases and never install by themselves.</dd></div>
-  </dl>
-  <p>Editor support over the Agent Client Protocol, a read-only SQL tool and the rest are in the <a href="https://github.com/dea6cat/ClydeCLI#readme">README</a>.</p>
+
+  <h2>And more</h2>
+  <p>Tune a local model's memory and window, deal a model each turn and re-deal when one fails, check which models really work, ask four at once, sandbox every command, connect MCP servers and sub-agents. <a href="features.html">See every feature, with recordings and real results</a>.</p>
 
   <h2>Limits</h2>
   <ul>

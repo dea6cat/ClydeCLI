@@ -120,3 +120,9 @@
   .spotcap { margin: 12px 0 0; max-width: none; }
   @media (hover: none) { .spot { cursor: default; } }
   h1 .bmark { display: inline-block; height: .82em; width: auto; margin-right: .22em; vertical-align: -.04em; }
+
+  /* the Features page: sub-sections inside a long section, and the jump line under the title */
+  h3 { font-size: 22px; line-height: 1.2; font-weight: 750; font-stretch: 92%; letter-spacing: -.02em; margin: 44px 0 10px; }
+  h2[id], h3[id] { scroll-margin-top: 20px; }
+  .jump { margin: 8px 0 0; line-height: 1.9; max-width: none; }
+  .jump a { white-space: nowrap; }

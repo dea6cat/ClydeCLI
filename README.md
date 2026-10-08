@@ -460,6 +460,8 @@ uv pip install -r requirements.txt
 ### Configure
 
 > **Where to get an API key** for each provider, and a one-minute tutorial for adding it: [dea6cat.github.io/ClydeCLI/keys.html](https://dea6cat.github.io/ClydeCLI/keys.html).
+>
+> **Every feature** with recordings, including **tuning a local model** (`clyde tune`: what it tries, the checks a setting must pass, real results): [dea6cat.github.io/ClydeCLI/features.html](https://dea6cat.github.io/ClydeCLI/features.html)
 
 #### Option 1: Just export a key (no login needed)
 
