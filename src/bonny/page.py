@@ -140,8 +140,19 @@ main { flex: 1; min-width: 0; display: flex; justify-content: center; }
 .msg.user { --c: 10px; --fill: var(--tint); align-self: flex-end; padding: 8px 16px; max-width: 82%; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 15.5px; }
 .msg.bonny { overflow-wrap: anywhere; font-size: 16.5px; line-height: 1.65; }
 .msg.bonny p { margin: 0 0 .85em; } .msg.bonny p:last-child { margin-bottom: 0; }
-.msg.bonny h3 { margin: .7em 0 .3em; font-size: 17px; font-weight: 750; letter-spacing: -.01em; }
-.msg.bonny ul { margin: 0 0 .85em; padding-left: 1.3em; }
+.msg.bonny h2, .msg.bonny h3, .msg.bonny h4 { margin: .9em 0 .3em; font-weight: 750; letter-spacing: -.01em; line-height: 1.25; }
+.msg.bonny h2 { font-size: 20px; } .msg.bonny h3 { font-size: 17.5px; } .msg.bonny h4 { font-size: 16.5px; }
+.msg.bonny ul, .msg.bonny ol { margin: 0 0 .85em; padding-left: 1.4em; }
+.msg.bonny li > ul, .msg.bonny li > ol { margin: .25em 0 0; }
+.msg.bonny li { margin: 0 0 .2em; }
+.msg.bonny blockquote { margin: 0 0 .85em; padding-left: 14px; border-left: 2px solid var(--line); color: var(--dim); }
+.msg.bonny hr { border: 0; border-top: 1px solid var(--line); margin: 1.1em 0; }
+.tablewrap { overflow-x: auto; margin: 0 0 .9em; }
+.msg.bonny table, .art-view .doc table { border-collapse: collapse; font-size: .92em; line-height: 1.45; }
+.msg.bonny th, .msg.bonny td, .art-view .doc th, .art-view .doc td { border: 1px solid var(--line); padding: 7px 12px; text-align: left; vertical-align: top; }
+.msg.bonny th, .art-view .doc th { background: color-mix(in srgb, var(--text) 7%, transparent); font-weight: 650; }
+.msg.bonny th.r, .msg.bonny td.r, .art-view .doc th.r, .art-view .doc td.r { text-align: right; }
+.msg.bonny th.c, .msg.bonny td.c, .art-view .doc th.c, .art-view .doc td.c { text-align: center; }
 .msg code { font: .86em var(--mono); background: color-mix(in srgb, var(--text) 8%, transparent); padding: .1em .35em; }
 .msg pre { background: var(--term); color: #e8e4dc; border: 1px solid var(--line); padding: 14px 16px; overflow-x: auto; margin: 0 0 .85em; font: 12.5px/1.55 var(--mono); }
 .msg pre code { background: none; padding: 0; font: inherit; }
@@ -340,7 +351,7 @@ main[data-view="auto"] #auto-view { display: flex; }
 .art-view img { max-width: calc(100% - 40px); max-height: calc(100% - 40px); display: block; margin: 20px auto; object-fit: contain; }
 .art-view pre { margin: 0; padding: 16px 20px; font: 12.5px/1.55 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
 .art-view .doc { padding: 22px 26px; max-width: 760px; margin: 0 auto; width: 100%; font-size: 16px; line-height: 1.65; }
-.art-view .doc p { margin: 0 0 .85em; } .art-view .doc h3 { margin: .8em 0 .3em; font-size: 18px; } .art-view .doc ul { margin: 0 0 .85em; padding-left: 1.3em; }
+.art-view .doc p { margin: 0 0 .85em; } .art-view .doc h3 { margin: .8em 0 .3em; font-size: 18px; } .art-view .doc ul, .art-view .doc ol { margin: 0 0 .85em; padding-left: 1.4em; }
 .art-view .doc pre { background: var(--term); color: #e8e4dc; border: 1px solid var(--line); margin: 0 0 .85em; }
 .art-empty { padding: 28px 22px; color: var(--dim); font-size: 14.5px; }
 .art-note { padding: 8px 18px; border-bottom: 1px solid var(--line); background: var(--tint); }
@@ -625,16 +636,18 @@ function link(url, label) {
   } catch (e) { return label; }
 }
 
-/* A small, safe markdown subset: fences, headings, lists, paragraphs, `code` and **bold**. Text only, no HTML. */
+/* A small, safe markdown subset: fences, headings, lists (numbered, nested), tables, quotes, rules, paragraphs, `code`, **bold**, *italic*, links.
+   Built from DOM nodes and text, never HTML. */
 function inline(text) {
   const out = document.createDocumentFragment();
-  const re = /(`[^`]+`|\*\*[^*]+\*\*|\[[^\]]+\]\(https?:\/\/[^\s)]+\)|https?:\/\/[^\s<>)\]]+)/g;
+  const re = /(`[^`]+`|\*\*[^*]+\*\*|\*[^*\s](?:[^*]*[^*\s])?\*|\[[^\]]+\]\(https?:\/\/[^\s)]+\)|https?:\/\/[^\s<>)\]]+)/g;
   let last = 0, m;
   while ((m = re.exec(text))) {
     out.append(text.slice(last, m.index));
     const tok = m[0];
     if (tok[0] === "`") out.append(h("code", {}, tok.slice(1, -1)));
-    else if (tok[0] === "*") out.append(h("strong", {}, tok.slice(2, -2)));
+    else if (tok.startsWith("**")) out.append(h("strong", {}, tok.slice(2, -2)));
+    else if (tok[0] === "*") out.append(h("em", {}, tok.slice(1, -1)));
     else if (tok[0] === "[") { const cut = tok.lastIndexOf("]("); out.append(link(tok.slice(cut + 2, -1), tok.slice(1, cut))); }
     else { const url = tok.replace(/[.,;:!?]+$/, ""); out.append(link(url, url), tok.slice(url.length)); }
     last = m.index + tok.length;
@@ -642,17 +655,89 @@ function inline(text) {
   out.append(text.slice(last));
   return out;
 }
+const TABLE_SEP = /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/;
+const LIST_ITEM = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/;
+function tableCells(line) {
+  let s = line.trim();
+  if (s[0] === "|") s = s.slice(1);
+  if (s.endsWith("|") && !s.endsWith("\\|")) s = s.slice(0, -1);
+  const cells = [];
+  let cur = "";
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === "\\" && s[i + 1] === "|") { cur += "|"; i++; }
+    else if (s[i] === "|") { cells.push(cur.trim()); cur = ""; }
+    else cur += s[i];
+  }
+  cells.push(cur.trim());
+  return cells;
+}
+function tableBlock(head, sep, rows) {
+  const align = tableCells(sep).map((c) => (c.endsWith(":") ? (c.startsWith(":") ? "c" : "r") : ""));
+  const cell = (tag, text, i) => h(tag, align[i] ? { class: align[i] } : {}, inline(text));
+  const width = Math.max(align.length, tableCells(head).length);
+  const pad = (cells) => Array.from({ length: width }, (_, i) => cells[i] || "");
+  return h("div", { class: "tablewrap" }, h("table", {},
+    h("thead", {}, h("tr", {}, pad(tableCells(head)).map((c, i) => cell("th", c, i)))),
+    h("tbody", {}, rows.map((r) => h("tr", {}, pad(tableCells(r)).map((c, i) => cell("td", c, i)))))));
+}
+function listBlock(items) {
+  const roots = [], stack = [];
+  for (const it of items) {
+    while (stack.length && it.indent < stack[stack.length - 1].indent) stack.pop();
+    let cur = stack[stack.length - 1];
+    if (!cur || it.indent > cur.indent) {
+      const el = h(it.ordered ? "ol" : "ul", {});
+      if (cur) cur.last.append(el); else roots.push(el);
+      cur = { indent: it.indent, el, last: null };
+      stack.push(cur);
+    }
+    cur.last = h("li", {}, inline(it.text));
+    cur.el.append(cur.last);
+  }
+  return roots;
+}
 function markdown(src) {
   const frag = document.createDocumentFragment();
   src.split(/^```.*$/m).forEach((part, i) => {
     if (i % 2) { frag.append(h("pre", {}, h("code", {}, part.replace(/^\n|\n$/g, "")))); return; }
-    for (const block of part.split(/\n{2,}/)) {
-      const lines = block.split("\n").filter((l) => l.trim());
-      if (!lines.length) continue;
-      if (lines.every((l) => /^\s*[-*] /.test(l))) frag.append(h("ul", {}, lines.map((l) => h("li", {}, inline(l.replace(/^\s*[-*] /, ""))))));
-      else if (/^#{1,3} /.test(lines[0])) { frag.append(h("h3", {}, inline(lines[0].replace(/^#+ /, "")))); if (lines.length > 1) frag.append(h("p", {}, inline(lines.slice(1).join(" ")))); }
-      else frag.append(h("p", {}, inline(lines.join("\n"))));
+    const L = part.split("\n");
+    let para = [], n = 0;
+    const flush = () => { if (para.length) { frag.append(h("p", {}, inline(para.join("\n")))); para = []; } };
+    while (n < L.length) {
+      const line = L[n];
+      let m;
+      if (!line.trim()) { flush(); n++; continue; }
+      if ((m = /^(#{1,6})\s+(.*)$/.exec(line))) {
+        flush(); frag.append(h(m[1].length === 1 ? "h2" : m[1].length === 2 ? "h3" : "h4", {}, inline(m[2]))); n++; continue;
+      }
+      if (/^\s*([-*_])(\s*\1){2,}\s*$/.test(line)) { flush(); frag.append(h("hr", {})); n++; continue; }
+      if (line.includes("|") && n + 1 < L.length && TABLE_SEP.test(L[n + 1])) {
+        flush();
+        const rows = [];
+        let j = n + 2;
+        while (j < L.length && L[j].trim() && L[j].includes("|")) rows.push(L[j++]);
+        frag.append(tableBlock(line, L[n + 1], rows)); n = j; continue;
+      }
+      if (/^\s*>/.test(line)) {
+        flush();
+        const quote = [];
+        while (n < L.length && /^\s*>/.test(L[n])) quote.push(L[n++].replace(/^\s*>\s?/, ""));
+        frag.append(h("blockquote", {}, h("p", {}, inline(quote.join("\n"))))); continue;
+      }
+      if (LIST_ITEM.test(line)) {
+        flush();
+        const items = [];
+        while (n < L.length) {
+          const next = L[n].trim() ? L[n] : (L[n + 1] && LIST_ITEM.test(L[n + 1]) ? L[n + 1] : "");   // one blank line may sit between items
+          if (!(m = LIST_ITEM.exec(next))) break;
+          items.push({ indent: m[1].replace(/\t/g, "    ").length, ordered: /\d/.test(m[2]), text: m[3] });
+          n += next === L[n] ? 1 : 2;
+        }
+        frag.append(...listBlock(items)); continue;
+      }
+      para.push(line); n++;
     }
+    flush();
   });
   return frag;
 }
