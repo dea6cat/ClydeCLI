@@ -295,3 +295,22 @@ class TestFailedEvalHidden(unittest.TestCase):
             local_models.show(repl, " ollama")
         self.assertEqual([c.label for c in pick.call_args.args[2]], ["big"])
         self.assertIn("1 hidden", repl.console.export_text())
+
+
+class TestTuneAfterDownload(unittest.TestCase):
+    def _pull(self, events):
+        repl = _Repl()
+        repl.registry = {"ollama": type("O", (), {"host": "http://h", "name": "ollama"})()}
+        with patch.object(local_models, "post_stream", return_value=events), \
+                patch.object(local_models, "_offer_eval"), \
+                patch.object(local_models.tune, "offer") as offer:
+            local_models._pull_ollama(repl, RELAX)
+        return offer
+
+    def test_a_finished_download_offers_to_tune_that_model(self):
+        offer = self._pull(['{"status": "success"}'])
+        offer.assert_called_once()
+        self.assertEqual(offer.call_args.kwargs["model"], "small:3b")
+
+    def test_a_failed_download_offers_nothing(self):
+        self._pull(['{"error": "boom"}']).assert_not_called()

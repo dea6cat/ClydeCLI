@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import io
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+
+from rich.console import Console
 
 from src import tune, tune_profile
 from src.providers.base import ProviderError
@@ -122,6 +125,44 @@ class ChooseTests(unittest.TestCase):
     def test_speed_priority_prefers_the_faster_row(self):
         rows = [_row("default", 4.0, 40, 10), _row("saves", 3.0, 40.5, 10), _row("fast", 3.9, 46, 10)]
         self.assertEqual(tune.choose(rows, Profile(("chat",), "speed")).cand.label, "fast")
+
+
+class OfferTests(unittest.TestCase):
+    def setUp(self):
+        self.console = Console(file=io.StringIO(), width=200)
+
+    def _offer(self, *, installed=None, confirm=True, which="/usr/bin/ollama", **kwargs):
+        provider = type("P", (), {"installed": staticmethod(lambda: installed if isinstance(installed, dict) else (_ for _ in ()).throw(installed))})
+        with patch.object(tune.shutil, "which", return_value=which), patch.object(tune, "local", return_value=provider), \
+                patch.object(tune.Confirm, "ask", return_value=confirm) as ask, patch.object(tune, "run") as run:
+            tune.offer(self.console, **kwargs)
+        return ask, run
+
+    def test_never_asks_with_yes_or_without_ollama(self):
+        for kwargs in ({"assume_yes": True}, {"which": None}):
+            ask, run = self._offer(installed={"m": 1}, **kwargs)
+            ask.assert_not_called()
+            run.assert_not_called()
+
+    def test_setup_is_silent_when_no_model_is_installed(self):
+        ask, run = self._offer(installed={})
+        ask.assert_not_called()
+        run.assert_not_called()
+
+    def test_setup_points_at_the_command_when_ollama_is_not_running(self):
+        ask, run = self._offer(installed=ProviderError("ollama", "down"))
+        ask.assert_not_called()
+        self.assertIn("clyde tune", self.console.file.getvalue())
+
+    def test_a_yes_runs_the_tune_and_a_no_does_not(self):
+        _, run = self._offer(installed={"m": 1}, confirm=True)
+        run.assert_called_once_with(self.console, model=None)
+        _, run = self._offer(installed={"m": 1}, confirm=False)
+        run.assert_not_called()
+
+    def test_after_a_download_it_tunes_that_model_without_listing_installed_ones(self):
+        _, run = self._offer(installed=ProviderError("ollama", "down"), model="qwen3:4b")
+        run.assert_called_once_with(self.console, model="qwen3:4b")
 
 
 class PickModelTests(unittest.TestCase):

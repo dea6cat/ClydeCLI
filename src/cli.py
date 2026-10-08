@@ -487,6 +487,10 @@ def handle_setup(console: Console, assume_yes: bool = False) -> int:
     else:
         console.print(f"• Laya's model isn't downloaded ({laya_client.DOWNLOAD_SIZE}); run [bold]clyde setup[/bold] to get it.")
 
+    # 7b) Ollama tuning: loads the model several times, so only after a yes (never with --yes)
+    from src import tune
+    tune.offer(console, assume_yes=assume_yes)
+
     # 8) PATH
     if not _clyde_bin_on_path() and shutil.which("uv"):
         if not assume_yes and Confirm.ask("clyde isn't on your PATH yet. Add uv's tool folder to it (uv tool update-shell)?", default=True):

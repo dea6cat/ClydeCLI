@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `clyde tune` finds the best Ollama setup for how you use a local model without losing the quality you rely on. It asks what you
+  use it for (coding, chat, research and fact-checking, long documents, quick answers), what matters most and how much RAM to keep
+  free, then tries flash attention and a `q8_0` (or, for chat, `q4_0`) KV cache on throwaway servers: yours is never reconfigured, and
+  it unloads a model you have loaded only after a yes. A setting is dropped if it uses more memory, runs slower than your priority allows,
+  loses tool calling or a fact buried in a long prompt, or makes the model's answers drift from the baseline's. It prints how to apply the
+  winner, or says to keep what you have. `clyde setup` and a model download offer it; `clyde tune --ask` redoes the questions.
 - `clyde luv bonny` now opens at `http://localhost:8080` and takes the port as an argument (`clyde luv bonny 7090`; `--port` still works). If 8080 is taken she moves to a free port and says so; a port you ask for must be free.
 - A second command, `bonny`: `bonny luv clyde [options]` starts the terminal Clyde, the same as `clyde [options]`.
 - `clyde luv bonny` starts Bonny, Clyde's luv accomplice, on localhost with her own persona. The local API queues prompts, steers

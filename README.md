@@ -324,6 +324,7 @@ clyde hooks import             # Bring over hooks from Claude Code, Gemini CLI, 
 clyde mcp import               # Bring over MCP servers from Claude Code, Cursor, Gemini CLI, Codex, Copilot CLI
 clyde update [--check] [--channel latest|stable]  # Move Clyde to the newest version of its channel, the way it was installed
 clyde uninstall [--purge] [-y] # Remove Clyde the way it was installed (uv tool, pipx, pip); --purge also deletes ~/.clyde: settings, keys, sessions
+clyde tune [--ask] [--model NAME] [--ctx N]  # Ollama: best memory/speed/context setup for how you use it, quality-gated; prints how to apply it
 clyde doctor                   # How Clyde is installed: method, version, PATH, other installs, Claude Code, licence
 clyde review [commit SHA | base BRANCH]  # Read-only review of your changes; prints and exits (2 outside a git repo)
 clyde sessions list|search WORDS|archive ID|unarchive ID  # This folder's sessions: find by text, hide old ones from /resume

@@ -340,3 +340,26 @@ def run(console: Console, model: str | None = None, ctx: int | None = None, reas
         console.print(f"[bold]Recommended: {chosen.cand.label}.[/bold]\n{apply_hint(chosen.cand.env, name, chosen.cand.ctx, rows[0].cand.ctx)}")
     tune_profile.save(profile, {"model": name, "ctx": chosen.cand.ctx, "env": chosen.cand.env})
     return 0
+
+
+def offer(console: Console, model: str | None = None, assume_yes: bool = False) -> None:
+    """The prompt `clyde setup` and a model download share: tune now, or later. Loads the model several times,
+    so it is never run without a yes (and never with --yes). Silent when there is nothing to tune."""
+    if assume_yes or not shutil.which("ollama"):
+        return
+    if model is None:
+        try:
+            if not local().installed():
+                return
+        except ProviderError:
+            console.print("• A local model is installed but Ollama isn't running; run [bold]clyde tune[/bold] once it is.")
+            return
+    try:
+        wanted = Confirm.ask("Tune Ollama for how you use it (memory, speed, context, without losing quality)? "
+                             "It loads the model a few times and takes a few minutes", default=True, console=console)
+    except (EOFError, KeyboardInterrupt):
+        wanted = False
+    if wanted:
+        run(console, model=model)
+    else:
+        console.print("• Run [bold]clyde tune[/bold] any time to tune it.")

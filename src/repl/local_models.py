@@ -19,6 +19,7 @@ from typing import Any, Callable
 from rich.prompt import Confirm
 from rich.text import Text
 
+from src import tune
 from src.picker import Choice, pick
 from src.providers import discover, fit, huggingface, mlx
 from src.providers.base import ProviderError, post_stream
@@ -248,6 +249,8 @@ def _pull_ollama(repl: Any, offer: fit.Offer) -> None:
     ollama.__dict__.pop("_models_cache", None)
     repl.console.print(f"[green]✓ Downloaded ollama:{tag}[/green]")
     _offer_eval(repl, ollama, tag, offer.rating)
+    with repl._esc.paused():
+        tune.offer(repl.console, model=tag)
 
 
 def _get_lmstudio(repl: Any, offer: fit.Offer) -> None:
