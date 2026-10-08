@@ -14,7 +14,7 @@ from unittest.mock import patch
 from src.agent.agent_loop import run_agent_loop
 from src.agent.conversation import Conversation
 from src.command_system import create_command_context, execute_command_sync
-from src.tool_system import checks
+from src.tool_system import checks, trust
 from src.tool_system.checks import Problem, detect, new_problems, parse_mypy, parse_ruff
 from src.tool_system.context import ToolContext
 from src.tool_system.defaults import build_default_registry
@@ -108,11 +108,11 @@ class TestDetection(ChecksTestCase):
 
     def test_trust_is_read_only_from_the_users_own_settings(self) -> None:
         (self.root / ".clyde").mkdir()
-        (self.root / ".clyde" / "settings.json").write_text(json.dumps({"checks": {"trusted": [str(self.root)]}}))
-        self.assertFalse(checks._trusted(self.root))           # a project can't vouch for itself
+        (self.root / ".clyde" / "settings.json").write_text(json.dumps({"trustedFolders": [str(self.root)]}))
+        self.assertFalse(trust.trusted(self.root))           # a project can't vouch for itself
         (self.home / ".clyde").mkdir()
-        (self.home / ".clyde" / "settings.json").write_text(json.dumps({"checks": {"trusted": [str(self.root.parent)]}}))
-        self.assertTrue(checks._trusted(self.root))            # a folder above it counts
+        (self.home / ".clyde" / "settings.json").write_text(json.dumps({"trustedFolders": [str(self.root.parent)]}))
+        self.assertTrue(trust.trusted(self.root))            # a folder above it counts
 
     def test_prefers_uv_then_project_venv(self) -> None:
         venv_ruff = self.root / ".venv" / "bin" / "ruff"
@@ -161,7 +161,7 @@ class TestAgentLoopFeedback(ChecksTestCase):
 
     def _trust_project(self) -> None:
         (self.home / ".clyde").mkdir(exist_ok=True)
-        (self.home / ".clyde" / "settings.json").write_text(json.dumps({"checks": {"trusted": [str(self.root)]}}))
+        (self.home / ".clyde" / "settings.json").write_text(json.dumps({"trustedFolders": [str(self.root)]}))
 
     def test_new_problems_reach_the_model_in_the_same_loop(self) -> None:
         self._trust_project()

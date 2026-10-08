@@ -8,7 +8,7 @@ Tools are detected, never installed: ruff runs when the project configures it or
 mypy and pytest only when configured. With uv.lock they run via `uv run --no-sync`, else from the
 project's .venv, else from PATH. Off with CLYDE_CHECKS=off or {"checks": {"enabled": false}} in
 ~/.clyde/settings.json. The unprompted check after an edit uses only the user's own ruff on PATH unless the folder is
-listed in {"checks": {"trusted": ["/path"]}} there; /check always uses the project's tooling.
+listed in {"trustedFolders": ["/path"]} there; /check always uses the project's tooling.
 """
 
 from __future__ import annotations
@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 from .hooks import _read, settings_paths
+from .trust import trusted
 
 EDIT_TIMEOUT = 15      # per checker, per edit: bounds the stall a user would feel
 SUITE_TIMEOUT = 600    # per checker, for /check
@@ -67,26 +68,6 @@ def checks_enabled() -> bool:
     return True
 
 
-def _trusted(root: Path) -> bool:
-    """Whether the user listed this folder (or one above it) under checks.trusted in their own settings. A project can't
-    grant itself trust: only the user-level files are read."""
-    resolved = root.resolve()
-    for path in settings_paths():
-        try:
-            data = _read(path)
-        except (OSError, ValueError):
-            continue
-        section = data.get("checks") if isinstance(data, dict) else None
-        listed = section.get("trusted") if isinstance(section, dict) else None
-        for entry in listed if isinstance(listed, list) else []:
-            try:
-                if isinstance(entry, str) and resolved.is_relative_to(Path(entry).expanduser().resolve()):
-                    return True
-            except OSError:
-                continue
-    return False
-
-
 def _system_tool(name: str, root: Path) -> list[str] | None:
     """A tool installed on the user's PATH, never one that lives inside the project."""
     exe = shutil.which(name)
@@ -114,7 +95,7 @@ def detect(root: Path, auto: bool = False) -> Tooling | None:
     so an untrusted project gets only the user's own ruff from PATH. `/check` is a command the user typed: full tooling."""
     if not any((root / f).is_file() for f in ("pyproject.toml", "setup.py", "setup.cfg")):
         return None
-    if auto and not _trusted(root):
+    if auto and not trusted(root):
         ruff = _system_tool("ruff", root)
         return Tooling(root, tools={"ruff": ruff} if ruff else {}, via="PATH")
     tool_cfg = _pyproject(root).get("tool", {})

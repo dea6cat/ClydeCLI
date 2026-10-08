@@ -18,7 +18,9 @@ from urllib.parse import unquote, urlparse
 
 from ..context import ToolContext
 from ..errors import ToolInputError
+from ..permission_handler import PermissionResult
 from ..protocol import ToolResult
+from ..trust import trusted
 from ..registry import ToolSpec
 
 INIT_TIMEOUT = 30.0
@@ -238,6 +240,24 @@ def shutdown_all() -> None:
 atexit.register(shutdown_all)
 
 
+def _server_command(path: Path) -> list[str] | None:
+    """The command that would serve this file's language, or None when there is none or it isn't installed."""
+    for binary, argv, _ in _SERVERS.get(path.suffix.lower(), ()):
+        if shutil.which(binary):
+            return argv
+    return None
+
+
+def needs_approval(path: Path, root: Path) -> list[str] | None:
+    """The server command if starting it would need the user's yes: it is not running yet and the folder isn't trusted."""
+    argv = _server_command(path)
+    if argv is None or trusted(root):
+        return None
+    with _ACTIVE_LOCK:
+        server = _ACTIVE.get((tuple(argv), root))
+    return None if server is not None and not server.closed else argv
+
+
 def server_for(path: Path, root: Path) -> LSPServer:
     """The running server for this file's language in `root`, starting it if needed."""
     candidates = _SERVERS.get(path.suffix.lower())
@@ -327,6 +347,21 @@ class LSPTool:
             is_read_only=True,
             max_result_size_chars=100_000,
         )
+
+    def check_permissions(self, tool_input: dict[str, Any], context: ToolContext) -> PermissionResult:
+        """Starting a language server runs code from the project (build scripts, plugins, its interpreter): ask once per
+        project, then the running server answers every later query without asking."""
+        raw = tool_input.get("filePath")
+        if not isinstance(raw, str) or not raw:
+            return PermissionResult.allow()   # input validation happens in run()
+        try:
+            argv = needs_approval(context.ensure_allowed_path(raw), context.workspace_root)
+        except Exception:
+            return PermissionResult.allow()
+        if argv is None:
+            return PermissionResult.allow()
+        return PermissionResult.ask(message=f"Start {argv[0]} for this project? A language server can run the project's own code "
+                                            "(build scripts, plugins). Trust the folder in ~/.clyde/settings.json (trustedFolders) to skip this.")
 
     def run(self, tool_input: dict[str, Any], context: ToolContext) -> ToolResult:
         operation = tool_input.get("operation")
