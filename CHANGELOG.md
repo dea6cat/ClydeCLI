@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Bonny is now Bonnie**, everywhere: the command (`clyde luv bonnie`, and `bonnie luv clyde` for the second command), the page, the site, the docs and the code. The old commands are gone, so use `bonnie`. Her saved look, projects, pins and automations move from `~/.clyde/bonny/` to `~/.clyde/bonnie/` the first time she starts, so nothing is lost. The Notify me choice is kept in the browser and starts off again once. The old site address `bonny.html` forwards to `bonnie.html`.
 
 ### Fixed
+- `clyde update` could say "up to date" for up to a minute after a push, and could stop working on a shared network. It asked GitHub's web API, which answers from a 60-second public cache and allows 60 requests an hour per IP address. It now reads the newest commit and release tag from git itself (`git ls-remote`), which is current at once and has no such limit; the web API is only the fallback when git is missing.
 - Bonnie's conversation now uses all the width from the side menu to the edge of the window instead of a narrow centred column; the message box and its heading stay centred.
 - Bonnie now renders markdown tables (they showed as rows of pipes on one line), plus numbered and nested lists, `#`/`##`/`###` heading levels, quotes, rules and *italics*.
 
