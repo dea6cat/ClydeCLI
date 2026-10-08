@@ -664,5 +664,37 @@ class TestEventLog(unittest.TestCase):
         self.assertEqual([e["n"] for e in log.after(0)[0]], [2, 3, 4])
 
 
+class TestDownloadHeaders(BonnyCase):
+    """A file name is untrusted: it must not be able to add response headers or a body."""
+
+    def _download(self, name: str) -> bytes:
+        import socket
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as folder:
+            file = Path(folder) / name
+            file.write_text("secret")
+            with patch.object(type(self.bonny), "find_artifact", return_value={"path": str(file), "kind": "other", "exists": True}):
+                s = socket.create_connection(("127.0.0.1", self.port), timeout=5)
+                s.sendall(f"GET /artifact/raw?path=x&t={self.token} HTTP/1.1\r\nHost: 127.0.0.1:{self.port}\r\nConnection: close\r\n\r\n".encode())
+                out = b""
+                while chunk := s.recv(65536):
+                    out += chunk
+                s.close()
+        return out
+
+    def test_a_newline_in_the_file_name_cannot_inject_a_header_or_a_body(self):
+        out = self._download("a\r\nX-Injected: yes\r\n\r\nBODY.txt")
+        head, _, body = out.partition(b"\r\n\r\n")
+        self.assertNotIn(b"\r\nX-Injected", head)
+        self.assertEqual(body, b"secret")
+        self.assertIn(b"filename*=UTF-8''a%0D%0AX-Injected", head)
+
+    def test_quotes_and_non_ascii_names_stay_inside_the_header(self):
+        head = self._download('say "hi" é.txt').partition(b"\r\n\r\n")[0]
+        self.assertIn(b'filename="say _hi_ _.txt"', head)
+        self.assertIn(b"filename*=UTF-8''say%20%22hi%22%20%C3%A9.txt", head)
+
+
 if __name__ == "__main__":
     unittest.main()
