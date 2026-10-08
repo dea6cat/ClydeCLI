@@ -119,6 +119,7 @@ def check_rules(tool: str, tool_input: dict[str, Any], context: Any) -> str | No
     command = tool_input.get("command")
     if not isinstance(command, str):
         return None
+    from .secret_paths import command_reads_secret
     parts = _bash_parts(command)
     # Deny if the whole command or any part matches; allow only when every part is allowed.
     candidates = [_words(command)] + (parts or [])
@@ -128,6 +129,8 @@ def check_rules(tool: str, tool_input: dict[str, Any], context: Any) -> str | No
         return "allow"
     if not parts or any(_part_needs_rule(p, rules["allow"], tool_input, context) for p in parts):
         return None
+    if command_reads_secret(command) and not all(any(_matches(r, tool, tool_input, context, w) for r in rules["allow"]) for w in parts):
+        return None   # read-only is not a yes to printing a key: only a rule the user wrote covers that
     return "allow"
 
 
