@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Features · ClydeCLI</title>
+<meta name="description" content="Everything ClydeCLI does beyond the basics: tuning a local model, dealing a model each turn, checking which models work, council, sandbox, MCP, sub-agents and more.">
+<meta name="theme-color" content="#e8e5dd" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f1a14" media="(prefers-color-scheme: dark)">
+<link rel="icon" type="image/svg+xml" href="brand/clyde-mark.svg">
+<script>document.documentElement.className = "js";</script>
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<div class="glow" aria-hidden="true"></div>
+<div class="frame">
+<header>
+  <b><img src="brand/clyde-mark.svg" alt="" width="24" height="24">ClydeCLI</b>
+  <nav><a href="./">Home</a><a href="features.html" aria-current="page">Features</a><a href="bonny.html">Bonny</a><a href="keys.html">API keys</a><a href="https://github.com/dea6cat/ClydeCLI">Source</a><a href="https://github.com/dea6cat/ClydeCLI/blob/main/CHANGELOG.md">Changelog</a><a href="https://github.com/dea6cat/ClydeCLI/issues">Issues</a></nav>
+</header>
+<div class="strip"><span class="chip">FEATURES</span><span class="mono">What Clyde does beyond the basics, with real recordings and measured results.</span></div>
+<main>
+  <h1 class="enter" style="--i:0">Everything Clyde does</h1>
+  <p class="enter lead" style="--i:1">The home page has the idea. This page has the rest: the features, how they work, and recordings and measurements from real runs.</p>
+  <p class="mono dim jump">On this page: <a href="#glance">At a glance</a> · <a href="#tune">Tune a local model</a> · <a href="#deal">When a model fails mid-turn</a> · <a href="#eval">Checking which models work</a> · <a href="#laya">Laya</a></p>
+
+  <h2 id="glance">At a glance</h2>
+  <dl class="grid">
+    <div class="cut"><dt>Council</dt><dd><code>cardShuffle:high-roller council</code> asks the top four models at once with tools off, and Laya rates the answers.</dd></div>
+    <div class="cut"><dt>Scripts and CI</dt><dd><code>clyde -p</code> runs one turn with JSON output and exit codes.</dd></div>
+    <div class="cut"><dt>Sandbox</dt><dd>Shell commands write only inside the project. Reading a <code>.env</code> or key file asks first.</dd></div>
+    <div class="cut"><dt>MCP</dt><dd>Servers work over stdio, HTTP and SSE, with OAuth sign-in.</dd></div>
+    <div class="cut"><dt>Sub-agents</dt><dd>Agents and teams run in parallel, in the background if you like.</dd></div>
+    <div class="cut"><dt>Your existing setup</dt><dd>Reads the memory files, skills, hooks and MCP servers you set up for Claude Code, Codex, Cursor or Gemini CLI.</dd></div>
+    <div class="cut"><dt>Saved plans</dt><dd>The plan you approve in plan mode survives <code>/compact</code> and <code>--resume</code>. <code>/plan</code> marks phases done.</dd></div>
+    <div class="cut"><dt>Review and sessions</dt><dd><code>/review</code> reads your changes, a commit or a branch without editing. <code>clyde sessions</code> searches old sessions.</dd></div>
+    <div class="cut"><dt>The install</dt><dd><code>clyde doctor</code>, <code>update</code> and <code>uninstall</code>. Updates follow <code>main</code> or tagged releases and never install by themselves.</dd></div>
+  </dl>
+  <p>Editor support over the Agent Client Protocol, a read-only SQL tool and the rest are in the <a href="https://github.com/dea6cat/ClydeCLI#readme">README</a>.</p>
+
+  <h2 id="tune">Tune a local model</h2>
+  <p>A model on your own machine runs in whatever memory you have. <code>clyde tune</code> tests the Ollama settings that can give it a longer window, less memory or more speed, keeps only the ones that leave what the model says unchanged, and shows you how to turn them on.</p>
+  <div class="install"><code id="tune" tabindex="0" role="region" aria-label="Tune command">clyde tune</code><button type="button" class="cut" data-copy="tune">Copy</button></div>
+  <p class="dim">Clyde offers it when <code>clyde setup</code> finds a local model, and again after you download one with <code>/models local</code>. It loads the model a few times, so it takes a few minutes and always asks first.</p>
+
+  <h3>What it does</h3>
+  <ol class="steps">
+    <li><b>Asks what you use the model for.</b> Coding, chat, research, long documents, quick answers (any mix), what matters most, and how much RAM to keep free. The answers are saved, so it asks once.</li>
+    <li><b>Tests each setting on a private server.</b> Ollama reads these settings only when it starts, so Clyde starts a throwaway <code>ollama serve</code> on another port for each one, loads your model at the window Clyde uses for it, and measures memory and speed. Yours is never touched.</li>
+    <li><b>Checks what the setting did to the model.</b> The same prompts are answered again, a fact buried in a long prompt is looked for, and the model has to make a tool call. A setting that changes what the model says is dropped, however much memory it saves.</li>
+    <li><b>Picks one, or tells you to keep what you have.</b> It chooses by your priority among the settings that passed, and only if the gain is worth restarting Ollama.</li>
+  </ol>
+
+  <h3>What it asks you</h3>
+  <p>Mix as many as you like. They set how strict the quality check is and what it tries to win.</p>
+  <dl class="grid">
+    <div class="cut"><dt>Coding and agents</dt><dd>Tool calls must stay right. The answers have to stay 95% alike, and the lossy cache is never tried.</dd></div>
+    <div class="cut"><dt>Research and fact-checking</dt><dd>Answers must hold up over many sources: the same strict bar, plus the buried-fact check at the long window.</dd></div>
+    <div class="cut"><dt>Long documents</dt><dd>Room for the text matters most. It looks for the longest window your memory can carry.</dd></div>
+    <div class="cut"><dt>Chat and quick answers</dt><dd>Wording is more forgiving (80% alike), so the smaller cache is also tried.</dd></div>
+    <div class="cut"><dt>What matters most</dt><dd>Speed, a long window, or reliability. It picks the winner by this, after the quality bar is met.</dd></div>
+    <div class="cut"><dt>RAM to keep free</dt><dd>A setting that would leave less than this free for your other apps is dropped.</dd></div>
+  </dl>
+
+  <h3>What it tries</h3>
+  <div class="tablewrap" tabindex="0" role="region" aria-label="Settings it tries">
+  <table>
+    <thead><tr><th>Setting</th><th>Ollama variables</th><th>What it can give you</th><th>When</th></tr></thead>
+    <tbody>
+      <tr><th scope="row">Default</th><td>none</td><td>The baseline every other setting is measured against.</td><td>always</td></tr>
+      <tr><th scope="row">Flash attention</th><td><code>OLLAMA_FLASH_ATTENTION=1</code></td><td>Needed for a smaller cache; sometimes a little speed.</td><td>always</td></tr>
+      <tr><th scope="row">Flash + q8_0 cache</th><td><code>OLLAMA_KV_CACHE_TYPE=q8_0</code></td><td>About half the cache memory of the default, usually with the same answers.</td><td>always</td></tr>
+      <tr><th scope="row">Flash + q4_0 cache</th><td><code>OLLAMA_KV_CACHE_TYPE=q4_0</code></td><td>About a quarter of the cache memory, at a real quality risk.</td><td>chat and quick answers only</td></tr>
+      <tr><th scope="row">A longer window</th><td>the cache above, plus <code>CLYDE_MODEL_CONTEXT_&lt;MODEL&gt;</code></td><td>The room the smaller cache freed, spent on context, up to what the model was trained for.</td><td>when the model was trained for more than Clyde uses</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>What a setting has to pass</h3>
+  <dl class="grid">
+    <div class="cut"><dt>No more memory</dt><dd>Never more than 2% above the default: the point is more room without more resources.</dd></div>
+    <div class="cut"><dt>No real slowdown</dt><dd>Within the measurement noise (8%) of the default. Speed is the best of two runs, since one slow sample is just a busy machine.</dd></div>
+    <div class="cut"><dt>Free RAM kept</dt><dd>It leaves at least what you asked to keep free, and stays inside the share of RAM a model may use.</dd></div>
+    <div class="cut"><dt>Tool calling intact</dt><dd>The model still makes a correct tool call and uses the result, using Clyde's own model check.</dd></div>
+    <div class="cut"><dt>Long-context recall</dt><dd>A fact buried in a long prompt (up to 24,000 tokens, at the window being tested) is still found.</dd></div>
+    <div class="cut"><dt>Same answers</dt><dd>Fixed prompts answered with no randomness have to stay 95% alike (80% for chat). A cache that drifts shows up here first.</dd></div>
+    <div class="cut"><dt>Worth a restart</dt><dd>It must free 5% of memory, open a 10% longer window, or run 5% faster. A smaller gain is not worth restarting Ollama for.</dd></div>
+  </dl>
+
+  <h3>What it found on real runs</h3>
+  <p>One Mac (M3 Pro, 18 GB), Ollama 0.35.1. The same setting helps one model and hurts another, which is why every model is tested.</p>
+  <div class="tablewrap" tabindex="0" role="region" aria-label="Measured results">
+  <table>
+    <thead><tr><th>Model</th><th>Default</th><th>Chosen</th><th>What it showed</th></tr></thead>
+    <tbody>
+      <tr><th scope="row">Qwen2.5-Coder 3B (Q8_0)</th><td>4.69 GB<br>32,768 window</td><td>flash + q8_0<br>4.17 GB</td><td>11% less memory, answers identical, buried fact found at every depth of a 28,000-token prompt. The q4_0 cache was refused: only 32% alike, the fact lost, 12-18% slower.</td></tr>
+      <tr><th scope="row">Llama 3.2 3B</th><td>12.07 GB<br>91,136 window</td><td>flash + q4_0<br>6.48 GB at 131,072</td><td>For a chat profile it passed every check (95% alike, same tasks, recall kept): about half the memory and 43% more window. A speed-first run chose q8_0 at 7.52 GB instead.</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="dim">A single machine and a few runs each. Speed moved by several tokens per second between runs of the same setting, so read speed as "about the same", not a ranking.</p>
+
+  <h3>Where it runs</h3>
+  <dl class="grid">
+    <div class="cut"><dt>Setup</dt><dd><code>clyde setup</code> offers it when it finds a local model. It never runs with <code>--yes</code>.</dd></div>
+    <div class="cut"><dt>After a download</dt><dd><code>/models local</code> offers it once the model is on disk, after the usual model check.</dd></div>
+    <div class="cut"><dt>Any time</dt><dd><code>clyde tune</code>. Add <code>--ask</code> to answer the questions again, <code>--model NAME</code> for a specific model, <code>--ctx TOKENS</code> to test one window.</dd></div>
+    <div class="cut"><dt>Your own Ollama</dt><dd>If it has a model loaded, Clyde says so and asks before unloading it, so the readings are fair. Ollama keeps running and loads the model again on its next request.</dd></div>
+  </dl>
+
+  <h3>Turning a setting on</h3>
+  <p>Clyde prints the exact commands for how you run Ollama; it does not change your Ollama itself.</p>
+  <dl class="grid">
+    <div class="cut"><dt>Ollama from the terminal</dt><dd>Add the variables to <code>~/.zshrc</code>, for example <code>export OLLAMA_KV_CACHE_TYPE=q8_0</code>, then stop Ollama and start it again with <code>ollama serve</code> in a new terminal.</dd></div>
+    <div class="cut"><dt>The Ollama app on a Mac</dt><dd>Run <code>launchctl setenv OLLAMA_KV_CACHE_TYPE q8_0</code> (and the flash attention line), then quit and reopen the app. This only reaches the app, not an <code>ollama serve</code> you start yourself.</dd></div>
+    <div class="cut"><dt>Linux with systemd</dt><dd><code>sudo systemctl edit ollama</code>, add the variables under <code>[Service]</code>, then <code>sudo systemctl restart ollama</code>.</dd></div>
+    <div class="cut"><dt>A longer window</dt><dd>Also set the <code>CLYDE_MODEL_CONTEXT_...</code> variable it prints, so Clyde asks for that window.</dd></div>
+  </dl>
+
+  <h3>What it can't do</h3>
+  <ul>
+    <li>It works with Ollama only, including models pulled from Hugging Face into Ollama. LM Studio does not let you set the cache type or flash attention from outside its app, so it is left out.</li>
+    <li>Ollama's hosted models can't be tuned, since the provider runs the server.</li>
+    <li>The quality check catches changes in what the model says, its tool calls and long-context recall. It does not judge writing quality.</li>
+    <li>It makes the model fit and run better. It does not make it smarter; that takes fine-tuning, which is a separate tool.</li>
+    <li>Only a Mac has been tested. The Linux commands are given but untried.</li>
+  </ul>
+
+  <h2 id="deal">When a model fails mid-turn</h2>
+  <p>With <code>cardShuffle:house</code> as the model, Clyde picks a real model for each turn from the ones that passed <code>/eval</code>. Here Google answered HTTP 503 halfway through, so the turn moved to the next model and finished.</p>
+  <figure><pre role="region" tabindex="0" aria-label="Recorded cardShuffle turn re-dealing after an HTTP 503"><span style="color: #4eba65; font-weight: bold">❯</span> how many tests does test_dates.py have, and which one fails?
+
+
+<span style="color: #4eba65; text-decoration-color: #4eba65">♠ dealt </span><span style="color: #e8e4dc; text-decoration-color: #e8e4dc">google:gemini-3.1-flash-lite</span><span style="color: #8a8a8a; text-decoration-color: #8a8a8a">  house · laya difficulty 1.6/3 (shadow)</span>
+<span style="color: #797b74; text-decoration-color: #797b74">•</span> <span style="color: #4eba65; text-decoration-color: #4eba65">Read</span> <span style="color: #797b74; text-decoration-color: #797b74; font-weight: bold">(</span><span style="color: #797b74; text-decoration-color: #797b74">test_dates.py</span><span style="color: #797b74; text-decoration-color: #797b74; font-weight: bold">)</span> <span style="color: #797b74; text-decoration-color: #797b74">running</span><span style="color: #78693c; text-decoration-color: #78693c">...</span>
+<span style="color: #8a8a8a; text-decoration-color: #8a8a8a">  ↳ ./test_dates.py · lines=1-18/18 · 0.0s</span>
+<span style="color: #4eba65; text-decoration-color: #4eba65">♠ dealt </span><span style="color: #e8e4dc; text-decoration-color: #e8e4dc">google:gemini-3-flash-preview</span><span style="color: #8a8a8a; text-decoration-color: #8a8a8a">  google:gemini-3.1-flash-lite failed: [google] HTTP 503 — </span>
+<span style="color: #8a8a8a; text-decoration-color: #8a8a8a">provider error, usually temporary: This model is currently e</span>
+<span style="color: #797b74; text-decoration-color: #797b74">•</span> <span style="color: #4eba65; text-decoration-color: #4eba65">Bash</span> <span style="color: #797b74; text-decoration-color: #797b74; font-weight: bold">(</span><span style="color: #797b74; text-decoration-color: #797b74">python3 test_dates.py</span><span style="color: #797b74; text-decoration-color: #797b74; font-weight: bold">)</span> <span style="color: #797b74; text-decoration-color: #797b74">running</span><span style="color: #78693c; text-decoration-color: #78693c">...</span>
+<span style="color: #d0202f; text-decoration-color: #d0202f">  ↳ exit=1 · FAILED (failures=1) · 0.1s</span>
+`test_dates.py` has 3 tests. `test_february_in_a_leap_year` fails.
+
+<span style="color: #4eba65; text-decoration-color: #4eba65">♠ </span><span style="color: #8a8a8a; text-decoration-color: #8a8a8a">Pondered for 14s · 10:45 AM · 18.1k in, 68 out</span></pre>
+  <figcaption>Recorded 2026-10-05, same project. Google returned the 503 during the recording.</figcaption></figure>
+
+  <h2 id="eval">Checking which models work</h2>
+  <p><code>/eval</code> runs a tool call, a round trip and a hand of 11 graded tasks against every model your keys reach. Broken ones disappear from <code>/models</code>. The red line is a model that scored lower than at its last run.</p>
+  <figure><pre role="region" tabindex="0" aria-label="Recorded /eval run on codestral models"><span style="color: #4eba65; font-weight: bold">❯</span> <span style="color: #be78c8; text-decoration-color: #be78c8">/</span><span style="color: #be78c8; text-decoration-color: #be78c8">eval</span> codestral
+
+<span style="color: #50b4b4; text-decoration-color: #50b4b4; font-weight: bold">4</span> <span style="color: #be78c8; text-decoration-color: #be78c8; font-weight: bold">model</span><span style="font-weight: bold">(</span>s<span style="font-weight: bold">)</span> to test on your own keys: two short requests, then a hand of <span style="color: #50b4b4; text-decoration-color: #50b4b4; font-weight: bold">11</span> harder tasks for each
+that passes.
+Run the evaluation? <span style="color: #be78c8; text-decoration-color: #be78c8; font-weight: bold">[y/n]</span> <span style="color: #50b4b4; text-decoration-color: #50b4b4; font-weight: bold">(y)</span>: <span style="font-weight: bold">y</span>
+<span style="color: #8a8a8a; text-decoration-color: #8a8a8a">   model                             tool  trip  hand  secs  tok/s  note                 </span>
+<span style="color: #4eba65; text-decoration-color: #4eba65">●</span>  <span style="color: #e8e4dc; text-decoration-color: #e8e4dc; font-weight: bold">mistral:codestral-latest        </span>  <span style="color: #4eba65; text-decoration-color: #4eba65">   ✓</span>  <span style="color: #4eba65; text-decoration-color: #4eba65">   ✓</span>  2/11   0.6     30  <span style="color: #8a8a8a; text-decoration-color: #8a8a8a">                     </span>
+   <span style="color: #e8e4dc; text-decoration-color: #e8e4dc; font-weight: bold">mistral:codestral-2508          </span>  <span style="color: #4eba65; text-decoration-color: #4eba65">   ✓</span>  <span style="color: #4eba65; text-decoration-color: #4eba65">   ✓</span>  1/11   0.6     30  <span style="color: #8a8a8a; text-decoration-color: #8a8a8a">                     </span>
+   <span style="color: #8a8a8a; text-decoration-color: #8a8a8a">openrouter:mistralai/codestral-…</span>  <span style="color: #d0202f; text-decoration-color: #d0202f">   ✗</span>  <span style="color: #d0202f; text-decoration-color: #d0202f">   ✗</span>     -     -      -  <span style="color: #8a8a8a; text-decoration-color: #8a8a8a">credits or rate limit</span>
+   <span style="color: #8a8a8a; text-decoration-color: #8a8a8a">nvidia:mistralai/codestral-22b-…</span>  <span style="color: #d0202f; text-decoration-color: #d0202f">   ✗</span>  <span style="color: #d0202f; text-decoration-color: #d0202f">   ✗</span>     -     -      -  <span style="color: #8a8a8a; text-decoration-color: #8a8a8a">not available        </span>
+<span style="color: #d0202f; text-decoration-color: #d0202f">↓ mistral:codestral-latest: 3/11 → 2/11 since 2026-10-02</span>
+<span style="color: #4eba65; text-decoration-color: #4eba65; font-weight: bold">2/4 passed</span><span style="color: #8a8a8a; text-decoration-color: #8a8a8a">  ·  1 not available  ·  1 credits or rate limits (kept, retry later)</span>
+<span style="color: #8a8a8a; text-decoration-color: #8a8a8a">/models now hides the 1 that don&#x27;t work · /models all shows them</span></pre>
+  <figcaption>Recorded 2026-10-05. The OpenRouter account had run out of credits; that result is kept and retried later.</figcaption></figure>
+
+  <h2 id="laya">Laya, and why it isn't steering yet</h2>
+  <p>Laya is a small decision model bundled with Clyde that runs locally. It watches for a model repeating itself and hands the turn on when it is confident. It also scores each request's difficulty, but that score only starts choosing models once your own sessions show it means something. <code>/laya</code> shows where that stands:</p>
+  <figure><pre role="region" tabindex="0" aria-label="Recorded /laya output"><span style="color: #4eba65; font-weight: bold">❯</span> <span style="color: #be78c8; text-decoration-color: #be78c8">/</span><span style="color: #be78c8; text-decoration-color: #be78c8">laya</span>
+
+Laya: not started · from <span style="color: #50b4b4; text-decoration-color: #50b4b4; font-weight: bold">42</span> traced <span style="color: #be78c8; text-decoration-color: #be78c8; font-weight: bold">session</span><span style="font-weight: bold">(</span>s<span style="font-weight: bold">)</span>
+
+Stuck checks (re-deal at 0.80)   checks  re-dealt  turn ran out anyway
+  below 0.50                           0         0                    0
+  0.50 to 0.80                         0         0                    0
+  0.80 and up                          0         0                    0
+  Loops that ran out under the threshold argue for lowering it; re-dealt turns that ran out 
+anyway, or many re-deals, argue for raising it.
+
+Difficulty (shadow turns, split at score 1.62)   turns  avg tool rounds  ran out
+  easier half                                  1              1.0        0
+  harder half                                  2              3.0        0
+  Difficulty stays in shadow: the harder half took 3.0 tool rounds on average, the easier half 
+1.0; it needs 9 more scored turn(s) in the smaller half.</pre>
+  <figcaption>Recorded 2026-10-05 on the maintainer's machine, which so far has only a handful of scored turns.</figcaption></figure>
+</main>
+<footer><a href="https://github.com/dea6cat/ClydeCLI/blob/main/LICENSE">PolyForm Noncommercial 1.0.0</a> · <a href="https://github.com/dea6cat/ClydeCLI">github.com/dea6cat/ClydeCLI</a></footer>
+</div>
+<script src="site.js" defer></script>
+</body>
+</html>
