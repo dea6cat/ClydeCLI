@@ -1,10 +1,10 @@
-"""Bonny's layout: the conversation uses all the width beside the menu; only the composer and its heading stay centred."""
+"""Bonnie's layout: the conversation uses all the width beside the menu; only the composer and its heading stay centred."""
 from __future__ import annotations
 
 import re
 import unittest
 
-from src.bonny.page import PAGE
+from src.bonnie.page import PAGE
 
 
 def _rule(selector: str) -> str:

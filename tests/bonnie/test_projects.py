@@ -1,16 +1,16 @@
-"""Choosing the project: browsing, making a folder, and switching Bonny to it."""
+"""Choosing the project: browsing, making a folder, and switching Bonnie to it."""
 from __future__ import annotations
 
 import os
 import unittest
 from pathlib import Path
 
-from src.bonny import projects
-from tests.bonny import test_server as ts
-from tests.bonny.test_artifacts import temp_dir
+from src.bonnie import projects
+from tests.bonnie import test_server as ts
+from tests.bonnie.test_artifacts import temp_dir
 
 
-class TestProjects(ts.BonnyCase):
+class TestProjects(ts.BonnieCase):
     def setUp(self):
         super().setUp()
         self.addCleanup(os.chdir, os.getcwd())
@@ -49,9 +49,9 @@ class TestProjects(ts.BonnyCase):
         self.assertEqual(self.call("POST", "/api/project", {"path": str(self.base / "nope")})[0], 400)
         self.assertEqual(self.call("POST", "/api/project", {"path": str(self.base / "file.txt")})[0], 400)
         self.assertEqual(self.call("POST", "/api/project", {})[0], 400)
-        self.bonny.control.busy = True
+        self.bonnie.control.busy = True
         self.assertEqual(self.call("POST", "/api/project", {"path": str(self.base)})[0], 409)
-        self.bonny.control.busy = False
+        self.bonnie.control.busy = False
 
 
 if __name__ == "__main__":

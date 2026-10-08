@@ -168,14 +168,14 @@ unranked, and the answer appears when the council is done, not as it streams. On
 `clyde --model "cardShuffle:high-roller council"`. Laya scores how well an answer fits your message, not
 whether it is true.
 
-### Bonny
+### Bonnie
 
 *The same Clyde, in a browser.*
 
-`clyde luv bonny` starts Bonny, Clyde's luv accomplice, on `localhost` (only this computer can reach it) and opens your browser. It runs the same
-engine as the terminal, so it has every tool, your sessions, memory, skills and cardShuffle; Bonny adds her own
-voice and a plainer way to use them. Start her on a model with `clyde --model <provider:model> luv bonny`
-(Bonny opens at `http://localhost:8080`; `clyde luv bonny 7090` picks another port, and if 8080 is taken she moves to a free one and says so. `--no-open` skips the browser.) The other way round, `bonny luv clyde` starts the terminal Clyde, the same as `clyde`, and takes the same options.
+`clyde luv bonnie` starts Bonnie, Clyde's luv accomplice, on `localhost` (only this computer can reach it) and opens your browser. It runs the same
+engine as the terminal, so it has every tool, your sessions, memory, skills and cardShuffle; Bonnie adds her own
+voice and a plainer way to use them. Start her on a model with `clyde --model <provider:model> luv bonnie`
+(Bonnie opens at `http://localhost:8080`; `clyde luv bonnie 7090` picks another port, and if 8080 is taken she moves to a free one and says so. `--no-open` skips the browser.) The other way round, `bonnie luv clyde` starts the terminal Clyde, the same as `clyde`, and takes the same options.
 
 Everything the page does goes through a small local API: queue prompts, steer or stop a running turn, list and
 reopen sessions, answer permission cards, change mode or model, vote on council answers. Requests need a
@@ -198,33 +198,33 @@ the sidebar show when they were last used, so two with the same first message ca
 (PNG, JPEG, GIF, WebP) and text or code files, up to six per message. Images go to the model the way the terminal's pasted images
 do, so a model that can't see pictures is named instead of silently ignoring them, and one over 5 MB is shrunk on macOS. Text files are
 put into the message. Your sent message shows thumbnails and file names, and reopening the session shows them again. PDFs and other
-binary files aren't supported yet; Bonny says so when you try.
+binary files aren't supported yet; Bonnie says so when you try.
 
 **Artifacts** in the sidebar lists the files Clyde wrote or edited in this project, newest first, with filters for pages, documents,
 images and code. Clicking one previews it beside the list: pages in a sandboxed frame (scripts off unless you turn them on, and even
-then they can't reach Bonny, your files or the network), Markdown rendered, images shown, code and text as text. Each has Download and
+then they can't reach Bonnie, your files or the network), Markdown rendered, images shown, code and text as text. Each has Download and
 Show in folder, and a card appears in the chat the moment Clyde writes a file. The list is built from your saved sessions, so earlier work
 shows up too. Files made by shell commands aren't included, and only files inside the project are ever read.
 
-Bonny looks like the site (its two fonts, hairlines, corner-cut controls) and the look is yours to change. **Customize** in
+Bonnie looks like the site (its two fonts, hairlines, corner-cut controls) and the look is yours to change. **Customize** in
 the sidebar opens a panel that changes the page as you go: a theme (Auto follows light or dark; Paper, Night, Felt, Slate),
 any of seven colours, a full background image with dim, blur and see-through panels, cut, round or square corners, the font,
 your own greeting, and a box for custom CSS, the way old profile pages let you. A theme code, plain text, lets you copy a look
-or paste someone else's. Everything is saved in `~/.clyde/bonny/` on your machine, and the background image never leaves it
+or paste someone else's. Everything is saved in `~/.clyde/bonnie/` on your machine, and the background image never leaves it
 (PNG, JPEG, GIF or WebP up to 8 MB, checked by content; SVG is refused). Custom CSS can't load anything from other sites.
 
-**Notify me** (top bar) shows a browser notification when an answer is ready, while the Bonny tab is in the background. Turning it on asks
+**Notify me** (top bar) shows a browser notification when an answer is ready, while the Bonnie tab is in the background. Turning it on asks
 your browser for permission once; the notification names your question, not the answer, so nothing private shows on a lock screen, and a
 stopped turn stays silent. The choice is kept in the browser next to the permission, which belongs to the page's address
-(`localhost:8080`), so if Bonny starts on another port you turn it on again there.
+(`localhost:8080`), so if Bonnie starts on another port you turn it on again there.
 
 **Pin** a session with the pin on its row and it stays at the top of the sidebar. **Automations** run a prompt on a schedule
 (every N minutes or hours, every day, or on chosen days) in the project they were made in, each run in a session of its own, with
-Pause, Run now and Delete. They run only while Bonny is open, a run missed while she was closed is skipped, and they only read
+Pause, Run now and Delete. They run only while Bonnie is open, a run missed while she was closed is skipped, and they only read
 and report unless you allow edits when you make one, because nobody is there to approve a change. The project in the sidebar is a
 button: it opens a folder chooser where you browse, make a new folder where you want it, and use it; tools, permissions and new
 sessions follow. On a phone the model and permission pickers sit behind **Options**, so the message box is one row. MCP servers and
-hooks are loaded for the folder Bonny started in, so restart her to pick up a new project's own.
+hooks are loaded for the folder Bonnie started in, so restart her to pick up a new project's own.
 
 **Providers** in the sidebar connects a model service without the terminal. Each provider is a card; a short guide walks you through
 getting a key (with a link to its key page), pasting it (hidden, with a check that it looks whole), and testing it. A key is tested

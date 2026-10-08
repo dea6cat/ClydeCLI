@@ -1,4 +1,4 @@
-"""Files attached to a message in Bonny.
+"""Files attached to a message in Bonnie.
 
 Uploads are held in memory until the message that names them is queued (nothing is written to disk by the upload itself).
 Images go to the model as image blocks through the REPL's existing [Image #N] markers, so the size cap, the shrink step and the
@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from src.agent.conversation import ImageContentBlock
-from src.bonny.theme import sniff_image
+from src.bonnie.theme import sniff_image
 from src.repl.images import MAX_IMAGE_BYTES, shrink
 
 MAX_FILE = 12_000_000      # the most one upload may be
@@ -70,11 +70,11 @@ def classify(name: str, data: bytes) -> Attachment:
     if len(data) > MAX_TEXT_FILE:
         raise ValueError(f"{name} is over {MAX_TEXT_FILE // 1000} KB, which is too much to put in a message. Attach a smaller piece")
     if b"\x00" in data[:8192]:
-        raise ValueError(f"Bonny can't read {name} yet. Images and text files work")
+        raise ValueError(f"Bonnie can't read {name} yet. Images and text files work")
     try:
         data.decode("utf-8")
     except UnicodeDecodeError:
-        raise ValueError(f"Bonny can't read {name} yet. Images and text files work") from None
+        raise ValueError(f"Bonnie can't read {name} yet. Images and text files work") from None
     return Attachment(name, "text", "text/plain", data)
 
 

@@ -1,9 +1,14 @@
-"""Bonny's theme: what is kept, what is refused, and what reaches the page."""
+"""Bonnie's theme: what is kept, what is refused, and what reaches the page."""
 from __future__ import annotations
 
+import json
+import os
+import tempfile
 import unittest
+from pathlib import Path
+from unittest.mock import patch
 
-from src.bonny import theme
+from src.bonnie import theme
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
 JPG = b"\xff\xd8\xff\xe0" + b"\x00" * 32
@@ -89,3 +94,46 @@ class TestSaveAndVars(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestOldFolderMigration(unittest.TestCase):
+    """Bonnie was spelled Bonny: her saved look, projects and pins move to the new folder once, and are never lost."""
+
+    def setUp(self):
+        self.home = Path(tempfile.mkdtemp())
+        self.root = self.home / ".clyde"
+        self.root.mkdir()
+        for p in (patch.object(Path, "home", return_value=self.home), patch.dict(os.environ, {"XDG_CONFIG_HOME": ""})):
+            p.start()
+            self.addCleanup(p.stop)
+
+    def test_the_old_folder_is_moved_with_its_contents(self):
+        old = self.root / "bonny"
+        old.mkdir()
+        (old / "theme.json").write_text(json.dumps({"preset": "felt", "greeting": "Hi luv"}))
+        (old / "projects.json").write_text("[]")
+        folder = theme.folder()
+        self.assertEqual(folder, self.root / "bonnie")
+        self.assertFalse(old.exists())
+        self.assertTrue((folder / "projects.json").is_file())
+        self.assertEqual((theme.load()["preset"], theme.load()["greeting"]), ("felt", "Hi luv"))
+
+    def test_a_folder_that_already_exists_is_never_overwritten(self):
+        (self.root / "bonny").mkdir()
+        (self.root / "bonny" / "theme.json").write_text(json.dumps({"preset": "slate"}))
+        (self.root / "bonnie").mkdir()
+        (self.root / "bonnie" / "theme.json").write_text(json.dumps({"preset": "night"}))
+        self.assertEqual(theme.load()["preset"], "night")
+        self.assertTrue((self.root / "bonny" / "theme.json").is_file())
+
+    def test_a_fresh_install_has_nothing_to_move(self):
+        self.assertEqual(theme.folder(), self.root / "bonnie")
+        self.assertEqual(theme.load()["preset"], "auto")
+
+    def test_if_the_move_fails_the_old_folder_is_still_used(self):
+        old = self.root / "bonny"
+        old.mkdir()
+        (old / "theme.json").write_text(json.dumps({"preset": "paper"}))
+        with patch.object(Path, "rename", side_effect=OSError("read-only")):
+            self.assertEqual(theme.folder(), old)
+            self.assertEqual(theme.load()["preset"], "paper")

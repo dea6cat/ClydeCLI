@@ -1,4 +1,4 @@
-"""clyde luv bonny: the HTTP API over a real REPL with a scripted provider (no network)."""
+"""clyde luv bonnie: the HTTP API over a real REPL with a scripted provider (no network)."""
 from __future__ import annotations
 
 import http.client
@@ -8,14 +8,14 @@ import time
 import unittest
 from unittest.mock import patch
 
-from src.bonny import server
-from src.bonny.server import Bonny, EventLog, make_server
+from src.bonnie import server
+from src.bonnie.server import Bonnie, EventLog, make_server
 from src.repl import ClydeREPL
 from tests.fakes import reply
 from tests.repl.test_repl import _fake_provider_env
 
 
-class BonnyCase(unittest.TestCase):
+class BonnieCase(unittest.TestCase):
     def setUp(self):
         env = _fake_provider_env(reply("hello there"), reply("second answer"))
         self.provider = env.__enter__()
@@ -23,26 +23,26 @@ class BonnyCase(unittest.TestCase):
         from rich.console import Console
         import io
         self.repl = ClydeREPL(model="glm:glm-4.5", console=Console(file=io.StringIO()), headless=True)
-        self.bonny = Bonny(self.repl)
-        self.httpd = make_server(self.bonny)
+        self.bonnie = Bonnie(self.repl)
+        self.httpd = make_server(self.bonnie)
         self.port = self.httpd.server_address[1]
         self.token = self.httpd.token
         threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
-        self.runner = threading.Thread(target=self.bonny.run, daemon=True)
+        self.runner = threading.Thread(target=self.bonnie.run, daemon=True)
         self.runner.start()
         self.addCleanup(self._shutdown)
 
     def _shutdown(self):
         self.httpd.shutdown()
         self.httpd.server_close()
-        self.bonny.control.prompts.put(None)
+        self.bonnie.control.prompts.put(None)
         self.runner.join(2)
 
     def call(self, method, path, body=None, *, token=True, host=None, origin=None, raw=None, headers=None):
         conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
         h = {"Host": host or f"127.0.0.1:{self.port}", **(headers or {})}
         if token:
-            h["X-Bonny-Token"] = self.token
+            h["X-Bonnie-Token"] = self.token
         if origin:
             h["Origin"] = origin
         payload = raw if raw is not None else (json.dumps(body).encode() if body is not None else None)
@@ -61,14 +61,14 @@ class BonnyCase(unittest.TestCase):
         deadline = time.monotonic() + timeout
         seen = []
         while time.monotonic() < deadline:
-            events, after = self.bonny.events.after(after, 0.5)
+            events, after = self.bonnie.events.after(after, 0.5)
             seen += events
             if any(e["kind"] == kind for e in events):
                 return seen
         self.fail(f"no {kind} event; saw {[e['kind'] for e in seen]}")
 
 
-class TestGuards(BonnyCase):
+class TestGuards(BonnieCase):
     def test_the_page_is_served_with_the_token_and_safety_headers(self):
         status, body = self.call("GET", "/", token=False)
         self.assertEqual(status, 200)
@@ -94,9 +94,9 @@ class TestGuards(BonnyCase):
         self.assertEqual(self.call("POST", "/api/session/open", {"id": "../etc"})[0], 404)
 
 
-class TestPage(BonnyCase):
+class TestPage(BonnieCase):
     def test_the_page_has_one_token_slot_and_makes_no_outside_requests(self):
-        from src.bonny.page import PAGE
+        from src.bonnie.page import PAGE
 
         self.assertEqual(PAGE.count("__TOKEN__"), 1)
         self.assertNotIn("http://", PAGE)
@@ -108,10 +108,10 @@ class TestPage(BonnyCase):
         self.assertIn('id="attach"', PAGE)
         self.assertIn('id="nav-artifacts"', PAGE)                                  # Artifacts is a real view now, not "soon"
         self.assertIn('sandbox: artScripts ? "allow-scripts" : ""', PAGE)          # previews are always sandboxed
-        self.assertNotIn("allow-same-origin", PAGE)                                # so a previewed page can never reach Bonny's API
+        self.assertNotIn("allow-same-origin", PAGE)                                # so a previewed page can never reach Bonnie's API
 
     def test_the_page_keeps_its_accessibility_structure(self):
-        from src.bonny.page import PAGE
+        from src.bonnie.page import PAGE
 
         self.assertEqual(PAGE.count("<h1"), 1)                                   # one page title, even while a chat hides the hero
         self.assertIn('class="skip" href="#input"', PAGE)                         # a way past the sidebar
@@ -126,11 +126,11 @@ class TestPage(BonnyCase):
         with patch("src.providers.model_eval.load_results", return_value=graded):
             self.assertEqual(self.call("GET", "/api/models")[1]["models"], ["a:m"])
         before = self.call("GET", "/api/state")[1]["event"]
-        self.bonny.events.emit("x")
+        self.bonnie.events.emit("x")
         self.assertEqual(self.call("GET", "/api/state")[1]["event"], before + 1)
 
 
-class TestSearchAndStatus(BonnyCase):
+class TestSearchAndStatus(BonnieCase):
     FOUND = [{"title": "ELIZA - Wikipedia", "url": "https://en.wikipedia.org/wiki/ELIZA", "snippet": "A 1966 chatbot."}]
 
     def _system_prompts(self):
@@ -167,7 +167,7 @@ class TestSearchAndStatus(BonnyCase):
         self.assertTrue(self.provider.requests[0]["tools"])
         with patch.object(server.WebSearchTool, "run", side_effect=RuntimeError("offline")):
             self.call("POST", "/api/prompt", {"text": "hello there", "search": True, "mode": "plan"})
-            self.wait_for("turn_end", after=self.bonny.events.last() - 1)
+            self.wait_for("turn_end", after=self.bonnie.events.last() - 1)
         self.assertEqual(self.provider.requests[1]["tools"], ())
 
     def test_a_failed_search_still_answers_and_says_it_is_unsourced(self):
@@ -206,9 +206,9 @@ class TestSearchAndStatus(BonnyCase):
         self.assertEqual(end["results"], [{"title": "T", "url": "https://b.example/"}])
 
 
-class TestTurns(BonnyCase):
+class TestTurns(BonnieCase):
     def test_a_prompt_runs_streams_events_and_is_saved_as_a_session(self):
-        self.assertEqual(self.call("POST", "/api/prompt", {"text": "hi bonny"})[0], 200)
+        self.assertEqual(self.call("POST", "/api/prompt", {"text": "hi bonnie"})[0], 200)
         events = self.wait_for("turn_end")
         kinds = [e["kind"] for e in events]
         self.assertEqual(kinds[0], "turn_start")
@@ -217,9 +217,9 @@ class TestTurns(BonnyCase):
         self.assertEqual((end["ok"], end["stopped"], end["answer"]), (True, False, "hello there"))
         sid = self.call("GET", "/api/state")[1]["session"]
         titles = {s["id"]: s["title"] for s in self.call("GET", "/api/sessions")[1]["sessions"]}
-        self.assertIn("hi bonny", titles[sid])
+        self.assertIn("hi bonnie", titles[sid])
         roles = [(m["role"], m["text"]) for m in self.call("GET", f"/api/sessions/{sid}")[1]["messages"]]
-        self.assertEqual(roles, [("user", "hi bonny"), ("assistant", "hello there")])
+        self.assertEqual(roles, [("user", "hi bonnie"), ("assistant", "hello there")])
 
     def test_prompts_queue_and_run_one_after_another(self):
         self.call("POST", "/api/prompt", {"text": "one"})
@@ -228,27 +228,27 @@ class TestTurns(BonnyCase):
         ends = []
         after = 0
         while len(ends) < 2 and time.monotonic() < deadline:
-            events, after = self.bonny.events.after(after, 0.5)
+            events, after = self.bonnie.events.after(after, 0.5)
             ends += [e for e in events if e["kind"] == "turn_end"]
         self.assertEqual([e["answer"] for e in ends], ["hello there", "second answer"])
 
     def test_steer_needs_a_running_turn_and_stop_only_interrupts_one(self):
         self.assertEqual(self.call("POST", "/api/steer", {"text": "also this"})[0], 409)
-        self.bonny.control.busy = True
+        self.bonnie.control.busy = True
         self.assertEqual(self.call("POST", "/api/steer", {"text": "also this"})[0], 200)
-        self.assertEqual(self.bonny.control.take_steer(), "also this")
+        self.assertEqual(self.bonnie.control.take_steer(), "also this")
         with patch("src.run_control.interrupt_turn") as interrupt:
-            self.bonny.control.busy = False
+            self.bonnie.control.busy = False
             self.call("POST", "/api/stop", {})
             interrupt.assert_not_called()
-            self.bonny.control.busy = True
+            self.bonnie.control.busy = True
             self.call("POST", "/api/stop", {})
             interrupt.assert_called_once()
-        self.bonny.control.busy = False
+        self.bonnie.control.busy = False
 
     def test_permission_cards_wait_for_the_browser_and_a_stop_denies_them(self):
         result = []
-        threading.Thread(target=lambda: result.append(self.bonny.ask_permission("Bash", "run ls", None))).start()
+        threading.Thread(target=lambda: result.append(self.bonnie.ask_permission("Bash", "run ls", None))).start()
         card = next(e for e in self.wait_for("permission") if e["kind"] == "permission")
         self.assertEqual((card["tool"], card["message"]), ("Bash", "run ls"))
         self.assertEqual(self.call("POST", "/api/permission", {"card": card["card"], "allow": True})[0], 200)
@@ -258,40 +258,40 @@ class TestTurns(BonnyCase):
         self.assertEqual(result, [(True, False)])
         self.assertEqual(self.call("POST", "/api/permission", {"card": card["card"], "allow": True})[0], 404)   # answered once
         second = []
-        threading.Thread(target=lambda: second.append(self.bonny.ask_permission("Write", "write x", None))).start()
+        threading.Thread(target=lambda: second.append(self.bonnie.ask_permission("Write", "write x", None))).start()
         self.wait_for("permission", after=card["id"])
         with patch("src.run_control.interrupt_turn"):
-            self.bonny.stop()
+            self.bonnie.stop()
         deadline = time.monotonic() + 5
         while not second and time.monotonic() < deadline:
             time.sleep(0.05)
         self.assertEqual(second, [(False, False)])
 
 
-class TestChanges(BonnyCase):
+class TestChanges(BonnieCase):
     def test_mode_session_and_model_changes_work_when_idle_and_are_refused_while_busy(self):
         self.assertEqual(self.call("POST", "/api/mode", {"mode": "plan"})[1]["mode"], "plan")
         self.assertEqual(self.call("POST", "/api/mode", {"mode": "nonsense"})[0], 400)
         before = self.call("GET", "/api/state")[1]["session"]
         self.assertEqual(self.call("POST", "/api/session/new", {})[0], 200)
         self.assertEqual(self.call("POST", "/api/model", {"model": "nope:nothing"})[0], 400)
-        self.bonny.control.busy = True
+        self.bonnie.control.busy = True
         for path, body in (("/api/mode", {"mode": "hold"}), ("/api/session/new", {}), ("/api/model", {"model": "glm:glm-4.5"})):
             self.assertEqual(self.call("POST", path, body)[0], 409)
-        self.bonny.control.busy = False
+        self.bonnie.control.busy = False
         self.assertTrue(before)
 
     def test_a_vote_needs_a_council_turn_and_is_recorded_locally(self):
         self.assertEqual(self.call("POST", "/api/vote", {"ref": "a:m", "vote": "up"})[0], 409)
         self.provider.last_council = {"tier": "house", "request": "hi", "answers": [{"ref": "a:m", "text": "t", "p": 0.5}]}
-        with patch("src.bonny.server.record_vote") as vote:
+        with patch("src.bonnie.server.record_vote") as vote:
             self.assertEqual(self.call("POST", "/api/vote", {"ref": "a:m", "vote": "down"})[0], 200)
             vote.assert_called_once_with(self.provider.last_council, "a:m", -1)
         self.assertEqual(self.call("POST", "/api/vote", {"ref": "zzz", "vote": "up"})[0], 400)
         self.assertEqual(self.call("POST", "/api/vote", {"ref": "a:m", "vote": "maybe"})[0], 400)
 
 
-class TestFeedback(BonnyCase):
+class TestFeedback(BonnieCase):
     def test_a_thumb_is_saved_locally_as_a_hash_never_the_text(self):
         from src.config import clyde_home
 
@@ -307,12 +307,12 @@ class TestFeedback(BonnyCase):
         self.assertEqual(self.call("POST", "/api/feedback", {"vote": "up"})[0], 400)
 
 
-class TestTheme(BonnyCase):
+class TestTheme(BonnieCase):
     PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
 
     def setUp(self):
         super().setUp()
-        from src.bonny import theme
+        from src.bonnie import theme
         self.theme = theme
         theme.remove_image()
         (theme.folder() / "theme.json").unlink(missing_ok=True)
@@ -322,7 +322,7 @@ class TestTheme(BonnyCase):
         conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
         h = {"Host": f"127.0.0.1:{self.port}", **(headers or {})}
         if token:
-            h["X-Bonny-Token"] = self.token
+            h["X-Bonnie-Token"] = self.token
         conn.request(method, path, body=body or None, headers=h)
         resp = conn.getresponse()
         data = resp.read()
@@ -382,7 +382,7 @@ class TestTheme(BonnyCase):
         self.assertEqual(self.raw("GET", "/static/jetbrains-mono.woff2", headers={"Host": "evil.example"}, token=False)[0], 403)
 
 
-class TestSessionRows(BonnyCase):
+class TestSessionRows(BonnieCase):
     def make_two(self):
         """Two saved sessions, the first one open again at the end; returns (first id, second id)."""
         self.call("POST", "/api/prompt", {"text": "first question"})
@@ -390,7 +390,7 @@ class TestSessionRows(BonnyCase):
         first = self.call("GET", "/api/state")[1]["session"]
         self.call("POST", "/api/session/new", {})
         self.call("POST", "/api/prompt", {"text": "second question"})
-        self.wait_for("turn_end", after=self.bonny.events.last() - 1)
+        self.wait_for("turn_end", after=self.bonnie.events.last() - 1)
         second = self.call("GET", "/api/state")[1]["session"]
         self.assertNotEqual(first, second)
         return first, second
@@ -434,10 +434,10 @@ class TestSessionRows(BonnyCase):
 
     def test_while_a_turn_runs_another_session_can_go_but_the_open_one_cannot(self):
         first, second = self.make_two()
-        self.bonny.control.busy = True
+        self.bonnie.control.busy = True
         self.assertEqual(self.call("POST", "/api/session/delete", {"id": second})[0], 409)   # second is the open one
         self.assertEqual(self.call("POST", "/api/session/delete", {"id": first})[0], 200)
-        self.bonny.control.busy = False
+        self.bonnie.control.busy = False
 
     def test_bad_or_unknown_ids_are_404(self):
         for bad in ("../x", "", 5, "nosuchsession"):
@@ -445,10 +445,10 @@ class TestSessionRows(BonnyCase):
             self.assertEqual(self.call("POST", "/api/session/restore", {"id": bad})[0], 404)
 
 
-class TestArtifacts(BonnyCase):
+class TestArtifacts(BonnieCase):
     def setUp(self):
         super().setUp()
-        from tests.bonny.test_artifacts import session, temp_dir
+        from tests.bonnie.test_artifacts import session, temp_dir
 
         self.root = temp_dir(self)
         self.repl.tool_context.workspace_root = self.root
@@ -502,7 +502,7 @@ class TestArtifacts(BonnyCase):
         self.assertEqual(headers["X-Content-Type-Options"], "nosniff")
         with_scripts = self.raw(self.root / "page.html", "&scripts=1")[1]["Content-Security-Policy"]
         self.assertIn("sandbox allow-scripts", with_scripts)
-        self.assertIn("connect-src 'none'", with_scripts)                # even with scripts on, it can't call out or call Bonny
+        self.assertIn("connect-src 'none'", with_scripts)                # even with scripts on, it can't call out or call Bonnie
         self.assertNotIn("allow-same-origin", with_scripts)
 
     def test_raw_needs_the_token_and_a_listed_file_and_downloads_are_attachments(self):
@@ -517,33 +517,33 @@ class TestArtifacts(BonnyCase):
         self.assertTrue(self.raw(self.root / "pic.svg")[1]["Content-Security-Policy"].startswith("sandbox"))
 
     def test_show_in_folder_only_works_for_listed_files(self):
-        with patch("src.bonny.server.artifacts.reveal", return_value=True) as reveal:
+        with patch("src.bonnie.server.artifacts.reveal", return_value=True) as reveal:
             self.assertEqual(self.call("POST", "/api/artifact/reveal", {"path": str(self.root / "notes.md")})[0], 200)
             reveal.assert_called_once()
             self.assertEqual(self.call("POST", "/api/artifact/reveal", {"path": "/etc/passwd"})[0], 404)
             self.assertEqual(reveal.call_count, 1)
-        with patch("src.bonny.server.artifacts.reveal", return_value=False):
+        with patch("src.bonnie.server.artifacts.reveal", return_value=False):
             self.assertEqual(self.call("POST", "/api/artifact/reveal", {"path": str(self.root / "notes.md")})[0], 404)
 
     def test_a_successful_write_during_a_turn_announces_an_artifact_and_a_failed_one_does_not(self):
         from src.agent.agent_loop import ToolEvent
 
         def call(use_id, tool, inp, error=False):
-            self.bonny._on_tool(ToolEvent(kind="tool_use", tool_name=tool, tool_input=inp, tool_use_id=use_id))
-            self.bonny._on_tool(ToolEvent(kind="tool_result", tool_name=tool, tool_output={}, tool_use_id=use_id, is_error=error))
+            self.bonnie._on_tool(ToolEvent(kind="tool_use", tool_name=tool, tool_input=inp, tool_use_id=use_id))
+            self.bonnie._on_tool(ToolEvent(kind="tool_result", tool_name=tool, tool_output={}, tool_use_id=use_id, is_error=error))
 
-        before = self.bonny.events.last()
+        before = self.bonnie.events.last()
         call("w1", "Write", {"file_path": "made.html"})
         call("w2", "Edit", {"file_path": str(self.root / "notes.md")})
         call("w3", "Write", {"file_path": "failed.md"}, error=True)
         call("r1", "Read", {"file_path": "notes.md"})
-        found = [e for e in self.bonny.events.after(before)[0] if e["kind"] == "artifact"]
+        found = [e for e in self.bonnie.events.after(before)[0] if e["kind"] == "artifact"]
         self.assertEqual([(e["name"], e["tool"], e["filetype"], e["group"]) for e in found],
                          [("made.html", "Write", "html", "page"), ("notes.md", "Edit", "markdown", "document")])
         self.assertEqual(found[0]["path"], str(self.root / "made.html"))      # a relative path is made absolute against the project
 
 
-class TestAttachments(BonnyCase):
+class TestAttachments(BonnieCase):
     PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 40
 
     def post_file(self, name, data, token=True, headers=None):
@@ -552,7 +552,7 @@ class TestAttachments(BonnyCase):
         conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
         h = {"Host": f"127.0.0.1:{self.port}", "X-File-Name": quote(name), **(headers or {})}
         if token:
-            h["X-Bonny-Token"] = self.token
+            h["X-Bonnie-Token"] = self.token
         conn.request("POST", "/api/attachments", body=data or None, headers=h)
         resp = conn.getresponse()
         body = resp.read()
@@ -616,7 +616,7 @@ class TestAttachments(BonnyCase):
         self.assertEqual(self.call("GET", "/api/sessions")[1]["sessions"][0]["title"], "what are these?")
         self.call("POST", "/api/session/new", {})
         self.call("POST", "/api/prompt", {"text": "", "attachments": [self.post_file("only.txt", b"abc")[1]["id"]]})
-        self.wait_for("turn_end", after=self.bonny.events.last() - 1)
+        self.wait_for("turn_end", after=self.bonnie.events.last() - 1)
         self.assertEqual(self.call("GET", "/api/sessions")[1]["sessions"][0]["title"], "only.txt")        # nothing typed: the file's name
 
     def test_an_image_alone_is_a_message_and_a_blank_message_is_not(self):
@@ -664,7 +664,7 @@ class TestEventLog(unittest.TestCase):
         self.assertEqual([e["n"] for e in log.after(0)[0]], [2, 3, 4])
 
 
-class TestDownloadHeaders(BonnyCase):
+class TestDownloadHeaders(BonnieCase):
     """A file name is untrusted: it must not be able to add response headers or a body."""
 
     def _download(self, name: str) -> bytes:
@@ -674,7 +674,7 @@ class TestDownloadHeaders(BonnyCase):
         with tempfile.TemporaryDirectory() as folder:
             file = Path(folder) / name
             file.write_text("secret")
-            with patch.object(type(self.bonny), "find_artifact", return_value={"path": str(file), "kind": "other", "exists": True}):
+            with patch.object(type(self.bonnie), "find_artifact", return_value={"path": str(file), "kind": "other", "exists": True}):
                 s = socket.create_connection(("127.0.0.1", self.port), timeout=5)
                 s.sendall(f"GET /artifact/raw?path=x&t={self.token} HTTP/1.1\r\nHost: 127.0.0.1:{self.port}\r\nConnection: close\r\n\r\n".encode())
                 out = b""
