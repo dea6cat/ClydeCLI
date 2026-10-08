@@ -49,8 +49,10 @@ def cached() -> bool:
 def _load() -> None:
     global _router, _error
     try:
+        from huggingface_hub.utils import disable_progress_bars
         from laya import Router
 
+        disable_progress_bars()   # Router's "Fetching 5 files" bar would be left on the user's screen
         router = Router(preload=False)
         router.predict(*_WARMUP)   # loads the checkpoint now, not on the first real question
         _router = router
