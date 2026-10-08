@@ -167,6 +167,27 @@ class OfferTests(unittest.TestCase):
         run.assert_called_once_with(self.console, model="qwen3:4b")
 
 
+class ApplyHintTests(unittest.TestCase):
+    ENV = tune.kv("q8_0")
+
+    def _hint(self, system, app, ctx=8192):
+        with patch.object(tune.platform, "system", return_value=system), patch.object(tune.os.path, "exists", return_value=app):
+            return tune.apply_hint(self.ENV, "m:1", ctx, 8192)
+
+    def test_launchctl_is_only_advised_for_the_ollama_app(self):
+        self.assertIn("launchctl setenv OLLAMA_KV_CACHE_TYPE q8_0", self._hint("Darwin", True))
+
+    def test_a_cli_ollama_on_a_mac_gets_exports_not_launchctl(self):
+        hint = self._hint("Darwin", False)
+        self.assertNotIn("launchctl setenv OLLAMA_", hint)
+        self.assertIn("export OLLAMA_FLASH_ATTENTION=1", hint)
+
+    def test_linux_gets_systemd_and_a_longer_window_gets_the_clyde_variable(self):
+        self.assertIn("systemctl", self._hint("Linux", False))
+        self.assertIn("CLYDE_MODEL_CONTEXT_M_1=16384", self._hint("Linux", False, ctx=16384))
+        self.assertNotIn("CLYDE_MODEL_CONTEXT", self._hint("Linux", False))
+
+
 class EvalTests(unittest.TestCase):
     class _Score:
         def __init__(self, passed):
