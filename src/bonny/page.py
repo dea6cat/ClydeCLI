@@ -449,6 +449,7 @@ input[type="color"] { width: 36px; height: 24px; padding: 0; border: 1px solid v
       <button id="toggle" aria-label="Show or hide the sidebar" aria-controls="side" aria-expanded="false">&#9776;</button>
       <span class="tag" id="state-pill"></span>
       <span class="spacer"></span>
+      <button type="button" class="chip cut" id="notify" aria-pressed="false">Notify me</button>
       <span class="tag" id="queue-pill" hidden></span>
     </div>
     <div id="thread" role="log" aria-live="off" aria-label="Conversation"><div class="col" id="col"></div></div>
@@ -981,10 +982,46 @@ function handle(e) {
   else if (e.kind === "turn_end") {
     finish();
     if (e.stopped) { note("Stopped."); announce("Stopped."); }
-    else { finishAnswer(e); announce("Bonny answered."); }
+    else { finishAnswer(e); announce("Bonny answered."); notifyAnswer(e, st.turn && st.turn.text); }
     st.bubble = null; st.wrap = null; st.tools.clear(); st.busy = false; refresh();
   } else if (e.kind === "session") { st.session = e.session; showSession().catch(() => renderMessages([])).then(refresh); }
 }
+/* notify:start
+   A browser notification when an answer is ready, only while this tab is in the background. It names your question, not the answer,
+   so nothing private shows on a lock screen. The permission belongs to this address, so the on/off choice is kept in this browser beside it. */
+const NOTIFY_KEY = "bonny.notify";
+function notifyOn() {
+  try { return "Notification" in window && Notification.permission === "granted" && localStorage.getItem(NOTIFY_KEY) === "1"; } catch (err) { return false; }
+}
+function paintNotify() {
+  const on = notifyOn();
+  $("notify").setAttribute("aria-pressed", String(on));
+  $("notify").title = on ? "Notifications on: you are told when an answer is ready while this tab is in the background. Click to turn off."
+                         : "Show a notification when an answer is ready, while this tab is in the background.";
+}
+function notifyAnswer(e, prompt) {
+  if (e.stopped || !notifyOn() || (!document.hidden && document.hasFocus())) return;
+  try {
+    const said = String(prompt || "").replace(/\s+/g, " ").trim();
+    const n = new Notification(e.ok === false ? "Bonny hit a problem" : "Bonny answered", { body: said.length > 80 ? said.slice(0, 79) + "…" : said, tag: "bonny-answer" });
+    n.onclick = () => { window.focus(); n.close(); };
+  } catch (err) { /* a browser that refuses (some phones) simply doesn't notify */ }
+}
+async function toggleNotify() {
+  try {
+    if (!("Notification" in window)) { note("This browser can't show notifications."); return; }
+    if (notifyOn()) { localStorage.setItem(NOTIFY_KEY, "0"); announce("Notifications off."); return; }
+    const permission = Notification.permission === "default" ? await Notification.requestPermission() : Notification.permission;
+    if (permission !== "granted") { note("Notifications are blocked for this page. Allow them in your browser's site settings, then try again."); return; }
+    localStorage.setItem(NOTIFY_KEY, "1");
+    announce("Notifications on.");
+    new Notification("Bonny", { body: "I'll tell you here when an answer is ready.", tag: "bonny-answer" });
+  } catch (err) { note("Couldn't change notifications: " + err.message); }
+  finally { paintNotify(); }
+}
+$("notify").addEventListener("click", toggleNotify);
+paintNotify();
+/* notify:end */
 async function poll(after) {
   for (;;) {
     try {
