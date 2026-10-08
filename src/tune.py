@@ -41,7 +41,7 @@ WORTH_CONTEXT = 0.10      # or opens this much more window,
 WORTH_SPEED = 0.05        # or runs this much faster
 STRENGTH_NOISE = 1        # graded tasks a model gains or loses by chance between identical runs: not a quality change
 EVAL_RUNS = 1             # the eval only guards tool calling and graded tasks; the probe below catches subtler loss
-RECALL_TOKENS = 6000      # how much text the buried-fact probe reads, capped at 70% of the smallest window tested
+RECALL_MAX = 24000        # the most text the buried-fact probe reads (about 35 s); it reads 70% of the window being tested, up to this
 _STARTUP_S = 20
 _PROMPT = "Summarize in one paragraph: " + "The quick brown fox jumps over the lazy dog. " * 120
 # Fixed prompts answered greedily (temperature 0, fixed seed): the same model gives the same reply, so any
@@ -263,15 +263,22 @@ def choose(rows: list[Row], profile: Profile) -> Row:
     return max(passed, key=_PRIORITY_KEY[profile.priority], default=base)
 
 
+OLLAMA_APP = "/Applications/Ollama.app"
+
+
 def apply_hint(env: dict[str, str], model: str, ctx: int, base_ctx: int) -> str:
-    """How to make a setting permanent where this machine runs Ollama."""
-    lines = []
-    if platform.system() == "Darwin":
-        lines += [f"launchctl setenv {k} {v}" for k, v in env.items()]
-        lines.append("then quit and reopen the Ollama app (if you start it with `ollama serve`, export the same variables first).")
+    """How to make a setting permanent where this machine runs Ollama. Settings reach the server only through its own
+    environment: launchd's reaches the Ollama app, never an `ollama serve` started from a shell (checked on macOS)."""
+    exports = "\n".join(f"export {k}={v}" for k, v in env.items())
+    if platform.system() == "Darwin" and os.path.exists(OLLAMA_APP):
+        lines = [f"launchctl setenv {k} {v}" for k, v in env.items()]
+        lines.append("then quit and reopen the Ollama app.")
+    elif platform.system() == "Darwin":
+        lines = ["Add to ~/.zshrc (launchctl setenv would not reach an `ollama serve` you start yourself):", exports,
+                 "then stop Ollama and start it again with `ollama serve` from a new terminal."]
     else:
-        lines.append("sudo systemctl edit ollama, and under [Service] add: " + " ".join(f'Environment="{k}={v}"' for k, v in env.items()))
-        lines.append("then sudo systemctl restart ollama.")
+        lines = ["sudo systemctl edit ollama, and under [Service] add: " + " ".join(f'Environment="{k}={v}"' for k, v in env.items()),
+                 "then sudo systemctl restart ollama."]
     if ctx != base_ctx:
         lines.append(f"For the longer window, also set export CLYDE_MODEL_CONTEXT_{_ctx_env_key(model)}={ctx} in your shell profile.")
     return "\n".join(lines)
@@ -329,7 +336,7 @@ def run(console: Console, model: str | None = None, ctx: int | None = None, reas
         return 1
     provider, ram = local(), _total_ram_bytes()
     rows: list[Row] = []
-    name, plan, recall_tokens = model, [], 0
+    name, plan = model, []
     try:
         if not unload_loaded(console, provider):
             console.print("Stopped. Nothing was changed.")
@@ -343,7 +350,6 @@ def run(console: Console, model: str | None = None, ctx: int | None = None, reas
                     name = pick_model(private, model)
                     base_ctx = ctx or private.context_window(name)
                     plan = candidates(base_ctx, private.trained_context(name), profile)
-                    recall_tokens = min(RECALL_TOKENS, int(base_ctx * 0.7))
                     console.print(f"Tuning [bold]{name}[/bold] for {', '.join(profile.uses)} (priority: {profile.priority}). "
                                   f"{len(plan)} settings, each loaded and graded: this takes a few minutes.")
                     _generate(host, name, base_ctx, 1, "Hi")   # the first load of a model reads low on memory; measure the second
@@ -353,7 +359,7 @@ def run(console: Console, model: str | None = None, ctx: int | None = None, reas
                 if rows:
                     row.why = perf_gate(rows[0].perf, row.perf, profile, ram)
                 if i == 0 or not row.why:
-                    row.quality = grade(host, name, cand.ctx, recall_tokens)
+                    row.quality = grade(host, name, cand.ctx, min(RECALL_MAX, int(cand.ctx * 0.7)))
                     if i:
                         row.why = quality_gate(rows[0].quality, row.quality, profile)
                 rows.append(row)
