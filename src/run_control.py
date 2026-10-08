@@ -1,5 +1,5 @@
 """Queue, steer and stop for one running Clyde, shared by every front end that drives a turn from another
-thread (the ACP server, `clyde luv bonny`).
+thread (the ACP server, `clyde luv bonnie`).
 
 Turns run on the main thread. Stop reaches it the way Esc does: the open connections are aborted and the
 process sends itself SIGINT, which surfaces as KeyboardInterrupt in the turn. Steer text is picked up by the

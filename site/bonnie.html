@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bonnie · ClydeCLI</title>
+<meta name="description" content="Bonnie is Clyde's luv accomplice: the same engine, tools and sessions in a page on your own machine, with search, schedules, artifacts and a look you can change.">
+<meta name="theme-color" content="#e8e5dd" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f1a14" media="(prefers-color-scheme: dark)">
+<link rel="icon" type="image/svg+xml" href="brand/bonnie-mark.svg">
+<script>document.documentElement.className = "js";</script>
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<div class="glow" aria-hidden="true"></div>
+<div class="frame">
+<header>
+  <b><img src="brand/clyde-mark.svg" alt="" width="24" height="24">ClydeCLI</b>
+  <nav><a href="./">Home</a><a href="features.html">Features</a><a href="bonnie.html" aria-current="page">Bonnie</a><a href="keys.html">API keys</a><a href="https://github.com/dea6cat/ClydeCLI">Source</a><a href="https://github.com/dea6cat/ClydeCLI/blob/main/CHANGELOG.md">Changelog</a></nav>
+</header>
+<div class="strip"><span class="chip">RUNS ON YOUR MACHINE</span><span class="mono">Local only: the page is reachable from this computer alone, and nothing leaves it unless a model does.</span></div>
+<main>
+  <h1 class="enter" style="--i:0"><img class="bmark" src="brand/bonnie-mark.svg" alt="" width="102" height="60">Bonnie</h1>
+  <p class="enter lead" style="--i:1">Clyde’s luv accomplice. The same engine, tools, memory and sessions as the terminal, in a page that opens on your own machine, with a plainer way to use them and a voice of her own.</p>
+
+  <section class="stage enter" style="--i:2" aria-label="Screenshots of Bonnie">
+    <div class="spot" id="spot">
+      <img id="spot-img" src="bonnie/chat.png" width="1280" height="800" alt="Bonnie answering a question in Search mode: the answer cites one source, with copy, share and rating buttons under it.">
+      <div class="shade" aria-hidden="true"></div>
+    </div>
+    <div class="shots" role="group" aria-label="Choose a screenshot">
+      <button type="button" class="cut" aria-pressed="true" data-src="bonnie/chat.png" data-alt="Bonnie answering a question in Search mode: the answer cites one source, with copy, share and rating buttons under it." data-cap="Ask. Search mode looks the web up first and shows what the answer cites.">Ask</button>
+      <button type="button" class="cut" aria-pressed="false" data-src="bonnie/automations.png" data-alt="Bonnie's Automations page: a form with a plain-words schedule picker, and two saved automations below it." data-cap="Automate. A prompt on a schedule, in a session of its own, read-only unless you allow edits.">Automate</button>
+      <button type="button" class="cut" aria-pressed="false" data-src="bonnie/providers.png" data-alt="Bonnie's Providers page with a dialog open: step one of three, getting a key from Anthropic, with a button to its key page." data-cap="Connect. A guided three-step flow: get a key, paste it, and Bonnie tests it before it is saved.">Connect</button>
+      <button type="button" class="cut" aria-pressed="false" data-src="bonnie/customize.png" data-alt="Bonnie in the Night theme with the Customize panel open: themes, seven colours, a background image, shape and font." data-cap="Customize. A theme, seven colours, a background image, the shape of the corners, the font.">Customize</button>
+    </div>
+    <p class="dim spotcap mono" id="spot-cap">Ask. Search mode looks the web up first and shows what the answer cites.</p>
+  </section>
+
+  <h2>Start her</h2>
+  <p>With Clyde installed, run this in your project. Your browser opens on a page only your computer can reach.</p>
+  <div class="install"><code id="luv" tabindex="0" role="region" aria-label="Command to start Bonnie">clyde luv bonnie</code><button type="button" class="cut" data-copy="luv">Copy</button></div>
+  <p class="dim">Pick a model with <code>clyde --model provider:model luv bonnie</code>. She opens at <code>localhost:8080</code>; <code>clyde luv bonnie 7090</code> chooses another port, and <code>--no-open</code> skips the browser. To go the other way and start the terminal Clyde, run <code>bonnie luv clyde</code>.</p>
+
+  <h2>What she does</h2>
+  <dl class="grid">
+    <div class="cut"><dt>Search and Computer</dt><dd>Search answers with sources you can open. Computer mode gives the model the same tools Clyde has in the terminal, with permission cards before it changes anything.</dd></div>
+    <div class="cut"><dt>Queue, steer, stop</dt><dd>Send the next prompt while one runs, steer a turn between steps, or stop it. The terminal shares the same mechanism.</dd></div>
+    <div class="cut"><dt>Files in, files out</dt><dd>Attach images and text files by button, drop or paste. Artifacts lists every file Clyde wrote or edited, with a sandboxed preview.</dd></div>
+    <div class="cut"><dt>Sessions you keep</dt><dd>Pin the ones you return to. Delete one and it moves to the archive, with Undo. Each project has its own list.</dd></div>
+    <div class="cut"><dt>Automations</dt><dd>Run a prompt every few minutes, daily or on chosen days. They run only while Bonnie is open, skip a run missed while she was closed, and only read unless you allow edits.</dd></div>
+    <div class="cut"><dt>Your project, your folder</dt><dd>Browse to any folder, make a new one where you want it, and work there. Tools, permissions and new sessions follow.</dd></div>
+    <div class="cut"><dt>Connect a provider</dt><dd>A guided flow: get a key (with a link to its page), paste it, and Bonnie tests it before saving. Keys stay on your computer and are never shown again.</dd></div>
+    <div class="cut"><dt>Council</dt><dd>Ask the top four models of a tier at once. Laya rates the answers, and you can see them all and vote.</dd></div>
+    <div class="cut"><dt>Yours to restyle</dt><dd>Themes, colours, a background image, corners, font, a greeting, your own CSS and a theme code you can share.</dd></div>
+  </dl>
+
+  <h2>Good to know</h2>
+  <ul>
+    <li>It is reachable from this computer only (<code>localhost</code>), not from your network, and there is no fixed address to set up. Each run has its own token, and requests must carry it and a matching Host and Origin.</li>
+    <li>What she can do depends on the model. A small local model can answer and search but may stumble on tool use in Computer mode; a stronger model does better.</li>
+    <li>Previews of files Clyde wrote run in a sandbox that cannot reach Bonnie, your files or the network.</li>
+    <li>MCP servers and hooks load for the folder Bonnie started in. Restart her to pick up another project's own.</li>
+    <li>PDFs and other binary files can't be attached yet; she says so when you try.</li>
+  </ul>
+</main>
+<footer><a href="https://github.com/dea6cat/ClydeCLI/blob/main/LICENSE">PolyForm Noncommercial 1.0.0</a> · <a href="https://github.com/dea6cat/ClydeCLI">github.com/dea6cat/ClydeCLI</a></footer>
+</div>
+<script src="site.js" defer></script>
+</body>
+</html>

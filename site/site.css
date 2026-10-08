@@ -107,7 +107,7 @@
   main > h1:first-child { padding-top: 64px; }
   @media (max-width: 700px) { main > h1:first-child { padding-top: 36px; } }
 
-  /* the Bonny page: screenshots under a pointer spotlight (the shade only exists while a mouse is over the picture) */
+  /* the Bonnie page: screenshots under a pointer spotlight (the shade only exists while a mouse is over the picture) */
   .stage { margin: 34px 0 0; }
   .spot { position: relative; overflow: hidden; border: 1px solid var(--line); background: var(--term); --sx: 50%; --sy: 50%; cursor: crosshair; }
   .spot img { display: block; width: 100%; height: auto; }

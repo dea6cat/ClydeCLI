@@ -350,8 +350,8 @@ class ClydeREPL:
     # Listeners for a turn's streamed text and tool events (used by --acp); None in the terminal.
     on_text_hook = None
     on_event_hook = None
-    system_extra: str | None = None   # extra system-prompt text for the next turns only (Bonny's search results); not stored
-    direct_stream = True              # short chat-like prompts may skip the tools for a quicker streamed reply; Bonny's Computer mode turns this off
+    system_extra: str | None = None   # extra system-prompt text for the next turns only (Bonnie's search results); not stored
+    direct_stream = True              # short chat-like prompts may skip the tools for a quicker streamed reply; Bonnie's Computer mode turns this off
 
     # Esc cancels a running turn or command; prompts pause it (see src/repl/esc.py).
     _esc = WATCHER

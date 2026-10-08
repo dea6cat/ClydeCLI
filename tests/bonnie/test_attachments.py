@@ -5,7 +5,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from src.bonny import attachments
+from src.bonnie import attachments
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 40
 JPG = b"\xff\xd8\xff\xe0" + b"\x00" * 40
@@ -32,11 +32,11 @@ class TestClassify(unittest.TestCase):
 
     def test_a_big_image_is_shrunk_when_it_can_be_and_refused_when_it_cannot(self):
         big = PNG + b"\x00" * attachments.MAX_IMAGE_BYTES
-        with patch("src.bonny.attachments.shrink", return_value=JPG * 10):
+        with patch("src.bonnie.attachments.shrink", return_value=JPG * 10):
             item = attachments.classify("shot.png", big)
         self.assertEqual((item.media_type, item.kind), ("image/jpeg", "image"))
         self.assertIn("Shrunk from", item.note)
-        with patch("src.bonny.attachments.shrink", return_value=None):
+        with patch("src.bonnie.attachments.shrink", return_value=None):
             with self.assertRaisesRegex(ValueError, "couldn't be made smaller"):
                 attachments.classify("shot.png", big)
 

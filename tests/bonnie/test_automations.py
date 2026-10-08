@@ -4,9 +4,9 @@ from __future__ import annotations
 import unittest
 from datetime import datetime
 
-from src.bonny import automations as au
-from tests.bonny import test_server as ts
-from tests.bonny.test_artifacts import temp_dir
+from src.bonnie import automations as au
+from tests.bonnie import test_server as ts
+from tests.bonnie.test_artifacts import temp_dir
 
 MON_9 = datetime(2026, 10, 5, 9, 0, 0)   # a Monday
 STAMP = "%Y-%m-%dT%H:%M:%S"
@@ -30,7 +30,7 @@ class TestSchedule(unittest.TestCase):
         self.assertEqual(au.describe({"kind": "every", "minutes": 120}), "Every 2 h")
 
 
-class TestAutomations(ts.BonnyCase):
+class TestAutomations(ts.BonnieCase):
     def setUp(self):
         super().setUp()
         self.root = temp_dir(self)
@@ -71,14 +71,14 @@ class TestAutomations(ts.BonnyCase):
         due_at = datetime.strptime(row["next_run"], STAMP)
         self.call("POST", "/api/prompt", {"text": "hi"})   # a saved session, so a run has to leave it
         self.wait_for("turn_end")
-        before, seen = self.repl.session.session_id, self.bonny.events.last()
-        self.bonny.tick(due_at)
+        before, seen = self.repl.session.session_id, self.bonnie.events.last()
+        self.bonnie.tick(due_at)
         self.wait_for("turn_end", after=seen)
         self.assertNotEqual(self.repl.session.session_id, before)
         self.assertTrue(self.repl.tool_context.plan_mode)
         self.assertIsNotNone(au.get(str(self.root), row["id"])["last_run"])
-        self.bonny.tick(due_at)   # next_run moved on, so nothing is queued again
-        self.assertEqual(self.bonny.control.prompts.qsize(), 0)
+        self.bonnie.tick(due_at)   # next_run moved on, so nothing is queued again
+        self.assertEqual(self.bonnie.control.prompts.qsize(), 0)
 
     def test_a_run_missed_while_closed_is_skipped_and_a_paused_one_never_fires(self):
         row = self.create()[1]["automation"]

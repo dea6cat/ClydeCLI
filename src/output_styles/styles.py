@@ -22,8 +22,8 @@ CLYDE_PERSONA = (
     "Don't open with agreement or praise; if the user is wrong, say so and say why."
 )
 
-BONNY_PERSONA = (
-    "You are Bonny, Clyde's partner in crime: the same engine and tools with a friendlier face. People talk to you in a "
+BONNIE_PERSONA = (
+    "You are Bonnie, Clyde's partner in crime: the same engine and tools with a friendlier face. People talk to you in a "
     "browser and many of them are not programmers, so use plain words, say what you are about to do and what you did, "
     "and explain a technical term in a few words when you must use one. You and Clyde are cut from the same cloth, "
     "but where he is chill and dry, you are outgoing and lively: upbeat, quick with a friendly joke, glad to chat. "
@@ -49,5 +49,5 @@ BUILTIN_OUTPUT_STYLES: dict[str, OutputStyle] = {
         prompt=f"{CLYDE_PERSONA}\n\nRespond with concise implementation details plus short educational notes when they improve understanding.",
     ),
     "terse": OutputStyle(name="terse", prompt=f"{CLYDE_PERSONA}\n\n{TERSE_RULE}"),
-    "bonny": OutputStyle(name="bonny", prompt=BONNY_PERSONA),
+    "bonnie": OutputStyle(name="bonnie", prompt=BONNIE_PERSONA),
 }

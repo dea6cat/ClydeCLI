@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 from src.agent.conversation import ToolResultContentBlock, ToolUseContentBlock
 from src.agent.session import Session
-from src.bonny import artifacts
+from src.bonnie import artifacts
 
 
 def session(session_id: str, cwd: Path, calls: list, updated: str = "2026-10-07T10:00:00") -> Session:
@@ -124,7 +124,7 @@ class TestReadAndReveal(unittest.TestCase):
         self.assertEqual(artifacts.read_text(self.root / "b.bin"), {"kind": "other"})
 
     def test_reveal_reports_whether_the_file_manager_ran(self):
-        with patch("src.bonny.artifacts.subprocess.run") as run:
+        with patch("src.bonnie.artifacts.subprocess.run") as run:
             run.return_value.returncode = 0
             self.assertTrue(artifacts.reveal(self.root / "a.txt"))
             run.side_effect = OSError("no such program")

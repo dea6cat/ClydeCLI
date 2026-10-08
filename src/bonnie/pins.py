@@ -1,10 +1,10 @@
-"""Pinned sessions: a list of session ids in ~/.clyde/bonny/pins.json. Ids of sessions that are gone are harmless and
+"""Pinned sessions: a list of session ids in ~/.clyde/bonnie/pins.json. Ids of sessions that are gone are harmless and
 dropped the next time the list is written."""
 from __future__ import annotations
 
 import json
 
-from src.bonny.theme import folder
+from src.bonnie.theme import folder
 
 MAX_PINS = 100
 

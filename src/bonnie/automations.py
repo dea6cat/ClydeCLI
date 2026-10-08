@@ -1,7 +1,7 @@
-"""Automations: prompts Bonny runs on a schedule, saved in ~/.clyde/bonny/automations.json.
+"""Automations: prompts Bonnie runs on a schedule, saved in ~/.clyde/bonnie/automations.json.
 
-They run only while Bonny is open (no daemon), each run in a session of its own, in the project they were made in. A run
-that was due while Bonny was closed is skipped, not replayed on launch. Unattended runs are read-only (plan mode) unless
+They run only while Bonnie is open (no daemon), each run in a session of its own, in the project they were made in. A run
+that was due while Bonnie was closed is skipped, not replayed on launch. Unattended runs are read-only (plan mode) unless
 the automation was made with edits allowed, since nobody is there to answer a permission card.
 """
 from __future__ import annotations
@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from src.bonny.theme import folder
+from src.bonnie.theme import folder
 
 MAX_PROMPT = 4000
 MAX_NAME = 80

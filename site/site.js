@@ -49,7 +49,7 @@
     }, { passive: true });
     requestAnimationFrame(frame);
   })();
-  // Bonny page: the spotlight follows a mouse over the screenshot; the buttons swap the picture and its caption.
+  // Bonnie page: the spotlight follows a mouse over the screenshot; the buttons swap the picture and its caption.
   (function () {
     var spot = document.getElementById("spot"), img = document.getElementById("spot-img"), cap = document.getElementById("spot-cap");
     if (!spot) return;
