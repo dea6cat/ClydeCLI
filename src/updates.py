@@ -174,6 +174,11 @@ def _read_cache() -> dict:
     return data if isinstance(data, dict) else {}
 
 
+def forget_cache() -> None:
+    """Drop the cached answer, so the start-up note cannot name a commit the user just moved past."""
+    _cache_path().unlink(missing_ok=True)
+
+
 def refresh_cache(fetch: Callable[[str], Target | None] = fetch_target, now: float | None = None, channel: str | None = None) -> bool:
     """Ask GitHub about the configured channel unless the cache is under a day old (and for the same channel); True when a
     fresh answer was stored."""
