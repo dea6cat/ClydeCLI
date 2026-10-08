@@ -333,7 +333,7 @@ class TestWebFetchTool(ToolSystemTests):
                 return False
 
         with patch.object(socket, "getaddrinfo", return_value=[(None, None, None, None, ("93.184.216.34", 0))]):
-            with patch.object(urllib.request, "urlopen", return_value=_Resp(html_doc.encode("utf-8"))):
+            with patch.object(urllib.request.OpenerDirector, "open", return_value=_Resp(html_doc.encode("utf-8"))):
                 out = WebFetchTool().run({"url": "https://example.com/"}, self.ctx).output
                 self.assertIn("Title", out["content"])
                 self.assertIn("Hello world", out["content"])
@@ -355,7 +355,7 @@ class TestWebSearchTool(ToolSystemTests):
             def __exit__(self, exc_type, exc, tb):
                 return False
 
-        with patch.object(urllib.request, "urlopen", return_value=_Resp(html_doc.encode("utf-8"))):
+        with patch.object(urllib.request.OpenerDirector, "open", return_value=_Resp(html_doc.encode("utf-8"))):
             out = WebSearchTool().run({"query": "example", "num": 1}, self.ctx).output
             self.assertEqual(len(out["results"]), 1)
             self.assertEqual(out["results"][0]["url"], "https://example.com/")
