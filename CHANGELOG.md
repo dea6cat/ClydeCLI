@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `/map` in the REPL: `/map` lists the repo's most connected symbols, `/map <question>` searches the code map, and `update`, `explain X`, `affected X` and `path A B` do what the Map tool does for the model. It was only reachable by the model before.
+
 ## [0.2.4] - 2026-10-08
 
 ### Fixed
