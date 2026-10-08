@@ -14,6 +14,7 @@ from unittest.mock import patch
 from src.agent.agent_loop import run_agent_loop
 from src.agent.conversation import Conversation
 from src.command_system import create_command_context, execute_command_sync
+from src.tool_system import checks
 from src.tool_system.checks import Problem, detect, new_problems, parse_mypy, parse_ruff
 from src.tool_system.context import ToolContext
 from src.tool_system.defaults import build_default_registry
@@ -98,6 +99,21 @@ class TestDetection(ChecksTestCase):
         (self.root / "pyproject.toml").unlink()
         self.assertIsNone(detect(self.root))
 
+    def test_slash_check_still_uses_the_projects_own_tooling(self) -> None:
+        venv_ruff = self.root / ".venv" / "bin" / "ruff"
+        venv_ruff.parent.mkdir(parents=True)
+        self._tool(venv_ruff, FAKE_RUFF)
+        self.assertEqual(detect(self.root).tools["ruff"], [str(venv_ruff)])                     # explicit: full tooling
+        self.assertNotEqual(detect(self.root, auto=True).tools.get("ruff"), [str(venv_ruff)])   # unprompted: not the project's binary
+
+    def test_trust_is_read_only_from_the_users_own_settings(self) -> None:
+        (self.root / ".clyde").mkdir()
+        (self.root / ".clyde" / "settings.json").write_text(json.dumps({"checks": {"trusted": [str(self.root)]}}))
+        self.assertFalse(checks._trusted(self.root))           # a project can't vouch for itself
+        (self.home / ".clyde").mkdir()
+        (self.home / ".clyde" / "settings.json").write_text(json.dumps({"checks": {"trusted": [str(self.root.parent)]}}))
+        self.assertTrue(checks._trusted(self.root))            # a folder above it counts
+
     def test_prefers_uv_then_project_venv(self) -> None:
         venv_ruff = self.root / ".venv" / "bin" / "ruff"
         venv_ruff.parent.mkdir(parents=True)
@@ -143,11 +159,34 @@ class TestAgentLoopFeedback(ChecksTestCase):
                        tool_registry=build_default_registry(), tool_context=context)
         return json.loads(provider.requests[1]["conversation"].messages[-1].tool_results[0].content)
 
+    def _trust_project(self) -> None:
+        (self.home / ".clyde").mkdir(exist_ok=True)
+        (self.home / ".clyde" / "settings.json").write_text(json.dumps({"checks": {"trusted": [str(self.root)]}}))
+
     def test_new_problems_reach_the_model_in_the_same_loop(self) -> None:
+        self._trust_project()
         result = self._write('import os\nx: int = "s"\n')
         self.assertEqual(result["newProblems"],
                          "1 new problem(s) after this edit; fix them:\nmod.py:2: assignment Incompatible types in assignment")
         self.assertIn("ruff check --no-fix --output-format=concise mod.py", self.log.read_text())
+
+    def test_an_untrusted_project_gets_only_the_users_own_ruff(self) -> None:
+        planted = self.root / ".venv" / "bin" / "ruff"
+        planted.parent.mkdir(parents=True)
+        marker = self.root / "PWNED"
+        self._tool(planted, f"#!/bin/sh\ntouch '{marker}'\n")
+        result = self._write('import os\nx: int = "s"\n')
+        self.assertFalse(marker.exists())                       # the project's own binary never ran
+        self.assertNotIn("newProblems", result)                 # mypy (its config can load plugins) did not run either
+        self.assertIn("ruff check", self.log.read_text())        # the user's ruff on PATH did
+        self.assertNotIn("mypy", self.log.read_text())
+
+    def test_a_ruff_inside_the_project_is_never_taken_from_path(self) -> None:
+        inside = self.root / "bin"
+        inside.mkdir()
+        self._tool(inside / "ruff", FAKE_RUFF)
+        with patch.dict(os.environ, {"PATH": f"{inside}{os.pathsep}/usr/bin"}):
+            self.assertEqual(detect(self.root, auto=True).tools, {})
 
     def test_clean_edit_adds_nothing(self) -> None:
         self.assertNotIn("newProblems", self._write("import os\nx: int = 1\n"))
