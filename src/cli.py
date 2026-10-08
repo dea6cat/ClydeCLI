@@ -89,6 +89,7 @@ Examples:
   clyde plugin list                   List installed plugins; also: plugin remove|enable|disable <name>
   clyde update [--check] [--channel latest|stable]  Move Clyde to the newest version of its channel, the way it was installed
   clyde uninstall [--purge] [-y]      Remove Clyde the way it was installed; --purge also deletes ~/.clyde
+  clyde tune                          Test flash attention + q8_0 KV cache on Ollama (memory and speed)
   clyde doctor                        How Clyde is installed: method, version, PATH, other installs, Claude Code
   clyde license [accept]              Show the licence terms and whether you accepted them; accept records it
   clyde -p "<prompt>"                 One turn without the prompt, answer on stdout (scripts, CI); also --mode,
@@ -151,6 +152,9 @@ Examples:
     luv_parser.add_argument('--port', dest='port_flag', type=int, help='the same, as an option')
     luv_parser.add_argument('--no-open', action='store_true', help="don't open the browser")
 
+    tune_parser = subparsers.add_parser('tune', help="Test whether flash attention + a q8_0 KV cache help Ollama on this machine")
+    tune_parser.add_argument('--model', dest='tune_model', metavar='NAME', help='installed Ollama model to test (default: the smallest)')
+    tune_parser.add_argument('--ctx', type=int, metavar='TOKENS', help="context window to test at (default: the one Clyde pins for the model)")
     subparsers.add_parser('doctor', help='How Clyde is installed: method, version, PATH, other installs, Claude Code, licence')
     update_parser = subparsers.add_parser('update', help='Move Clyde to the newest version, the way it was installed')
     update_parser.add_argument('--channel', choices=['latest', 'stable'], help='follow every commit on main (latest) or tagged releases (stable); saved')
@@ -191,6 +195,10 @@ Examples:
 
     if args.command == 'sessions':
         return handle_sessions(Console(), args.action, ' '.join(args.target))
+
+    if args.command == 'tune':
+        from src import tune
+        return tune.run(Console(), model=args.tune_model, ctx=args.ctx)
 
     if args.command == 'doctor':
         from src import install_info
