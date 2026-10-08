@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The plugin scan's LLM review gives up after 5 minutes (it was 30) and falls back to the static scan; a failed scan is never cached, and importing a plugin defaults to "no" unless its scan came back SAFE.
 
 ### Added
+- The site's home page shows the pair of spades, Clyde's and Bonny's, as one mark (they ship in one install), and the hero says so. The two cut-outs follow the pointer in opposite directions.
 - A Features page on the site (a new tab in the nav) holds everything beyond the basics, moved off the home page: the feature overview, the recorded sessions (model failover, `/eval`, Laya) and a full section on `clyde tune` (what it asks, the settings it tries, the checks each must pass, measured results, and how to turn a setting on). The home page keeps the story and links to it.
 - `clyde tune` finds the best Ollama setup for how you use a local model without losing the quality you rely on. It asks what you
   use it for (coding, chat, research and fact-checking, long documents, quick answers), what matters most and how much RAM to keep
