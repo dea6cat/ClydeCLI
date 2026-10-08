@@ -66,6 +66,17 @@ class TestGate(unittest.TestCase):
         self.assertTrue(reviewed.llm)
         self.assertEqual(self.scanner.calls, [("env", False), ("env", True)])
 
+    def test_a_scan_that_errored_is_not_cached_so_the_next_run_tries_again(self):
+        folder = _skill(self.home, "flaky", "sort imports")
+        outcomes = iter([[Verdict("flaky", ERROR, findings=["scan failed: TimeoutExpired"])], [Verdict("flaky", SAFE)]])
+        with patch.object(skill_scan, "scan", side_effect=lambda *a, **k: next(outcomes)) as scan:
+            self.assertEqual(skill_scan.check("skill", "flaky", folder).recommendation, ERROR)
+            self.assertEqual(skill_scan.check("skill", "flaky", folder).recommendation, SAFE)
+        self.assertEqual(scan.call_count, 2)
+
+    def test_the_llm_review_is_bounded_to_minutes_not_half_an_hour(self):
+        self.assertLessEqual(skill_scan._TIMEOUT_LLM, 300)
+
     def test_a_failed_scan_warns_but_does_not_hold_back(self):
         self.assertFalse(Verdict("x", ERROR).blocked)
         self.assertFalse(Verdict("x", CAUTION).blocked)
