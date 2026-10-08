@@ -215,6 +215,7 @@ _HELP_TEXT = """
 - `/model [provider:model]` - Pick a model with the arrow keys (type to filter), or switch to the one named; saved as default
 - `/models [all|refresh]` - Same picker as /model (hides ones /eval showed don't work; all shows them, refresh re-fetches the lists)
 - `/models local [ollama|hf|mlx] [words]` - Find local models on ollama.com and Hugging Face (GGUF, MLX on Apple Silicon) that fit this machine, rated relax / balance / hard, and download one
+- `/tune [--ask]` - Find the best Ollama setup for how you use it, keeping quality (the same as `clyde tune`)
 - `/laya` - Laya's status, and how its stuck checks and difficulty scores lined up with how traced turns ended
 - `/council [up N|down N]` - Show every answer from the last cardShuffle council turn with Laya's score, or vote one up or down (votes stay on this machine)
 - `/status` - Show the model, mode, directory, session, goal and token totals
@@ -431,6 +432,7 @@ class ClydeREPL:
             "/rewind",
             "/login",
             "/laya",
+            "/tune",
             "/council",
             "/multiline",
             "/stream",
@@ -1473,6 +1475,9 @@ class ClydeREPL:
             self._handle_relogin(raw.split(maxsplit=1)[1].strip() if " " in raw.strip() else None, title="Connect a provider")
         elif cmd == '/laya':
             self._show_laya()
+        elif cmd == '/tune' or cmd.startswith('/tune '):
+            from src import tune
+            tune.run(self.console, reask='--ask' in raw.split())
 
         elif cmd == '/council' or cmd.startswith('/council '):
             self._show_council(raw.split(maxsplit=1)[1].strip().lower() if " " in raw.strip() else "")
