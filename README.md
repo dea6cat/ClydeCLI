@@ -213,6 +213,11 @@ your own greeting, and a box for custom CSS, the way old profile pages let you. 
 or paste someone else's. Everything is saved in `~/.clyde/bonny/` on your machine, and the background image never leaves it
 (PNG, JPEG, GIF or WebP up to 8 MB, checked by content; SVG is refused). Custom CSS can't load anything from other sites.
 
+**Notify me** (top bar) shows a browser notification when an answer is ready, while the Bonny tab is in the background. Turning it on asks
+your browser for permission once; the notification names your question, not the answer, so nothing private shows on a lock screen, and a
+stopped turn stays silent. The choice is kept in the browser next to the permission, which belongs to the page's address
+(`localhost:8080`), so if Bonny starts on another port you turn it on again there.
+
 **Pin** a session with the pin on its row and it stays at the top of the sidebar. **Automations** run a prompt on a schedule
 (every N minutes or hours, every day, or on chosen days) in the project they were made in, each run in a session of its own, with
 Pause, Run now and Delete. They run only while Bonny is open, a run missed while she was closed is skipped, and they only read
