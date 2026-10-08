@@ -359,3 +359,13 @@ The `stable` update channel follows release tags. To cut a release: bump `__vers
 `pyproject.toml`), update `CHANGELOG.md`, merge to `main`, then tag that commit `vX.Y.Z` (for example `git tag v0.2.0 && git push
 origin v0.2.0`). Only plain `vX.Y.Z` tags count; others (`v1.0.0-rc1`, `nightly`) are ignored. Until the first tag exists, `clyde
 update --channel stable` reports that there is no release yet.
+
+## Releasing
+
+From a clean `main` that matches `origin/main`, with the changes listed under `[Unreleased]` in `CHANGELOG.md`:
+
+```bash
+scripts/release.sh patch      # or minor, major, or an exact X.Y.Z
+```
+
+It bumps the version in `pyproject.toml`, `src/__init__.py` and `uv.lock`, turns `[Unreleased]` into the new release, commits `Release vX.Y.Z`, tags it and pushes `main` and the tag. Run the tests first; the script does not.
