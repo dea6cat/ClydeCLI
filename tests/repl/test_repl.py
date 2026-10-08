@@ -57,6 +57,25 @@ class TestREPL(unittest.TestCase):
                     self.assertFalse(repl.stream)
                     self.assertFalse(repl.multiline_mode)
 
+    def test_a_council_member_reads_the_repo_but_cannot_change_it(self):
+        """_investigate runs the member's own tool loop in plan mode on a copy of the conversation."""
+        target = self.config_dir / "note.txt"
+        target.write_text("hello")
+        call = lambda name, args: reply(tool_calls=[(name, args)])   # noqa: E731
+        with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
+            with patch('src.repl.core.Session.create') as mock_session:
+                mock_session.return_value = Mock(conversation=Conversation())
+                with _fake_provider_env() as glm:
+                    repl = ClydeREPL(model="glm:glm-4.5")
+                    repl.session.conversation.add_user_message("what is in note.txt?")
+                    member = FakeProvider(call("Read", {"file_path": str(target)}), call("Write", {"file_path": str(target), "content": "x"}),
+                                          reply("it says hello"), name="m")
+                    response = repl._investigate(member, "m1", __import__("threading").Event())
+        self.assertEqual(response.message.text, "it says hello")
+        self.assertEqual(target.read_text(), "hello")                      # the Write was refused: plan mode
+        self.assertEqual(len(repl.session.conversation.messages), 1)       # the member worked on a copy
+        self.assertIn("Reading the table", str(member.requests[2]))        # and was told why the Write failed
+
     def test_repl_initialization_with_stream_enabled(self):
         """Test REPL can start with stream mode enabled."""
         with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
