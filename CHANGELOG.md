@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Bonny's conversation now uses all the width from the side menu to the edge of the window instead of a narrow centred column; the message box and its heading stay centred.
 - Bonny now renders markdown tables (they showed as rows of pipes on one line), plus numbered and nested lists, `#`/`##`/`###` heading levels, quotes, rules and *italics*.
 
 ### Security
