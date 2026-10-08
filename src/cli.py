@@ -469,7 +469,8 @@ def handle_setup(console: Console, assume_yes: bool = False) -> int:
         console.print("✓ Laya (the bundled decision model) is downloaded.")
     elif not assume_yes and Confirm.ask(
             f"Download Laya's model ({laya_client.DOWNLOAD_SIZE}) so cardShuffle can spot a stuck model?", default=True):
-        env = {k: v for k, v in os.environ.items() if k != "HF_HUB_OFFLINE"}
+        # The child imports laya_client, which setdefaults HF_HUB_OFFLINE=1; an explicit "0" wins over that.
+        env = {**os.environ, "HF_HUB_OFFLINE": "0"}
         script = "from src.providers.laya_client import _WARMUP; import laya; laya.Router().predict(*_WARMUP)"
         done = subprocess.run([sys.executable, "-c", script], env=env, check=False)
         console.print("✓ Laya downloaded." if done.returncode == 0 and laya_client.cached()
