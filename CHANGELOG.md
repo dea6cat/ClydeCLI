@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-10-08
+
 ### Changed
 - **Bonny is now Bonnie**, everywhere: the command (`clyde luv bonnie`, and `bonnie luv clyde` for the second command), the page, the site, the docs and the code. The old commands are gone, so use `bonnie`. Her saved look, projects, pins and automations move from `~/.clyde/bonny/` to `~/.clyde/bonnie/` the first time she starts, so nothing is lost. The Notify me choice is kept in the browser and starts off again once. The old site address `bonny.html` forwards to `bonnie.html`.
 
@@ -473,4 +475,5 @@ The focus was on building a solid foundation with clean architecture, comprehens
 
 ---
 
+[0.2.3]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.2.3
 [0.1.0]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.1.0
