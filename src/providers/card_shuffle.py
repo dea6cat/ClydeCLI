@@ -42,6 +42,7 @@ COUNCIL = "council"
 COUNCIL_SIZE = 4
 TOOL_MARKUP = "<tool_call>"   # tools are off in a council, but some models still write a call as text; that is not an answer
 COUNCIL_DEADLINE_S = 90     # ponytail: one fixed deadline; make it adaptive if slow providers are common
+COUNCIL_READING_DEADLINE_S = 240   # members that read the repo before answering need longer
 COUNCIL_LAYA_WAIT_S = 60    # a council turn waits this long for Laya to finish loading; ranking is its point
 REPLY_CHARS = 4000          # of each answer shown to Laya
 VOTES_FILE = "council_votes.jsonl"
@@ -168,6 +169,9 @@ class CardShuffle:
         self._burned: set[str] = set()
         self._benched: dict[str, float] = {}    # ref -> monotonic time its cooldown ends; outlives the turn
         self._now: Callable[[], float] = time.monotonic
+        # Set by the REPL: (provider, model, cancel) -> a council member's answer after reading the repo with read-only tools.
+        # Without it, members answer from the prompt alone, tools off.
+        self.investigate: Callable[[object, str, threading.Event], ProviderResponse] | None = None
         self.last_council: dict | None = None   # the latest council turn's answers and scores, for UIs; the REPL ignores it
 
     def is_available(self) -> bool:
@@ -268,7 +272,7 @@ class CardShuffle:
         return True
 
     def _council(self, conversation: Conversation, tier: str, request: str, on_text, cancel, reasoning) -> ProviderResponse | None:
-        """Ask the tier's top models at once, tools off, and return the answer Laya rates best; None when fewer than two
+        """Ask the tier's top models at once (reading the repo with read-only tools when the REPL set `investigate`, else tools off), and return the answer Laya rates best; None when fewer than two
         models are available (the turn is then dealt normally). The scored answers are left in `last_council`."""
         if tier not in TIERS:
             raise ProviderError(NAME, f"unknown tier '{tier}' (one of {', '.join(TIERS)})")
@@ -280,13 +284,15 @@ class CardShuffle:
 
         def ask_one(ref: str) -> ProviderResponse:
             name, _, real = ref.partition(":")
+            if self.investigate is not None:
+                return self.investigate(self.registry[name], real, stop)
             return self.registry[name].stream(conversation, real, (), lambda _: None, cancel=stop, reasoning=reasoning)
 
         pool = ThreadPoolExecutor(len(roster))
         pending = {pool.submit(ask_one, ref): ref for ref in roster}
         answers: dict[str, ProviderResponse] = {}
         failed: dict[str, str] = {}
-        deadline = self._now() + COUNCIL_DEADLINE_S
+        deadline = self._now() + (COUNCIL_DEADLINE_S if self.investigate is None else COUNCIL_READING_DEADLINE_S)
         while pending and self._now() < deadline and not (cancel is not None and cancel.is_set()):
             activity.set(f"council: {len(answers) + len(failed)} of {len(roster)} models have answered")
             done, _ = wait(pending, timeout=0.2)

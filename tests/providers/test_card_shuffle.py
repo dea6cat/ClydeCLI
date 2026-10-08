@@ -387,6 +387,20 @@ class TestCouncil(unittest.TestCase):
         self.assertIn("boom", failed["a:m"])
         self.assertEqual(failed["b:m"], "returned no answer")
 
+    def test_members_read_the_repo_when_the_repl_gives_them_a_way_to(self):
+        seen: list[tuple[str, str]] = []
+
+        def investigate(provider, model, cancel):
+            seen.append((provider.name, model))
+            return reply(f"read answer {provider.name}")
+
+        card = self._card(lambda *a: None)
+        card.investigate = investigate
+        response, _ = self._run(card)
+        self.assertEqual(sorted(seen), [("a", "m"), ("b", "m"), ("c", "m"), ("d", "m")])
+        self.assertEqual(response.message.text, "read answer a")
+        self.assertTrue(all(p.requests == [] for p in self.providers.values()))   # no tool-less stream() calls
+
     def test_a_tool_call_written_as_text_is_not_an_answer(self):
         self.providers["a"]._responses = [reply("Let me look. <tool_call>Bash <arg_key>command</arg_key><arg_value>ls</arg_value></tool_call>")]
         card = self._card(_prefers({"b:m": 0.7, "c:m": 0.2, "d:m": 0.1}, self.texts))
