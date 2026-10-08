@@ -220,6 +220,12 @@ class TestHandler(unittest.TestCase):
         self.assertIn("Already up to date", text)
         run.assert_not_called()
 
+    def test_a_finished_update_drops_the_cached_answer(self):
+        updates._cache_path().parent.mkdir(parents=True, exist_ok=True)
+        updates._cache_path().write_text("{}", encoding="utf-8")
+        self._run(OLD, LATEST)
+        self.assertFalse(updates._cache_path().exists())
+
     def test_stable_installs_the_tag_and_never_downgrades(self):
         code, _, run, _ = self._run(ii.Install("uv-tool", "0.1.0", "/x", commit="aaaaaaa"), STABLE, saved="stable")
         self.assertEqual(code, 0)
