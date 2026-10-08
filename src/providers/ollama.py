@@ -158,6 +158,14 @@ class OllamaProvider:
         eff = max(CTX_FLOOR, (eff // CTX_ROUND) * CTX_ROUND)
         return min(eff, trained)
 
+    def trained_context(self, model: str) -> int:
+        """The context length the model was trained for, or 0 when Ollama doesn't say."""
+        return _mi_int(self._show(model).get("model_info") or {}, ".context_length") or 0
+
+    def pin_context(self, model: str, tokens: int) -> None:
+        """Use `tokens` as this model's window instead of computing one (an env override still wins)."""
+        self._ctx_cache[model] = tokens
+
     def context_window(self, model: str) -> int:
         """The window pinned via num_ctx and budgeted for. CLYDE_CONTEXT_TOKENS overrides globally,
         CLYDE_MODEL_CONTEXT_<MODEL> per model; cloud isn't pinned; otherwise computed per
