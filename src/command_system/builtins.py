@@ -687,6 +687,33 @@ def check_command_call(args: str, context: CommandContext) -> LocalCommandResult
     return LocalCommandResult(type="text", value=run_suite(Path(context.workspace_root)))
 
 
+def map_command_call(args: str, context: CommandContext) -> LocalCommandResult:
+    """Handle /map - query the repo's code map: no args lists the hubs; `update`, `explain X`, `affected X`,
+    `path A B`, `query Q`, or any other text is a question."""
+    from ..tool_system.errors import ToolInputError
+    from ..tool_system.context import ToolContext
+    from ..tool_system.tools.code_map import MapTool
+
+    word, _, rest = args.strip().partition(" ")
+    rest = rest.strip()
+    tool_input: dict[str, Any]
+    if not word:
+        tool_input = {"action": "god_nodes"}
+    elif word in ("update", "god_nodes"):
+        tool_input = {"action": word}
+    elif word in ("explain", "affected"):
+        tool_input = {"action": word, "target": rest}
+    elif word == "path":
+        source, _, target = rest.partition(" ")
+        tool_input = {"action": "path", "source": source, "target": target.strip()}
+    else:
+        tool_input = {"action": "query", "question": rest if word == "query" else args.strip()}
+    try:
+        return LocalCommandResult(type="text", value=MapTool().run(tool_input, ToolContext(workspace_root=Path(context.workspace_root))).output)
+    except ToolInputError as e:
+        return LocalCommandResult(type="text", value=str(e))
+
+
 # Command definitions
 HELP_COMMAND = LocalCommand(
     name="help",
@@ -749,6 +776,13 @@ CHECK_COMMAND = LocalCommand(
     name="check",
     description="Run the project's ruff, mypy and pytest and show a summary",
     argument_hint="",
+    supports_non_interactive=True,
+)
+
+MAP_COMMAND = LocalCommand(
+    name="map",
+    description="Query the repo's code map: /map (hubs), /map <question>, update, explain X, affected X, path A B",
+    argument_hint="[update | explain X | affected X | path A B | question]",
     supports_non_interactive=True,
 )
 
@@ -817,6 +851,8 @@ def execute_command_sync(cmd_name: str, args: str, context: CommandContext) -> t
             result = doctor_command_call(args, context)
         elif cmd is CHECK_COMMAND:
             result = check_command_call(args, context)
+        elif cmd is MAP_COMMAND:
+            result = map_command_call(args, context)
         else:
             return False, None, f"Command not implemented for sync execution: {cmd_name}"
 
@@ -835,6 +871,7 @@ CONTEXT_COMMAND.set_call(context_command_call)
 COMPACT_COMMAND.set_call(compact_command_call)
 DOCTOR_COMMAND.set_call(doctor_command_call)
 CHECK_COMMAND.set_call(check_command_call)
+MAP_COMMAND.set_call(map_command_call)
 
 
 def get_builtin_commands() -> list[Command]:
@@ -849,6 +886,7 @@ def get_builtin_commands() -> list[Command]:
         COMPACT_COMMAND,
         DOCTOR_COMMAND,
         CHECK_COMMAND,
+        MAP_COMMAND,
         INIT_COMMAND,
         REVIEW_COMMAND,
     ]
