@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -69,10 +70,10 @@ class GateTests(unittest.TestCase):
     def test_more_memory_is_rejected(self):
         self.assertEqual(tune.perf_gate(_perf(4, 40), _perf(4.5, 40), CODING, 0), "uses more memory")
 
-    def test_a_slowdown_beyond_the_profile_is_rejected(self):
+    def test_a_real_slowdown_is_rejected_but_measurement_noise_is_not(self):
         self.assertIn("slower", tune.perf_gate(_perf(4, 40), _perf(4, 30), CODING, 0))
-        self.assertEqual(tune.perf_gate(_perf(4, 40), _perf(4, 38), CODING, 0), "")
-        self.assertIn("slower", tune.perf_gate(_perf(4, 40), _perf(4, 38), CHAT, 0))   # speed priority tolerates only 2%
+        self.assertIn("slower", tune.perf_gate(_perf(4, 40), _perf(4, 34), CHAT, 0))   # 15%, even for a speed priority
+        self.assertEqual(tune.perf_gate(_perf(4, 40), _perf(4, 38), CHAT, 0), "")      # 5% is within the noise floor
 
     def test_no_headroom_is_rejected(self):
         self.assertIn("free", tune.perf_gate(_perf(12, 40), _perf(12, 40), Profile(("chat",), "speed", 4), 16 * GB))
@@ -83,9 +84,10 @@ class GateTests(unittest.TestCase):
     def test_quality_must_hold_for_strict_profiles(self):
         base = Quality(1, 10)
         self.assertEqual(tune.quality_gate(base, Quality(1, 10), CODING), "")
-        self.assertIn("dropped", tune.quality_gate(base, Quality(1, 9), CODING))
-        self.assertEqual(tune.quality_gate(base, Quality(1, 9), CHAT), "")   # chat allows one task per run
-        self.assertIn("dropped", tune.quality_gate(base, Quality(1, 8), CHAT))
+        self.assertEqual(tune.quality_gate(base, Quality(1, 9), CODING), "")   # one task either way is chance
+        self.assertIn("dropped", tune.quality_gate(base, Quality(1, 8), CODING))
+        self.assertEqual(tune.quality_gate(base, Quality(1, 8), CHAT), "")
+        self.assertIn("dropped", tune.quality_gate(base, Quality(1, 7), CHAT))
 
     def test_drifting_answers_are_rejected_by_how_strict_the_profile_is(self):
         base = Quality(1, 0, ("def merge(a, b): return sorted(a + b)",))
@@ -165,6 +167,31 @@ class OfferTests(unittest.TestCase):
         run.assert_called_once_with(self.console, model="qwen3:4b")
 
 
+class EvalTests(unittest.TestCase):
+    class _Score:
+        def __init__(self, passed):
+            self.passed = passed
+
+    def test_a_failed_tool_call_gets_one_more_try_on_another_seed(self):
+        seeds = []
+
+        def evaluate(provider, model, ref):
+            seeds.append(os.environ.get("CLYDE_SAMPLING_SEED"))
+            return self._Score(len(seeds) == 2)
+
+        with patch.object(tune.model_eval, "evaluate", side_effect=evaluate):
+            self.assertTrue(tune._eval(object(), "m").passed)
+        self.assertEqual(seeds, ["1", "2"])
+
+    def test_a_pass_is_not_retried_and_the_seed_is_restored(self):
+        with patch.dict(os.environ, {"CLYDE_SAMPLING_SEED": "9"}), \
+                patch.object(tune.model_eval, "evaluate", return_value=self._Score(True)) as evaluate:
+            tune._eval(object(), "m")
+            self.assertEqual(os.environ["CLYDE_SAMPLING_SEED"], "9")
+        evaluate.assert_called_once()
+        self.assertNotIn("CLYDE_SAMPLING_SEED", os.environ)
+
+
 class PickModelTests(unittest.TestCase):
     class _Provider:
         def __init__(self, installed):
@@ -186,16 +213,17 @@ class PickModelTests(unittest.TestCase):
 
 
 class MeasureTests(unittest.TestCase):
-    def test_reads_speed_from_ollama_timings_and_memory_from_ps(self):
-        timed = {"prompt_eval_count": 1000, "prompt_eval_duration": 2_000_000_000,
-                 "eval_count": 128, "eval_duration": 4_000_000_000}
-        with patch.object(tune, "post_json", side_effect=[{}, timed]) as post, \
+    def test_keeps_the_faster_run_and_reads_memory_from_ps(self):
+        slow = {"prompt_eval_count": 1000, "prompt_eval_duration": 2_000_000_000, "eval_count": 128, "eval_duration": 8_000_000_000}
+        fast = {"prompt_eval_count": 1000, "prompt_eval_duration": 2_000_000_000, "eval_count": 128, "eval_duration": 4_000_000_000}
+        with patch.object(tune, "post_json", side_effect=[{}, slow, fast]) as post, \
                 patch.object(tune, "get_json", return_value={"models": [{"name": "m", "size": 5 * GB}]}):
             result = tune.measure("http://h", "m", 8192)
         self.assertEqual(result, Result(5 * GB, 500.0, 32.0))
-        warm, real = (c.args[1] for c in post.call_args_list)
-        self.assertNotEqual(warm["prompt"], real["prompt"])   # else the timed run is served from the prompt cache
-        self.assertEqual(real["options"]["num_ctx"], 8192)
+        warm, first, second = (c.args[1] for c in post.call_args_list)
+        self.assertNotEqual(warm["prompt"], first["prompt"])   # else the timed run is served from the prompt cache
+        self.assertNotEqual(first["prompt"], second["prompt"])
+        self.assertEqual(second["options"]["num_ctx"], 8192)
 
 
 if __name__ == "__main__":
