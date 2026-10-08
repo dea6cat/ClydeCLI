@@ -33,11 +33,13 @@ from src.tune_profile import Profile
 FLASH = {"OLLAMA_FLASH_ATTENTION": "1"}
 # Bytes per cache element against f16, from ggml's block layouts: q8_0 is 8.5 bits, q4_0 4.5 bits.
 _KV_SHRINK = {"q8_0": 8.5 / 16, "q4_0": 4.5 / 16}
+SPEED_NOISE = 0.08        # the same setting measured 33 to 41 tok/s on one Mac: a speed gate tighter than this decides on luck
 MEMORY_SLACK = 0.02       # a candidate may not use more than this much extra memory: the point is no more resources
 RAM_FRACTION = 0.75       # the share of RAM a model may take (macOS wires about this much for the GPU)
 WORTH_MEMORY = 0.05       # worth a restart if it frees this share of memory,
 WORTH_CONTEXT = 0.10      # or opens this much more window,
 WORTH_SPEED = 0.05        # or runs this much faster
+STRENGTH_NOISE = 1        # graded tasks a model gains or loses by chance between identical runs: not a quality change
 EVAL_RUNS = 1             # the eval only guards tool calling and graded tasks; the probe below catches subtler loss
 RECALL_TOKENS = 6000      # how much text the buried-fact probe reads, capped at 70% of the smallest window tested
 _STARTUP_S = 20
@@ -143,13 +145,15 @@ def _rate(count: int | None, nanoseconds: int | None) -> float:
 
 
 def measure(host: str, model: str, ctx: int) -> Result:
-    """Load the model at `ctx`, warm it, then time one generation. Memory is what Ollama reports loaded."""
+    """Load the model at `ctx`, warm it, then time two generations and keep the faster: one slow sample is the
+    machine being busy, not the setting. Memory is what Ollama reports loaded."""
     _generate(host, model, ctx, 1, "Hi")   # a different prompt, so the timed one is not served from the prompt cache
-    timed = _generate(host, model, ctx, 128, _PROMPT)
+    runs = [_generate(host, model, ctx, 128, _PROMPT + str(n)) for n in range(2)]   # the suffix keeps the second off the prompt cache
     loaded = get_json(f"{host}/api/ps", provider="ollama").get("models") or []
     memory = next((int(m.get("size") or 0) for m in loaded if model in (m.get("name"), m.get("model"))), 0)
-    return Result(memory, _rate(timed.get("prompt_eval_count"), timed.get("prompt_eval_duration")),
-                  _rate(timed.get("eval_count"), timed.get("eval_duration")))
+    best = max(runs, key=lambda r: _rate(r.get("eval_count"), r.get("eval_duration")))
+    return Result(memory, _rate(best.get("prompt_eval_count"), best.get("prompt_eval_duration")),
+                  _rate(best.get("eval_count"), best.get("eval_duration")))
 
 
 def _haystack(tokens: int) -> str:
@@ -166,11 +170,37 @@ def _greedy(host: str, model: str, ctx: int, prompt: str, predict: int) -> str:
     return str(reply.get("response") or "")
 
 
+@contextmanager
+def _seeded(seed: str) -> Iterator[None]:
+    """Clyde reads CLYDE_SAMPLING_SEED on every request; set it for the block, then put back what was there."""
+    before = os.environ.get("CLYDE_SAMPLING_SEED")
+    os.environ["CLYDE_SAMPLING_SEED"] = seed
+    try:
+        yield
+    finally:
+        if before is None:
+            os.environ.pop("CLYDE_SAMPLING_SEED", None)
+        else:
+            os.environ["CLYDE_SAMPLING_SEED"] = before
+
+
+def _eval(provider: OllamaProvider, model: str) -> model_eval.ModelScore:
+    """Clyde's model eval with a fixed sampling seed, so a setting that changes nothing scores the same. A model that
+    fails the tool call once is tried again on another seed: one unlucky sample must not condemn a setting."""
+    score = None
+    for seed in ("1", "2"):
+        with _seeded(seed):
+            score = model_eval.evaluate(provider, model, model)
+        if score.passed:
+            break
+    return score
+
+
 def grade(host: str, model: str, ctx: int, recall_tokens: int) -> Quality:
     """Clyde's own model eval, then the fixed greedy probes and the buried-fact check at this window."""
     provider = OllamaProvider(host=host)
     provider.pin_context(model, ctx)
-    scores = [model_eval.evaluate(provider, model, model) for _ in range(EVAL_RUNS)]
+    scores = [_eval(provider, model) for _ in range(EVAL_RUNS)]
     answers = tuple(_greedy(host, model, ctx, p, 120) for p in _PROBES)
     recalled = _NEEDLE in _greedy(host, model, ctx, _haystack(recall_tokens), 20)
     return Quality(sum(s.passed for s in scores), sum(s.strength or 0 for s in scores), answers, recalled)
@@ -190,7 +220,7 @@ def perf_gate(base: Result, perf: Result, profile: Profile, ram: int) -> str:
         return "uses more memory"
     if ram and perf.memory_bytes + profile.headroom_gb * 2 ** 30 > ram * RAM_FRACTION:
         return f"leaves less than {profile.headroom_gb} GB free"
-    if perf.gen_tps < base.gen_tps * (1 - profile.max_slowdown):
+    if perf.gen_tps < base.gen_tps * (1 - max(profile.max_slowdown, SPEED_NOISE)):
         return f"{1 - perf.gen_tps / base.gen_tps:.0%} slower"
     return ""
 
@@ -204,7 +234,7 @@ def quality_gate(base: Quality, got: Quality, profile: Profile) -> str:
     alike = fidelity(base, got)
     if alike < profile.min_fidelity:
         return f"answers drift from the baseline ({alike:.0%} alike)"
-    if got.strength < base.strength - profile.tolerance * EVAL_RUNS:
+    if got.strength < base.strength - (profile.tolerance + STRENGTH_NOISE) * EVAL_RUNS:
         return f"quality dropped ({got.strength} vs {base.strength} tasks)"
     return ""
 
