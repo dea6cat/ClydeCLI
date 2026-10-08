@@ -436,8 +436,17 @@ One line (installs uv if needed, then `clyde`, then runs `clyde setup`):
 ```bash
 curl -fsSL https://raw.githubusercontent.com/dea6cat/ClydeCLI/main/install.sh | sh
 # or pin a release tag or an exact commit:
-curl -fsSL https://raw.githubusercontent.com/dea6cat/ClydeCLI/main/install.sh | CLYDE_REF=v0.2.0 sh
+curl -fsSL https://raw.githubusercontent.com/dea6cat/ClydeCLI/main/install.sh | CLYDE_REF=v0.2.5 sh
 ```
+
+Or with pipx (needs Python 3.14; add `--backend pip` if pipx complains about an older `uv`):
+
+```bash
+pipx install --python python3.14 git+https://github.com/dea6cat/ClydeCLI
+# pin a release: ...ClydeCLI@v0.2.5
+```
+
+Both give you `clyde` and `bonnie`, and `clyde update` and `clyde uninstall` use the tool that installed Clyde.
 
 It includes Laya, the bundled decision model, and SkillSpector, the bundled skill scanner, so the
 install is about 850 MB (mostly PyTorch).
@@ -750,8 +759,7 @@ check).
 | `latest` (default) | every commit on `main` | `clyde update --channel latest` |
 | `stable` | the newest `vX.Y.Z` release tag; never downgrades you | `clyde update --channel stable` |
 
-The channel is saved in `~/.clyde/config.json` (`update_channel`). While no release tag exists, `stable` says so and changes
-nothing.
+The channel is saved in `~/.clyde/config.json` (`update_channel`). `stable` follows the `vX.Y.Z` release tags; if it finds none it says so and changes nothing.
 Once a day a background thread asks GitHub for the newest commit and caches the answer in `~/.clyde/update_check.json`; the next
 start shows one line when you are behind. It never delays start-up and never installs anything by itself. Turn the check off
 with `CLYDE_NO_UPDATE_CHECK=1`. It does not run for `-p`, `--acp` or other commands.
