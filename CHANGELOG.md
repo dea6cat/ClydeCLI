@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-10-08
+
 ### Fixed
 - A council (`cardShuffle:<tier> council`) no longer counts a tool call written as text (`<tool_call>…`) as an answer; tools are off in a council, and such a reply could win the ranking and show up as raw markup.
 - Start-up no longer leaves "SkillSpector is scanning…" lines or Laya's "Fetching 5 files" download bar on screen.
@@ -480,5 +482,6 @@ The focus was on building a solid foundation with clean architecture, comprehens
 
 ---
 
+[0.2.4]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.2.4
 [0.2.3]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.2.3
 [0.1.0]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.1.0

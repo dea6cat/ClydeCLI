@@ -1,6 +1,6 @@
 """ClydeCLI - a Python coding-agent harness for any LLM."""
 
-__version__ = "0.2.3"
+__version__ = "0.2.4"
 __author__ = "dea6cat"
 
 from .config import load_config
