@@ -36,9 +36,10 @@
   .hero { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 32px; align-items: center; padding: 72px 0 8px; }
   .hero > div { min-width: 0; }
   .hero .lead { font-size: 19px; }
-  .hero-mark { width: 210px; }
+  .hero-mark { width: 300px; }
+  .hero-mark .bsp { fill: var(--text); }
   .hero-mark svg { display: block; width: 100%; height: auto; transform: perspective(800px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)); transition: transform .12s linear; }
-  @media (max-width: 760px) { .hero { grid-template-columns: minmax(0, 1fr); padding-top: 40px; } .hero-mark { width: 96px; order: -1; } h1 { font-size: 48px; } }
+  @media (max-width: 760px) { .hero { grid-template-columns: minmax(0, 1fr); padding-top: 40px; } .hero-mark { width: 150px; order: -1; } h1 { font-size: 48px; } }
 
   /* cut corners: a 1px edge drawn by two stacked shapes, since clip-path would clip a plain border */
   .cut { --c: 16px; --edge: var(--line); --fill: var(--bg); position: relative; isolation: isolate; background: var(--edge);
