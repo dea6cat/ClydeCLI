@@ -27,7 +27,7 @@
     // that sleeps when nothing moves; no scroll listeners.
     if (!matchMedia("(hover: hover) and (pointer: fine)").matches || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     var root = document.documentElement, glow = document.querySelector(".glow"), mark = document.getElementById("mark"),
-        prompt = document.getElementById("prompt"), tx = innerWidth / 2, ty = innerHeight * 0.3, x = tx, y = ty, raf = 0;
+        prompt = document.getElementById("prompt"), slash = document.getElementById("slash"), tx = innerWidth / 2, ty = innerHeight * 0.3, x = tx, y = ty, raf = 0;
     var clamp = function (v) { return Math.max(-1, Math.min(1, v)); };
     function frame() {
       x += (tx - x) * 0.08; y += (ty - y) * 0.08;
@@ -36,6 +36,7 @@
         var r = mark.getBoundingClientRect(), nx = clamp((x - (r.left + r.width / 2)) / (innerWidth * 0.45)), ny = clamp((y - (r.top + r.height / 2)) / (innerHeight * 0.45));
         mark.style.setProperty("--ry", (nx * 9).toFixed(2) + "deg"); mark.style.setProperty("--rx", (-ny * 7).toFixed(2) + "deg");
         prompt.setAttribute("transform", "translate(" + (nx * 3.2).toFixed(2) + " " + (ny * 2.6).toFixed(2) + ")");
+        if (slash) slash.setAttribute("transform", "translate(" + (-nx * 3.2).toFixed(2) + " " + (ny * 2.6).toFixed(2) + ")");
       }
       raf = Math.abs(tx - x) > 0.4 || Math.abs(ty - y) > 0.4 ? requestAnimationFrame(frame) : 0;
     }
