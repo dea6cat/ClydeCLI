@@ -131,12 +131,11 @@ body[data-shape="round"] .del { border-radius: 8px; }
 .empty-note { color: var(--dim); padding: 6px 18px; font-size: 13px; }
 
 main { flex: 1; min-width: 0; display: flex; justify-content: center; }
-.frame { width: 100%; max-width: 880px; height: 100%; display: flex; flex-direction: column; background: var(--panel); border-left: 1px solid var(--line); border-right: 1px solid var(--line); }
-@media (max-width: 1280px) { .frame { max-width: none; border-right: 0; } }
+.frame { width: 100%; height: 100%; display: flex; flex-direction: column; background: var(--panel); }
 .top { display: flex; align-items: center; gap: 10px; padding: 11px 22px; min-height: 50px; border-bottom: 1px solid var(--line); }
 #toggle { display: none; background: none; border: 1px solid var(--line); padding: 3px 9px; }
 #thread { flex: 1; overflow-y: auto; padding: 22px 26px 30px; }
-.col { max-width: 720px; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; }
+.col { display: flex; flex-direction: column; gap: 22px; }   /* the whole width beside the menu; only the composer and the heading stay centred */
 .msg.user { --c: 10px; --fill: var(--tint); align-self: flex-end; padding: 8px 16px; max-width: 82%; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 15.5px; }
 .msg.bonny { overflow-wrap: anywhere; font-size: 16.5px; line-height: 1.65; }
 .msg.bonny p { margin: 0 0 .85em; } .msg.bonny p:last-child { margin-bottom: 0; }
