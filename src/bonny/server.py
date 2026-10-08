@@ -28,7 +28,7 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, unquote, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlparse
 
 from src import activity
 from src.config import clyde_home
@@ -401,6 +401,13 @@ class _Server(ThreadingHTTPServer):
             super().handle_error(request, client_address)
 
 
+def _attachment(name: str) -> str:
+    """A Content-Disposition value for a download. A file name is untrusted (Clyde may have written it after reading a hostile page)
+    and can hold a quote or a newline, so the plain form is ASCII with those replaced and the real name rides percent-encoded."""
+    plain = re.sub(r'[^\x20-\x7e]|["\\]', "_", name)
+    return f"attachment; filename=\"{plain}\"; filename*=UTF-8''{quote(name, safe='')}"
+
+
 def make_server(bonny: Bonny, host: str = "127.0.0.1", port: int = 0) -> ThreadingHTTPServer:
     token = secrets.token_urlsafe(24)
 
@@ -437,7 +444,7 @@ def make_server(bonny: Bonny, host: str = "127.0.0.1", port: int = 0) -> Threadi
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Content-Security-Policy", csp)
             for name, value in (extra or {}).items():
-                self.send_header(name, value)
+                self.send_header(name, value.replace("\r", " ").replace("\n", " "))   # one stray newline would end the headers and start a body
             self.end_headers()
             self.wfile.write(body)
 
@@ -693,7 +700,7 @@ def make_server(bonny: Bonny, host: str = "127.0.0.1", port: int = 0) -> Threadi
                      if kind == "image" else "text/plain; charset=utf-8" if kind in ("text", "markdown") else "application/octet-stream")
             download = query.get("download") == ["1"] or kind == "other"
             csp = _ARTIFACT_CSP_SCRIPTS if kind == "html" and query.get("scripts") == ["1"] else _ARTIFACT_CSP
-            extra = {"Content-Disposition": 'attachment; filename="' + path.name.replace('"', "") + '"'} if download else None
+            extra = {"Content-Disposition": _attachment(path.name)} if download else None
             self._send(200, path.read_bytes(), ctype, csp=csp, extra=extra)
 
         def _raw_body(self, limit: int, what: str) -> bytes | None:
