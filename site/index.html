@@ -27,15 +27,22 @@
       <h1 class="enter" style="--i:0">ClydeCLI</h1>
   <p class="enter lead" style="--i:1">A coding-agent harness for the terminal. Bring any LLM; Clyde gives it tools, permissions, a sandbox, undo and sessions.</p>
   <div class="install enter" style="--i:2"><code id="cmd" tabindex="0" role="region" aria-label="Install command">curl -fsSL https://raw.githubusercontent.com/dea6cat/ClydeCLI/main/install.sh | sh</code><button type="button" id="copy" class="cut" data-copy="cmd">Copy</button></div>
-  <p class="enter" style="--i:3">The model can be one of 13 providers, a local model through Ollama or LM Studio, or any OpenAI- or Anthropic-compatible endpoint. Written in Python, free for noncommercial use.</p>
+  <p class="enter" style="--i:3">The model can be one of 13 providers, a local model through Ollama or LM Studio, or any OpenAI- or Anthropic-compatible endpoint. Written in Python, free for noncommercial use. <a href="bonny.html">Bonny</a>, the same engine in a browser page, comes in the same install.</p>
     </div>
     <div class="hero-mark enter" style="--i:2">
-      <svg id="mark" viewBox="0 0 100 100" role="img" aria-label="ClydeCLI mark: a spade with a prompt cut out of it">
-        <defs><mask id="heroCut" maskUnits="userSpaceOnUse" x="-10" y="-10" width="120" height="120">
-          <rect x="-10" y="-10" width="120" height="120" fill="#fff"/>
-          <g id="prompt"><polyline points="34,44 52,57 34,70" fill="none" stroke="#000" stroke-width="7.5"/><rect x="57" y="66.5" width="15" height="7" fill="#000"/></g>
-        </mask></defs>
+      <svg id="mark" viewBox="0 0 170 100" role="img" aria-label="ClydeCLI and Bonny: a red spade with a prompt cut out of it, beside an upside-down spade with a code slash cut out of it">
+        <defs>
+          <mask id="heroCut" maskUnits="userSpaceOnUse" x="-10" y="-10" width="120" height="120">
+            <rect x="-10" y="-10" width="120" height="120" fill="#fff"/>
+            <g id="prompt"><polyline points="34,44 52,57 34,70" fill="none" stroke="#000" stroke-width="7.5"/><rect x="57" y="66.5" width="15" height="7" fill="#000"/></g>
+          </mask>
+          <mask id="heroCutB" maskUnits="userSpaceOnUse" x="-10" y="-10" width="120" height="120">
+            <rect x="-10" y="-10" width="120" height="120" fill="#fff"/>
+            <g id="slash"><polyline points="37,36 24,48 37,60" fill="none" stroke="#000" stroke-width="7"/><polyline points="63,36 76,48 63,60" fill="none" stroke="#000" stroke-width="7"/><line x1="56" y1="35" x2="44" y2="63" stroke="#000" stroke-width="7"/></g>
+          </mask>
+        </defs>
         <path mask="url(#heroCut)" fill="#d0202f" d="M50 5 C50 5 9 36 9 60 C9 74 21 84 34 82 C41 81 46 77 48 72 C48 84 44 92 33 96 L67 96 C56 92 52 84 52 72 C54 77 59 81 66 82 C79 84 91 74 91 60 C91 36 50 5 50 5 Z"/>
+        <g transform="translate(70 0)"><g mask="url(#heroCutB)"><path class="bsp" transform="rotate(180 50 50)" d="M50 5 C50 5 9 36 9 60 C9 74 21 84 34 82 C41 81 46 77 48 72 C48 84 44 92 33 96 L67 96 C56 92 52 84 52 72 C54 77 59 81 66 82 C79 84 91 74 91 60 C91 36 50 5 50 5 Z"/></g></g>
       </svg>
     </div>
   </section>
