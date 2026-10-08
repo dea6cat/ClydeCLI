@@ -47,10 +47,10 @@ def pick_or_prompt(console: Console, title: str, choices: list[Choice], *, curre
     return None
 
 
-def bonny_main():
-    """The `bonny` command: `bonny luv clyde [options]` starts the terminal Clyde, as `clyde [options]` does."""
+def bonnie_main():
+    """The `bonnie` command: `bonnie luv clyde [options]` starts the terminal Clyde, as `clyde [options]` does."""
     if sys.argv[1:3] != ['luv', 'clyde']:
-        print("usage: bonny luv clyde [clyde options]   (Bonny's own page is `clyde luv bonny`)", file=sys.stderr)
+        print("usage: bonnie luv clyde [clyde options]   (Bonnie's own page is `clyde luv bonnie`)", file=sys.stderr)
         return 2
     sys.argv[1:3] = []
     return main()
@@ -76,8 +76,8 @@ Examples:
   clyde --resume [SESSION_ID]         Pick a recent session to resume, or resume one by id
   clyde --list-models                 List models from every connected provider
   clyde --debug                       Start REPL and print trace events (model/tool calls) to stderr
-  clyde luv bonny [PORT]              Start Bonny, Clyde's luv accomplice, on localhost (default port 8080)
-  bonny luv clyde                     Start Clyde in the terminal, from Bonny's side (same as `clyde`)
+  clyde luv bonnie [PORT]              Start Bonnie, Clyde's luv accomplice, on localhost (default port 8080)
+  bonnie luv clyde                     Start Clyde in the terminal, from Bonnie's side (same as `clyde`)
   clyde login                         Connect a provider and pick a default model
   clyde logout openai                 Remove a saved API key
   clyde config                        Show current configuration
@@ -146,8 +146,8 @@ Examples:
     sessions_parser.add_argument('action', choices=['list', 'search', 'archive', 'unarchive'])
     sessions_parser.add_argument('target', nargs='*', help='search: the words to look for; archive/unarchive: a session id')
 
-    luv_parser = subparsers.add_parser('luv', help='clyde luv bonny: start Bonny, Clyde\'s luv accomplice, on localhost')
-    luv_parser.add_argument('who', choices=['bonny'])
+    luv_parser = subparsers.add_parser('luv', help='clyde luv bonnie: start Bonnie, Clyde\'s luv accomplice, on localhost')
+    luv_parser.add_argument('who', choices=['bonnie'])
     luv_parser.add_argument('port', nargs='?', type=int, help='port on localhost (default: 8080, or a free one if that is taken)')
     luv_parser.add_argument('--port', dest='port_flag', type=int, help='the same, as an option')
     luv_parser.add_argument('--no-open', action='store_true', help="don't open the browser")
@@ -187,7 +187,7 @@ Examples:
                             output_format=args.output_format, max_turns=args.max_turns)
 
     if args.command == 'luv':
-        from src.bonny import server
+        from src.bonnie import server
         port = args.port if args.port is not None else args.port_flag
         if port is not None and not 1 <= port <= 65535:
             print(f"Port {port} is not valid: use 1 to 65535.", file=sys.stderr)

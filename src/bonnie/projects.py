@@ -1,11 +1,11 @@
-"""Choosing the project Bonny works in: browse folders, make a new one, and remember the recent ones
-(~/.clyde/bonny/projects.json). Everything raises ValueError with a sentence the page can show."""
+"""Choosing the project Bonnie works in: browse folders, make a new one, and remember the recent ones
+(~/.clyde/bonnie/projects.json). Everything raises ValueError with a sentence the page can show."""
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
-from src.bonny.theme import folder
+from src.bonnie.theme import folder
 
 MAX_RECENT = 12
 MAX_DIRS = 500

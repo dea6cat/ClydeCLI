@@ -42,7 +42,7 @@ dev = [
 
 [project.scripts]
 clyde = "src.cli:main"
-bonny = "src.cli:bonny_main"
+bonnie = "src.cli:bonnie_main"
 
 [project.urls]
 Homepage = "https://github.com/dea6cat/ClydeCLI"

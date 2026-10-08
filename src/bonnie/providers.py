@@ -1,4 +1,4 @@
-"""Connecting model providers from Bonny's page: what to show for each one (with a short how-to), whether it is connected,
+"""Connecting model providers from Bonnie's page: what to show for each one (with a short how-to), whether it is connected,
 and a connect that tests the key before it is saved.
 
 Keys are stored by src/providers/keys.py, the same place `clyde login` writes (~/.clyde/keys.json, mode 0600). A key is

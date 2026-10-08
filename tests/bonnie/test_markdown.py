@@ -1,4 +1,4 @@
-"""Bonny's markdown renderer: the page's own JavaScript, run under Node against a minimal fake DOM.
+"""Bonnie's markdown renderer: the page's own JavaScript, run under Node against a minimal fake DOM.
 
 The renderer is the page's `markdown()`; the test slices it out of PAGE, so what is tested is what ships. Skipped without Node."""
 from __future__ import annotations
@@ -9,7 +9,7 @@ import shutil
 import subprocess
 import unittest
 
-from src.bonny.page import PAGE
+from src.bonnie.page import PAGE
 
 _FAKE_DOM = r"""
 const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
