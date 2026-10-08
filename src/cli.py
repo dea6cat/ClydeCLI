@@ -649,6 +649,7 @@ def handle_update(console: Console, check_only: bool = False, channel: str | Non
     if done.returncode != 0:
         console.print(f"[red]{command[0]} failed (exit {done.returncode}). Clyde was not changed by this command.[/red]")
         return 1
+    updates.forget_cache()
     console.print("[green]Updated.[/green] Restart any running clyde to use the new version.")
     return 0
 
