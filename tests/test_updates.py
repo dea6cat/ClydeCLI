@@ -63,7 +63,7 @@ class TestFetch(unittest.TestCase):
             if isinstance(body, Exception):
                 raise body
             return Response()
-        with patch("urllib.request.urlopen", opener):
+        with patch.object(updates, "_ls_remote", return_value=None), patch("urllib.request.urlopen", opener):   # git unavailable
             return updates.fetch_remote_commit()
 
     def test_a_sha_is_returned_and_anything_else_is_none(self):
@@ -76,7 +76,7 @@ class TestFetch(unittest.TestCase):
 
 class TestTags(unittest.TestCase):
     def _tags(self, body):
-        with patch.object(updates, "_get", return_value=body):
+        with patch.object(updates, "_ls_remote", return_value=None), patch.object(updates, "_get", return_value=body):   # git unavailable
             return updates.fetch_newest_tag()
 
     def test_the_highest_release_tag_wins_and_other_tags_are_ignored(self):
@@ -89,6 +89,55 @@ class TestTags(unittest.TestCase):
     def test_no_tags_or_a_bad_answer_is_none(self):
         for body in ("[]", "not json", "{}", None):
             self.assertIsNone(self._tags(body), body)
+
+
+class TestGit(unittest.TestCase):
+    """Versions come from `git ls-remote`, which reads the refs themselves: the GitHub web API answers from a 60-second public cache,
+    so right after a push it still names the old commit, and it allows 60 requests an hour per IP address."""
+
+    def _run(self, stdout="", returncode=0, error=None):
+        done = subprocess.CompletedProcess([], returncode, stdout=stdout, stderr="")
+        with patch("subprocess.run", side_effect=error, return_value=done) as run:
+            return updates._ls_remote("refs/heads/main"), run
+
+    def test_it_parses_refs_and_drops_anything_that_is_not_a_sha(self):
+        got, run = self._run(f"{FULL}\trefs/heads/main\nnot-a-sha\trefs/heads/x\nno tab here\n")
+        self.assertEqual(got, [(FULL, "refs/heads/main")])
+        self.assertEqual(run.call_args.args[0][:3], ["git", "ls-remote", updates.REMOTE_URL])
+        self.assertEqual(run.call_args.kwargs["env"]["GIT_TERMINAL_PROMPT"], "0")      # never stops to ask for a password
+        self.assertGreater(run.call_args.kwargs["timeout"], 0)
+
+    def test_a_missing_git_a_failure_or_a_timeout_is_none_not_an_error(self):
+        self.assertIsNone(self._run(error=FileNotFoundError())[0])
+        self.assertIsNone(self._run(returncode=128)[0])
+        self.assertIsNone(self._run(error=subprocess.TimeoutExpired("git", 10))[0])
+
+    def test_main_comes_from_git_and_the_web_api_is_never_asked(self):
+        with patch.object(updates, "_ls_remote", return_value=[(FULL, "refs/heads/main")]), patch.object(updates, "_get") as web:
+            self.assertEqual(updates.fetch_remote_commit(), FULL)
+        web.assert_not_called()
+
+    def test_git_that_works_but_lists_no_main_is_none_without_guessing_from_the_api(self):
+        with patch.object(updates, "_ls_remote", return_value=[]), patch.object(updates, "_get") as web:
+            self.assertIsNone(updates.fetch_remote_commit())
+        web.assert_not_called()
+
+    def test_without_git_main_falls_back_to_the_web_api(self):
+        with patch.object(updates, "_ls_remote", return_value=None), patch.object(updates, "_get", return_value=FULL):
+            self.assertEqual(updates.fetch_remote_commit(), FULL)
+
+    def test_the_highest_tag_wins_and_an_annotated_tags_commit_beats_the_tag_object(self):
+        listed = [("1" * 40, "refs/tags/v0.9.0"), ("2" * 40, "refs/tags/v0.10.0"), ("3" * 40, "refs/tags/v0.10.0^{}"),
+                  ("4" * 40, "refs/tags/v1.0.0-rc1"), ("5" * 40, "refs/tags/vNEXT")]
+        with patch.object(updates, "_ls_remote", return_value=listed), patch.object(updates, "_get") as web:
+            got = updates.fetch_newest_tag()
+        self.assertEqual((got.version, got.ref, got.commit), ("0.10.0", "v0.10.0", "3" * 40))   # 10 > 9, and the peeled commit
+        web.assert_not_called()
+
+    def test_a_repository_with_no_release_tags_has_no_stable_target(self):
+        with patch.object(updates, "_ls_remote", return_value=[]), patch.object(updates, "_get") as web:
+            self.assertIsNone(updates.fetch_newest_tag())
+        web.assert_not_called()
 
 
 class TestCacheAndNote(unittest.TestCase):
