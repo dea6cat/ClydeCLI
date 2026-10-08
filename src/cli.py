@@ -14,6 +14,38 @@ from rich.table import Table
 from src.picker import Choice, pick
 
 
+def pick_or_prompt(console: Console, title: str, choices: list[Choice], *, current: str | None = None,
+                   description: str | None = None, allow_custom: bool = False) -> str | None:
+    """pick(), degrading to a numbered prompt when the interactive picker can't run.
+
+    prompt_toolkit fails to attach to the terminal in some setups (for example `curl ... | sh` on macOS,
+    where kqueue rejects the tty with OSError 22). It re-raises that as a bare EOFError, so both are caught.
+    """
+    try:
+        return pick(console, title, choices, current=current, description=description, allow_custom=allow_custom)
+    except (OSError, EOFError):
+        pass
+
+    console.print(f"\n[bold]{title}[/bold]" + (f" [dim]{description}[/dim]" if description else ""))
+    for i, c in enumerate(choices, 1):
+        mark = "*" if getattr(c, "value", None) == current else " "
+        console.print(f" {mark}{i:>2}. {getattr(c, 'label', c)}", markup=False)
+    hint = "number" + (" or custom id" if allow_custom else "")
+    try:
+        answer = Prompt.ask(f"Choose ({hint}, empty to cancel)" if current is None else f"Choose ({hint})",
+                            default=current or "", show_default=bool(current)).strip()
+    except (EOFError, KeyboardInterrupt):
+        return None
+    if not answer:
+        return None
+    if answer.isdigit() and 1 <= int(answer) <= len(choices):
+        return choices[int(answer) - 1].value
+    values = [c.value for c in choices]
+    if answer in values or allow_custom:
+        return answer
+    console.print(f"[red]'{answer}' is not one of the options.[/red]")
+    return None
+
 
 def bonny_main():
     """The `bonny` command: `bonny luv clyde [options]` starts the terminal Clyde, as `clyde [options]` does."""
@@ -256,7 +288,7 @@ def _add_custom_provider(console: Console) -> str | None:
                   "one (a second Anthropic account, MiniMax, a proxy). The base URL is the part before "
                   "/chat/completions (OpenAI) or /v1/messages (Anthropic).[/dim]")
     name = Prompt.ask("Name (e.g. together)").strip().lower()
-    protocol = pick(console, "Protocol", [Choice(p, p) for p in keys.PROTOCOLS], current="openai")
+    protocol = pick_or_prompt(console, "Protocol", [Choice(p, p) for p in keys.PROTOCOLS], current="openai")
     if protocol is None:
         return None
     base_url = Prompt.ask("Base URL (e.g. https://api.together.xyz/v1)").strip()
@@ -279,7 +311,7 @@ def run_login_flow(console: Console, registry: dict, default_provider: str = "an
     from src.providers.registry import SUGGESTED_MODELS
 
     choices = _login_choices(registry)
-    provider_name = provider if provider in choices else pick(
+    provider_name = provider if provider in choices else pick_or_prompt(
         console, "Connect a provider", _provider_choices(registry), current=default_provider if default_provider in choices else None,
         description="Pick one, then enter its key. Type to filter.")
     if provider_name is None:
@@ -337,8 +369,8 @@ def run_login_flow(console: Console, registry: dict, default_provider: str = "an
     suggested = SUGGESTED_MODELS.get(provider_name)
     if models:
         default_model = suggested if suggested in models else models[0]
-        model = pick(console, f"Select {provider_name} model", [Choice(m, m) for m in models], current=default_model,
-                     allow_custom=True, description="Your pick becomes the default. Type to filter, or type any model id.")
+        model = pick_or_prompt(console, f"Select {provider_name} model", [Choice(m, m) for m in models], current=default_model,
+                               allow_custom=True, description="Your pick becomes the default. Type to filter, or type any model id.")
         if model is None:
             return None
         if model not in models and not Confirm.ask(
