@@ -387,6 +387,13 @@ class TestCouncil(unittest.TestCase):
         self.assertIn("boom", failed["a:m"])
         self.assertEqual(failed["b:m"], "returned no answer")
 
+    def test_a_tool_call_written_as_text_is_not_an_answer(self):
+        self.providers["a"]._responses = [reply("Let me look. <tool_call>Bash <arg_key>command</arg_key><arg_value>ls</arg_value></tool_call>")]
+        card = self._card(_prefers({"b:m": 0.7, "c:m": 0.2, "d:m": 0.1}, self.texts))
+        self._run(card)
+        self.assertEqual(card.last_council["failed"]["a:m"], "returned no answer")
+        self.assertNotIn("a:m", [a["ref"] for a in card.last_council["answers"]])
+
     def test_a_model_past_the_deadline_is_dropped(self):
         class Stuck(FakeProvider):
             def stream(self, conversation, model, tools, on_text, *, cancel=None, **kw):
