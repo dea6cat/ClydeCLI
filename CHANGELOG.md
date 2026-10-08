@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- A council (`cardShuffle:<tier> council`) no longer counts a tool call written as text (`<tool_call>…`) as an answer; tools are off in a council, and such a reply could win the ranking and show up as raw markup.
+- Start-up no longer leaves "SkillSpector is scanning…" lines or Laya's "Fetching 5 files" download bar on screen.
+- After `clyde update`, the start-up note no longer keeps saying a newer version is available: the update now clears the day-long cached check.
+
 ## [0.2.3] - 2026-10-08
 
 ### Changed
