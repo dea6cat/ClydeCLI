@@ -22,7 +22,8 @@ def _serve(handler_class):
 class TestRedirects(unittest.TestCase):
     def setUp(self):
         self.hits: list[str] = []
-        hits = self.hits
+        self.redirected = threading.Event()
+        hits, redirected = self.hits, self.redirected
 
         class Internal(http.server.BaseHTTPRequestHandler):
             def do_GET(self):
@@ -40,6 +41,7 @@ class TestRedirects(unittest.TestCase):
 
         class Front(http.server.BaseHTTPRequestHandler):
             def do_GET(self):
+                redirected.set()
                 self.send_response(302)
                 self.send_header("Location", target)
                 self.end_headers()
@@ -51,16 +53,13 @@ class TestRedirects(unittest.TestCase):
         self.addCleanup(lambda: [s.shutdown() or s.server_close() for s in (self.internal, self.front)])
 
     def _fetch(self):
-        real = web_fetch._is_private_host
-        first = [True]
+        real = web_fetch._blocked_address
 
-        def guard(host):
-            if first[0]:   # the URL the user approved is public: let it through, as a real public host would pass
-                first[0] = False
-                return False
-            return real(host)
+        def guard(addr):
+            # The approved "public" first URL is a loopback server here, so it passes until it has redirected; from then on the real rule applies.
+            return real(addr) if self.redirected.is_set() else False
 
-        with patch.object(web_fetch, "_is_private_host", guard):
+        with patch.object(web_fetch, "_blocked_address", guard):
             return WebFetchTool().run({"url": f"http://127.0.0.1:{self.front.server_port}/"}, ToolContext(workspace_root="."))
 
     def test_a_redirect_into_a_private_address_is_refused_and_never_requested(self):
@@ -72,6 +71,13 @@ class TestRedirects(unittest.TestCase):
     def test_a_private_address_asked_for_directly_is_still_refused(self):
         with self.assertRaises(ToolPermissionError):
             WebFetchTool().run({"url": f"http://127.0.0.1:{self.internal.server_port}/"}, ToolContext(workspace_root="."))
+        self.assertEqual(self.hits, [])
+
+    def test_a_host_that_turns_private_between_the_check_and_the_connection_is_refused(self):
+        answers = iter([[(2, 1, 6, "", ("203.0.113.9", 80))], [(2, 1, 6, "", ("127.0.0.1", self.internal.server_port))]])
+        with patch.object(web_fetch.socket, "getaddrinfo", side_effect=lambda *a, **k: next(answers)):
+            with self.assertRaises(ToolPermissionError):    # the early check saw 203.0.113.9; the connection saw 127.0.0.1
+                WebFetchTool().run({"url": "http://rebind.example/"}, ToolContext(workspace_root="."))
         self.assertEqual(self.hits, [])
 
     def test_other_schemes_are_refused_on_a_redirect_too(self):
