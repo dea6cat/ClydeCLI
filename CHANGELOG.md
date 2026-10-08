@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Bonny now renders markdown tables (they showed as rows of pipes on one line), plus numbered and nested lists, `#`/`##`/`###` heading levels, quotes, rules and *italics*.
+
 ### Security
 - Reading a secret now always asks, whichever tool does it: `cat ~/.ssh/id_rsa`, `cat ~/.clyde/keys.json`, `echo $OPENAI_API_KEY` or a `grep -r` of your whole home folder ask like the Read tool already did (committed `.env.example` files don't). `WebFetch` shows the whole URL in its prompt, not just the host.
 - A project's own tooling no longer runs before you've said yes. The check after an edit used to run the project's `.venv/bin/ruff`, `uv run` tools and mypy before the permission prompt; now it uses only your own `ruff` unless the folder is listed under `trustedFolders` in `~/.clyde/settings.json`. The language-server tool asks once per project to start a server, unless the folder is trusted. `/check` is unchanged.
