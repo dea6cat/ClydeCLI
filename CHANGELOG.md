@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- Reading a secret now always asks, whichever tool does it: `cat ~/.ssh/id_rsa`, `cat ~/.clyde/keys.json`, `echo $OPENAI_API_KEY` or a `grep -r` of your whole home folder ask like the Read tool already did (committed `.env.example` files don't). `WebFetch` shows the whole URL in its prompt, not just the host.
+- A project's own tooling no longer runs before you've said yes. The check after an edit used to run the project's `.venv/bin/ruff`, `uv run` tools and mypy before the permission prompt; now it uses only your own `ruff` unless the folder is listed under `trustedFolders` in `~/.clyde/settings.json`. The language-server tool asks once per project to start a server, unless the folder is trusted. `/check` is unchanged.
+- `WebFetch` applies its localhost/private-network rule to every redirect and to the address it actually connects to, so a public host can't bounce it into your network or rebind its DNS.
+- A file name with a newline in it can no longer inject headers into a Bonny download.
+- The plugin scan's LLM review gives up after 5 minutes (it was 30) and falls back to the static scan; a failed scan is never cached, and importing a plugin defaults to "no" unless its scan came back SAFE.
+
 ### Added
 - `clyde tune` finds the best Ollama setup for how you use a local model without losing the quality you rely on. It asks what you
   use it for (coding, chat, research and fact-checking, long documents, quick answers), what matters most and how much RAM to keep

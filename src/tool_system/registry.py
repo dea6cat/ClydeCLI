@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 from dataclasses import dataclass
@@ -54,19 +53,18 @@ def _changes_things(spec: ToolSpec, tool_input: dict[str, Any]) -> bool:
     return spec.is_destructive
 
 
-_SECRET_NAMES = re.compile(r"(^|/)(\.env(\..*)?|\.ssh/.*|.*\.(pem|key)|id_(rsa|ed25519).*|\.netrc|credentials.*)$")
-
-
 def _read_target(tool_input: dict[str, Any]) -> str:
     return str(tool_input.get("file_path") or tool_input.get("path") or "")
 
 
 def _reads_secret(spec: ToolSpec, tool_input: dict[str, Any]) -> bool:
-    """A Read, or a Grep aimed at one file, of a key, .env, .ssh or credentials file."""
-    if spec.name.lower() not in ("read", "grep") or not _read_target(tool_input):
-        return False
-    from pathlib import Path
-    return bool(_SECRET_NAMES.search(Path(_read_target(tool_input)).expanduser().resolve().as_posix()))
+    """A Read or Grep of a key, .env, .ssh, cloud-credential or Clyde key-store file, or a Bash command that names one,
+    expands a secret-looking variable, or searches the whole home folder."""
+    from .secret_paths import command_reads_secret, is_secret_path
+    name = spec.name.lower()
+    if name == "bash":
+        return command_reads_secret(str(tool_input.get("command", "")))
+    return name in ("read", "grep") and bool(_read_target(tool_input)) and is_secret_path(_read_target(tool_input))
 
 
 def _edit_target(spec: ToolSpec, tool_input: dict[str, Any], context: ToolContext):
@@ -95,7 +93,7 @@ def _is_major(spec: ToolSpec, tool_input: dict[str, Any], context: ToolContext) 
     if name == "bash":
         from .tools.bash import is_major_command
         # Leaving the sandbox is always worth a yes, even when everything else plays without asking.
-        return tool_input.get("unsandboxed") is True or is_major_command(str(tool_input.get("command", "")))
+        return tool_input.get("unsandboxed") is True or is_major_command(str(tool_input.get("command", ""))) or _reads_secret(spec, tool_input)
     path = tool_input.get("file_path") or tool_input.get("notebook_path") or (tool_input.get("path") if name == "grep" else None)
     if isinstance(path, str) and path:
         from pathlib import Path
@@ -104,7 +102,8 @@ def _is_major(spec: ToolSpec, tool_input: dict[str, Any], context: ToolContext) 
             target.relative_to(context.workspace_root)
         except ValueError:
             return True
-        return bool(_SECRET_NAMES.search(target.as_posix()))
+        from .secret_paths import is_secret_path
+        return is_secret_path(target.as_posix())
     return False
 
 
