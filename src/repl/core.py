@@ -234,6 +234,7 @@ _HELP_TEXT = """
 - `/login [provider]` - Connect a provider or replace its key, or add an OpenAI-compatible one (`custom`), then switch to a model
 - `/rewind` - Undo the model's file edits and/or the conversation back to before one of your messages
 - `/check` - Run the project's ruff, mypy and pytest and show a summary
+- `/map [question]` - Query the repo's code map: no argument lists the hubs; also `update`, `explain X`, `affected X`, `path A B`
 
 **Usage:**
 - Type your message and press Enter to chat
