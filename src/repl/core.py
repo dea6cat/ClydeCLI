@@ -74,6 +74,8 @@ import asyncio
 import base64
 import os
 import random
+import copy
+import dataclasses
 import threading
 import time
 from contextlib import contextmanager
@@ -93,12 +95,14 @@ from src.output_styles import resolve_output_style
 from src.providers import build_registry, keys, model_ref, pick_default_model, resolve, usable
 from src.providers import catalog
 from src.providers.model_eval import hidden_refs
-from src.providers.base import ProviderError, is_auth_error
+from src.providers.base import ProviderError, ProviderResponse, is_auth_error
+from src.providers.types import Message
 from src.providers import laya_client
 from src.providers.card_shuffle import CardShuffle, record_vote
 from src.run_control import RunControl
 from src.providers.convert import append_response, to_canonical
 from src.tool_system.context import ToolContext
+from src.tool_system.registry import ToolRegistry
 from src.plugins import apply_plugins
 from src.tool_system.hooks import load_hooks
 from src import activity
@@ -177,6 +181,7 @@ _ACE_OF_SPADES = (
 
 # Playing-card palette, as exact colours so every terminal theme shows the same card.
 _CARD_FACE, _CARD_INK, _CARD_ACCENT, _CARD_DIM, _CARD_TEXT = "#f5f1e8", "#111111", "#4eba65", "#8a8a8a", "#e8e4dc"
+_COUNCIL_MAX_TURNS = 12   # reading turns a council member gets before it must answer
 
 
 def _ace_of_spades_card() -> Text:
@@ -573,6 +578,19 @@ class ClydeREPL:
             pasted = self._pastes.get(int(match.group(1)))
             return pasted if isinstance(pasted, str) else match.group(0)
         return re.sub(r"\[Pasted text #(\d+) \+\d+ lines\]", full, text)
+
+    def _investigate(self, provider: Any, model: str, cancel: threading.Event) -> ProviderResponse:
+        """A council member's answer: it reads the repo on a copy of this conversation in plan mode (read-only tools, nobody to
+        answer a permission prompt, so anything that would ask is denied) and its final text is the answer."""
+        from src.tool_system.tools.agent import _NO_NESTING
+        context = dataclasses.replace(self.tool_context, plan_mode=True, read_file_fingerprints={}, todos=[],
+                                      permission_handler=lambda *a: (False, False), ask_user=None)
+        tools = ToolRegistry([self.tool_registry.get(s.name) for s in self.tool_registry.list_specs() if s.name.lower() not in _NO_NESTING])
+        result = run_agent_loop(copy.deepcopy(self.session.conversation), provider, model, tools, context,
+                                max_turns=_COUNCIL_MAX_TURNS, cancel=cancel, reasoning=self.reasoning, system_extra=self.system_extra)
+        if result.response_text == MAX_TURNS_REPLY:
+            raise ProviderError(provider.name, "ran out of reading turns")
+        return ProviderResponse(message=Message.assistant(result.response_text), raw={}, usage=result.usage)
 
     def _show_deal(self, ref: str, why: str) -> None:
         """cardShuffle's note on which real model plays this turn, and why."""
@@ -2016,7 +2034,7 @@ class ClydeREPL:
             images = []
         self.session.conversation.add_user_message(user_input, images)
         if isinstance(self.provider, CardShuffle):
-            self.provider.mode, self.provider.on_deal = self.mode, self._show_deal
+            self.provider.mode, self.provider.on_deal, self.provider.investigate = self.mode, self._show_deal, self._investigate
             laya_client.warm()
 
         turn_started = time.monotonic()
