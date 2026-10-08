@@ -40,6 +40,7 @@ LOCAL = ("ollama", "lmstudio")
 # Council: `cardShuffle:<tier> council` asks the tier's top models the same question at once, Laya picks the best answer.
 COUNCIL = "council"
 COUNCIL_SIZE = 4
+TOOL_MARKUP = "<tool_call>"   # tools are off in a council, but some models still write a call as text; that is not an answer
 COUNCIL_DEADLINE_S = 90     # ponytail: one fixed deadline; make it adaptive if slow providers are common
 COUNCIL_LAYA_WAIT_S = 60    # a council turn waits this long for Laya to finish loading; ranking is its point
 REPLY_CHARS = 4000          # of each answer shown to Laya
@@ -300,7 +301,8 @@ class CardShuffle:
                     continue
                 if response.usage:
                     self.spent.append((ref, response.usage))
-                if (response.message.text or "").strip() and not response.message.tool_calls:
+                text = response.message.text or ""
+                if text.strip() and not response.message.tool_calls and TOOL_MARKUP not in text:
                     answers[ref] = response
                 else:
                     failed[ref] = "returned no answer"
