@@ -593,6 +593,9 @@ def _scan_plugin(console: Console, plugin):  # type: ignore[no-untyped-def]
     except KeyboardInterrupt:
         console.print("[dim]LLM review skipped; static scan only.[/dim]")
         verdict = skill_scan.check("plugin", plugin.name, plugin.root)
+    if verdict.recommendation == "ERROR" and env:
+        console.print("[dim]LLM review failed or timed out; static scan only.[/dim]")
+        verdict = skill_scan.check("plugin", plugin.name, plugin.root)
     color = {"SAFE": "green", "CAUTION": "yellow", "DO_NOT_INSTALL": "red"}.get(verdict.recommendation, "dim")
     console.print(f"  SkillSpector: [{color}]{verdict.recommendation}[/{color}] (risk {verdict.score}"
                   f"{', LLM-reviewed' if verdict.llm else ', static scan'})")
@@ -815,7 +818,7 @@ def handle_plugin_import(console: Console, assume_yes: bool = False, quiet: bool
             console.print(f"  {line}", markup=False)
         verdict = _scan_plugin(console, f.plugin)
         if Confirm.ask("It will run on this machine (tools, hooks, MCP servers). Import and enable it?",
-                       default=f.enabled_there and not verdict.blocked and verdict.recommendation != "CAUTION"):
+                       default=f.enabled_there and verdict.recommendation == "SAFE"):   # a failed scan is not a yes
             try:
                 plugins.set_enabled(plugins.install(str(f.source)).name, True)
             except (OSError, ValueError) as e:
