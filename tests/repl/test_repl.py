@@ -76,6 +76,19 @@ class TestREPL(unittest.TestCase):
         self.assertEqual(len(repl.session.conversation.messages), 1)       # the member worked on a copy
         self.assertIn("Reading the table", str(member.requests[2]))        # and was told why the Write failed
 
+    def test_slash_tune_runs_tune_and_ask_reasks(self):
+        with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
+            with patch('src.repl.core.Session.create') as mock_session:
+                mock_session.return_value = Mock()
+                with _fake_provider_env():
+                    repl = ClydeREPL(model="glm:glm-4.5")
+        repl.console = Mock()
+        with patch("src.tune.run", return_value=0) as run:
+            repl.handle_command("/tune")
+            repl.handle_command("/tune --ask")
+        self.assertEqual([c.kwargs for c in run.call_args_list], [{"reask": False}, {"reask": True}])
+        self.assertTrue(all(c.args[0] is repl.console for c in run.call_args_list))
+
     def test_repl_initialization_with_stream_enabled(self):
         """Test REPL can start with stream mode enabled."""
         with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):

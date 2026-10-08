@@ -138,7 +138,7 @@ class ModelScore:
     @property
     def short_note(self) -> str:
         return {"ok": "", "transient": "credits or rate limit", "tools": "no tool calling",
-                "unavailable": "not available", "answer": self.error[:40]}[self.kind]
+                "unavailable": "not available", "answer": self.error[:80]}[self.kind]
 
 
 def _as_int(value: Any) -> int | None:
