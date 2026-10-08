@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.6] - 2026-10-08
+
 ### Added
 - `/tune [--ask]` in the REPL, the same as `clyde tune`. Typing it before showed an empty command list.
 
@@ -494,6 +496,7 @@ The focus was on building a solid foundation with clean architecture, comprehens
 
 ---
 
+[0.2.6]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.2.6
 [0.2.5]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.2.5
 [0.2.4]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.2.4
 [0.2.3]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.2.3
