@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `/tune [--ask]` in the REPL, the same as `clyde tune`. Typing it before showed an empty command list.
+
+### Fixed
+- The note after a failed `/eval` was cut off mid-word ("…in its answe"); it now shows the whole reason.
+
 ## [0.2.5] - 2026-10-08
 
 ### Added
