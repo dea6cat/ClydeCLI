@@ -155,6 +155,7 @@ Difficulty (shadow turns, split at score 1.62)   turns  avg tool rounds  ran out
     <div class="cut"><dt>Your existing setup</dt><dd>Reads the memory files, skills, hooks and MCP servers you set up for Claude Code, Codex, Cursor or Gemini CLI.</dd></div>
     <div class="cut"><dt>Saved plans</dt><dd>The plan you approve in plan mode survives <code>/compact</code> and <code>--resume</code>. <code>/plan</code> marks phases done.</dd></div>
     <div class="cut"><dt>Review and sessions</dt><dd><code>/review</code> reads your changes, a commit or a branch without editing. <code>clyde sessions</code> searches old sessions.</dd></div>
+    <div class="cut"><dt>Tune a local model</dt><dd><code>clyde tune</code> asks what you use it for, tries flash attention and a smaller KV cache on throwaway servers, and keeps a setting only if it saves memory or opens a longer window without changing what the model says or losing tool calls.</dd></div>
     <div class="cut"><dt>The install</dt><dd><code>clyde doctor</code>, <code>update</code> and <code>uninstall</code>. Updates follow <code>main</code> or tagged releases and never install by themselves.</dd></div>
   </dl>
   <p>Editor support over the Agent Client Protocol, a read-only SQL tool and the rest are in the <a href="https://github.com/dea6cat/ClydeCLI#readme">README</a>.</p>
