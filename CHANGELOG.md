@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.5] - 2026-10-08
+
 ### Added
 - A council now reads before it answers: each model gets read-only tools (the same "reading the table" mode as plan mode), up to 12 turns, so a question about your repo or a path no longer gets four blind guesses. Nothing can change files or ask for permission; a read that would ask (a secret file, `WebFetch` without an allow rule) is refused. `WebSearch` works. The council waits up to 4 minutes, and costs roughly four times the tokens of one model.
 - `/map` in the REPL: `/map` lists the repo's most connected symbols, `/map <question>` searches the code map, and `update`, `explain X`, `affected X` and `path A B` do what the Map tool does for the model. It was only reachable by the model before.
@@ -486,6 +488,7 @@ The focus was on building a solid foundation with clean architecture, comprehens
 
 ---
 
+[0.2.5]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.2.5
 [0.2.4]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.2.4
 [0.2.3]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.2.3
 [0.1.0]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.1.0
