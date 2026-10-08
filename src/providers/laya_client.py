@@ -19,7 +19,9 @@ import warnings
 from typing import Any
 
 # Never download from inside Clyde: a missing model is reported, and `clyde setup` fetches it.
-os.environ.setdefault("HF_HUB_OFFLINE", "0")
+os.environ.setdefault("HF_HUB_OFFLINE", "1")
+# Laya pins nothing unless asked; without this it fetches the Hub's newest revision, which cached() never finds.
+os.environ.setdefault("LAYA_REVISION", "reviewed")
 # Laya's own calibration warnings would print into the middle of a turn; its answers are advisory anyway.
 warnings.filterwarnings("ignore", module=r"laya(\.|$)")
 
