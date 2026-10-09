@@ -215,7 +215,7 @@ _HELP_TEXT = """
 - `/render-last` - Re-render the last assistant reply as Markdown
 - `/model [provider:model]` - Pick a model with the arrow keys (type to filter), or switch to the one named; saved as default
 - `/models [all|refresh]` - Same picker as /model (hides ones /eval showed don't work; all shows them, refresh re-fetches the lists)
-- `/models local [ollama|hf|mlx] [words]` - Find local models on ollama.com and Hugging Face (GGUF, MLX on Apple Silicon) that fit this machine, rated relax / balance / hard, and download one
+- `/models local [best|ollama|hf|mlx] [words]` - Find local models on ollama.com and Hugging Face (GGUF, MLX on Apple Silicon) that fit this machine, rated relax / balance / hard, and download one
 - `/tune [--ask]` - Find the best Ollama setup for how you use it, keeping quality (the same as `clyde tune`)
 - `/laya` - Laya's status, and how its stuck checks and difficulty scores lined up with how traced turns ended
 - `/council [up N|down N]` - Show every answer from the last cardShuffle council turn with Laya's score, or vote one up or down (votes stay on this machine)
