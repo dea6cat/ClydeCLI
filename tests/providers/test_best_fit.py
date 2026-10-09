@@ -5,6 +5,7 @@ import unittest
 from types import SimpleNamespace as NS
 from unittest.mock import patch
 
+from src import tune_profile
 from src.providers import best_fit, fit
 from src.providers.fit import GB
 
@@ -63,9 +64,9 @@ class TestBestFit(unittest.TestCase):
         gate = threading.Event()
         best_fit._builder = None
         with patch.object(best_fit, "_ranked", side_effect=lambda *a: gate.wait(5)):
-            best_fit._build(12 * GB, "Apple M3 Pro")
+            best_fit._build(12 * GB, "Apple M3 Pro", "general")
             first = best_fit._builder
-            best_fit._build(12 * GB, "Apple M3 Pro")
+            best_fit._build(12 * GB, "Apple M3 Pro", "general")
             self.assertTrue(best_fit.pending())
             self.assertIs(best_fit._builder, first)
             gate.set()
@@ -77,6 +78,18 @@ class TestBestFit(unittest.TestCase):
             hardware = best_fit._machine(12 * GB, "Apple M3 Pro")
         gpu = hardware.gpus[0]
         self.assertEqual((gpu.usable_vram_bytes, gpu.memory_bandwidth_gbps, gpu.shared_memory), (12 * GB, 150.0, True))
+
+    def test_the_ranking_profile_follows_the_uses_chosen_at_setup(self):
+        for uses, expected in (((), "general"), (("chat",), "general"), (("coding",), "coding"), (("chat", "coding"), "coding")):
+            saved = tune_profile.Profile(uses, "speed") if uses else None
+            with patch.object(best_fit.tune_profile, "load", return_value=saved):
+                self.assertEqual(best_fit._profile(), expected, uses)
+
+    def test_the_profile_reaches_the_ranking(self):
+        with patch("whichllm.api.recommend", return_value=[]) as rec:
+            best_fit._ranked.cache_clear()
+            best_fit._ranked(12 * GB, "Apple M3 Pro", "coding")
+        self.assertEqual(rec.call_args.kwargs["profile"], "coding")
 
     def test_bandwidth_of_a_known_and_an_unknown_chip(self):
         self.assertEqual(fit.bandwidth_gbps("Apple M3 Pro"), 150)
