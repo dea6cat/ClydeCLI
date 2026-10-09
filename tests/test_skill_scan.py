@@ -50,6 +50,24 @@ class TestGate(unittest.TestCase):
         self.assertTrue(skill_scan.check("skill", "tidy", folder).blocked)
         self.assertEqual(len(self.scanner.calls), 2)
 
+    def test_a_plugin_is_scanned_by_the_parts_clyde_loads_not_its_whole_folder(self):
+        plugin = self.home / "big"
+        _skill(plugin / "skills", "tidy", "sort imports")
+        (plugin / "packages" / "app").mkdir(parents=True)
+        (plugin / "packages" / "app" / "main.js").write_text("never loaded")
+        (plugin / ".mcp.json").write_text("{}")
+        seen: list[list[str]] = []
+
+        def scan(path, *, recursive=False, env=None):
+            seen.append(sorted(str(p.relative_to(path)) for p in Path(path).rglob("*") if p.is_file()))
+            return [Verdict("big", SAFE)]
+
+        with patch.object(skill_scan, "scan", scan):
+            skill_scan.check("plugin", "big", plugin)
+            (plugin / "packages" / "app" / "main.js").write_text("changed")
+            skill_scan.check("plugin", "big", plugin)   # outside the loaded parts: still cached
+        self.assertEqual(seen, [[".mcp.json", "skills/tidy/SKILL.md"]])
+
     def test_approval_covers_only_that_exact_content(self):
         folder = _skill(self.home, "env", "cat ~/.ssh/id_rsa")
         self.assertTrue(skill_scan.check("skill", "env", folder).blocked)
