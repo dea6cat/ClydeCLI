@@ -3,7 +3,6 @@ from __future__ import annotations
 from src.config import clyde_home
 
 import os
-import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence
@@ -74,73 +73,60 @@ def load_skills_from_dir(base_dir: str | Path, *, loaded_from: str = "skills") -
 
     skills: List[PromptSkill] = []
     for entry in sorted(base.iterdir()):
-        if entry.is_dir() and (entry / "SKILL.md").exists():
-            skills.append(_skill_from_file(entry.name, entry / "SKILL.md", str(entry), loaded_from))
+        if not entry.is_dir():
+            continue
+        skill_name = entry.name
+        md_path = entry / "SKILL.md"
+        if not md_path.exists():
+            continue
+        content = md_path.read_text(encoding="utf-8")
+        parsed = parse_frontmatter(content)
+        fm = parsed.frontmatter
+        body = parsed.body
+
+        description = str(fm.get("description") or _extract_description(body) or f"Skill: {skill_name}")
+        user_invocable = bool(fm.get("user-invocable", True))
+        disable_model_invocation = bool(fm.get("disable-model-invocation", False))
+        when_to_use = fm.get("when_to_use")
+        when_to_use = str(when_to_use) if when_to_use is not None else None
+        version = fm.get("version")
+        version = str(version) if version is not None else None
+        model = fm.get("model")
+        model = str(model) if model is not None else None
+
+        allowed_tools = _as_str_list(fm.get("allowed-tools"))
+        arg_names = parse_argument_names(fm.get("arguments"))
+        context = "fork" if str(fm.get("context", "")).lower() == "fork" else "inline"
+        agent = fm.get("agent")
+        agent = str(agent) if agent is not None else None
+        effort = fm.get("effort")
+        effort = str(effort) if effort is not None else None
+        paths = _as_str_list(fm.get("paths"))
+        if paths == []:
+            paths = None
+
+        skill = PromptSkill(
+            name=skill_name,
+            description=description,
+            loaded_from=loaded_from,
+            user_invocable=user_invocable,
+            disable_model_invocation=disable_model_invocation,
+            content_length=len(body),
+            is_hidden=not user_invocable,
+            skill_root=str(entry),
+            when_to_use=when_to_use,
+            version=version,
+            model=model,
+            allowed_tools=allowed_tools,
+            arg_names=arg_names,
+            context=context,
+            agent=agent,
+            effort=effort,
+            paths=paths,
+            markdown_content=body,
+        )
+        skills.append(skill)
     return skills
-
-
-def load_commands_from_dir(base_dir: str | Path, *, loaded_from: str = "commands") -> List[PromptSkill]:
-    """Slash commands, one file each: Claude Code's `<name>.md` (skill frontmatter) or Gemini-style
-    `<name>.toml` (`description`, `prompt`, `{{args}}`)."""
-    base = Path(base_dir).expanduser().resolve()
-    if not base.is_dir():
-        return []
-    return [_skill_from_file(f.stem, f, str(f), loaded_from) for f in sorted(base.iterdir()) if f.suffix in (".md", ".toml")]
-
-
-def _skill_from_file(skill_name: str, md_path: Path, skill_root: str, loaded_from: str) -> PromptSkill:
-    if md_path.suffix == ".toml":
-        try:
-            table = tomllib.loads(md_path.read_text(encoding="utf-8"))
-        except tomllib.TOMLDecodeError:
-            table = {}
-        fm = {"description": table.get("description")}
-        body = str(table.get("prompt", "")).replace("{{args}}", "$ARGUMENTS")
-    else:
-        parsed = parse_frontmatter(md_path.read_text(encoding="utf-8"))
-        fm, body = parsed.frontmatter, parsed.body
-
-    description = str(fm.get("description") or _extract_description(body) or f"Skill: {skill_name}")
-    user_invocable = bool(fm.get("user-invocable", True))
-    disable_model_invocation = bool(fm.get("disable-model-invocation", False))
-    when_to_use = fm.get("when_to_use")
-    when_to_use = str(when_to_use) if when_to_use is not None else None
-    version = fm.get("version")
-    version = str(version) if version is not None else None
-    model = fm.get("model")
-    model = str(model) if model is not None else None
-
-    allowed_tools = _as_str_list(fm.get("allowed-tools"))
-    arg_names = parse_argument_names(fm.get("arguments"))
-    context = "fork" if str(fm.get("context", "")).lower() == "fork" else "inline"
-    agent = fm.get("agent")
-    agent = str(agent) if agent is not None else None
-    effort = fm.get("effort")
-    effort = str(effort) if effort is not None else None
-    paths = _as_str_list(fm.get("paths"))
-    if paths == []:
-        paths = None
-
-    return PromptSkill(
-        name=skill_name,
-        description=description,
-        loaded_from=loaded_from,
-        user_invocable=user_invocable,
-        disable_model_invocation=disable_model_invocation,
-        content_length=len(body),
-        is_hidden=not user_invocable,
-        skill_root=skill_root,
-        when_to_use=when_to_use,
-        version=version,
-        model=model,
-        allowed_tools=allowed_tools,
-        arg_names=arg_names,
-        context=context,
-        agent=agent,
-        effort=effort,
-        paths=paths,
-        markdown_content=body,
-    )
 
 
 def _cleared(skill: PromptSkill) -> bool:
@@ -163,11 +149,11 @@ def get_all_skills(
     else:
         user_dirs = _candidate_user_skills_dirs()
         # Enabled plugins' skills sit below every user skill folder.
-        from src.plugins import command_dirs, skill_dirs
-        for s in (*(c for d in command_dirs() for c in load_commands_from_dir(d, loaded_from="plugin")),
-                  *(k for d in skill_dirs() for k in load_skills_from_dir(d, loaded_from="plugin"))):
-            if _cleared(s):
-                _REGISTRY.register(s)
+        from src.plugins import skill_dirs
+        for plugin_dir in skill_dirs():
+            for s in load_skills_from_dir(plugin_dir, loaded_from="plugin"):
+                if _cleared(s):
+                    _REGISTRY.register(s)
     # Register lowest priority first: a later registration of the same name wins.
     for user_dir in reversed(user_dirs):
         for s in load_skills_from_dir(user_dir, loaded_from="user"):
