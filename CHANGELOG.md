@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-09
+
 ### Added
 - A warning when you start with, or switch to, an LM Studio model that LM Studio says wasn't trained for tool use. Such a model tends to write a tool call as plain text instead of running it; the warning points to `/eval` or `/model`.
 - LM Studio models are loaded by Clyde with a window sized to the memory budget (weights plus KV cache from the model's own config) and one slot, instead of LM Studio's default, which can be 34k tokens times 4 slots and swap an 18 GB Mac. A model you loaded yourself keeps your settings; `CLYDE_CONTEXT_TOKENS` or `CLYDE_MODEL_CONTEXT_<MODEL>` override the window.
@@ -517,6 +519,7 @@ The focus was on building a solid foundation with clean architecture, comprehens
 
 ---
 
+[0.4.0]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.4.0
 [0.3.7]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.3.7
 [0.2.6]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.2.6
 [0.2.5]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.2.5
