@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- The `best` group in `/models local` ranks for coding when coding is among the uses you gave at setup (`clyde tune`), general otherwise.
 - `/models local` ranks models with [whichllm](https://github.com/Andyyyy64/whichllm) (MIT), bundled as our fork `dea6cat/whichLocalLLM`: a `best` group of the top benchmark-ranked GGUF models that fit this machine, and a `details` line (quality, estimated speed range, license) in the download confirmation. The fork takes Clyde's memory budget and chip bandwidth instead of detecting the machine.
 - `/models local` says what each quantization costs in quality in words (`Q4_K_M (good balance)`, `Q2_K (noticeable loss)`), in the picker and the download summary.
 - The eval memory warning uses LM Studio's own estimate for the model (`lms load --estimate-only`) instead of the file size plus a flat allowance.
