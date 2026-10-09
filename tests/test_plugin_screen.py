@@ -7,9 +7,7 @@ import unittest
 from prompt_toolkit.input import create_pipe_input
 from prompt_toolkit.output import DummyOutput
 
-from unittest.mock import patch
-
-from src import plugin_catalog, plugin_screen, plugins
+from src import plugin_screen, plugins
 from tests.test_plugins import PluginHomeCase, make_plugin
 
 LEFT, RIGHT, DOWN, ESC = "\x1b[D", "\x1b[C", "\x1b[B", "\x1b"
@@ -22,11 +20,11 @@ def _text(fragments) -> str:
 class TestPluginScreen(PluginHomeCase):
     def test_installed_tab_lists_state_and_what_each_plugin_adds(self) -> None:
         self.installed_sample()
-        shown = _text(plugin_screen.render(1, 0, 0, 8, [], ""))
+        shown = _text(plugin_screen.render(0, 0, 0, 8, [], ""))
         self.assertIn("sample 1.0.0", shown)
         self.assertIn("disabled · 1 skills, 1 tools, 1 hooks, 1 MCP servers", shown)
         plugins.set_enabled("sample", True)
-        self.assertIn("enabled ·", _text(plugin_screen.render(1, 0, 0, 8, [], "")))
+        self.assertIn("enabled ·", _text(plugin_screen.render(0, 0, 0, 8, [], "")))
 
     def test_errors_tab_gathers_bad_manifests_startup_warnings_and_unreadable_parts(self) -> None:
         root = self.installed_sample()
@@ -41,7 +39,7 @@ class TestPluginScreen(PluginHomeCase):
     def test_a_clean_install_has_no_errors(self) -> None:
         self.installed_sample()
         self.assertEqual(plugin_screen.errors([]), [])
-        self.assertIn("No errors.", _text(plugin_screen.render(2, 0, 0, 8, [], "")))
+        self.assertIn("No errors.", _text(plugin_screen.render(1, 0, 0, 8, [], "")))
 
     def test_stats_count_only_enabled_plugins(self) -> None:
         make_plugin(plugins.plugins_dir(), "one")
@@ -56,25 +54,9 @@ class TestPluginScreen(PluginHomeCase):
         make_plugin(plugins.plugins_dir(), "one")
         make_plugin(plugins.plugins_dir(), "two")
         with create_pipe_input() as pipe:
-            pipe.send_text(RIGHT + DOWN + " " + RIGHT + LEFT + ESC)
-            with patch.object(plugin_catalog, "entries", return_value=([], "")):
-                plugin_screen.show([], input=pipe, output=DummyOutput())
+            pipe.send_text(DOWN + " " + RIGHT + LEFT + ESC)
+            plugin_screen.show([], input=pipe, output=DummyOutput())
         self.assertEqual((plugins.is_enabled("one"), plugins.is_enabled("two")), (False, True))
-
-    def test_enter_on_discover_returns_the_filtered_entry(self) -> None:
-        pool = [plugin_catalog.Entry("alpha", "first", "Anthropic", "dev", "https://x/a.git"),
-                plugin_catalog.Entry("beta", "second", "Cursor", "", "https://x/b.git", "sub")]
-        with create_pipe_input() as pipe:
-            pipe.send_text("cur\r")
-            with patch.object(plugin_catalog, "entries", return_value=(pool, "")):
-                chosen = plugin_screen.show([], input=pipe, output=DummyOutput())
-        self.assertEqual(chosen, pool[1])
-
-    def test_discover_marks_installed_ones_and_shows_the_origin(self) -> None:
-        make_plugin(plugins.plugins_dir(), "alpha")
-        pool = [plugin_catalog.Entry("alpha", "first", "Anthropic", "dev", "https://x/a.git")]
-        shown = _text(plugin_screen.render(0, 0, 0, 8, [], "", pool, ""))
-        self.assertIn("alpha ✔  Anthropic · dev", shown)
 
 
 if __name__ == "__main__":
