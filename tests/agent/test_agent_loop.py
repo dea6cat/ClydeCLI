@@ -37,6 +37,36 @@ class TestAgentLoop(unittest.TestCase):
             reply("File created successfully!", usage={"input_tokens": 30, "output_tokens": 10}),
         )
 
+    def test_a_local_model_is_sent_only_the_tools_the_prompt_asks_for(self):
+        provider = FakeProvider(reply("done"), name="lmstudio")
+        provider.context_window = lambda _model: 20000
+        conversation = Conversation()
+        conversation.add_user_message("review the login code")
+        self._run(provider, conversation)
+        sent = {t["name"].lower() if isinstance(t, dict) else t.name.lower() for t in provider.requests[0]["tools"]}
+        self.assertEqual(sent, {"read", "grep", "glob", "toolsearch"})
+
+    def test_a_remote_model_still_gets_the_whole_core_set(self):
+        provider = FakeProvider(reply("done"), name="openrouter")
+        conversation = Conversation()
+        conversation.add_user_message("review the login code")
+        self._run(provider, conversation)
+        sent = {t["name"].lower() if isinstance(t, dict) else t.name.lower() for t in provider.requests[0]["tools"]}
+        self.assertTrue({"bash", "edit", "write"} <= sent)
+
+    def test_a_local_model_has_its_old_tool_results_trimmed_between_rounds(self):
+        provider = FakeProvider(reply("done"), name="lmstudio")
+        provider.context_window = lambda _model: 4000
+        conversation = Conversation()
+        for i in range(8):
+            conversation.add_user_message(f"step {i}")
+            conversation.add_tool_result_message(f"id{i}", "x" * 4000)
+        conversation.add_user_message("summarize")
+        with patch("src.agent.agent_loop.trim_old_tool_results", wraps=__import__("src.context_system.microcompact", fromlist=["x"]).trim_old_tool_results) as trim:
+            self._run(provider, conversation)
+        trim.assert_called_once()
+        self.assertEqual(trim.call_args.args[1], 4000)
+
     def test_dispatches_tool_and_returns_final_text(self):
         conversation = Conversation()
         conversation.add_user_message("Create hello.py")
