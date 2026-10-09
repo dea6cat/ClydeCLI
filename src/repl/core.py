@@ -236,7 +236,7 @@ _HELP_TEXT = """
 - `/doctor` - Diagnose environment, config, keys and permissions
 - `/mcp` - Show connected MCP servers and their tools
 - `/mcp login <server>` / `/mcp logout <server>` - OAuth sign-in for a remote MCP server (opens your browser), or forget its tokens
-- `/plugins` - Show loaded plugins and what each added
+- `/plugins` - Installed, Errors and Stats tabs: what each plugin added, what went wrong, Space turns one on or off
 - `/debug [path]` - Show the last turn's model and tool calls from the trace, or the trace file path
 - `/login [provider]` - Connect a provider or replace its key, or add an OpenAI-compatible one (`custom`), then switch to a model
 - `/rewind` - Undo the model's file edits and/or the conversation back to before one of your messages
@@ -1477,7 +1477,8 @@ class ClydeREPL:
             self._mcp_auth(*raw.strip().split()[1:3])
 
         elif cmd == '/plugins':
-            self._print_plugins()
+            from src import plugin_screen
+            plugin_screen.show(self.plugins) if plugin_screen.interactive() else self._print_plugins()
         elif cmd == '/rewind':
             self._rewind()
         elif cmd == '/login' or cmd.startswith('/login '):
