@@ -288,9 +288,15 @@ def stop_eval(console: Any, targets: list[tuple[Any, str]]) -> None:
             console.print(f"[dim]Unloaded {provider.name}:{model}.[/dim]")
 
 
-def short_on_memory(console: Any, size_bytes: int, retry: str) -> bool:
-    """Warn and return True when loading a model of `size_bytes` would need more than the memory free right now."""
-    free, needed = fit.free_now_bytes(), size_bytes + fit.OVERHEAD
+def loaded_bytes(provider: Any, model: str, file_bytes: int) -> int:
+    """What the model takes once loaded: the runtime's own estimate when it has one (LM Studio), else the file plus a flat allowance."""
+    estimate = getattr(provider, "estimate", None)
+    return (estimate(model) if estimate else None) or file_bytes + fit.OVERHEAD
+
+
+def short_on_memory(console: Any, needed: int, retry: str) -> bool:
+    """Warn and return True when a model needing `needed` bytes loaded would not fit the memory free right now."""
+    free = fit.free_now_bytes()
     if free is None or needed <= free:
         return False
     console.print(f"[yellow]Not enough free memory to test it:[/yellow] the largest model needs ~{_gb(needed)} loaded and {_gb(free)} is free right now. "
@@ -301,7 +307,7 @@ def short_on_memory(console: Any, size_bytes: int, retry: str) -> bool:
 def _offer_eval(repl: Any, provider: Any, model: str, offer: fit.Offer) -> None:
     """Ask before /eval loads the model (the heavy part); hard models, or ones that don't fit in the free memory, default to no."""
     ref = f"{provider.name}:{model}"
-    short = short_on_memory(repl.console, offer.size_bytes, f"/eval {ref}")
+    short = short_on_memory(repl.console, loaded_bytes(provider, model, offer.size_bytes), f"/eval {ref}")
     with repl._esc.paused():
         test = Confirm.ask(f"Run /eval on it now? It loads the model ({offer.rating})", default=offer.rating != "hard" and not short, console=repl.console)
     if not test:
