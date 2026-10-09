@@ -15,6 +15,7 @@ from ..tool_system.registry import ToolRegistry
 from ..tool_system.context import ToolContext
 from ..memory import memory_prompt
 from ..tool_system.plan_file import PLAN_SHAPE, plan_prompt, read_plan
+from ..context_system.microcompact import trim_old_tool_results
 from ..tool_system.deferral import advertised, index_prompt, is_deferred, local_tools
 from .conversation import Conversation
 from ..context_system import build_context_prompt
@@ -320,6 +321,8 @@ def run_agent_loop(
     for _turn in range(max_turns):
         if _turn and steer is not None and (steering := steer()):
             conversation.add_user_message(f"{_STEERING}{steering}")
+        if only is not None:   # a local window fills with old file dumps long before auto-compact
+            trim_old_tool_results(conversation, getattr(provider, "context_window", lambda _m: 0)(model))
         specs = from_specs(advertised(all_specs, tool_context.loaded_tools, only))   # again each turn: ToolSearch may have loaded more
         activity.set(f"waiting for {getattr(provider, 'name', '')}:{model}")
         request = to_canonical(conversation, system_prompt)
