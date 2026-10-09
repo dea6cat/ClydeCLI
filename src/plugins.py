@@ -3,7 +3,6 @@
 The layout follows Claude Code's plugins:
     .clyde-plugin/plugin.json   (or .claude-plugin/plugin.json)  {"name", "version", "description"}
     skills/<name>/SKILL.md      skills, read by src/skills/loader.py
-    commands/<name>.md          slash commands (a skill in one file), read by src/skills/loader.py
     hooks/hooks.json            a hooks table in any format normalize_hooks accepts
     .mcp.json                   {"mcpServers": {...}}
     tools/*.py                  Python tools, in the ~/.clyde/tools format
@@ -49,7 +48,6 @@ class Loaded:
     plugin: Plugin
     tools: list[str] = field(default_factory=list)
     skills: list[str] = field(default_factory=list)
-    commands: list[str] = field(default_factory=list)
     hooks: int = 0
     mcp_servers: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
@@ -135,11 +133,6 @@ def skill_dirs() -> list[Path]:
     return [p.root / "skills" for p in enabled_plugins()]
 
 
-def command_dirs() -> list[Path]:
-    """commands/ folders of enabled plugins, for get_all_skills."""
-    return [p.root / "commands" for p in enabled_plugins()]
-
-
 # --- what a plugin contains ------------------------------------------------------------------
 
 def _expand(value: Any, root: Path) -> Any:
@@ -188,11 +181,6 @@ def skill_names(plugin: Plugin) -> list[str]:
     return sorted(d.name for d in skills.iterdir() if (d / "SKILL.md").is_file()) if skills.is_dir() else []
 
 
-def command_names(plugin: Plugin) -> list[str]:
-    commands = plugin.root / "commands"
-    return sorted(p.stem for p in commands.glob("*.md")) if commands.is_dir() else []
-
-
 def tool_files(plugin: Plugin) -> list[str]:
     """Tool file names only: loading a tool runs its code, so previews never import them."""
     return sorted(p.name for p in (plugin.root / "tools").glob("*.py"))
@@ -218,8 +206,8 @@ def describe(plugin: Plugin) -> list[str]:
             lines.append(f"MCP server {name}: {' '.join(map(str, [cfg.get('command') or '', *cfg['args']]))}{env}")
     except ValueError as e:
         lines.append(f"MCP servers: unreadable ({e})")
-    if commands := command_names(plugin):
-        lines.append(f"commands: {', '.join('/' + c for c in commands)}")
+    if (plugin.root / "commands").is_dir():
+        lines.append("commands/: not supported by ClydeCLI, skipped")
     return lines
 
 
@@ -246,10 +234,10 @@ def _register_tools(registry: Any, plugin: Plugin, loaded: Loaded) -> None:
 def apply_plugins(registry: Any, hooks: dict[str, list[dict[str, Any]]], servers: dict[str, dict[str, Any]]) -> list[Loaded]:
     """Add enabled plugins' tools to `registry` and their hooks / MCP servers to `hooks` / `servers`.
     Built-in tools and servers from settings.json keep their names; clashes become warnings.
-    Skills and commands reach get_all_skills through skill_dirs() / command_dirs()."""
+    Skills reach get_all_skills through skill_dirs()."""
     result = []
     for plugin in enabled_plugins():
-        loaded = Loaded(plugin, skills=skill_names(plugin), commands=command_names(plugin))
+        loaded = Loaded(plugin, skills=skill_names(plugin))
         _register_tools(registry, plugin, loaded)
         try:
             for event, groups in plugin_hooks(plugin).items():
@@ -319,8 +307,8 @@ def find_foreign() -> list[Foreign]:
             continue
         if plugin.name in have:
             continue
-        loadable = describe(plugin)
-        reason = "" if loadable else "nothing ClydeCLI can load (no skills, commands, hooks, MCP servers or tools)"
+        loadable = [line for line in describe(plugin) if not line.startswith("commands/")]
+        reason = "" if loadable else "nothing ClydeCLI can load (no skills, hooks, MCP servers or tools)"
         found.append(Foreign(agent, root, plugin, on, reason))
     return found
 
