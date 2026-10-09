@@ -2331,7 +2331,7 @@ class ClydeREPL:
         """Grade every listed model (or those matching `query`) on a tool call and a round trip."""
         from rich.prompt import Confirm
         from src.providers.model_eval import HAND, evaluate_all, save_results
-        from src.repl.local_models import installed, short_on_memory, stop_eval
+        from src.repl.local_models import installed, loaded_bytes, short_on_memory, stop_eval
 
         live = usable(self.registry)
         if not live:
@@ -2348,7 +2348,7 @@ class ClydeREPL:
         self.console.print(f"{len(targets)} model(s) to test on your own keys: two short requests, then a hand of {len(HAND)} harder tasks for each that passes"
                            + ("" if query else " (narrow it with /eval <provider or name>)") + ".")
         sizes = {m.ref: m.size for m in installed(self)}
-        biggest = max((sizes.get(ref, 0) for _p, _m, ref in targets), default=0)
+        biggest = max((loaded_bytes(p, m, sizes[ref]) for p, m, ref in targets if ref in sizes), default=0)
         short = biggest > 0 and short_on_memory(self.console, biggest, "/eval")
         with self._esc.paused():
             if not Confirm.ask("Run the evaluation?", default=len(targets) <= 20 and not short, console=self.console):

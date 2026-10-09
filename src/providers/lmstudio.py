@@ -8,6 +8,7 @@ only when a request actually goes to an LM Studio model; LM Studio loads the mod
 from __future__ import annotations
 
 import json
+import re
 import os
 import shutil
 import subprocess
@@ -93,6 +94,19 @@ class LMStudioProvider(OpenAICompatProvider):
                 pass
         self._ctx_cache = {**getattr(self, "_ctx_cache", {}), model: (time.monotonic(), window)}
         return window
+
+    def estimate(self, model: str) -> int | None:
+        """LM Studio's own estimate of the memory the model needs once loaded (`lms load --estimate-only`), in bytes."""
+        exe = _lms()
+        if exe is None:
+            return None
+        try:
+            done = subprocess.run([exe, "load", model, "--estimate-only", "-y"], capture_output=True, text=True, timeout=30)
+            out = done.stdout + done.stderr   # lms prints the estimate on stderr
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        found = re.search(r"Estimated Total Memory:\s+([\d.]+)\s*(GiB|MiB)", out)
+        return int(float(found.group(1)) * (1024 ** 3 if found.group(2) == "GiB" else 1024 ** 2)) if found else None
 
     def unload(self, model: str) -> None:
         """Free the model's memory (`lms unload`); a no-op when it isn't loaded or `lms` is missing."""
