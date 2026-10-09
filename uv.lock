@@ -177,7 +177,7 @@ wheels = [
 
 [[package]]
 name = "clyde-cli"
-version = "0.2.6"
+version = "0.3.7"
 source = { editable = "." }
 dependencies = [
     { name = "duckdb" },

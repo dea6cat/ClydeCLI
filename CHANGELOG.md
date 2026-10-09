@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.7] - 2026-10-09
+
 ### Added
 - The `best` group in `/models local` ranks for coding when coding is among the uses you gave at setup (`clyde tune`), general otherwise.
 - `/models local` ranks models with [whichllm](https://github.com/Andyyyy64/whichllm) (MIT), bundled as our fork `dea6cat/whichLocalLLM`: a `best` group of the top benchmark-ranked GGUF models that fit this machine, and a `details` line (quality, estimated speed range, license) in the download confirmation. The fork takes Clyde's memory budget and chip bandwidth instead of detecting the machine.
@@ -509,6 +511,7 @@ The focus was on building a solid foundation with clean architecture, comprehens
 
 ---
 
+[0.3.7]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.3.7
 [0.2.6]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.2.6
 [0.2.5]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.2.5
 [0.2.4]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.2.4
