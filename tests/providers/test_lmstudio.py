@@ -83,3 +83,20 @@ class TestLMStudioUnload(unittest.TestCase):
         with patch.object(lmstudio, "_lms", return_value=None), patch("subprocess.run") as run:
             lmstudio.LMStudioProvider().unload("x")
         run.assert_not_called()
+
+
+class TestLMStudioEstimate(unittest.TestCase):
+    def test_estimate_reads_the_total_memory_line(self):
+        out = "Model: m\nEstimated GPU Memory:   6.02 GiB\nEstimated Total Memory: 6.02 GiB\nConfidence: LOW\n"
+        with patch.object(lmstudio, "_lms", return_value="/bin/lms"), patch("subprocess.run", return_value=_done(out)) as run:
+            self.assertEqual(lmstudio.LMStudioProvider().estimate("m"), int(6.02 * 1024 ** 3))
+        self.assertEqual(run.call_args.args[0], ["/bin/lms", "load", "m", "--estimate-only", "-y"])
+
+    def test_the_estimate_is_found_when_lms_prints_it_on_stderr(self):
+        done = subprocess.CompletedProcess([], 0, "", "Estimated Total Memory: 512.00 MiB\n")
+        with patch.object(lmstudio, "_lms", return_value="/bin/lms"), patch("subprocess.run", return_value=done):
+            self.assertEqual(lmstudio.LMStudioProvider().estimate("m"), 512 * 1024 ** 2)
+
+    def test_an_unreadable_estimate_is_none(self):
+        with patch.object(lmstudio, "_lms", return_value="/bin/lms"), patch("subprocess.run", return_value=_done("nope")):
+            self.assertIsNone(lmstudio.LMStudioProvider().estimate("m"))

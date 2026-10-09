@@ -364,3 +364,15 @@ class TestShortOnMemory(unittest.TestCase):
     def test_an_unreadable_memory_figure_never_warns(self):
         with patch.object(local_models.fit, "free_now_bytes", return_value=None):
             self.assertFalse(local_models.short_on_memory(_Repl().console, 99 * GB, "/eval"))
+
+
+class TestLoadedBytes(unittest.TestCase):
+    def test_the_runtimes_own_estimate_wins_over_the_flat_allowance(self):
+        lmstudio = type("L", (), {"estimate": lambda self, m: 6 * GB})()
+        self.assertEqual(local_models.loaded_bytes(lmstudio, "m", 4 * GB), 6 * GB)
+
+    def test_without_an_estimate_it_is_the_file_plus_the_allowance(self):
+        ollama = type("O", (), {})()
+        self.assertEqual(local_models.loaded_bytes(ollama, "m", 4 * GB), 4 * GB + local_models.fit.OVERHEAD)
+        unsure = type("L", (), {"estimate": lambda self, m: None})()
+        self.assertEqual(local_models.loaded_bytes(unsure, "m", 4 * GB), 4 * GB + local_models.fit.OVERHEAD)
