@@ -162,3 +162,18 @@ class TestLMStudioWindow(unittest.TestCase):
                 patch("subprocess.run") as run:
             provider.ensure_loaded("m")
         run.assert_not_called()
+
+
+class TestLMStudioToolTraining(unittest.TestCase):
+    def _lacks(self, entry):
+        provider = lmstudio.LMStudioProvider()
+        with patch.object(provider, "downloaded", return_value=[entry]):
+            return provider.lacks_tool_training("m")
+
+    def test_a_model_marked_untrained_for_tools_is_flagged(self):
+        self.assertTrue(self._lacks({"modelKey": "m", "trainedForToolUse": False}))
+
+    def test_a_trained_or_unreported_model_is_not(self):
+        self.assertFalse(self._lacks({"modelKey": "m", "trainedForToolUse": True}))
+        self.assertFalse(self._lacks({"modelKey": "m"}))
+        self.assertFalse(self._lacks({"modelKey": "other", "trainedForToolUse": False}))
