@@ -236,7 +236,7 @@ _HELP_TEXT = """
 - `/doctor` - Diagnose environment, config, keys and permissions
 - `/mcp` - Show connected MCP servers and their tools
 - `/mcp login <server>` / `/mcp logout <server>` - OAuth sign-in for a remote MCP server (opens your browser), or forget its tokens
-- `/plugins` - Discover, Installed, Errors and Stats tabs: find and install plugins, what each added, what went wrong, Space turns one on or off
+- `/plugins` - Installed, Errors and Stats tabs: what each plugin added, what went wrong, Space turns one on or off
 - `/debug [path]` - Show the last turn's model and tool calls from the trace, or the trace file path
 - `/login [provider]` - Connect a provider or replace its key, or add an OpenAI-compatible one (`custom`), then switch to a model
 - `/rewind` - Undo the model's file edits and/or the conversation back to before one of your messages
@@ -1477,7 +1477,8 @@ class ClydeREPL:
             self._mcp_auth(*raw.strip().split()[1:3])
 
         elif cmd == '/plugins':
-            self._plugins_screen()
+            from src import plugin_screen
+            plugin_screen.show(self.plugins) if plugin_screen.interactive() else self._print_plugins()
         elif cmd == '/rewind':
             self._rewind()
         elif cmd == '/login' or cmd.startswith('/login '):
@@ -1965,21 +1966,6 @@ class ClydeREPL:
                 self.console.print(f"    mcp__{name}__{tool['name']}", markup=False)
         for name, error in errors.items():
             self.console.print(f"[red]✗[/red] {name}: {error}")
-
-    def _plugins_screen(self) -> None:
-        from src import plugin_screen
-
-        if not plugin_screen.interactive():
-            return self._print_plugins()
-        chosen = plugin_screen.show(self.plugins)
-        if chosen is None:
-            return
-        from src.cli import install_plugin
-
-        try:
-            install_plugin(self.console, chosen.url, subdir=chosen.subdir)
-        except (OSError, ValueError) as e:
-            self.console.print(str(e), style="red", markup=False)
 
     def _print_plugins(self) -> None:
         if not self.plugins:

@@ -959,7 +959,6 @@ A plugin is a folder that bundles extensions; Claude Code plugins mostly work as
 
 - `clyde plugin install <folder-or-git-url>` shows what it contains and asks before enabling it
   (`--yes` installs it disabled); `clyde plugin list | enable | disable | remove` manage it
-- `/plugins` opens a screen: Discover lists the plugins published by `anthropics/claude-plugins-official` and `cursor/plugins` (type to filter, Enter installs), Installed turns them on or off, Errors and Stats show what went wrong and what is loaded. Many Claude Code plugins are mostly commands and agents, which ClydeCLI does not load, so check what an install says it adds.
 - Already use plugins in Claude Code, Codex or Cursor? `clyde plugin import` (also offered by
   `clyde setup`) lists every one it finds, what ClydeCLI can load from it and why any are skipped, and
   copies and enables each only after its own yes; plugins switched off in their agent default to no
