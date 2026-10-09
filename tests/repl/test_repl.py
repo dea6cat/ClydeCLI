@@ -57,6 +57,22 @@ class TestREPL(unittest.TestCase):
                     self.assertFalse(repl.stream)
                     self.assertFalse(repl.multiline_mode)
 
+    def test_the_status_line_shows_the_machine_vitals_when_there_is_room(self):
+        from src.providers.fit import GB
+        from src.vitals import Vitals
+        with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
+            with patch('src.repl.core.Session.create', return_value=Mock()):
+                with _fake_provider_env():
+                    repl = ClydeREPL(model="glm:glm-4.5")
+                    with patch('src.repl.core.sample', return_value=Vitals(3 * GB, 0, 0.4)), \
+                            patch.object(ClydeREPL, "_rule_width", return_value=140):
+                        wide = "".join(t for _, t in repl._mode_line())
+                    with patch('src.repl.core.sample', return_value=Vitals(3 * GB, 0, 0.4)), \
+                            patch.object(ClydeREPL, "_rule_width", return_value=50):
+                        narrow = "".join(t for _, t in repl._mode_line())
+        self.assertIn("3.0G free", wide)
+        self.assertNotIn("free", narrow)
+
     def test_a_council_member_reads_the_repo_but_cannot_change_it(self):
         """_investigate runs the member's own tool loop in plan mode on a copy of the conversation."""
         target = self.config_dir / "note.txt"

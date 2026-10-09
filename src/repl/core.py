@@ -95,6 +95,7 @@ from src.output_styles import resolve_output_style
 from src.providers import build_registry, keys, model_ref, pick_default_model, resolve, usable
 from src.providers import catalog
 from src.providers.model_eval import hidden_refs
+from src.vitals import line, sample
 from src.providers.base import ProviderError, ProviderResponse, is_auth_error
 from src.providers.types import Message
 from src.providers import laya_client
@@ -508,6 +509,8 @@ class ClydeREPL:
                 'mode': f'bold {_CARD_ACCENT}',
                 'mode-note': _CARD_DIM,
                 'model': _CARD_DIM,
+                'vitals': _CARD_DIM,
+                'vitals-strained': '#d0202f',
                 'model-dealt': _CARD_ACCENT,
                 # A plain list like Claude Code's: no grey block, green for the selected row.
                 'completion-menu': 'bg:default',
@@ -668,6 +671,11 @@ class ClydeREPL:
         left = [("class:mode", f"  {label}"), ("class:mode-note", note), ("class:rule", "  (shift+tab to cycle)")]
         room = self._rule_width() - 1 - sum(len(text) for _, text in left) - 2   # a column of margin, two before the model
         ref, dealt = self._model_parts()
+        vitals = sample()
+        pulse = f"{line(vitals)}   "
+        if room - len(ref + dealt) > len(pulse) + 2:   # only when the model keeps its full name
+            room -= len(pulse) + 1
+            left = [*left, ("", " "), ("class:vitals-strained" if vitals.strained else "class:vitals", pulse)]
         if dealt and len(ref + dealt) > room and isinstance(self.provider, CardShuffle):
             ref = self.model   # too long: the tier alone ("high-roller") says as much as "cardShuffle:high-roller"
         shown = (ref + dealt)[-room:] if room > 8 else ""
@@ -2323,7 +2331,7 @@ class ClydeREPL:
         """Grade every listed model (or those matching `query`) on a tool call and a round trip."""
         from rich.prompt import Confirm
         from src.providers.model_eval import HAND, evaluate_all, save_results
-        from src.repl.local_models import stop_eval
+        from src.repl.local_models import installed, short_on_memory, stop_eval
 
         live = usable(self.registry)
         if not live:
@@ -2339,8 +2347,11 @@ class ClydeREPL:
             return
         self.console.print(f"{len(targets)} model(s) to test on your own keys: two short requests, then a hand of {len(HAND)} harder tasks for each that passes"
                            + ("" if query else " (narrow it with /eval <provider or name>)") + ".")
+        sizes = {m.ref: m.size for m in installed(self)}
+        biggest = max((sizes.get(ref, 0) for _p, _m, ref in targets), default=0)
+        short = biggest > 0 and short_on_memory(self.console, biggest, "/eval")
         with self._esc.paused():
-            if not Confirm.ask("Run the evaluation?", default=len(targets) <= 20, console=self.console):
+            if not Confirm.ask("Run the evaluation?", default=len(targets) <= 20 and not short, console=self.console):
                 return
         done = [0]
         try:
