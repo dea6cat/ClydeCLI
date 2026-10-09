@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- LM Studio models are loaded by Clyde with a window sized to the memory budget (weights plus KV cache from the model's own config) and one slot, instead of LM Studio's default, which can be 34k tokens times 4 slots and swap an 18 GB Mac. A model you loaded yourself keeps your settings; `CLYDE_CONTEXT_TOKENS` or `CLYDE_MODEL_CONTEXT_<MODEL>` override the window.
+- Small local models (Ollama on this machine, LM Studio) get only the tools the prompt asks for: Read, Grep and Glob always, Edit and Write for a change, Bash for running things, the web tools for a URL. The rest is one `ToolSearch` away, and a tool the model calls anyway still runs. Fewer tool definitions means a smaller prompt and fewer made-up tool calls. `CLYDE_ALL_TOOLS=1` sends everything.
+- On a local model, old tool results (long file dumps, command output) are cleared once the conversation passes half the window, keeping the newest four whole, instead of waiting for auto-compact at 80%. The model can read the file again.
+
 ## [0.3.7] - 2026-10-09
 
 ### Added

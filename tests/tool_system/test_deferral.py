@@ -120,3 +120,45 @@ class TestAgentLoopDeferral(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestLocalToolRouting(unittest.TestCase):
+    def test_a_review_prompt_gets_only_the_reading_tools(self):
+        from src.tool_system.deferral import local_tools
+        self.assertEqual(local_tools("ok so I want you to review the implementation with totp token in this project"),
+                         frozenset({"read", "grep", "glob", "toolsearch"}))
+
+    def test_what_the_prompt_asks_for_adds_its_tools(self):
+        from src.tool_system.deferral import local_tools
+        self.assertLessEqual({"edit", "write"}, local_tools("fix the login bug"))
+        self.assertLessEqual({"bash"}, local_tools("run the tests"))
+        self.assertLessEqual({"webfetch", "websearch"}, local_tools("what changed in https://example.com/x"))
+        self.assertNotIn("bash", local_tools("explain this function"))
+
+    def test_only_replaces_the_core_set_in_the_request_and_the_index(self):
+        from src.tool_system.deferral import local_tools
+        specs = [ToolSpec(n, f"{n} things. More.", {}) for n in ("Read", "Edit", "Bash", "ToolSearch")]
+        only = local_tools("explain this")
+        self.assertEqual([s.name for s in advertised(specs, set(), only)], ["Read", "ToolSearch"])
+        self.assertEqual([s.name for s in advertised(specs, {"edit"}, only)], ["Read", "Edit", "ToolSearch"])
+        index = index_prompt(specs, only)
+        self.assertIn("- Edit:", index)
+        self.assertNotIn("- Read:", index)
+
+
+class TestLoopHelpers(unittest.TestCase):
+    def test_only_local_providers_get_the_small_tool_set(self):
+        from types import SimpleNamespace as NS
+        from src.agent.agent_loop import _small_local
+        self.assertTrue(_small_local(NS(name="lmstudio", api_key="lm-studio")))
+        self.assertTrue(_small_local(NS(name="ollama", api_key=None)))
+        self.assertFalse(_small_local(NS(name="ollama", api_key="cloud-key")))   # Ollama's cloud models
+        self.assertFalse(_small_local(NS(name="openrouter", api_key="k")))
+
+    def test_the_prompt_is_the_users_last_message_not_a_tool_result_or_steering(self):
+        from src.agent.agent_loop import _STEERING, _last_prompt
+        from src.providers.types import Conversation, Message
+        convo = Conversation("sys", [Message.user("review the login code"), Message.assistant("ok"), Message.results([]),
+                                     Message.user(f"{_STEERING}use bash")])
+        self.assertEqual(_last_prompt(convo), "review the login code")
+        self.assertEqual(_last_prompt(Conversation("sys", [])), "")

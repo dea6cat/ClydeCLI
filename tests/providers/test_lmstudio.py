@@ -42,10 +42,12 @@ class TestLMStudio(unittest.TestCase):
     def test_stream_starts_the_server_first(self):
         with patch.object(lmstudio, "_lms", return_value="/bin/lms"), \
              patch.object(self.provider, "_server_up", side_effect=[False, True]), \
+             patch.object(self.provider, "ensure_loaded") as load, \
              patch("subprocess.run", return_value=_done()) as run, \
              patch("src.providers.openai_compat.OpenAICompatProvider.stream", return_value="reply") as parent:
             self.assertEqual(self.provider.stream(None, "m", (), lambda _c: None), "reply")
         self.assertEqual(run.call_args.args[0], ["/bin/lms", "server", "start"])
+        load.assert_called_once_with("m")
         parent.assert_called_once()
 
     def test_stream_without_lm_studio_is_a_clear_error(self):
@@ -100,3 +102,63 @@ class TestLMStudioEstimate(unittest.TestCase):
     def test_an_unreadable_estimate_is_none(self):
         with patch.object(lmstudio, "_lms", return_value="/bin/lms"), patch("subprocess.run", return_value=_done("nope")):
             self.assertIsNone(lmstudio.LMStudioProvider().estimate("m"))
+
+
+class TestLMStudioWindow(unittest.TestCase):
+    ENTRY = {"modelKey": "m", "sizeBytes": 4 * 1024 ** 3, "maxContextLength": 131072, "path": "x/m"}
+
+    def _folder(self, tmp: str, **cfg) -> str:
+        import pathlib
+        pathlib.Path(tmp, "config.json").write_text(json.dumps({"num_hidden_layers": 36, "num_attention_heads": 32,
+                                                                 "num_key_value_heads": 8, "head_dim": 128, **cfg}))
+        return tmp
+
+    def test_kv_bytes_per_token_come_from_the_model_config(self):
+        import pathlib, tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            self._folder(tmp)
+            self.assertEqual(lmstudio.kv_bytes_per_token(pathlib.Path(tmp)), 2 * 36 * 8 * 128 * 2)
+        self.assertIsNone(lmstudio.kv_bytes_per_token(None))
+
+    def test_the_window_fits_the_budget_left_after_the_weights(self):
+        import pathlib, tempfile
+        GB = 1024 ** 3
+        with tempfile.TemporaryDirectory() as tmp:
+            self._folder(tmp)
+            provider = lmstudio.LMStudioProvider()
+            with patch.object(provider, "downloaded", return_value=[self.ENTRY]), \
+                    patch.object(lmstudio, "model_files", return_value=pathlib.Path(tmp)), \
+                    patch.object(lmstudio.fit, "budget_bytes", return_value=12 * GB):
+                window = provider.planned_window("m")
+                self.assertEqual(window % 1024, 0)
+                self.assertTrue(lmstudio.WINDOW_FLOOR <= window <= lmstudio.MAX_WINDOW)
+                self.assertLessEqual(window * 147456, (12 * GB - 4 * GB - lmstudio.fit.OVERHEAD) * lmstudio.KV_SHARE)
+            with patch.object(provider, "downloaded", return_value=[self.ENTRY]), \
+                    patch.object(lmstudio, "model_files", return_value=pathlib.Path(tmp)), \
+                    patch.object(lmstudio.fit, "budget_bytes", return_value=5 * GB):
+                self.assertEqual(provider.planned_window("m"), lmstudio.WINDOW_FLOOR)   # no room: the floor, never zero
+
+    def test_a_model_without_a_config_gets_the_conservative_window(self):
+        provider = lmstudio.LMStudioProvider()
+        with patch.object(provider, "downloaded", return_value=[self.ENTRY]), patch.object(lmstudio, "model_files", return_value=None):
+            self.assertEqual(provider.planned_window("m"), lmstudio.GGUF_WINDOW)
+
+    def test_an_env_override_wins(self):
+        with patch.dict("os.environ", {"CLYDE_CONTEXT_TOKENS": "12000"}):
+            self.assertEqual(lmstudio.LMStudioProvider().planned_window("m"), 12000)
+
+    def test_an_unloaded_model_is_loaded_with_the_window_and_one_slot(self):
+        provider = lmstudio.LMStudioProvider()
+        with patch.object(lmstudio, "_lms", return_value="/bin/lms"), patch.object(provider, "_loaded", return_value=False), \
+                patch.object(provider, "planned_window", return_value=16384), patch("subprocess.run", return_value=_done()) as run:
+            provider.ensure_loaded("m")
+            provider.ensure_loaded("m")   # the second call is cached
+        self.assertEqual(run.call_args.args[0], ["/bin/lms", "load", "m", "-c", "16384", "--parallel", "1", "--ttl", "3600", "-y"])
+        self.assertEqual(run.call_count, 1)
+
+    def test_a_model_already_loaded_is_left_alone(self):
+        provider = lmstudio.LMStudioProvider()
+        with patch.object(lmstudio, "_lms", return_value="/bin/lms"), patch.object(provider, "_loaded", return_value=True), \
+                patch("subprocess.run") as run:
+            provider.ensure_loaded("m")
+        run.assert_not_called()

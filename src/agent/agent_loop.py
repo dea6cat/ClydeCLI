@@ -15,7 +15,8 @@ from ..tool_system.registry import ToolRegistry
 from ..tool_system.context import ToolContext
 from ..memory import memory_prompt
 from ..tool_system.plan_file import PLAN_SHAPE, plan_prompt, read_plan
-from ..tool_system.deferral import advertised, index_prompt, is_deferred
+from ..context_system.microcompact import trim_old_tool_results
+from ..tool_system.deferral import advertised, index_prompt, is_deferred, local_tools
 from .conversation import Conversation
 from ..context_system import build_context_prompt
 from ..output_styles import resolve_output_style
@@ -23,6 +24,7 @@ from ..providers.base import Provider, stream_with_retry
 from ..providers.convert import append_response, to_canonical
 from ..providers.toolcall_repair import coerce_tool_args
 from ..providers.toolspec import from_specs
+from ..providers.types import Role
 
 
 def summarize_tool_result(name: str, output: Any) -> str:
@@ -236,6 +238,20 @@ MAX_TURNS_REPLY = "[Max tool turns reached]"
 _STEERING = "The user sent this while you were working; take it into account from here on:\n"
 
 
+def _small_local(provider: Provider) -> bool:
+    """Ollama on this machine or LM Studio: models that do better with a few tools than with all of them."""
+    name = getattr(provider, "name", "")
+    return name == "lmstudio" or (name == "ollama" and getattr(provider, "api_key", None) is None)
+
+
+def _last_prompt(conversation: Conversation) -> str:
+    """What the user last typed (not a tool result, not a steering note)."""
+    for message in reversed(conversation.messages):
+        if message.role is Role.USER and message.text and not message.text.startswith(_STEERING):
+            return message.text
+    return ""
+
+
 def run_agent_loop(
     conversation: Conversation,
     provider: Provider,
@@ -290,7 +306,8 @@ def run_agent_loop(
     system_prompt = _build_effective_system_prompt(style_prompt, tool_context)
     if system_extra:   # a custom sub-agent's own instructions
         system_prompt += "\n\n" + system_extra
-    if index := index_prompt(all_specs):
+    only = local_tools(_last_prompt(conversation)) if _small_local(provider) else None   # the few tools this prompt needs
+    if index := index_prompt(all_specs, only):
         system_prompt += "\n\n" + index
     text_handler = on_text_chunk if (stream and on_text_chunk is not None) else _discard
 
@@ -304,7 +321,9 @@ def run_agent_loop(
     for _turn in range(max_turns):
         if _turn and steer is not None and (steering := steer()):
             conversation.add_user_message(f"{_STEERING}{steering}")
-        specs = from_specs(advertised(all_specs, tool_context.loaded_tools))   # again each turn: ToolSearch may have loaded more
+        if only is not None:   # a local window fills with old file dumps long before auto-compact
+            trim_old_tool_results(conversation, getattr(provider, "context_window", lambda _m: 0)(model))
+        specs = from_specs(advertised(all_specs, tool_context.loaded_tools, only))   # again each turn: ToolSearch may have loaded more
         activity.set(f"waiting for {getattr(provider, 'name', '')}:{model}")
         request = to_canonical(conversation, system_prompt)
         response = trace.model_call(provider, model, request, lambda: stream_with_retry(
@@ -336,7 +355,7 @@ def run_agent_loop(
         for tc in tool_calls:
             tool_id = tc.id
             tool_name, tool_input = coerce_tool_args(tc.name, tc.arguments, known_tools)
-            if is_deferred(tool_name):
+            if is_deferred(tool_name, only):
                 tool_context.loaded_tools.add(tool_name.lower())   # called by name: send its definition from now on
             started = time.monotonic()
             activity.set(f"running {tool_name}")
