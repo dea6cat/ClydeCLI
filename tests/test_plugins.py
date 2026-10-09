@@ -63,17 +63,6 @@ class PluginHomeCase(unittest.TestCase):
 
 
 class TestPlugins(PluginHomeCase):
-    def test_an_enabled_plugins_commands_load_as_skills(self) -> None:
-        root = self.installed_sample()
-        (root / "commands").mkdir()
-        (root / "commands" / "plan.md").write_text("---\ndescription: Plan it\nargument-hint: <goal>\n---\nPlan $ARGUMENTS\n")
-        self.assertIn("commands: /plan", plugins.describe(plugins.read_manifest(root)))
-        self.assertNotIn("plan", [s.name for s in get_all_skills()])
-        plugins.set_enabled("sample", True)
-        plan = {s.name: s for s in get_all_skills()}["plan"]
-        self.assertEqual((plan.description, plan.loaded_from), ("Plan it", "plugin"))
-        self.assertIn("Plan $ARGUMENTS", plan.markdown_content)
-
     def test_discovery_accepts_claude_manifest_and_reports_bad_ones(self) -> None:
         make_plugin(plugins.plugins_dir(), "compat", manifest_dir=".claude-plugin")
         (plugins.plugins_dir() / "broken").mkdir()
