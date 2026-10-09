@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import statistics
 import threading
 import time
@@ -58,6 +59,9 @@ _STUCK = {"type": "noul", "instructions": "Is the agent repeating the same tool 
 RATE_LIMIT_BENCH_S = 90        # 429
 OUT_OF_CREDIT_BENCH_S = 3600   # 402
 EMPTY_BENCH_S = 600            # a model that answered nothing
+# Special tokens that leaked into the text ("<|open|>…<|close|>"): the model degenerated, and that is not an answer.
+_LEAKED_TOKENS = re.compile(r"<\|[^|>\s]{1,24}\|>")
+_LEAKED_MIN = 2
 LAYA_WAIT = 30      # seconds a turn waits, once per session, for Laya to finish its cold load
 # Promotion: split the shadow-scored turns at their median score; the harder half must take clearly
 # more tool rounds. Laya's scores sit in a narrow band (about 1.3 to 1.9 of 3), so the test is relative.
@@ -196,9 +200,13 @@ class CardShuffle:
             out[ref] = r
         return out
 
+    def _ready(self, ref: str, now: float) -> bool:
+        """Not benched itself, nor through its provider (an account that is out of credit is out for every model on it)."""
+        return self._benched.get(ref, 0.0) <= now and self._benched.get(ref.partition(":")[0], 0.0) <= now
+
     def _deal(self, why: str) -> str:
         now = self._now()
-        card = next((r for r in self._deck if r not in self._burned and self._benched.get(r, 0.0) <= now), None)
+        card = next((r for r in self._deck if r not in self._burned and self._ready(r, now)), None)
         if card is None:
             raise ProviderError(NAME, "no model left to deal: every candidate failed or none passed /eval "
                                       "(run /eval, then try again)")
@@ -258,13 +266,14 @@ class CardShuffle:
         trace.record("laya", question="stuck", noul=round(p, 2), acted=p >= STUCK_AT, model=self.dealt)
         return p
 
-    def redeal(self, why: str, bench_s: float = 0.0) -> bool:
+    def redeal(self, why: str, bench_s: float = 0.0, whole_provider: bool = False) -> bool:
         """Burn the dealt card and deal the next one; False when the deck is spent.
-        bench_s keeps the card out of later turns' deals for that long (it is still burned for this turn)."""
+        bench_s keeps the card out of later turns' deals for that long (it is still burned for this turn);
+        whole_provider benches every model of its provider, for a failure that belongs to the account."""
         if self.dealt is not None:
             self._burned.add(self.dealt)
             if bench_s:
-                self._benched[self.dealt] = self._now() + bench_s
+                self._benched[self.dealt.partition(":")[0] if whole_provider else self.dealt] = self._now() + bench_s
         try:
             self._deal(why)
         except ProviderError:
@@ -277,7 +286,7 @@ class CardShuffle:
         if tier not in TIERS:
             raise ProviderError(NAME, f"unknown tier '{tier}' (one of {', '.join(TIERS)})")
         now = self._now()
-        roster = [r for r in deck(tier, self._candidates(), self.mode) if self._benched.get(r, 0.0) <= now][:COUNCIL_SIZE]
+        roster = [r for r in deck(tier, self._candidates(), self.mode) if self._ready(r, now)][:COUNCIL_SIZE]
         if len(roster) < 2:
             return None
         stop = threading.Event()   # ends the models still running when the deadline passes or the user cancels
@@ -354,13 +363,15 @@ class CardShuffle:
             except _Cancelled:
                 raise
             except Exception as e:
-                if (cancel is not None and cancel.is_set()) or not self.redeal(f"{self.dealt} failed: {str(e)[:80]}", _bench_for(e)):
+                if (cancel is not None and cancel.is_set()) or not self.redeal(f"{self.dealt} failed: {str(e)[:80]}", _bench_for(e), getattr(e, "status", None) == 402):
                     raise
                 continue
             if response.usage:
                 self.spent.append((self.dealt, response.usage))
             empty = not (response.message.text or "").strip() and not response.message.tool_calls
-            if empty and not (cancel is not None and cancel.is_set()) and self.redeal(f"{self.dealt} returned no answer", EMPTY_BENCH_S):
+            garbled = len(_LEAKED_TOKENS.findall(response.message.text or "")) >= _LEAKED_MIN
+            if (empty or garbled) and not (cancel is not None and cancel.is_set()) \
+                    and self.redeal(f"{self.dealt} returned {'garbled text' if garbled else 'no answer'}", EMPTY_BENCH_S):
                 continue
             return response
 

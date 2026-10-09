@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- cardShuffle: a card that fails with "out of credits" (402) now benches every model on that provider for the hour, not only itself. Two cards on the same dry OpenRouter account used to be tried one after the other.
+- cardShuffle: an answer full of leaked special tokens (`<|open|>…<|close|>`) is treated as a failed card, like an empty one, and the next card is dealt, instead of showing the garbage as the answer.
 ## [0.4.0] - 2026-10-09
 
 ### Added
