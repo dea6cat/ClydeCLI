@@ -3,7 +3,6 @@ from __future__ import annotations
 from src.config import clyde_home
 
 import os
-import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence
@@ -80,25 +79,17 @@ def load_skills_from_dir(base_dir: str | Path, *, loaded_from: str = "skills") -
 
 
 def load_commands_from_dir(base_dir: str | Path, *, loaded_from: str = "commands") -> List[PromptSkill]:
-    """Slash commands, one file each: Claude Code's `<name>.md` (skill frontmatter) or Gemini-style
-    `<name>.toml` (`description`, `prompt`, `{{args}}`)."""
+    """Claude Code-style slash commands: one `<name>.md` per command, same frontmatter as a skill."""
     base = Path(base_dir).expanduser().resolve()
     if not base.is_dir():
         return []
-    return [_skill_from_file(f.stem, f, str(f), loaded_from) for f in sorted(base.iterdir()) if f.suffix in (".md", ".toml")]
+    return [_skill_from_file(md.stem, md, str(md), loaded_from) for md in sorted(base.glob("*.md"))]
 
 
 def _skill_from_file(skill_name: str, md_path: Path, skill_root: str, loaded_from: str) -> PromptSkill:
-    if md_path.suffix == ".toml":
-        try:
-            table = tomllib.loads(md_path.read_text(encoding="utf-8"))
-        except tomllib.TOMLDecodeError:
-            table = {}
-        fm = {"description": table.get("description")}
-        body = str(table.get("prompt", "")).replace("{{args}}", "$ARGUMENTS")
-    else:
-        parsed = parse_frontmatter(md_path.read_text(encoding="utf-8"))
-        fm, body = parsed.frontmatter, parsed.body
+    parsed = parse_frontmatter(md_path.read_text(encoding="utf-8"))
+    fm = parsed.frontmatter
+    body = parsed.body
 
     description = str(fm.get("description") or _extract_description(body) or f"Skill: {skill_name}")
     user_invocable = bool(fm.get("user-invocable", True))
