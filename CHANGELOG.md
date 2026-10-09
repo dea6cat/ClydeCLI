@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `/models local` says what each quantization costs in quality in words (`Q4_K_M (good balance)`, `Q2_K (noticeable loss)`), in the picker and the download summary.
 - The eval memory warning uses LM Studio's own estimate for the model (`lms load --estimate-only`) instead of the file size plus a flat allowance.
 - The status line under the prompt shows free memory, swap in use, CPU and GPU load (red when the machine is strained), when the row has room.
 - `/eval` warns, and defaults to no, when the largest local model in the run needs more than the memory free right now.
