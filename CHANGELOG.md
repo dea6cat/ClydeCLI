@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Ctrl-C during `/eval` (or the eval offered after a download) now stops it cleanly, unloads the LM Studio model it loaded and says nothing was saved. It used to print "Interrupted" and leave the model in memory.
+- The eval offered after a download warns when the model needs more than the free memory (it would swap and lag the Mac) and defaults to no.
+- Ctrl-C and timeouts in the Bash tool now end the command's own child processes too, not only the shell.
+
 ## [0.2.6] - 2026-10-08
 
 ### Added

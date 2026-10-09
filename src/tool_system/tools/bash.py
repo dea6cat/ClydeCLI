@@ -6,6 +6,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from ... import proc
 from .. import sandbox
 from ..context import ToolContext
 from ..errors import ToolInputError, ToolPermissionError
@@ -204,10 +205,11 @@ class BashTool:
         argv, sandboxed = ["bash", "-lc", command], False
         if tool_input.get("unsandboxed") is not True:
             argv, sandboxed = sandbox.wrap(argv, context)
-        completed = subprocess.run(
+        completed = proc.run_group(
             argv,
             cwd=str(cwd),
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
             timeout=timeout_s,
         )

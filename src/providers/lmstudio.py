@@ -94,6 +94,17 @@ class LMStudioProvider(OpenAICompatProvider):
         self._ctx_cache = {**getattr(self, "_ctx_cache", {}), model: (time.monotonic(), window)}
         return window
 
+    def unload(self, model: str) -> None:
+        """Free the model's memory (`lms unload`); a no-op when it isn't loaded or `lms` is missing."""
+        exe = _lms()
+        if exe is None:
+            return
+        try:
+            subprocess.run([exe, "unload", model], capture_output=True, timeout=30)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+        self._ctx_cache = {}
+
     def _ensure_server(self) -> None:
         if self._server_up():
             return
