@@ -10,6 +10,8 @@ from __future__ import annotations
 import threading
 from functools import lru_cache
 
+from src import tune_profile
+
 from . import fit
 from .fit import Offer
 
@@ -55,7 +57,7 @@ def pending() -> bool:
     return _builder is not None and _builder.is_alive()
 
 
-def _build(budget: int, chip: str) -> None:
+def _build(budget: int, chip: str, profile: str) -> None:
     global _builder
     if pending():
         return
@@ -63,7 +65,7 @@ def _build(budget: int, chip: str) -> None:
     def run() -> None:
         try:
             _ranked.cache_clear()
-            _ranked(budget, chip, True)
+            _ranked(budget, chip, profile, True)
         except Exception:   # offline or rate-limited: the group stays out and the next search tries again
             pass
 
@@ -71,22 +73,28 @@ def _build(budget: int, chip: str) -> None:
     _builder.start()
 
 
+def _profile() -> str:
+    """whichllm's ranking profile from the answers given at setup (`clyde tune`): coding when coding is one of the uses, else general."""
+    saved = tune_profile.load()
+    return "coding" if saved and "coding" in saved.uses else "general"
+
+
 @lru_cache(maxsize=4)
-def _ranked(budget: int, chip: str, refresh: bool = False) -> tuple:
+def _ranked(budget: int, chip: str, profile: str, refresh: bool = False) -> tuple:
     from whichllm.api import recommend
 
-    return tuple(recommend(_machine(budget, chip), top=_TOP, refresh=refresh, stale_ok=not refresh))
+    return tuple(recommend(_machine(budget, chip), top=_TOP, profile=profile, refresh=refresh, stale_ok=not refresh))
 
 
 def search(query: str, budget: int) -> list[Offer]:
     """Top-ranked GGUF models that fit `budget`, as offers Ollama (`hf.co/<repo>:<quant>`) or LM Studio can pull."""
-    chip, state = fit.chip(), _cache_state()
+    chip, profile, state = fit.chip(), _profile(), _cache_state()
     if state != "fresh":
-        _build(budget, chip)   # never make the picker wait minutes for it
+        _build(budget, chip, profile)   # never make the picker wait minutes for it
     if state == "none":
         return []
     try:
-        ranked = _ranked(budget, chip)
+        ranked = _ranked(budget, chip, profile)
     except Exception:   # a failed fetch or an upstream change must never break /models local
         return []
     offers = []
