@@ -741,9 +741,29 @@ def handle_sessions(console: Console, action: str, target: str) -> int:
     return 0
 
 
+def install_plugin(console: Console, source: str, *, subdir: str = "", assume_yes: bool = False) -> None:
+    """Install a plugin (disabled), show what it adds and SkillSpector's verdict, then ask before enabling it."""
+    from rich.prompt import Confirm
+    from src import plugins
+
+    plugin = plugins.install(source, subdir)
+    console.print(f"Installed [bold]{plugin.name}[/bold] {plugin.version} into {plugin.root}")
+    for line in plugins.describe(plugin) or ["(nothing ClydeCLI can load)"]:
+        console.print(f"  {line}", markup=False)
+    verdict = _scan_plugin(console, plugin)
+    if not assume_yes and Confirm.ask(
+            "Plugins run code: their tools, hooks and MCP servers run on this machine. Enable it?", default=False):
+        plugins.set_enabled(plugin.name, True)
+        if verdict.blocked:
+            from src import skill_scan
+            skill_scan.approve("plugin", plugin.name)
+        console.print(f"[green]✓ Enabled {plugin.name}[/green]; it loads the next time ClydeCLI starts.")
+    else:
+        console.print(f"Left disabled. Enable it with [bold]clyde plugin enable {plugin.name}[/bold].")
+
+
 def handle_plugin(console: Console, action: str, target: str | None, assume_yes: bool = False) -> int:
     """`clyde plugin install|list|remove|enable|disable`. Plugins run code, so enabling needs an explicit yes."""
-    from rich.prompt import Confirm
     from src import plugins
 
     try:
@@ -762,20 +782,7 @@ def handle_plugin(console: Console, action: str, target: str | None, assume_yes:
                 console.print(f"✗ {error}", style="red", markup=False)
             return 0
         if action == 'install':
-            plugin = plugins.install(target or "")
-            console.print(f"Installed [bold]{plugin.name}[/bold] {plugin.version} into {plugin.root}")
-            for line in plugins.describe(plugin) or ["(nothing ClydeCLI can load)"]:
-                console.print(f"  {line}", markup=False)
-            verdict = _scan_plugin(console, plugin)
-            if not assume_yes and Confirm.ask(
-                    "Plugins run code: their tools, hooks and MCP servers run on this machine. Enable it?", default=False):
-                plugins.set_enabled(plugin.name, True)
-                if verdict.blocked:
-                    from src import skill_scan
-                    skill_scan.approve("plugin", plugin.name)
-                console.print(f"[green]✓ Enabled {plugin.name}[/green]; it loads the next time ClydeCLI starts.")
-            else:
-                console.print(f"Left disabled. Enable it with [bold]clyde plugin enable {plugin.name}[/bold].")
+            install_plugin(console, target or "", assume_yes=assume_yes)
             return 0
         if action == 'remove':
             plugins.remove(target or "")
