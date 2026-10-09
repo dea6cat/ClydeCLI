@@ -206,8 +206,6 @@ def describe(plugin: Plugin) -> list[str]:
             lines.append(f"MCP server {name}: {' '.join(map(str, [cfg.get('command') or '', *cfg['args']]))}{env}")
     except ValueError as e:
         lines.append(f"MCP servers: unreadable ({e})")
-    if (plugin.root / "commands").is_dir():
-        lines.append("commands/: not supported by ClydeCLI, skipped")
     return lines
 
 
@@ -307,7 +305,7 @@ def find_foreign() -> list[Foreign]:
             continue
         if plugin.name in have:
             continue
-        loadable = [line for line in describe(plugin) if not line.startswith("commands/")]
+        loadable = describe(plugin)
         reason = "" if loadable else "nothing ClydeCLI can load (no skills, hooks, MCP servers or tools)"
         found.append(Foreign(agent, root, plugin, on, reason))
     return found
