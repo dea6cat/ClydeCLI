@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- LM Studio models are loaded by Clyde with a window sized to the memory budget (weights plus KV cache from the model's own config) and one slot, instead of LM Studio's default, which can be 34k tokens times 4 slots and swap an 18 GB Mac. A model you loaded yourself keeps your settings; `CLYDE_CONTEXT_TOKENS` or `CLYDE_MODEL_CONTEXT_<MODEL>` override the window.
 ## [0.3.7] - 2026-10-09
 
 ### Added

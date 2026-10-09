@@ -15,6 +15,7 @@ import subprocess
 import time
 from pathlib import Path
 
+from . import fit
 from .base import ProviderError, get_json
 from .openai_compat import OpenAICompatProvider
 
@@ -23,6 +24,11 @@ DEFAULT_URL = "http://localhost:1234/v1"
 # ponytail: a guess until first load; LM Studio picks the loaded context from its own settings
 UNLOADED_CONTEXT = 8192
 _CONTEXT_TTL = 30
+MAX_WINDOW = 32768      # past this a small local model loses the thread; compaction keeps the rest
+WINDOW_FLOOR = 4096
+GGUF_WINDOW = 8192      # ponytail: a GGUF's layer count isn't in `lms ls`; read the GGUF header to size it like an MLX model
+KV_SHARE = 0.5          # of the budget left after weights and runtime overhead, the share the KV cache may take
+LOAD_TTL_S = 3600       # LM Studio unloads a model Clyde loaded after an hour idle
 
 
 def _lms() -> str | None:
@@ -40,6 +46,18 @@ def model_files(entry: dict) -> Path | None:
     root = MODELS_DIR.resolve()
     target = (root / str(entry.get("path", ""))).resolve()
     return target if root in target.parents and target.exists() else None
+
+
+def kv_bytes_per_token(folder: Path | None) -> int | None:
+    """fp16 KV cache bytes per token from a model folder's config.json (MLX/safetensors), or None when it can't be told."""
+    try:
+        cfg = json.loads((folder / "config.json").read_text(encoding="utf-8"))
+        layers, heads = int(cfg["num_hidden_layers"]), int(cfg["num_attention_heads"])
+        kv_heads = int(cfg.get("num_key_value_heads") or heads)
+        head_dim = int(cfg.get("head_dim") or int(cfg["hidden_size"]) // heads)
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return None
+    return 2 * layers * kv_heads * head_dim * 2
 
 
 class LMStudioProvider(OpenAICompatProvider):
@@ -82,7 +100,7 @@ class LMStudioProvider(OpenAICompatProvider):
         cached = getattr(self, "_ctx_cache", {}).get(model)
         if cached and time.monotonic() - cached[0] < _CONTEXT_TTL:
             return cached[1]
-        window = UNLOADED_CONTEXT
+        window = self.planned_window(model)
         exe = _lms()
         if exe is not None:
             try:
@@ -94,6 +112,44 @@ class LMStudioProvider(OpenAICompatProvider):
                 pass
         self._ctx_cache = {**getattr(self, "_ctx_cache", {}), model: (time.monotonic(), window)}
         return window
+
+    def planned_window(self, model: str) -> int:
+        """The window Clyde loads the model with: what fits the memory budget after the weights, KV cache included
+        (CLYDE_CONTEXT_TOKENS or CLYDE_MODEL_CONTEXT_<MODEL> override). LM Studio's own default can be 34k tokens
+        times 4 parallel slots, which swaps an 18 GB Mac."""
+        from .ollama import _ctx_env_key
+        for key in ("CLYDE_CONTEXT_TOKENS", f"CLYDE_MODEL_CONTEXT_{_ctx_env_key(model)}"):
+            if os.environ.get(key, "").isdigit():
+                return int(os.environ[key])
+        entry = next((m for m in self.downloaded() if m.get("modelKey") == model), {})
+        trained = int(entry.get("maxContextLength") or MAX_WINDOW)
+        per_token = kv_bytes_per_token(model_files(entry)) if entry else None
+        if per_token is None:
+            return min(trained, GGUF_WINDOW)
+        spare = max(0, fit.budget_bytes() - int(entry.get("sizeBytes") or 0) - fit.OVERHEAD)
+        window = min(trained, MAX_WINDOW, int(spare * KV_SHARE / per_token)) // 1024 * 1024
+        return max(WINDOW_FLOOR, window)
+
+    def _loaded(self, model: str) -> bool:
+        exe = _lms()
+        try:
+            loaded = json.loads(subprocess.run([exe, "ps", "--json"], capture_output=True, text=True, timeout=15).stdout or "[]")
+        except (OSError, ValueError, subprocess.TimeoutExpired):
+            return True   # can't tell: leave LM Studio to load it its own way
+        return any(isinstance(m, dict) and model in (m.get("modelKey"), m.get("identifier")) for m in loaded)
+
+    def ensure_loaded(self, model: str) -> None:
+        """Load the model with the planned window and one slot unless it is already loaded (a model you loaded yourself keeps your settings)."""
+        exe = _lms()
+        if exe is None or time.monotonic() - getattr(self, "_ensured", {}).get(model, -1e9) < _CONTEXT_TTL or self._loaded(model):
+            return
+        try:
+            subprocess.run([exe, "load", model, "-c", str(self.planned_window(model)), "--parallel", "1", "--ttl", str(LOAD_TTL_S), "-y"],
+                           capture_output=True, text=True, timeout=600)
+        except (OSError, subprocess.TimeoutExpired):
+            pass   # the server loads it on the first request anyway
+        self._ctx_cache = {}
+        self._ensured = {**getattr(self, "_ensured", {}), model: time.monotonic()}
 
     def estimate(self, model: str) -> int | None:
         """LM Studio's own estimate of the memory the model needs once loaded (`lms load --estimate-only`), in bytes."""
@@ -134,4 +190,5 @@ class LMStudioProvider(OpenAICompatProvider):
 
     def stream(self, conversation, model, tools, on_text, **kwargs):  # type: ignore[no-untyped-def]
         self._ensure_server()
+        self.ensure_loaded(model)
         return super().stream(conversation, model, tools, on_text, **kwargs)
