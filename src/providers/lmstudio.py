@@ -113,6 +113,12 @@ class LMStudioProvider(OpenAICompatProvider):
         self._ctx_cache = {**getattr(self, "_ctx_cache", {}), model: (time.monotonic(), window)}
         return window
 
+    def lacks_tool_training(self, model: str) -> bool:
+        """True when LM Studio says the model wasn't trained for tool use (`trainedForToolUse` in `lms ls`).
+        Such a model tends to write a tool call as plain text. False when it is trained or LM Studio doesn't say."""
+        entry = next((m for m in self.downloaded() if m.get("modelKey") == model), {})
+        return entry.get("trainedForToolUse") is False
+
     def planned_window(self, model: str) -> int:
         """The window Clyde loads the model with: what fits the memory budget after the weights, KV cache included
         (CLYDE_CONTEXT_TOKENS or CLYDE_MODEL_CONTEXT_<MODEL> override). LM Studio's own default can be 34k tokens

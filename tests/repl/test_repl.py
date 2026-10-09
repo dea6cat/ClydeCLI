@@ -57,6 +57,22 @@ class TestREPL(unittest.TestCase):
                     self.assertFalse(repl.stream)
                     self.assertFalse(repl.multiline_mode)
 
+    def test_picking_a_model_lm_studio_says_was_not_trained_for_tools_warns(self):
+        with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
+            with patch('src.repl.core.Session.create', return_value=Mock()):
+                with _fake_provider_env():
+                    repl = ClydeREPL(model="glm:glm-4.5")
+                    printed = []
+                    repl.console = Mock(print=lambda *a, **k: printed.append(str(a[0])))
+                    repl.provider = Mock(lacks_tool_training=lambda m: True, name="lmstudio")
+                    repl.provider.name = "lmstudio"
+                    repl.model = "deepseek-r1-0528-qwen3-8b-mlx"
+                    repl._warn_if_no_tool_training()
+                    repl.provider = Mock(spec=["list_models", "name"])
+                    repl._warn_if_no_tool_training()
+        self.assertEqual(len(printed), 1)
+        self.assertIn("wasn't trained for tool use", printed[0])
+
     def test_the_status_line_shows_the_machine_vitals_when_there_is_room(self):
         from src.providers.fit import GB
         from src.vitals import Vitals

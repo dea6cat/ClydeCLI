@@ -1158,6 +1158,7 @@ class ClydeREPL:
         if note := updates.cached_note():
             self.console.print(f"[{_CARD_DIM}]{note}[/{_CARD_DIM}]")
             self.console.print()
+        self._warn_if_no_tool_training()
         updates.start_background_check()     # a thread: the answer shows on the next start
         start_background_refresh(self.tool_context.workspace_root)
         if isinstance(self.provider, CardShuffle):
@@ -2294,7 +2295,16 @@ class ClydeREPL:
         set_default_model(ref)
         self.console.print(f"[green]Model: {ref}[/green] [dim](saved as default)[/dim]")
         self._warn_if_unlisted()
+        self._warn_if_no_tool_training()
         return True
+
+    def _warn_if_no_tool_training(self) -> None:
+        """LM Studio knows which models were trained for tool calls. One that wasn't tends to write the call as
+        plain text and then not do the task: say so before the first turn."""
+        lacks = getattr(self.provider, "lacks_tool_training", None)
+        if lacks is not None and lacks(self.model):
+            self.console.print(f"[yellow]LM Studio says {self.model} wasn't trained for tool use.[/yellow] [dim]It may write tool calls "
+                               f"as text instead of running them. /eval {model_ref(self.provider, self.model)} tests it, or pick another with /model.[/dim]")
 
     def _warn_if_unlisted(self) -> None:
         """A model the provider's own list doesn't contain usually fails on the first request: say so now."""
