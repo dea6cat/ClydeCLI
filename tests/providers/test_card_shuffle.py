@@ -118,6 +118,27 @@ class TestDealing(unittest.TestCase):
         self._stream(Conversation("sys", [Message.user("again")]))
         self.assertEqual(self.deals, [LOCAL, HAIKU, HAIKU])
 
+    def test_out_of_credit_benches_every_model_of_that_provider_not_just_the_card(self):
+        self.anthropic._responses = [ProviderError("anthropic", "HTTP 402 out of credits", status=402)]
+        self.ollama._responses = [reply("local answer")]
+        response = self._stream(Conversation("sys", [Message.user("hi")]), "high-roller")
+        self.assertEqual(response.message.text, "local answer")
+        self.assertEqual(self.deals, [OPUS, LOCAL])   # HAIKU, on the same dry account, was never tried
+        self.assertFalse(self.card._ready(HAIKU, self.card._now()))
+
+    def test_an_answer_full_of_leaked_special_tokens_is_not_an_answer(self):
+        junk = "<|open|>toolsernels tunneledlevant direct.<|open|><|close|>partial <|open|>away"
+        self.ollama._responses = [reply(junk)]
+        self.anthropic._responses = [reply("a real answer")]
+        response = self._stream(Conversation("sys", [Message.user("hi")]))
+        self.assertEqual(response.message.text, "a real answer")
+        self.assertEqual(self.deals, [LOCAL, HAIKU])
+
+    def test_one_stray_token_pair_in_a_real_answer_is_kept(self):
+        self.ollama._responses = [reply("The cast is <|x|> in this syntax")]
+        response = self._stream(Conversation("sys", [Message.user("hi")]))
+        self.assertIn("cast is", response.message.text)
+
     def test_a_plain_error_is_not_benched_past_its_turn(self):
         self.ollama._responses = [ProviderError("ollama", "boom"), reply("ok")]
         self.anthropic._responses = [reply("saved")]
