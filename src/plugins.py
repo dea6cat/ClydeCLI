@@ -3,7 +3,7 @@
 The layout follows Claude Code's plugins:
     .clyde-plugin/plugin.json   (or .claude-plugin/plugin.json)  {"name", "version", "description"}
     skills/<name>/SKILL.md      skills, read by src/skills/loader.py
-    commands/<name>.md          slash commands (a skill in one file), read by src/skills/loader.py
+    commands/<name>.md|.toml    slash commands (a skill in one file), read by src/skills/loader.py
     hooks/hooks.json            a hooks table in any format normalize_hooks accepts
     .mcp.json                   {"mcpServers": {...}}
     tools/*.py                  Python tools, in the ~/.clyde/tools format
@@ -190,7 +190,7 @@ def skill_names(plugin: Plugin) -> list[str]:
 
 def command_names(plugin: Plugin) -> list[str]:
     commands = plugin.root / "commands"
-    return sorted(p.stem for p in commands.glob("*.md")) if commands.is_dir() else []
+    return sorted(p.stem for p in commands.iterdir() if p.suffix in (".md", ".toml")) if commands.is_dir() else []
 
 
 def tool_files(plugin: Plugin) -> list[str]:
