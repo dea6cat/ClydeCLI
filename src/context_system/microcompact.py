@@ -189,3 +189,27 @@ def microcompact_messages(
             result.append(msg)
 
     return result, tokens_saved
+
+
+TRIM_FRACTION = 0.5   # of the window: past this, old tool results are cleared on a local model
+TRIM_MIN_CHARS = 500
+TRIM_KEEP = 4         # the newest tool results stay whole
+
+
+def trim_old_tool_results(conversation: Any, window: int, keep: int = TRIM_KEEP) -> int:
+    """Clear the content of old, long tool results once the conversation passes half the window; returns how many.
+
+    A small local window fills with file dumps long before auto-compact (80%) summarizes it. The model can read
+    a file again, so the results it no longer needs are cleared, newest `keep` first spared.
+    """
+    from ..agent.conversation import ToolResultContentBlock
+    from .token_estimation import count_messages_tokens
+
+    if count_messages_tokens(conversation.get_messages()) < window * TRIM_FRACTION:
+        return 0
+    results = [b for m in conversation.messages if isinstance(m.content, list) for b in m.content if isinstance(b, ToolResultContentBlock)]
+    cleared = 0
+    for block in results[:-keep] if keep else results:
+        if isinstance(block.content, str) and len(block.content) > TRIM_MIN_CHARS:
+            block.content, cleared = CLEARED_MESSAGE, cleared + 1
+    return cleared
