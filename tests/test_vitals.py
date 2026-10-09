@@ -12,7 +12,7 @@ class TestVitals(unittest.TestCase):
         vitals._cache = None
 
     def test_line_names_what_it_read_and_skips_the_rest(self):
-        self.assertEqual(vitals.line(vitals.Vitals(3.2 * GB, 1.4 * GB, 0.41)), "3.2G free · swap 1.4G · cpu 41%")
+        self.assertEqual(vitals.line(vitals.Vitals(3.2 * GB, 1.4 * GB, 0.41, 0.12)), "3.2G free · swap 1.4G · cpu 41% · gpu 12%")
         self.assertEqual(vitals.line(vitals.Vitals(None, 0, None)), "")
 
     def test_low_memory_swap_or_load_marks_the_machine_strained(self):
@@ -20,6 +20,7 @@ class TestVitals(unittest.TestCase):
         self.assertTrue(vitals.Vitals(1 * GB, 0, 0.2).strained)
         self.assertTrue(vitals.Vitals(8 * GB, 2 * GB, 0.2).strained)
         self.assertTrue(vitals.Vitals(8 * GB, 0, 1.5).strained)
+        self.assertTrue(vitals.Vitals(8 * GB, 0, 0.2, 0.95).strained)
 
     def test_a_reading_is_reused_inside_the_ttl(self):
         with patch.object(vitals.fit, "free_now_bytes", return_value=5 * GB) as free, \
@@ -33,6 +34,20 @@ class TestVitals(unittest.TestCase):
         done = type("D", (), {"stdout": out})()
         with patch.object(vitals.platform, "system", return_value="Darwin"), patch.object(vitals.subprocess, "run", return_value=done):
             self.assertEqual(vitals._swap_used(), 1536 * 1024 ** 2)
+
+    def test_mac_gpu_utilization_is_read_from_ioreg(self):
+        done = type("D", (), {"stdout": '"Renderer Utilization %"=93,"Device Utilization %"=94'})()
+        with patch.object(vitals.platform, "system", return_value="Darwin"), patch.object(vitals.subprocess, "run", return_value=done):
+            self.assertEqual(vitals._gpu(), 0.94)
+
+    def test_nvidia_gpu_utilization_is_read_from_nvidia_smi(self):
+        done = type("D", (), {"stdout": "37\n"})()
+        with patch.object(vitals.platform, "system", return_value="Linux"), patch.object(vitals.subprocess, "run", return_value=done):
+            self.assertEqual(vitals._gpu(), 0.37)
+
+    def test_no_gpu_tool_gives_none(self):
+        with patch.object(vitals.platform, "system", return_value="Linux"), patch.object(vitals.subprocess, "run", side_effect=FileNotFoundError):
+            self.assertIsNone(vitals._gpu())
 
 
 if __name__ == "__main__":
