@@ -283,6 +283,9 @@ ratings match everything else in `/models local`.
 | `/models local best` (and the default search) | the top-ranked GGUF models that fit this machine, ready to download |
 | The download confirmation | a `details` line: benchmark quality and where it comes from, an estimated speed range with its confidence, the license |
 
+The ranking follows what you said you use local models for at setup (`clyde tune` asks): coding if coding is
+among your uses, general otherwise or if you skipped the questions.
+
 The first run builds its model list from Hugging Face and the leaderboards in the background, which takes about
 5 minutes; the group joins `/models local` when it is ready, and the list refreshes the same way every 6 hours (the
 old list keeps working meanwhile). If it can't be reached the group is left out and the other sources work as before.
