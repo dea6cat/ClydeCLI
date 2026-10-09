@@ -267,6 +267,27 @@ the deck the first card is (plan mode still gets the strongest). Only shadow tur
 so turns it already steered can't argue for or against it. `/laya` says which state it's in and what
 it still needs.
 
+### whichllm
+
+*I know which card is worth playing, and whether it fits the table.*
+
+`/models local` ranks models with [whichllm](https://github.com/Andyyyy64/whichllm) (MIT, by Andyyyy64),
+bundled as [our fork](https://github.com/dea6cat/whichLocalLLM). Size alone says what fits; whichllm says which
+of the models that fit is the best, from merged real benchmarks (LiveBench, Artificial Analysis, Aider,
+Chatbot Arena) with the evidence behind each score graded, and sizes each model's memory from its
+architecture. The fork takes the machine from Clyde instead of detecting it, so the memory budget and
+ratings match everything else in `/models local`.
+
+| Where | What it adds |
+|---|---|
+| `/models local best` (and the default search) | the top-ranked GGUF models that fit this machine, ready to download |
+| The download confirmation | a `details` line: benchmark quality and where it comes from, an estimated speed range with its confidence, the license |
+
+The first run builds its model list from Hugging Face and the leaderboards in the background, which takes about
+5 minutes; the group joins `/models local` when it is ready, and the list refreshes the same way every 6 hours (the
+old list keeps working meanwhile). If it can't be reached the group is left out and the other sources work as before.
+The speed is an estimate, not a measurement.
+
 ### SkillSpector
 
 *I check every card before it hits the table.*
@@ -385,6 +406,7 @@ to do. The session is saved, so `clyde -c` picks the conversation up interactive
 | Compaction | ✅ | `/compact` on demand; runs automatically once history reaches 80% of the context window |
 | cardShuffle | ✅ | A model that deals each turn to an `/eval`-ranked real model (high-roller, house, free, small), with fallback on errors, max tool turns and stuck loops |
 | Local models | ✅ | `/models local` finds ollama.com, Hugging Face GGUF and MLX models that fit this machine, rated relax / balance / hard, confirmed before download through Ollama or LM Studio |
+| whichllm | ✅ | Bundled benchmark ranking of local models in `/models local`: the best models that fit this machine, with quality, speed range and license in the download confirmation |
 | SkillSpector | ✅ | Bundled scanner for skills, plugins and MCP servers from other agents: static always, LLM review when a usable model is connected; `DO_NOT_INSTALL` items held back until `/skills allow` |
 | Laya | ✅ | Bundled local decision model: hands a stuck cardShuffle turn to the next card; scores every turn's difficulty and steers `house` once `/laya`'s evidence shows it separates easy turns from hard ones |
 | IDE integration | ✅ | `clyde --acp` speaks the Agent Client Protocol, so editors that support it (Zed, JetBrains through an ACP adapter) run Clyde as their agent: streamed replies, tool calls and permission asks in the editor |
@@ -553,7 +575,7 @@ That's all it takes: clone, configure, run.
 | `/model [provider:model]` | Show or switch the model |
 | `/login [provider]` | Connect a provider or replace its key (`custom` adds any OpenAI-compatible API), then switch to its model |
 | `/models [all\|refresh]` | List models from every connected provider; hides ones `/eval` found broken (`all` shows them, `refresh` re-fetches the lists) |
-| `/models local [ollama\|hf\|mlx] [words]` | Find local models on ollama.com and Hugging Face (GGUF, and MLX on Apple Silicon) that fit this machine, rated relax / balance / hard, and download one |
+| `/models local [best\|ollama\|hf\|mlx] [words]` | Find local models on ollama.com and Hugging Face (GGUF, and MLX on Apple Silicon) that fit this machine, rated relax / balance / hard, and download one |
 | `/eval [filter]` | Test listed models on a tool call and a round trip, then a hand of 11 graded tasks for those that pass; shows pass/fail, hand score, latency and tok/s, and remembers which ones don't work |
 | `/think [level]` | Reasoning: off, low, medium, high, on, default |
 | `/doctor`    | Diagnose environment, config, keys and permissions |

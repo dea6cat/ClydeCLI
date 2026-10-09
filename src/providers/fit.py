@@ -47,6 +47,7 @@ class Offer:
     popularity: int    # pulls or downloads, for ranking
     note: str = ""     # e.g. the quantization
     source: str = ""   # the source module that offered it (ollama, hf, mlx)
+    detail: str = ""   # what a ranking source knows beyond size: benchmark quality, speed range, license
 
 
 def _sysctl(name: str) -> str:
@@ -129,15 +130,21 @@ def rate(file_bytes: int, budget: int) -> str | None:
 _MOE = re.compile(r"(\d+(?:\.\d+)?)b-a(\d+(?:\.\d+)?)b", re.I)
 
 
+def bandwidth_gbps(chip_name: str) -> int | None:
+    """Memory bandwidth of an Apple chip by name ("Apple M3 Pro" -> 150), or None when unknown."""
+    names = [n for n in _BANDWIDTH if chip_name.removeprefix("Apple ").startswith(n)]
+    return _BANDWIDTH[max(names, key=len)] if names else None
+
+
 def tokens_per_s(file_bytes: int, chip_name: str, model_name: str = "") -> int | None:
     """Rough decoding speed on an Apple chip, or None when the chip's bandwidth is unknown. A
     mixture-of-experts name like 30B-A3B reads only its active share of the weights per token."""
-    names = [n for n in _BANDWIDTH if chip_name.removeprefix("Apple ").startswith(n)]
-    if not names or not file_bytes:
+    bandwidth = bandwidth_gbps(chip_name)
+    if bandwidth is None or not file_bytes:
         return None
     moe = _MOE.search(model_name)
     read = file_bytes * (float(moe.group(2)) / float(moe.group(1)) if moe else 1)
-    return round(_BANDWIDTH[max(names, key=len)] * GB * _EFFICIENCY / read)
+    return round(bandwidth * GB * _EFFICIENCY / read)
 
 
 def pick(variants: list[tuple[str, int]], budget: int) -> tuple[str, int, str] | None:
