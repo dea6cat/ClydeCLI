@@ -255,8 +255,13 @@ def evaluate_all(targets: list[tuple[Any, str, str]], on_done: Callable[[ModelSc
             on_done(score)
         return score
 
-    with ThreadPoolExecutor(max_workers=WORKERS) as pool:
+    pool = ThreadPoolExecutor(max_workers=WORKERS)
+    try:
         remote_scores = list(pool.map(run, remote))
+    except KeyboardInterrupt:   # don't sit in the pool's join: the caller unloads the models, which ends the running requests
+        pool.shutdown(wait=False, cancel_futures=True)
+        raise
+    pool.shutdown()
     scores = [run(t) for t in local] + remote_scores
     return sorted(scores, key=lambda s: (not s.passed, not s.tool_call, -(s.strength or 0), s.latency_s or 1e9))
 
