@@ -105,6 +105,16 @@ def budget_bytes(ram: int | None = None, apple: bool | None = None, wired_limit_
     return int(ram * (2 / 3 if ram <= 36 * GB else 0.75))
 
 
+_QUALITY = {16: "lossless", 8: "near lossless", 6: "near lossless", 5: "very good", 4: "good balance", 3: "some loss", 2: "noticeable loss", 1: "heavy loss"}
+_BITS = re.compile(r"\b(?:b?f(16)|q(\d)(?:_|\b)|(\d)-?bit)", re.I)
+
+
+def quant_hint(note: str) -> str:
+    """Plain words for what a quantization costs in quality ("good balance" for Q4_K_M), or "" when the note names none."""
+    found = _BITS.search(note)
+    return _QUALITY.get(int(next(g for g in found.groups() if g)), "") if found else ""
+
+
 def share(file_bytes: int, budget: int) -> float:
     """The part of the model budget a model of this size takes while loaded."""
     return (file_bytes + OVERHEAD) / budget if budget else 2.0

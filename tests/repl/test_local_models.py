@@ -376,3 +376,17 @@ class TestLoadedBytes(unittest.TestCase):
         self.assertEqual(local_models.loaded_bytes(ollama, "m", 4 * GB), 4 * GB + local_models.fit.OVERHEAD)
         unsure = type("L", (), {"estimate": lambda self, m: None})()
         self.assertEqual(local_models.loaded_bytes(unsure, "m", 4 * GB), 4 * GB + local_models.fit.OVERHEAD)
+
+
+class TestQuantHint(unittest.TestCase):
+    def test_a_quant_note_gets_its_quality_in_words(self):
+        for note, hint in (("Q4_K_M", "good balance"), ("est. Q4", "good balance"), ("MLX 4-bit", "good balance"),
+                           ("Q8_0", "near lossless"), ("F16", "lossless"), ("BF16", "lossless"), ("Q2_K", "noticeable loss")):
+            self.assertEqual(local_models.fit.quant_hint(note), hint, note)
+
+    def test_a_note_with_no_quant_gets_no_hint(self):
+        self.assertEqual(local_models.fit.quant_hint(""), "")
+        self.assertEqual(local_models._quant("instruct"), "instruct")
+
+    def test_the_picker_row_shows_it(self):
+        self.assertIn("Q4_K_M (good balance)", local_models._choices([GGUF], "")[0].hint)

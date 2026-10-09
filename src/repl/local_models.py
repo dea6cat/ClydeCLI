@@ -67,6 +67,7 @@ def _confirm(repl: Any, offer: fit.Offer, budget: int, chip: str) -> bool:
         Text(f"  when run   ~{_gb(loaded)}, {fit.share(offer.size_bytes, budget):.0%} of the {_gb(budget)} models can use"
              + (f"; {_gb(free)} is free right now" if free is not None else "")),
         Text(f"  speed      ~{speed} tok/s" if speed else "  speed      unknown on this machine"),
+        *([Text(f"  quality    {_quant(offer.note)}")] if offer.note else []),
         Text(f"  means      {fit.MEANING[offer.rating]}", style=_RATING_STYLE[offer.rating]),
     ]
     if free is not None and loaded > free:
@@ -81,13 +82,19 @@ def _count(n: int) -> str:
     return f"{n / 1e6:.1f}M" if n >= 1e6 else f"{n / 1e3:.0f}K" if n >= 1e3 else str(n)
 
 
+def _quant(note: str) -> str:
+    """The quantization note with what it costs in quality: `Q4_K_M (good balance)`."""
+    hint = fit.quant_hint(note)
+    return f"{note} ({hint})" if hint else note
+
+
 def _choices(offers: list[fit.Offer], chip: str) -> list[Choice]:
     """One picker row per offer; the value is its index in `offers`."""
     rows = []
     for i, o in enumerate(offers):
         speed = fit.tokens_per_s(o.size_bytes, chip, o.name)
         rows.append(Choice(str(i), o.name, f"{o.rating} · {o.source} · {o.size_bytes / fit.GB:.1f} GB · "
-                                           + (f"~{speed} tok/s · " if speed else "") + f"{_count(o.popularity)} pulls · {o.note}"))
+                                           + (f"~{speed} tok/s · " if speed else "") + f"{_count(o.popularity)} pulls · {_quant(o.note)}"))
     return rows
 
 
