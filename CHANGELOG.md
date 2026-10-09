@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Plugins: a `commands/` folder (Claude Code's slash commands, one `<name>.md` each) now loads. Each file works like a skill, so `/name` runs it with `$ARGUMENTS`. Plugin previews list them instead of saying they are skipped.
+
 ## [0.4.1] - 2026-10-09
 
 ### Fixed
