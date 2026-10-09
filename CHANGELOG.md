@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-10-09
+
 ### Changed
 - Plugin previews no longer print "commands/: not supported by ClydeCLI, skipped".
 
@@ -528,6 +530,7 @@ The focus was on building a solid foundation with clean architecture, comprehens
 
 ---
 
+[0.4.2]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.4.2
 [0.4.1]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.4.1
 [0.4.0]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.4.0
 [0.3.7]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.3.7
