@@ -1611,7 +1611,7 @@ class ClydeREPL:
         the project's), with the LLM review when the current model allows it, and shows every verdict,
         MCP servers' and plugins' included; /skills allow <kind:name> lets a held-back item in."""
         from src import skill_scan
-        from src.skills.loader import get_all_skills, load_skills_from_dir
+        from src.skills.loader import get_all_skills, load_commands_from_dir, load_skills_from_dir
         from src.skills.loader import _candidate_user_skills_dirs
 
         if args[0] == "allow":
@@ -1626,11 +1626,14 @@ class ClydeREPL:
         env = skill_scan.llm_env(self.provider, self.model)
         self.console.print("LLM review: " + (f"on, with {model_ref(self.provider, self.model)} (this can take minutes; Ctrl+C stops it)"
                                              if env else "off (no connected model SkillSpector can use), static scan only"))
-        from src.plugins import skill_dirs
+        from src.plugins import command_dirs, skill_dirs
 
         root = Path(self.tool_context.cwd or self.tool_context.workspace_root)
         folders = [*_candidate_user_skills_dirs(), *skill_dirs(), root / ".clyde" / "skills", root / ".claude" / "skills"]
         try:
+            for folder in command_dirs():
+                for s in load_commands_from_dir(folder, loaded_from="plugin"):
+                    skill_scan.check("skill", s.name, Path(s.skill_root), env=env, rescan=True)
             for folder in folders:
                 for s in load_skills_from_dir(folder, loaded_from="user"):
                     if s.skill_root:
@@ -1975,7 +1978,7 @@ class ClydeREPL:
             self.console.print(f"[green]✓[/green] {p.name} {p.version}", markup=True)
             if p.description:
                 self.console.print(f"    {p.description}", markup=False)
-            for label, items in (("tools", loaded.tools), ("skills", loaded.skills), ("MCP servers", loaded.mcp_servers)):
+            for label, items in (("tools", loaded.tools), ("skills", loaded.skills), ("commands", loaded.commands), ("MCP servers", loaded.mcp_servers)):
                 if items:
                     self.console.print(f"    {label}: {', '.join(items)}", markup=False)
             if loaded.hooks:
