@@ -182,9 +182,30 @@ def _run_scan(exe: list[str], path: Path, recursive: bool, env: dict[str, str] |
             return [Verdict(path.name, ERROR, findings=[f"scan failed: {type(e).__name__}: {e}"[:160]])]
 
 
+# What a plugin can make ClydeCLI load (src/plugins.py). The rest of its folder (a repo's packages, tests,
+# docs) never reaches the model or runs, and scanning it all overruns the timeout.
+_PLUGIN_PARTS = ("skills", "hooks", "tools", ".mcp.json")
+
+
 def check(kind: str, name: str, path: Path, *, env: dict[str, str] | None = None, rescan: bool = False) -> Verdict:
     """The cached verdict for this exact content, scanning it when it is new or changed. An LLM
-    review (`env`) replaces a static-only verdict; a flagged static verdict is reviewed when `env` is given."""
+    review (`env`) replaces a static-only verdict; a flagged static verdict is reviewed when `env` is given.
+    A plugin is judged by the parts ClydeCLI loads, not its whole folder."""
+    if kind != "plugin":
+        return _check(kind, name, path, env, rescan)
+    with tempfile.TemporaryDirectory() as tmp:
+        staged = Path(tmp) / path.name
+        staged.mkdir()
+        for part in _PLUGIN_PARTS:
+            src = path / part
+            if src.is_dir():
+                shutil.copytree(src, staged / part)
+            elif src.is_file():
+                shutil.copy2(src, staged / part)
+        return _check(kind, name, staged, env, rescan)
+
+
+def _check(kind: str, name: str, path: Path, env: dict[str, str] | None, rescan: bool) -> Verdict:
     if not enabled():
         return Verdict(name, SAFE)
     key, content = f"{kind}:{name}", digest(path)

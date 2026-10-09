@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- SkillSpector scans a plugin by the parts ClydeCLI loads (`skills/`, `hooks/`, `tools/`, `.mcp.json`) instead of its whole folder. A big plugin such as caveman (1,600 files, 22 MB) overran the scan timeout and showed "scan failed: TimeoutExpired"; changes outside those parts no longer trigger a rescan.
+
 ## [0.4.2] - 2026-10-09
 
 ### Changed
