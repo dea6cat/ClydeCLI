@@ -317,9 +317,9 @@ def _is_git_url(source: str) -> bool:
     return "://" in source or source.startswith("git@")
 
 
-def install(source: str, subdir: str = "") -> Plugin:
-    """Copy a local plugin folder, or shallow-clone a git URL, into ~/.clyde/plugins/<name>. `subdir` is
-    the plugin's folder inside the clone or folder. The plugin is not enabled; ValueError when the source is not a valid plugin or is already installed."""
+def install(source: str) -> Plugin:
+    """Copy a local plugin folder, or shallow-clone a git URL, into ~/.clyde/plugins/<name>.
+    The plugin is not enabled; ValueError when the source is not a valid plugin or is already installed."""
     base = plugins_dir()
     base.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=base, prefix=".install-") as tmp:
@@ -334,13 +334,6 @@ def install(source: str, subdir: str = "") -> Plugin:
             if not src.is_dir():
                 raise ValueError(f"{source} is not a folder or a git URL")
             shutil.copytree(src, staged, symlinks=True, ignore=shutil.ignore_patterns(".git"))
-        if subdir:
-            root = (staged / subdir).resolve()
-            if not root.is_relative_to(staged.resolve()) or not root.is_dir():
-                raise ValueError(f"no folder '{subdir}' in {source}")
-            root.rename(staged.with_name("picked"))
-            shutil.rmtree(staged)
-            staged = staged.with_name("picked")
         plugin = read_manifest(staged)
         dest = base / plugin.name
         if dest.exists():
