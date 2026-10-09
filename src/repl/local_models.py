@@ -248,7 +248,7 @@ def _pull_ollama(repl: Any, offer: fit.Offer) -> None:
         return
     ollama.__dict__.pop("_models_cache", None)
     repl.console.print(f"[green]✓ Downloaded ollama:{tag}[/green]")
-    _offer_eval(repl, ollama, tag, offer.rating)
+    _offer_eval(repl, ollama, tag, offer)
     with repl._esc.paused():
         tune.offer(repl.console, model=tag)
 
@@ -275,19 +275,38 @@ def _get_lmstudio(repl: Any, offer: fit.Offer) -> None:
         repl.console.print("[green]✓ Downloaded.[/green] Find it under lmstudio in /models, then run /eval lmstudio on it.")
         return
     repl.console.print(f"[green]✓ Downloaded lmstudio:{new[0]}[/green]")
-    _offer_eval(repl, lmstudio, new[0], offer.rating)
+    _offer_eval(repl, lmstudio, new[0], offer)
 
 
-def _offer_eval(repl: Any, provider: Any, model: str, rating: str) -> None:
-    """Ask before /eval loads the model (the heavy part); hard models default to no."""
+def stop_eval(console: Any, targets: list[tuple[Any, str]]) -> None:
+    """Ctrl-C during /eval: say so, and free any LM Studio model it loaded (Ollama drops its own after 5 minutes idle)."""
+    console.print("\nEval stopped; nothing was saved. Run /eval again to retry.")
+    for provider, model in targets:
+        unload = getattr(provider, "unload", None)
+        if unload is not None:
+            unload(model)
+            console.print(f"[dim]Unloaded {provider.name}:{model}.[/dim]")
+
+
+def _offer_eval(repl: Any, provider: Any, model: str, offer: fit.Offer) -> None:
+    """Ask before /eval loads the model (the heavy part); hard models, or ones that don't fit in the free memory, default to no."""
     ref = f"{provider.name}:{model}"
+    free, needed = fit.free_now_bytes(), offer.size_bytes + fit.OVERHEAD
+    short = free is not None and needed > free
+    if short:
+        repl.console.print(f"[yellow]Not enough free memory to test it:[/yellow] it needs ~{_gb(needed)} loaded and {_gb(free)} is free right now. "
+                           f"/eval would push the Mac into swap and lag it; close apps to free {_gb(needed - free)} first, or run /eval {ref} later.")
     with repl._esc.paused():
-        test = Confirm.ask(f"Run /eval on it now? It loads the model ({rating})", default=rating != "hard", console=repl.console)
+        test = Confirm.ask(f"Run /eval on it now? It loads the model ({offer.rating})", default=offer.rating != "hard" and not short, console=repl.console)
     if not test:
         repl.console.print(f"Skipped. Run /eval {ref} when you're ready; cardShuffle deals it only after it passes.")
         return
-    with repl.console.status(f"[dim]Running /eval on {ref}…[/dim]", spinner="dots"):
-        score = evaluate(provider, model, ref)
+    try:
+        with repl.console.status(f"[dim]Running /eval on {ref}…[/dim]", spinner="dots"):
+            score = evaluate(provider, model, ref)
+    except KeyboardInterrupt:
+        stop_eval(repl.console, [(provider, model)])
+        return
     save_results([score])
     if score.passed:
         repl.console.print(f"[green]✓ {ref} passed /eval[/green] · hand {score.strength}/{len(HAND)} · "

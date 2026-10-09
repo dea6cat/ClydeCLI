@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 from src.providers.base import ProviderError
+from src.providers import model_eval
 from src.providers.model_eval import evaluate, evaluate_all
 from tests.fakes import FakeProvider, reply
 
@@ -180,3 +182,11 @@ class TestModelsListing(unittest.TestCase):
             self.assertIn("1 hidden", pick.call_args.kwargs["description"])
             repl._show_models("all")
             self.assertEqual([c.value for c in pick.call_args.args[2]], ["p:good", "p:bad"])
+
+
+class TestEvaluateAllInterrupt(unittest.TestCase):
+    def test_ctrl_c_propagates_instead_of_waiting_for_the_pool(self):
+        target = (type("P", (), {"name": "lmstudio"})(), "m", "lmstudio:m")
+        with patch.object(model_eval, "evaluate", side_effect=KeyboardInterrupt):
+            with self.assertRaises(KeyboardInterrupt):
+                model_eval.evaluate_all([target])

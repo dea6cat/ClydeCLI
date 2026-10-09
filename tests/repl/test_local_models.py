@@ -314,3 +314,40 @@ class TestTuneAfterDownload(unittest.TestCase):
 
     def test_a_failed_download_offers_nothing(self):
         self._pull(['{"error": "boom"}']).assert_not_called()
+
+
+class TestStoppedEval(unittest.TestCase):
+    def _provider(self):
+        return type("P", (), {"name": "lmstudio", "unloaded": [], "unload": lambda self, m: self.unloaded.append(m)})()
+
+    def test_ctrl_c_during_the_offered_eval_unloads_the_model_and_saves_nothing(self):
+        repl, provider = _Repl(), self._provider()
+        with patch.object(local_models.Confirm, "ask", return_value=True), \
+                patch.object(local_models.fit, "free_now_bytes", return_value=20 * GB), \
+                patch.object(local_models, "evaluate", side_effect=KeyboardInterrupt), \
+                patch.object(local_models, "save_results") as save:
+            local_models._offer_eval(repl, provider, "deepseek", RELAX)
+        self.assertEqual(provider.unloaded, ["deepseek"])
+        save.assert_not_called()
+        self.assertIn("Eval stopped", repl.console.export_text())
+
+    def test_a_provider_that_cannot_unload_is_left_alone(self):
+        repl = _Repl()
+        local_models.stop_eval(repl.console, [(type("O", (), {"name": "ollama"})(), "m")])
+        self.assertIn("Eval stopped", repl.console.export_text())
+
+    def test_a_model_that_does_not_fit_the_free_memory_warns_and_defaults_to_no(self):
+        repl = _Repl()
+        with patch.object(local_models.fit, "free_now_bytes", return_value=3 * GB), \
+                patch.object(local_models.Confirm, "ask", return_value=False) as ask:
+            local_models._offer_eval(repl, self._provider(), "deepseek", MLX)
+        self.assertIn("Not enough free memory", repl.console.export_text())
+        self.assertFalse(ask.call_args.kwargs["default"])
+
+    def test_a_model_that_fits_does_not_warn(self):
+        repl = _Repl()
+        with patch.object(local_models.fit, "free_now_bytes", return_value=20 * GB), \
+                patch.object(local_models.Confirm, "ask", return_value=False) as ask:
+            local_models._offer_eval(repl, self._provider(), "deepseek", RELAX)
+        self.assertNotIn("Not enough", repl.console.export_text())
+        self.assertTrue(ask.call_args.kwargs["default"])

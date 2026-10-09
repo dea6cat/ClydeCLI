@@ -2323,6 +2323,7 @@ class ClydeREPL:
         """Grade every listed model (or those matching `query`) on a tool call and a round trip."""
         from rich.prompt import Confirm
         from src.providers.model_eval import HAND, evaluate_all, save_results
+        from src.repl.local_models import stop_eval
 
         live = usable(self.registry)
         if not live:
@@ -2342,11 +2343,15 @@ class ClydeREPL:
             if not Confirm.ask("Run the evaluation?", default=len(targets) <= 20, console=self.console):
                 return
         done = [0]
-        with self.console.status("", spinner="dots", spinner_style=_CARD_ACCENT) as status:
-            def progress(score) -> None:  # type: ignore[no-untyped-def]
-                done[0] += 1
-                status.update(f"[{_CARD_DIM}]Tested {done[0]}/{len(targets)} · {score.ref}[/{_CARD_DIM}]")
-            scores = evaluate_all(targets, on_done=progress)
+        try:
+            with self.console.status("", spinner="dots", spinner_style=_CARD_ACCENT) as status:
+                def progress(score) -> None:  # type: ignore[no-untyped-def]
+                    done[0] += 1
+                    status.update(f"[{_CARD_DIM}]Tested {done[0]}/{len(targets)} · {score.ref}[/{_CARD_DIM}]")
+                scores = evaluate_all(targets, on_done=progress)
+        except KeyboardInterrupt:
+            stop_eval(self.console, [(p, m) for p, m, _ref in targets])
+            return
         drops = save_results(scores)
         width = getattr(self.console, "width", 100)
         table = Table(box=None, pad_edge=False, header_style=_CARD_DIM, show_edge=False)

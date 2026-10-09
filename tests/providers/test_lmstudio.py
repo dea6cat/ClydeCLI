@@ -71,3 +71,15 @@ class TestLMStudioContext(unittest.TestCase):
         with patch.object(lmstudio, "_lms", return_value="/bin/lms"), patch("subprocess.run", return_value=_done(ps)):
             self.assertEqual(provider.context_window("qwen/qwen3.5-9b"), 47872)
             self.assertEqual(provider.context_window("not-loaded"), lmstudio.UNLOADED_CONTEXT)
+
+
+class TestLMStudioUnload(unittest.TestCase):
+    def test_unload_runs_lms_unload_for_the_model(self):
+        with patch.object(lmstudio, "_lms", return_value="/bin/lms"), patch("subprocess.run", return_value=_done()) as run:
+            lmstudio.LMStudioProvider().unload("qwen/qwen3.5-9b")
+        self.assertEqual(run.call_args.args[0], ["/bin/lms", "unload", "qwen/qwen3.5-9b"])
+
+    def test_unload_without_lms_does_nothing(self):
+        with patch.object(lmstudio, "_lms", return_value=None), patch("subprocess.run") as run:
+            lmstudio.LMStudioProvider().unload("x")
+        run.assert_not_called()
