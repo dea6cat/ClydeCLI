@@ -22,7 +22,7 @@
 <main>
   <h1 class="enter" style="--i:0">Everything Clyde does</h1>
   <p class="enter lead" style="--i:1">The home page has the idea. This page has the rest: the features, how they work, and recordings and measurements from real runs.</p>
-  <p class="mono dim jump">On this page: <a href="#glance">At a glance</a> · <a href="#tune">Tune a local model</a> · <a href="#deal">When a model fails mid-turn</a> · <a href="#eval">Checking which models work</a> · <a href="#laya">Laya</a></p>
+  <p class="mono dim jump">On this page: <a href="#glance">At a glance</a> · <a href="#tune">Tune a local model</a> · <a href="#deal">When a model fails mid-turn</a> · <a href="#eval">Checking which models work</a> · <a href="#laya">Laya</a> · <a href="#whichllm">whichllm</a></p>
 
   <h2 id="glance">At a glance</h2>
   <dl class="grid">
@@ -159,6 +159,9 @@ Run the evaluation? <span style="color: #be78c8; text-decoration-color: #be78c8;
 <span style="color: #4eba65; text-decoration-color: #4eba65; font-weight: bold">2/4 passed</span><span style="color: #8a8a8a; text-decoration-color: #8a8a8a">  ·  1 not available  ·  1 credits or rate limits (kept, retry later)</span>
 <span style="color: #8a8a8a; text-decoration-color: #8a8a8a">/models now hides the 1 that don&#x27;t work · /models all shows them</span></pre>
   <figcaption>Recorded 2026-10-05. The OpenRouter account had run out of credits; that result is kept and retried later.</figcaption></figure>
+
+  <h2 id="whichllm">whichllm picks the best model that fits</h2>
+  <p><code>/models local</code> ranks models with <a href="https://github.com/Andyyyy64/whichllm">whichllm</a> (MIT, by Andyyyy64), bundled as <a href="https://github.com/dea6cat/whichLocalLLM">our fork</a>. It merges real benchmarks, grades the evidence behind each score and sizes memory from the model's architecture, so the top pick is the best model that fits, not the biggest. The download confirmation adds a details line with the quality, an estimated speed range and the license. Speeds are estimates.</p>
 
   <h2 id="laya">Laya, and why it isn't steering yet</h2>
   <p>Laya is a small decision model bundled with Clyde that runs locally. It watches for a model repeating itself and hands the turn on when it is confident. It also scores each request's difficulty, but that score only starts choosing models once your own sessions show it means something. <code>/laya</code> shows where that stands:</p>

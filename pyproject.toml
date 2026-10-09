@@ -31,6 +31,8 @@ dependencies = [
     "skillspector @ git+https://github.com/NVIDIA/SkillSpector@v2.12.0",
     # The Data tool's engine: profile and query CSV, Parquet and JSON files with read-only SQL.
     "duckdb>=1.5,<2",
+    # Ranks local models by real benchmarks and how they fit the machine: our fork of github.com/Andyyyy64/whichllm (MIT) with a library entry point.
+    "whichllm @ git+https://github.com/dea6cat/whichLocalLLM@clyde-2",
 ]
 
 [project.optional-dependencies]
