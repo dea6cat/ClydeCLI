@@ -952,7 +952,6 @@ A plugin is a folder that bundles extensions; Claude Code plugins mostly work as
 ```text
 <plugin>/.clyde-plugin/plugin.json   {"name", "version", "description"}  (.claude-plugin/ also works)
 <plugin>/skills/<name>/SKILL.md      skills
-<plugin>/commands/<name>.md|.toml    slash commands (one file each, like a skill)
 <plugin>/hooks/hooks.json            PreToolUse / PostToolUse hooks
 <plugin>/.mcp.json                   {"mcpServers": {...}} stdio servers
 <plugin>/tools/*.py                  Python tools, same format as ~/.clyde/tools

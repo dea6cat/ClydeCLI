@@ -85,10 +85,8 @@ class SkillTool:
             argument_names=skill.arg_names,
         )
         if skill.skill_root:
-            root = Path(skill.skill_root)
-            root = root if root.is_dir() else root.parent  # a command is one file; its folder is the base
-            content = f"Base directory for this skill: {root}\n\n{content}"
-            skill_dir = str(root).replace("\\", "/")
+            content = f"Base directory for this skill: {skill.skill_root}\n\n{content}"
+            skill_dir = skill.skill_root.replace("\\", "/")
             content = content.replace("${CLAUDE_SKILL_DIR}", skill_dir)
 
         return ToolResult(
