@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "clyde-cli"
-version = "0.4.0"
+version = "0.4.1"
 description = "A coding-agent harness for your terminal: bring any LLM, cloud or local, and Clyde turns it into an agent"
 readme = "README.md"
 license = {text = "PolyForm-Noncommercial-1.0.0 (portions MIT); see LICENSE"}
