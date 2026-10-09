@@ -351,3 +351,16 @@ class TestStoppedEval(unittest.TestCase):
             local_models._offer_eval(repl, self._provider(), "deepseek", RELAX)
         self.assertNotIn("Not enough", repl.console.export_text())
         self.assertTrue(ask.call_args.kwargs["default"])
+
+
+class TestShortOnMemory(unittest.TestCase):
+    def test_it_warns_only_when_the_model_does_not_fit_the_free_memory(self):
+        repl = _Repl()
+        with patch.object(local_models.fit, "free_now_bytes", return_value=3 * GB):
+            self.assertTrue(local_models.short_on_memory(repl.console, 4 * GB, "/eval"))
+            self.assertFalse(local_models.short_on_memory(repl.console, 1 * GB, "/eval"))
+        self.assertEqual(repl.console.export_text().count("Not enough free memory"), 1)
+
+    def test_an_unreadable_memory_figure_never_warns(self):
+        with patch.object(local_models.fit, "free_now_bytes", return_value=None):
+            self.assertFalse(local_models.short_on_memory(_Repl().console, 99 * GB, "/eval"))

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- The status line under the prompt shows free memory, swap in use and CPU load (red when the machine is strained), when the row has room.
+- `/eval` warns, and defaults to no, when the largest local model in the run needs more than the memory free right now.
+
 ### Fixed
 - Ctrl-C during `/eval` (or the eval offered after a download) now stops it cleanly, unloads the LM Studio model it loaded and says nothing was saved. It used to print "Interrupted" and leave the model in memory.
 - The eval offered after a download warns when the model needs more than the free memory (it would swap and lag the Mac) and defaults to no.

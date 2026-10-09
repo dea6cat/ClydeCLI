@@ -288,14 +288,20 @@ def stop_eval(console: Any, targets: list[tuple[Any, str]]) -> None:
             console.print(f"[dim]Unloaded {provider.name}:{model}.[/dim]")
 
 
+def short_on_memory(console: Any, size_bytes: int, retry: str) -> bool:
+    """Warn and return True when loading a model of `size_bytes` would need more than the memory free right now."""
+    free, needed = fit.free_now_bytes(), size_bytes + fit.OVERHEAD
+    if free is None or needed <= free:
+        return False
+    console.print(f"[yellow]Not enough free memory to test it:[/yellow] the largest model needs ~{_gb(needed)} loaded and {_gb(free)} is free right now. "
+                  f"Testing would push the Mac into swap and lag it; close apps to free {_gb(needed - free)} first, or run {retry} later.")
+    return True
+
+
 def _offer_eval(repl: Any, provider: Any, model: str, offer: fit.Offer) -> None:
     """Ask before /eval loads the model (the heavy part); hard models, or ones that don't fit in the free memory, default to no."""
     ref = f"{provider.name}:{model}"
-    free, needed = fit.free_now_bytes(), offer.size_bytes + fit.OVERHEAD
-    short = free is not None and needed > free
-    if short:
-        repl.console.print(f"[yellow]Not enough free memory to test it:[/yellow] it needs ~{_gb(needed)} loaded and {_gb(free)} is free right now. "
-                           f"/eval would push the Mac into swap and lag it; close apps to free {_gb(needed - free)} first, or run /eval {ref} later.")
+    short = short_on_memory(repl.console, offer.size_bytes, f"/eval {ref}")
     with repl._esc.paused():
         test = Confirm.ask(f"Run /eval on it now? It loads the model ({offer.rating})", default=offer.rating != "hard" and not short, console=repl.console)
     if not test:
