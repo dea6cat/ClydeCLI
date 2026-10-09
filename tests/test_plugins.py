@@ -74,6 +74,15 @@ class TestPlugins(PluginHomeCase):
         self.assertEqual((plan.description, plan.loaded_from), ("Plan it", "plugin"))
         self.assertIn("Plan $ARGUMENTS", plan.markdown_content)
 
+    def test_toml_commands_load_too(self) -> None:
+        root = self.installed_sample()
+        (root / "commands").mkdir()
+        (root / "commands" / "spec.toml").write_text('description = "Write a spec"\nprompt = """\nSpec {{args}}\n"""\n')
+        plugins.set_enabled("sample", True)
+        spec = {s.name: s for s in get_all_skills()}["spec"]
+        self.assertEqual(spec.description, "Write a spec")
+        self.assertIn("Spec $ARGUMENTS", spec.markdown_content)
+
     def test_discovery_accepts_claude_manifest_and_reports_bad_ones(self) -> None:
         make_plugin(plugins.plugins_dir(), "compat", manifest_dir=".claude-plugin")
         (plugins.plugins_dir() / "broken").mkdir()
