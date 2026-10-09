@@ -390,3 +390,20 @@ class TestQuantHint(unittest.TestCase):
 
     def test_the_picker_row_shows_it(self):
         self.assertIn("Q4_K_M (good balance)", local_models._choices([GGUF], "")[0].hint)
+
+
+class TestOfferDetails(unittest.TestCase):
+    def _summary(self, offer):
+        repl = _Repl()
+        with patch.object(local_models.fit, "disk_free_bytes", return_value=50 * GB), \
+                patch.object(local_models.fit, "free_now_bytes", return_value=20 * GB), \
+                patch.object(local_models.Confirm, "ask", return_value=False):
+            local_models._confirm(repl, offer, 12 * GB, "Apple M3 Pro")
+        return repl.console.export_text()
+
+    def test_a_ranked_offer_shows_its_details_and_credits_whichllm(self):
+        text = self._summary(Offer("Qwen/Qwen3-8B", "hf.co/r/q:Q4_K_M", 5 * GB, "relax", 1, "Q4_K_M", "hf", "quality 62 (direct benchmark)"))
+        self.assertIn("details    quality 62 (direct benchmark)  [ranked by whichllm]", text)
+
+    def test_an_offer_without_details_shows_no_details_line(self):
+        self.assertNotIn("details", self._summary(RELAX))

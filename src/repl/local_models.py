@@ -1,4 +1,4 @@
-"""/models local [ollama|hf|mlx] [query]: find local models that fit this machine, rate how hard
+"""/models local [best|ollama|hf|mlx] [query]: find local models that fit this machine, rate how hard
 they'd run (relax, balance, hard), and download the chosen one with the app that runs it: Ollama
 for ollama.com models, LM Studio for MLX, and Ollama or else LM Studio for Hugging Face GGUF.
 The machine's numbers come first and every download is confirmed with what it will cost, so
@@ -21,13 +21,14 @@ from rich.text import Text
 
 from src import tune
 from src.picker import Choice, pick
-from src.providers import discover, fit, huggingface, mlx
+from src.providers import best_fit, discover, fit, huggingface, mlx
 from src.providers.base import ProviderError, post_stream
 from src.providers.lmstudio import _lms, model_files
 from src.providers.model_eval import HAND, evaluate, hidden_refs, save_results
 
 # Each source: search(query, budget) -> list[fit.Offer]. Add one by adding a module and a line here.
 SOURCES: dict[str, Callable[[str, int], list[fit.Offer]]] = {
+    "best": best_fit.search,   # ranked by real benchmarks, not popularity
     "ollama": discover.search,
     "hf": huggingface.search,
     "mlx": mlx.search,   # Apple Silicon only
@@ -69,6 +70,7 @@ def _confirm(repl: Any, offer: fit.Offer, budget: int, chip: str) -> bool:
         Text(f"  speed      ~{speed} tok/s" if speed else "  speed      unknown on this machine"),
         *([Text(f"  quality    {_quant(offer.note)}")] if offer.note else []),
         Text(f"  means      {fit.MEANING[offer.rating]}", style=_RATING_STYLE[offer.rating]),
+        *([Text(f"  details    {offer.detail}  [{best_fit.CREDIT}]")] if offer.detail else []),
     ]
     if free is not None and loaded > free:
         lines.append(Text(f"  right now  more than is free: close apps to free {_gb(loaded - free)} before running it", style="dim"))
@@ -200,6 +202,9 @@ def show(repl: Any, arg: str) -> None:
         with ThreadPoolExecutor(max_workers=len(names)) as pool:
             found = pool.map(lambda name: SOURCES[name](query, budget)[:shown], names)
             offers = [o for rows in found for o in rows]
+    if best_fit.pending():
+        repl.console.print("[dim]whichllm is building its ranking of models in the background (about 5 minutes, then every 6 hours); "
+                           "the 'best' group joins this list when it is ready.[/dim]")
     failed = hidden_refs()   # ollama.com's tool tag isn't proof: /eval already showed some of these don't work
     shown_offers = [o for o in offers if f"ollama:{o.pull_tag}" not in failed]
     if len(shown_offers) < len(offers):
