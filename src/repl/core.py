@@ -2400,7 +2400,7 @@ class ClydeREPL:
         kinds = {k: sum(sc.kind == k for sc in scores) for k in ("ok", "tools", "unavailable", "answer", "transient")}
         parts = [(f"{kinds['ok']}/{len(scores)} passed", f"bold {_CARD_ACCENT}")]
         for key, label in (("tools", "no tool calling"), ("unavailable", "not available"), ("answer", "wrong answer"),
-                           ("transient", "credits or rate limits (kept, retry later)")):
+                           ("transient", "credits, rate limits or not enough memory (kept, retry later)")):
             if kinds[key]:
                 parts += [("  ·  ", _CARD_DIM), (f"{kinds[key]} {label}", _CARD_DIM)]
         self.console.print(Text.assemble(*parts))

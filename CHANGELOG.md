@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- `/eval` no longer blames a local model for a load LM Studio refused for lack of memory. That error (HTTP 400, "insufficient system resources") was filed as "not available", saved as a permanent failure and left the model out of cardShuffle. It is now kept as a transient result that says to free some memory and run `/eval` again.
 - A small local model's per-prompt tool set never saw your prompt: the helper that reads it matched only canonical turns, and the agent loop passes its own history, so every prompt looked empty and routing always gave the base set (Read, Grep, Glob, ToolSearch). Edit, Write, Bash and the web tools now arrive when the prompt asks for them, as designed.
 
 ### Added

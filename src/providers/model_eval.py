@@ -127,8 +127,8 @@ class ModelScore:
         if self.passed:
             return "ok"
         e = self.error.lower()
-        if re.search(r"http (402|429|5\d\d)|rate.?limit|credits|timed? ?out|overloaded", e):
-            return "transient"
+        if re.search(r"http (402|429|5\d\d)|rate.?limit|credits|timed? ?out|overloaded|insufficient (system )?resources", e):
+            return "transient"   # the last one is LM Studio refusing a load the machine has no memory for (HTTP 400): nothing wrong with the model
         if "tool" in e and ("support" in e or "endpoint" in e) or not self.tool_call and "without calling" in e:
             return "tools"
         if re.search(r"http 40[0134]|not found|not available|no longer available|no endpoints", e):
@@ -137,6 +137,8 @@ class ModelScore:
 
     @property
     def short_note(self) -> str:
+        if self.kind == "transient" and re.search(r"insufficient (system )?resources", self.error.lower()):
+            return "not enough memory to load it; free some and /eval it again"
         return {"ok": "", "transient": "credits or rate limit", "tools": "no tool calling",
                 "unavailable": "not available", "answer": self.error[:80]}[self.kind]
 
