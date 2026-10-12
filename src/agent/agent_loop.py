@@ -16,7 +16,7 @@ from ..tool_system.context import ToolContext
 from ..memory import memory_prompt
 from ..tool_system.plan_file import PLAN_SHAPE, plan_prompt, read_plan
 from ..context_system.microcompact import trim_old_tool_results
-from ..tool_system.deferral import advertised, index_prompt, is_deferred, local_tools
+from ..tool_system.deferral import VERIFY_PROMPT, advertised, index_prompt, is_deferred, local_tools
 from .conversation import Conversation
 from ..context_system import build_context_prompt
 from ..output_styles import resolve_output_style
@@ -309,6 +309,8 @@ def run_agent_loop(
     only = local_tools(_last_prompt(conversation)) if _small_local(provider) else None   # the few tools this prompt needs
     if index := index_prompt(all_specs, only):
         system_prompt += "\n\n" + index
+    if only is not None:   # a small local model checks code against the project and the docs before it presents it
+        system_prompt += "\n\n" + VERIFY_PROMPT
     text_handler = on_text_chunk if (stream and on_text_chunk is not None) else _discard
 
     last_user_visible_message: str | None = None

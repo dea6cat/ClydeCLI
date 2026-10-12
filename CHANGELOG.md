@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- A small local model (LM Studio, or Ollama on this machine) is now told when to check code before presenting it: when it uses a library, API or version it is unsure of, it reads or greps the project and the installed package, runs it if it can, and only then looks up that version's documentation on the web. Hosted models are unchanged.
 - `/plugins` is now a screen with three tabs. Installed lists each plugin with its state and what it adds, and Space turns one on or off (it applies the next time ClydeCLI starts). Errors collects bad manifests, start-up warnings, unreadable hooks or MCP files, and plugins SkillSpector holds back. Stats counts what the enabled plugins add. Left/Right switch tabs and Esc closes. Without a terminal it prints the plain list as before.
 
 ## [0.4.3] - 2026-10-09
