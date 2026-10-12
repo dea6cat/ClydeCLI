@@ -169,3 +169,15 @@ class TestLoopHelpers(unittest.TestCase):
                                      Message.user(f"{_STEERING}use bash")])
         self.assertEqual(_last_prompt(convo), "review the login code")
         self.assertEqual(_last_prompt(Conversation("sys", [])), "")
+
+    def test_the_prompt_is_found_in_the_agent_loops_own_history_too(self):
+        from src.agent.agent_loop import _STEERING, _last_prompt
+        from src.agent.conversation import Conversation as History
+        from src.tool_system.deferral import local_tools
+        history = History()
+        history.add_user_message("fix the login bug and run the tests")
+        history.add_assistant_message("looking")
+        history.add_tool_result_message("t1", "file contents")
+        history.add_user_message(f"{_STEERING}use bash")
+        self.assertEqual(_last_prompt(history), "fix the login bug and run the tests")
+        self.assertLessEqual({"edit", "write", "bash"}, local_tools(_last_prompt(history)))   # the routing finally sees it

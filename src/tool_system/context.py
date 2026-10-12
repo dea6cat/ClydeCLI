@@ -31,6 +31,8 @@ class ToolContext:
     team: dict[str, Any] | None = None
     # Deferred tools the model has loaded (lowercase names); see deferral.py. Shared with sub-agents.
     loaded_tools: set[str] = field(default_factory=set)
+    # The user's answer to "send a weak local reply to a cloud model for a check?", asked once per session (cloud_review.py).
+    cloud_review_ok: bool | None = None
     output_style_name: str | None = None
     plan_file: Path | None = None   # this session's saved plan (.clyde/plans/<session>.md), see plan_file.py
     goal_from_plan: bool = False    # the goal is "the plan is complete", so it ends when every phase is
