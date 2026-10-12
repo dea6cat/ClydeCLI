@@ -17,6 +17,7 @@ from ..memory import memory_prompt
 from ..tool_system.plan_file import PLAN_SHAPE, plan_prompt, read_plan
 from ..context_system.microcompact import trim_old_tool_results
 from ..tool_system.deferral import VERIFY_PROMPT, advertised, index_prompt, is_deferred, local_tools
+from .cloud_review import review_reply
 from .conversation import Conversation
 from ..context_system import build_context_prompt
 from ..output_styles import resolve_output_style
@@ -350,6 +351,10 @@ def run_agent_loop(
         if not tool_calls:
             if final_assistant_content.strip() == "" and last_user_visible_message is not None:
                 final_assistant_content = last_user_visible_message
+            if only is not None and (fixed := review_reply(_last_prompt(conversation), final_assistant_content, tool_context)):
+                text_handler("\n\n" + fixed)   # a weak local reply already streamed; the cloud model's correction follows it
+                conversation.messages[-1].content = fixed
+                final_assistant_content = fixed
             return AgentLoopResult(
                 response_text=final_assistant_content,
                 usage=_usage_or_none(),

@@ -1,0 +1,127 @@
+"""A cloud model checks weak replies from a small local model, once the user has said yes."""
+
+from __future__ import annotations
+
+import os
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+from src.agent.agent_loop import run_agent_loop
+from src.agent.cloud_review import WEAK_BELOW, review_reply, weak_reason
+from src.agent.conversation import Conversation
+from src.tool_system.context import ToolContext
+from src.tool_system.defaults import build_default_registry
+from tests.fakes import FakeProvider, reply
+
+
+def _no_laya(*_):
+    raise AssertionError("Laya must not be asked when a plain check already decides")
+
+
+def _laya(score):
+    return lambda state, questions: {"fit": {"score": score}}
+
+
+class TestWeakReason(unittest.TestCase):
+    def test_plain_checks_decide_without_asking_laya(self):
+        self.assertEqual(weak_reason("q", "  ", _no_laya), "empty reply")
+        self.assertEqual(weak_reason("q", "Let me look. [TOOL_SEARCH] select:Read", _no_laya), "pretend tool call")
+        self.assertEqual(weak_reason("q", "word <|a|> word <|b|>", _no_laya), "leaked special tokens")
+
+    def test_a_laya_fit_below_the_threshold_is_weak_and_a_good_one_is_not(self):
+        self.assertIn("laya fit", weak_reason("q", "an answer", _laya(WEAK_BELOW - 0.5)))
+        self.assertEqual(weak_reason("q", "an answer", _laya(WEAK_BELOW + 1)), "")
+
+    def test_without_laya_a_reply_that_passes_the_plain_checks_is_not_weak(self):
+        self.assertEqual(weak_reason("q", "an answer", lambda *_: None), "")
+
+
+class TestReviewReply(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.asked: list[str] = []
+        self.answer = True
+        self.ctx = ToolContext(workspace_root=Path(tmp.name))
+        self.ctx.permission_handler = lambda name, message, suggestion: (self.asked.append(message) or self.answer, False)
+
+    def _registry(self, *cloud_replies):
+        return {"lmstudio": FakeProvider(name="lmstudio"), "anthropic": FakeProvider(*cloud_replies, name="anthropic", models=("m",))}
+
+    def test_it_asks_once_then_replaces_each_weak_reply_with_the_cloud_models_correction(self):
+        reg = self._registry(reply("the corrected answer"), reply("a second correction"))
+        one = review_reply("q", "", self.ctx, registry=reg)
+        two = review_reply("q2", "", self.ctx, registry=reg)
+        self.assertIn("the corrected answer", one)
+        self.assertIn("corrected by anthropic:m", one)
+        self.assertIn("a second correction", two)
+        self.assertEqual(len(self.asked), 1)
+        self.assertIn("anthropic:m", self.asked[0])
+
+    def test_a_no_is_remembered_and_nothing_is_sent(self):
+        self.answer = False
+        reg = self._registry()   # an empty script: any request to the cloud model would raise
+        self.assertIsNone(review_reply("q", "", self.ctx, registry=reg))
+        self.assertIsNone(review_reply("q", "", self.ctx, registry=reg))
+        self.assertEqual(len(self.asked), 1)
+        self.assertIs(self.ctx.cloud_review_ok, False)
+
+    def test_an_ok_from_the_cloud_model_keeps_the_local_reply(self):
+        self.assertIsNone(review_reply("q", "", self.ctx, registry=self._registry(reply("OK."))))
+
+    def test_a_reply_that_looks_fine_is_never_sent_anywhere(self):
+        self.assertIsNone(review_reply("q", "a fine answer", self.ctx, ask=_laya(WEAK_BELOW + 1), registry=self._registry()))
+        self.assertEqual(self.asked, [])
+
+    def test_with_no_cloud_model_connected_nothing_is_asked(self):
+        self.assertIsNone(review_reply("q", "", self.ctx, registry={"lmstudio": FakeProvider(name="lmstudio")}))
+        self.assertEqual(self.asked, [])
+
+    def test_the_environment_switch_turns_it_off(self):
+        with patch.dict(os.environ, {"CLYDE_CLOUD_REVIEW": "off"}):
+            self.assertIsNone(review_reply("q", "", self.ctx, registry=self._registry(reply("x"))))
+        self.assertEqual(self.asked, [])
+
+    def test_a_cloud_error_keeps_the_local_reply(self):
+        self.assertIsNone(review_reply("q", "", self.ctx, registry=self._registry(RuntimeError("boom"))))
+
+
+class TestAgentLoopReview(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.ctx = ToolContext(workspace_root=Path(self.tmp.name))
+
+    def _run(self, provider):
+        conversation = Conversation()
+        conversation.add_user_message("explain this")
+        chunks: list[str] = []
+        result = run_agent_loop(conversation=conversation, provider=provider, model="m", tool_registry=build_default_registry(include_user_tools=False),
+                                tool_context=self.ctx, verbose=False, stream=True, on_text_chunk=chunks.append)
+        return conversation, result, "".join(chunks)
+
+    def test_a_local_models_weak_reply_is_replaced_in_the_result_the_stream_and_the_history(self):
+        with patch("src.agent.agent_loop.review_reply", return_value="the fix") as review:
+            conversation, result, streamed = self._run(FakeProvider(reply("shaky"), name="lmstudio"))
+        review.assert_called_once()
+        self.assertEqual(review.call_args.args[:2], ("explain this", "shaky"))
+        self.assertEqual(result.response_text, "the fix")
+        self.assertIn("the fix", streamed)
+        self.assertEqual(conversation.messages[-1].content, "the fix")
+
+    def test_a_hosted_models_reply_is_never_reviewed(self):
+        with patch("src.agent.agent_loop.review_reply") as review:
+            _, result, _ = self._run(FakeProvider(reply("fine")))
+        review.assert_not_called()
+        self.assertEqual(result.response_text, "fine")
+
+    def test_a_reply_that_review_leaves_alone_is_unchanged(self):
+        with patch("src.agent.agent_loop.review_reply", return_value=None):
+            conversation, result, streamed = self._run(FakeProvider(reply("fine"), name="lmstudio"))
+        self.assertEqual((result.response_text, streamed, conversation.messages[-1].content), ("fine", "fine", "fine"))
+
+
+if __name__ == "__main__":
+    unittest.main()
