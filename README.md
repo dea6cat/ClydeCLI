@@ -135,12 +135,14 @@ Ollama isn't running (`lms get <url>@<quant>`, pinned to exactly the file that w
 exact (the repo's safetensors); GGUF sizes are exact per file; ollama.com sizes are estimated at Q4.
 
 **A second opinion on weak replies.** Small local models slip: an empty answer, a pretend tool call
-(`[TOOL_SEARCH]` written out as text), leaked special tokens, or an answer Laya rates as a poor fit for your message.
+(`[TOOL_SEARCH]` written out as text), leaked special tokens, or a short refusal that says it cannot reach files or run
+anything (a model that was not trained for tool use does that instead of calling the tool). These are plain text checks;
+Laya's fit score was tried as a trigger and dropped, because it flagged correct answers and passed wrong ones.
 When one does and a cloud provider is connected, Clyde asks once per session, naming the model and what is sent (your
 request and the local reply), and on yes has that cloud model check the reply. If it is right you see nothing; otherwise
 its corrected answer follows and replaces the local one in the history, labelled with the model's name. Say no and nothing
-leaves the machine for the rest of the session. `CLYDE_CLOUD_REVIEW=off` turns it off. The Laya threshold is a first guess:
-each score is traced as a `cloud_review` event so it can be tuned from real turns. Hosted models' replies are never reviewed.
+leaves the machine for the rest of the session. `CLYDE_CLOUD_REVIEW=off` turns it off. Each review is traced as a
+`cloud_review` event. Hosted models' replies are never reviewed.
 
 ### cardShuffle
 

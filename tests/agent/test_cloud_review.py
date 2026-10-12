@@ -9,33 +9,33 @@ from pathlib import Path
 from unittest.mock import patch
 
 from src.agent.agent_loop import run_agent_loop
-from src.agent.cloud_review import WEAK_BELOW, review_reply, weak_reason
+from src.agent.cloud_review import review_reply, weak_reason
 from src.agent.conversation import Conversation
 from src.tool_system.context import ToolContext
 from src.tool_system.defaults import build_default_registry
 from tests.fakes import FakeProvider, reply
 
 
-def _no_laya(*_):
-    raise AssertionError("Laya must not be asked when a plain check already decides")
-
-
-def _laya(score):
-    return lambda state, questions: {"fit": {"score": score}}
-
-
 class TestWeakReason(unittest.TestCase):
-    def test_plain_checks_decide_without_asking_laya(self):
-        self.assertEqual(weak_reason("q", "  ", _no_laya), "empty reply")
-        self.assertEqual(weak_reason("q", "Let me look. [TOOL_SEARCH] select:Read", _no_laya), "pretend tool call")
-        self.assertEqual(weak_reason("q", "word <|a|> word <|b|>", _no_laya), "leaked special tokens")
+    def test_empty_pretend_call_and_leaked_tokens_are_weak(self):
+        self.assertEqual(weak_reason("  "), "empty reply")
+        self.assertEqual(weak_reason("Let me look. [TOOL_SEARCH] select:Read"), "pretend tool call")
+        self.assertEqual(weak_reason("word <|a|> word <|b|>"), "leaked special tokens")
 
-    def test_a_laya_fit_below_the_threshold_is_weak_and_a_good_one_is_not(self):
-        self.assertIn("laya fit", weak_reason("q", "an answer", _laya(WEAK_BELOW - 0.5)))
-        self.assertEqual(weak_reason("q", "an answer", _laya(WEAK_BELOW + 1)), "")
+    def test_a_short_refusal_to_reach_files_or_tools_is_weak(self):
+        for refusal in ("Ah, sorry: the file `/tmp/x/notes.txt` doesn't exist in this folder.",
+                        "I can explain the structure, but I can't guarantee access to files outside my sandboxed environment.",
+                        "I'm unable to run Python here.", "I don't have access to your files.", "cat: notes.txt: No such file or directory"):
+            self.assertEqual(weak_reason(refusal), "says it cannot reach files or tools", refusal)
 
-    def test_without_laya_a_reply_that_passes_the_plain_checks_is_not_weak(self):
-        self.assertEqual(weak_reason("q", "an answer", lambda *_: None), "")
+    def test_a_correct_short_answer_and_a_plain_explanation_are_not_weak(self):
+        for fine in ("391", "The third word is gamma.", "`git stash pop` applies the newest stash and drops it.",
+                     "A process cannot access another process's memory without the OS allowing it.",
+                     "Private members cannot be accessed from outside the class."):
+            self.assertEqual(weak_reason(fine), "", fine)
+
+    def test_a_long_answer_that_mentions_such_a_phrase_is_an_explanation_not_a_refusal(self):
+        self.assertEqual(weak_reason("I can't run this in a sandboxed environment, but here is how it works. " + "Detail. " * 150), "")
 
 
 class TestReviewReply(unittest.TestCase):
@@ -72,7 +72,7 @@ class TestReviewReply(unittest.TestCase):
         self.assertIsNone(review_reply("q", "", self.ctx, registry=self._registry(reply("OK."))))
 
     def test_a_reply_that_looks_fine_is_never_sent_anywhere(self):
-        self.assertIsNone(review_reply("q", "a fine answer", self.ctx, ask=_laya(WEAK_BELOW + 1), registry=self._registry()))
+        self.assertIsNone(review_reply("q", "a fine answer", self.ctx, registry=self._registry()))
         self.assertEqual(self.asked, [])
 
     def test_with_no_cloud_model_connected_nothing_is_asked(self):

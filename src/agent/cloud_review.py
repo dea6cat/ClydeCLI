@@ -1,9 +1,10 @@
 """A cloud model checks a weak reply from a small local model; its correction replaces the reply.
 
-A reply is weak when it is empty, shows a pretend tool call or leaked special tokens (the model degenerated), or
-Laya rates how well it answers the request below WEAK_BELOW. That threshold is a first guess: Laya's scores sit in
-a narrow band and nobody has measured this one against real turns yet, so every score is traced as a `cloud_review`
-event and the threshold can be tuned from them, the way Laya's difficulty is.
+A reply is weak when it is empty, shows a pretend tool call or leaked special tokens (the model degenerated), or is a
+short refusal that says the model cannot reach files or run anything (a model that was not trained for tool use does
+that instead of calling the tool). These are plain text checks with no model behind them. Laya's fit score was tried as
+a trigger and dropped: on real replies it rated a correct "391" at 0.08 and a refusal to read an existing file at 2.1,
+so it flagged right answers and passed wrong ones.
 
 Nothing leaves the machine unless a cloud provider is connected and the user said yes this session; the prompt names
 the model and what is sent, and is asked once. CLYDE_CLOUD_REVIEW=off turns the whole thing off. A failed review
@@ -14,44 +15,45 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import replace
-from typing import Any, Callable
+from typing import Any
 
-from ..providers import laya_client
 from ..providers.card_shuffle import _LEAKED_MIN, _LEAKED_TOKENS, CardShuffle
 from ..tool_system.registry import ToolRegistry
 from . import trace
 
-WEAK_BELOW = 1.3   # of 3; a guess, to tune from the traced scores
 _LOCAL = {"ollama", "lmstudio", CardShuffle.name}
 _PRETEND_CALL = re.compile(r"\[TOOL_[A-Z_]+\]|<tool_call>|<function=")
-_FIT = {"type": "score", "instructions": "How well does `reply` answer `request`?",
-        "criteria": ["Wrong or unrelated", "Partly right, with gaps or mistakes", "Mostly right", "Correct and complete"]}
+# First person only ("I can't run", "I don't have access"), a missing file, or the sandbox excuse: an explanation that
+# merely mentions that something cannot access something does not match.
+_CANT_REACH = re.compile(
+    r"\b(?:i|we)(?:\s+(?:can(?:'|’)?t|cannot|am unable to|do(?:n't| not) have)|(?:'|’)m unable to)\s+(?:\w+\s+){0,2}?(?:access|open|read|run|execute|reach)\b"
+    r"|\bsandboxed (?:environment|setup)\b|\bmy sandbox\b"
+    r"|\bfile\b[^\n]{0,100}\b(?:doesn(?:'|’)?t|does not|did not|didn(?:'|’)?t) exist\b|\bno such file\b", re.I)
+_REFUSAL_CHARS = 800   # a long answer that mentions such a phrase is an explanation, not a refusal
 _REVIEW = ("A small local model answered the user's request below. Check the answer. If it is correct and complete, "
            "reply with exactly OK. Otherwise reply with the corrected answer only, written as the final answer to the "
            "user, with no commentary about the original.\n\nRequest:\n{request}\n\nLocal model's answer:\n{reply}")
 _CHARS = 6000   # of the request and of the reply sent out
 
 
-def weak_reason(request: str, reply: str, ask: Callable[[Any, dict], dict | None] = laya_client.ask) -> str:
-    """Why this reply looks weak, or "" when it looks fine. Laya is asked last, and only about replies that pass the plain checks."""
+def weak_reason(reply: str) -> str:
+    """Why this reply looks weak, or "" when it looks fine."""
     if not reply.strip():
         return "empty reply"
     if _PRETEND_CALL.search(reply):
         return "pretend tool call"
     if len(_LEAKED_TOKENS.findall(reply)) >= _LEAKED_MIN:
         return "leaked special tokens"
-    answers = ask({"request": request[-2000:], "reply": reply[-2000:]}, {"fit": _FIT})
-    score = float(answers["fit"]["score"]) if answers else None
-    trace.record("cloud_review", question="fit", score=None if score is None else round(score, 2), weak=score is not None and score < WEAK_BELOW)
-    return f"laya fit {score:.1f}/3" if score is not None and score < WEAK_BELOW else ""
+    if len(reply) <= _REFUSAL_CHARS and _CANT_REACH.search(reply):
+        return "says it cannot reach files or tools"
+    return ""
 
 
-def review_reply(request: str, reply: str, context: Any, *, ask: Callable[[Any, dict], dict | None] = laya_client.ask,
-                 registry: dict | None = None) -> str | None:
+def review_reply(request: str, reply: str, context: Any, *, registry: dict | None = None) -> str | None:
     """The corrected reply (labelled with the model that wrote it), or None to keep the local one."""
     if os.environ.get("CLYDE_CLOUD_REVIEW") == "off" or context.cloud_review_ok is False:
         return None
-    why = weak_reason(request, reply, ask)
+    why = weak_reason(reply)
     if not why:
         return None
     try:
