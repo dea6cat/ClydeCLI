@@ -245,10 +245,12 @@ def _small_local(provider: Provider) -> bool:
 
 
 def _last_prompt(conversation: Conversation) -> str:
-    """What the user last typed (not a tool result, not a steering note)."""
+    """What the user last typed (not a tool result, not a steering note). Reads the agent's own history (`content`)
+    as well as canonical turns (`text`): the loop passes the first, and matching only the second left the prompt empty."""
     for message in reversed(conversation.messages):
-        if message.role is Role.USER and message.text and not message.text.startswith(_STEERING):
-            return message.text
+        text = getattr(message, "text", None) or getattr(message, "content", None)
+        if message.role == Role.USER and isinstance(text, str) and text and not text.startswith(_STEERING):
+            return text
     return ""
 
 
