@@ -148,6 +148,17 @@ class TestEvalResults(unittest.TestCase):
             "[nvidia] HTTP 404 — Function 'x': Not found for account")}
         self.assertEqual(list(kinds.values()), ["transient", "transient", "tools", "tools", "unavailable"])
 
+    def test_a_load_refused_for_lack_of_memory_is_transient_and_says_so(self):
+        from src.providers.model_eval import ModelScore, hidden_refs, save_results
+        error = ('[lmstudio] HTTP 400: Failed to load model "qwen3-4b-instruct-2507". Error: Model loading was stopped '
+                 "due to insufficient system resources. Continuing to load this model may cause the system to become unstable.")
+        score = ModelScore("lmstudio:qwen3-4b-instruct-2507", error=error)
+        self.assertEqual(score.kind, "transient")
+        self.assertIn("memory", score.short_note)
+        self.assertNotIn("credits", score.short_note)
+        save_results([score])
+        self.assertEqual(hidden_refs(), set())   # the model is not blamed: free some memory and /eval it again
+
     def test_saved_results_hide_only_models_that_do_not_work(self):
         from src.providers.model_eval import ModelScore, hidden_refs, load_results, save_results
         save_results([ModelScore("a:ok", tool_call=True, round_trip=True),
