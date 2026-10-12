@@ -29,6 +29,13 @@ _INTENTS = (
     (re.compile(r"\b(run|runs|running|test|tests|build|install|execute|compile|git|commit|lint|format|script|command|terminal|shell|npm|pip|uv|flutter|dart)\b", re.I), ("bash",)),
     (re.compile(r"https?://|\b(web|website|online|internet|latest|documentation|docs)\b", re.I), ("webfetch", "websearch")),
 )
+VERIFY_PROMPT = """## Check code before you present it
+When you write or change code that uses a library, API or version you are not sure of, check it first:
+1. Read or Grep the project and the installed package for the real names and signatures.
+2. If it can run, run it with Bash: the tests, or a one-line import.
+3. If that does not settle it, look up the documentation for that version with WebSearch or WebFetch.
+Load a tool with ToolSearch first if it is listed under "More tools". Skip this for code that only uses the language itself.
+After checking, say what you checked and what you could not confirm."""
 _HINT_CHARS = 55
 _SENTENCE_END = re.compile(r"(?<!e\.g)(?<!i\.e)\.\s")   # not the dots inside "e.g." and "i.e."
 

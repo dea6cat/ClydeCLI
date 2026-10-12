@@ -12,7 +12,7 @@ from src.agent.agent_loop import run_agent_loop
 from src.agent.conversation import Conversation
 from src.tool_system.context import ToolContext
 from src.tool_system.defaults import build_default_registry
-from src.tool_system.deferral import CORE_TOOLS, advertised, hint, index_prompt, is_deferred
+from src.tool_system.deferral import CORE_TOOLS, VERIFY_PROMPT, advertised, hint, index_prompt, is_deferred
 from src.tool_system.protocol import ToolCall
 from src.tool_system.registry import ToolSpec
 from tests.fakes import FakeProvider, reply
@@ -116,6 +116,13 @@ class TestAgentLoopDeferral(unittest.TestCase):
         self._run(provider)
         first, second = (r["conversation"].system_prompt for r in provider.requests)
         self.assertEqual(first, second)
+
+    def test_a_small_local_model_is_told_when_to_check_code_and_a_hosted_one_is_not(self):
+        local, hosted = FakeProvider(reply("hi"), name="lmstudio"), FakeProvider(reply("hi"))
+        self._run(local)
+        self._run(hosted)
+        self.assertIn(VERIFY_PROMPT, local.requests[0]["conversation"].system_prompt)
+        self.assertNotIn(VERIFY_PROMPT, hosted.requests[0]["conversation"].system_prompt)
 
 
 if __name__ == "__main__":
