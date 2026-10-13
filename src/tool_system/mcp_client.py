@@ -217,13 +217,41 @@ def set_project_approval(root: Path, name: str, cfg: dict[str, Any], allowed: bo
     path.write_text(json.dumps(answers, indent=1, sort_keys=True) + "\n", encoding="utf-8")
 
 
+_REF = re.compile(r"\$\{(\w+)|\$(\w+)")
+
+
+def _refs(*values: Any) -> list[str]:
+    """Names of the environment variables the given strings (or lists and dicts of them) read, sorted."""
+    names: set[str] = set()
+    for value in values:
+        if isinstance(value, dict):
+            names.update(_refs(*value.values()))
+        elif isinstance(value, list):
+            names.update(_refs(*value))
+        elif isinstance(value, str):
+            names.update(m.group(1) or m.group(2) for m in _REF.finditer(value))
+    return sorted(names)
+
+
+def is_mixed(cfg: dict[str, Any]) -> bool:
+    """An entry that names both a process to start and a url to reach: which one runs is ambiguous, so it never does."""
+    return bool(cfg.get("command")) and bool(cfg.get("httpUrl") or cfg.get("url") or cfg.get("serverUrl"))
+
+
 def describe_server(cfg: dict[str, Any]) -> str:
-    """One line saying what a server entry runs or reaches; never env or header values."""
-    if cfg.get("command"):
-        env = f"  (env: {', '.join(cfg['env'])})" if cfg.get("env") else ""
-        return " ".join([str(cfg["command"]), *map(str, cfg.get("args", []))]) + env
+    """One line saying what a server entry runs or reaches, and which environment variables it reads
+    (their names, never their values); the same precedence connect_servers uses, so it names the real destination."""
     url = cfg.get("httpUrl") or cfg.get("url") or cfg.get("serverUrl")
-    return f"{url}" + (f"  (headers: {', '.join(cfg['headers'])})" if cfg.get("headers") else "")
+    if url:
+        text = f"{url}" + (f"  (headers: {', '.join(cfg['headers'])})" if cfg.get("headers") else "")
+        reads = _refs(url, cfg.get("headers") or {})
+        if cfg.get("command"):
+            text += f"  [also lists a command ({cfg['command']}); an entry with both is refused]"
+    else:
+        text = " ".join([str(cfg.get("command", "")), *map(str, cfg.get("args", []))])
+        text += f"  (env: {', '.join(cfg['env'])})" if cfg.get("env") else ""
+        reads = _refs(cfg.get("args") or [], cfg.get("env") or {})
+    return text + (f"  [reads from your environment: {', '.join(reads)}]" if reads else "")
 
 
 class McpStdioClient(McpClient):
@@ -528,6 +556,9 @@ def connect_servers(servers: dict[str, dict[str, Any]], cwd: Path) -> tuple[dict
     clients: dict[str, McpClient] = {}
     errors: dict[str, str] = {}
     for name, cfg in servers.items():
+        if is_mixed(cfg):
+            errors[name] = "has both a `command` and a `url`; use one or the other"
+            continue
         remote = remote_spec(cfg)
         if remote is not None:
             try:
