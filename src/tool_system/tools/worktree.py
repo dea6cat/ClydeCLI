@@ -5,6 +5,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from ...git_safe import git_cmd, git_env
 from ..context import ToolContext
 from ..errors import ToolInputError, ToolPermissionError
 from ..protocol import ToolResult
@@ -16,7 +17,7 @@ _NAME_RE = re.compile(r"^[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*$")
 
 def _git(cwd: Path, *args: str) -> str:
     try:
-        completed = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, timeout=60)
+        completed = subprocess.run(git_cmd(*args), cwd=cwd, env=git_env(), capture_output=True, text=True, timeout=60)
     except FileNotFoundError as exc:
         raise ToolInputError("git is not installed") from exc
     if completed.returncode != 0:

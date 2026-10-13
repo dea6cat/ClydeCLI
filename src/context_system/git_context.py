@@ -3,6 +3,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+from ..git_safe import git_cmd, git_env
 from .models import GitContext
 
 _MAX_STATUS_CHARS = 2_000
@@ -50,8 +51,9 @@ def _read_git_text(cwd: Path, *args: str) -> str | None:
 def _run_git(cwd: Path, *args: str) -> subprocess.CompletedProcess[str] | None:
     try:
         return subprocess.run(
-            ["git", *args],
+            git_cmd(*args),
             cwd=str(cwd),
+            env=git_env(),
             capture_output=True,
             text=True,
             check=False,

@@ -10,6 +10,8 @@ import re
 import subprocess
 from pathlib import Path
 
+from .git_safe import git_cmd, git_env
+
 MAX_DIFF_CHARS = 60_000
 _GIT_TIMEOUT = 30
 _USAGE = "usage: /review [commit SHA | base BRANCH]"
@@ -45,7 +47,7 @@ def parse_target(args: str) -> tuple[str, str]:
 
 def _git(cwd: Path, *args: str) -> str:
     try:
-        done = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, timeout=_GIT_TIMEOUT)
+        done = subprocess.run(git_cmd(*args), cwd=cwd, env=git_env(), capture_output=True, text=True, timeout=_GIT_TIMEOUT)
     except FileNotFoundError as e:
         raise ReviewError("git is not installed") from e
     except subprocess.TimeoutExpired as e:
@@ -68,12 +70,12 @@ def _raw_diff(kind: str, value: str, cwd: Path) -> tuple[str, str, str]:
     """(what is under review, the raw diff text, a note kept outside the size cap)."""
     if kind == "commit":
         sha = _verified(cwd, value)
-        return f"commit {sha[:12]}", _git(cwd, "show", "--format=%h %s%n%n%b", sha, "--"), ""
+        return f"commit {sha[:12]}", _git(cwd, "show", "--no-ext-diff", "--no-textconv", "--format=%h %s%n%n%b", sha, "--"), ""
     if kind == "base":
         base = _verified(cwd, value)
-        return f"the current branch against {value}", _git(cwd, "diff", f"{base}...HEAD", "--"), ""
+        return f"the current branch against {value}", _git(cwd, "diff", "--no-ext-diff", "--no-textconv", f"{base}...HEAD", "--"), ""
     _git(cwd, "rev-parse", "--is-inside-work-tree")
-    diff = _git(cwd, "diff", "HEAD", "--")
+    diff = _git(cwd, "diff", "--no-ext-diff", "--no-textconv", "HEAD", "--")
     names = [n for n in _git(cwd, "ls-files", "--others", "--exclude-standard").splitlines() if n]
     note = "New files git does not track yet (not in the diff; read them): " + ", ".join(names) if names else ""
     return "uncommitted changes", diff, note
