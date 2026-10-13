@@ -110,6 +110,21 @@ def _is_major(spec: ToolSpec, tool_input: dict[str, Any], context: ToolContext) 
     return False
 
 
+def _mcp_alias(spec: ToolSpec, tool_input: dict[str, Any]) -> str | None:
+    """The mcp__<server>__<tool> name a generic MCP call is really for, so a deny written for that name also stops this route.
+    The resource tools get a name under the server's prefix, so a server-wide deny covers them too."""
+    server, tool = tool_input.get("server"), tool_input.get("tool")
+    if not isinstance(server, str) or not server:
+        return None
+    from .mcp_client import exposed_name
+
+    if spec.name == "MCP" and isinstance(tool, str) and tool:
+        return exposed_name(server, tool)
+    if spec.name in ("ReadMcpResourceTool", "ListMcpResourcesTool"):
+        return exposed_name(server, "resources")
+    return None
+
+
 class ToolRegistry:
     def __init__(self, tools: Iterable[Tool] | None = None) -> None:
         self._tools: list[Tool] = []
@@ -148,6 +163,9 @@ class ToolRegistry:
             )
         spec = tool.spec()
         context.ensure_tool_allowed(spec.name)
+        alias = _mcp_alias(spec, call.input)
+        if alias is not None:
+            context.ensure_tool_allowed(alias)
         validate_json_schema(call.input, spec.input_schema, root_name=spec.name)
 
         blocked = run_hooks(context.hooks, "PreToolUse", {"tool_name": spec.name, "tool_input": call.input}, context.cwd)
@@ -166,6 +184,8 @@ class ToolRegistry:
 
         # Saved deny rules block without asking; the tool's own deny wins over saved allow rules.
         ruling = check_rules(spec.name, call.input, context)
+        if alias is not None and check_rules(alias, call.input, context) == "deny":
+            ruling = "deny"
         if ruling == "deny":
             return ToolResult(
                 name=spec.name,

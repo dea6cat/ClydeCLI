@@ -529,13 +529,18 @@ def _preview(arguments: Any, limit: int = 200) -> str:
     return text if len(text) <= limit else text[:limit - 1] + "…"
 
 
+def exposed_name(server: str, tool: str) -> str:
+    """The name the model sees for a server's tool; deny and allow rules are written against it."""
+    return f"mcp__{_NAME_RE.sub('_', server)}__{_NAME_RE.sub('_', tool)}"
+
+
 class McpServerTool:
     """One MCP server tool, exposed to the model as mcp__<server>__<tool>."""
 
     def __init__(self, client: McpClient, tool: dict[str, Any]) -> None:
         self._client = client
         self._tool = tool
-        self._name = f"mcp__{_NAME_RE.sub('_', client.name)}__{_NAME_RE.sub('_', tool['name'])}"
+        self._name = exposed_name(client.name, tool["name"])
 
     def check_permissions(self, tool_input: dict[str, Any], context: Any) -> PermissionResult:
         """A server tool that does not call itself read-only asks first, like any tool that changes things. (The hint is
