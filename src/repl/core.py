@@ -220,6 +220,7 @@ _HELP_TEXT = """
 - `/laya` - Laya's status, and how its stuck checks and difficulty scores lined up with how traced turns ended
 - `/council [up N|down N]` - Show every answer from the last cardShuffle council turn with Laya's score, or vote one up or down (votes stay on this machine)
 - `/status` - Show the model, mode, directory, session, goal and token totals
+- `/settings` - Status, Config, Usage and Stats tabs: session details, the options you can toggle, token use, and per-day and per-model charts
 - `/goal [text|plan|clear]` - Set a goal for this session (kept in the system prompt every turn), show it, or clear it; `plan` makes it "every phase of the saved plan is complete"
 - `/remember [project] TEXT` - Keep a note between sessions, about you (default) or this project; `/memory` lists the notes (`/memory stale` those older than 90 days), `/forget [project] N` drops one; the model can save one too when you ask it to remember
 - `/plan [done|start|pending N|clear]` - Show the saved plan and its phases; set phase N's status; or delete the plan
@@ -443,6 +444,7 @@ class ClydeREPL:
             "/purge",
             "/terse",
             "/status",
+            "/settings",
             "/goal",
             "/plan",
             "/remember",
@@ -1425,6 +1427,9 @@ class ClydeREPL:
 
         elif cmd == '/status':
             self._show_status()
+
+        elif cmd == '/settings':
+            self._show_settings()
 
         elif cmd == '/goal' or cmd.startswith('/goal '):
             self._handle_goal(raw.split(maxsplit=1)[1].strip() if " " in raw.strip() else "")
@@ -2427,6 +2432,25 @@ class ClydeREPL:
             self.console.print(line, markup=False)
         if note := plans.status_note(plans.read_plan(self.tool_context.plan_file)):
             self.console.print(f"  plan:      {note}", markup=False)
+
+    def _show_settings(self) -> None:
+        """/settings: the tabbed screen, or the plain /status block where there is no terminal."""
+        from src import __version__, plugins, settings_screen, skill_scan
+        if not settings_screen.interactive():
+            self._show_status()
+            return
+        clients, errors = self.tool_context.mcp_clients, getattr(self, "_mcp_errors", {})
+        label, _ = self._MODE_LABELS[self.mode]
+        held = [k for k, v in skill_scan.cached_verdicts().items() if v.blocked]
+        status = [("Version", __version__), ("Session", self.session.session_id),
+                  ("Directory", str(self.tool_context.cwd or self.tool_context.workspace_root)),
+                  ("Model", model_ref(self.provider, self.model)), ("Mode", label.lstrip("♠ ")),
+                  ("Goal", self.tool_context.goal or "none"),
+                  ("MCP servers", f"{len(clients)} connected, {len(errors)} failed (/mcp)"),
+                  ("Plugins", f"{len(self.plugins)} loaded (/plugins)"),
+                  ("SkillSpector", f"{len(skill_scan.cached_verdicts())} scanned, {len(held)} held back (/skills scan)")]
+        settings_screen.show(settings_screen.Snapshot(status, settings_screen.session_usage(getattr(self.cost_tracker, "models", {})),
+                                                      settings_screen.skill_footprint(plugins.enabled_plugins())))
 
     def _show_memory(self, stale: bool = False) -> None:
         """/memory: the notes Clyde keeps between sessions, numbered per scope for /forget. /memory stale: only those saved over 90 days ago."""
