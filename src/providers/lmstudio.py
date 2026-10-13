@@ -134,14 +134,21 @@ class LMStudioProvider(OpenAICompatProvider):
         entry = next((m for m in self.downloaded() if m.get("modelKey") == model), {})
         return entry.get("trainedForToolUse") is False
 
-    def planned_window(self, model: str) -> int:
-        """The window Clyde loads the model with: what fits the memory budget after the weights, KV cache included
-        (CLYDE_CONTEXT_TOKENS or CLYDE_MODEL_CONTEXT_<MODEL> override). LM Studio's own default can be 34k tokens
-        times 4 parallel slots, which swaps an 18 GB Mac."""
+    def _fixed_window(self, model: str) -> int | None:
+        """The window the user fixed: an environment override, else the one saved by /settings."""
+        from src import config
         from .ollama import _ctx_env_key
         for key in ("CLYDE_CONTEXT_TOKENS", f"CLYDE_MODEL_CONTEXT_{_ctx_env_key(model)}"):
             if os.environ.get(key, "").isdigit():
                 return int(os.environ[key])
+        return config.get_context_tokens()
+
+    def planned_window(self, model: str) -> int:
+        """The window Clyde loads the model with: what fits the memory budget after the weights, KV cache included
+        (CLYDE_CONTEXT_TOKENS or CLYDE_MODEL_CONTEXT_<MODEL> override). LM Studio's own default can be 34k tokens
+        times 4 parallel slots, which swaps an 18 GB Mac."""
+        if (fixed := self._fixed_window(model)) is not None:
+            return fixed
         entry = next((m for m in self.downloaded() if m.get("modelKey") == model), {})
         trained = int(entry.get("maxContextLength") or MAX_WINDOW)
         per_token = kv_bytes_per_token(model_files(entry)) if entry else None
@@ -162,15 +169,31 @@ class LMStudioProvider(OpenAICompatProvider):
     def ensure_loaded(self, model: str) -> None:
         """Load the model with the planned window and one slot unless it is already loaded (a model you loaded yourself keeps your settings)."""
         exe = _lms()
-        if exe is None or time.monotonic() - getattr(self, "_ensured", {}).get(model, -1e9) < _CONTEXT_TTL or self._loaded(model):
+        key = (model, self._fixed_window(model))   # a new window from /settings is looked at again at once
+        if exe is None or time.monotonic() - getattr(self, "_ensured", {}).get(key, -1e9) < _CONTEXT_TTL:
             return
+        if self._loaded(model):
+            if not self._needs_reload(model):
+                return
+            self.unload(model)
         try:
             subprocess.run([exe, "load", model, "-c", str(self.planned_window(model)), "--parallel", "1", "--ttl", str(LOAD_TTL_S), "-y"],
                            capture_output=True, text=True, timeout=600)
         except (OSError, subprocess.TimeoutExpired):
             pass   # the server loads it on the first request anyway
         self._ctx_cache = {}
-        self._ensured = {**getattr(self, "_ensured", {}), model: time.monotonic()}
+        self._ensured = {**getattr(self, "_ensured", {}), key: time.monotonic()}
+
+    def _needs_reload(self, model: str) -> bool:
+        """A loaded model whose window differs from the one the user fixed is reloaded, once per value (LM Studio
+        may clamp a window it can't give, and that must not loop)."""
+        fixed = self._fixed_window(model)
+        tried = getattr(self, "_reloaded", set())
+        if fixed is None or (model, fixed) in tried:
+            return False
+        self._ctx_cache = {}
+        self._reloaded = {*tried, (model, fixed)}
+        return self.context_window(model) != fixed
 
     def estimate(self, model: str) -> int | None:
         """LM Studio's own estimate of the memory the model needs once loaded (`lms load --estimate-only`), in bytes."""

@@ -151,6 +151,28 @@ def set_output_style(name: Optional[str]) -> None:
     save_config(config)
 
 
+MIN_CONTEXT_TOKENS = 1024
+
+
+def get_context_tokens() -> Optional[int]:
+    """The context window the user fixed for local models (/settings), or None to size it automatically.
+    CLYDE_CONTEXT_TOKENS and CLYDE_MODEL_CONTEXT_<MODEL> still win."""
+    value = load_config().get("context_tokens")
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= MIN_CONTEXT_TOKENS else None
+
+
+def set_context_tokens(tokens: Optional[int]) -> None:
+    """Persist the context window for local models; None goes back to automatic. ValueError below the minimum."""
+    if tokens is not None and tokens < MIN_CONTEXT_TOKENS:
+        raise ValueError(f"context window must be at least {MIN_CONTEXT_TOKENS} tokens")
+    config = load_config()
+    if tokens is None:
+        config.pop("context_tokens", None)
+    else:
+        config["context_tokens"] = tokens
+    save_config(config)
+
+
 UPDATE_CHANNELS = ("latest", "stable")
 
 
