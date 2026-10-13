@@ -163,6 +163,22 @@ class TestLMStudioWindow(unittest.TestCase):
             provider.ensure_loaded("m")
         run.assert_not_called()
 
+    def test_a_loaded_model_is_reloaded_once_when_the_settings_window_differs(self):
+        provider = lmstudio.LMStudioProvider()
+        with patch.object(lmstudio, "_lms", return_value="/bin/lms"), patch.object(provider, "_loaded", return_value=True), \
+                patch.object(provider, "context_window", return_value=8192), patch("subprocess.run", return_value=_done()) as run, \
+                patch("src.config.get_context_tokens", return_value=32768):
+            provider.ensure_loaded("m")
+            provider.ensure_loaded("m")
+        self.assertEqual([c.args[0][1] for c in run.call_args_list], ["unload", "load"])
+        self.assertEqual(run.call_args.args[0][3:5], ["-c", "32768"])
+
+    def test_the_settings_window_feeds_the_plan_but_the_env_still_wins(self):
+        with patch("src.config.get_context_tokens", return_value=32768):
+            self.assertEqual(lmstudio.LMStudioProvider().planned_window("m"), 32768)
+            with patch.dict("os.environ", {"CLYDE_CONTEXT_TOKENS": "12000"}):
+                self.assertEqual(lmstudio.LMStudioProvider().planned_window("m"), 12000)
+
 
 class TestLMStudioToolTraining(unittest.TestCase):
     def _lacks(self, entry):

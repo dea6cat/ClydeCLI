@@ -179,6 +179,9 @@ class OllamaProvider:
             return self._ctx_cache[model]
         if self.api_key is not None:
             return CLOUD_CTX
+        from src import config
+        if (saved := config.get_context_tokens()) is not None:
+            return saved
         if model not in self._ctx_cache:
             self._ctx_cache[model] = self._compute_ctx(model)
         return self._ctx_cache[model]

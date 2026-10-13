@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `/settings`: one screen with Status, Config, Usage and Stats tabs. Config toggles auto-save, request tracing, terse replies, history length and the update channel (type to search; changes apply from the next start). Usage shows the session's cost, tokens and cache hits per model, and what each plugin's skill list adds to every prompt. Stats draws a heatmap with streaks and favorite model (Overview) and tokens per day per model (Models), for all time, 30 or 7 days (`r`), from the request traces.
+- `/settings`: one screen with Status, Config, Usage and Stats tabs. Config toggles auto-save, request tracing, terse replies, history length, the context window for local models and the update channel (type to search; most changes apply from the next start, the context window from your next message, and LM Studio reloads the loaded model with it). Usage shows the session's cost, tokens and cache hits per model, and what each plugin's skill list adds to every prompt. Stats draws a heatmap with streaks and favorite model (Overview) and tokens per day per model (Models), for all time, 30 or 7 days (`r`), from the request traces.
 
 ## [0.5.0] - 2026-10-13
 

@@ -46,6 +46,7 @@ class Setting:
     choices: tuple[Any, ...]
     read: Callable[[dict[str, Any]], Any]
     write: Callable[[Any], None]
+    applies: str = "the next time ClydeCLI starts"
 
     def value(self) -> Any:
         return self.read(config_mod.load_config())
@@ -73,6 +74,8 @@ def settings() -> list[Setting]:
         Setting("Terse replies", (True, False), lambda c: c.get("output_style") == "terse",
                 lambda on: config_mod.set_output_style("terse" if on else None)),
         Setting("Max history", (50, 100, 200, 500), lambda c: session(c).get("max_history", 100), _set_session("max_history")),
+        Setting("Context window (local models)", (None, 4096, 8192, 16384, 32768, 65536, 131072), lambda c: config_mod.get_context_tokens(),
+                config_mod.set_context_tokens, applies="your next message; LM Studio reloads the model with it"),
         Setting("Update channel", config_mod.UPDATE_CHANNELS, lambda c: c.get("update_channel", "latest"), config_mod.set_update_channel),
     ]
 
@@ -139,7 +142,7 @@ def render_config(cursor: int, top: int, query: str) -> Fragments:
     width = max((len(s.label) for s in rows), default=0) + 4
     for offset, s in enumerate(rows[top:top + _ROWS]):
         on, value = top + offset == cursor, s.value()
-        shown = str(value).lower() if isinstance(value, bool) else str(value)
+        shown = "auto" if value is None else str(value).lower() if isinstance(value, bool) else str(value)
         out += [(f"fg:{_ACCENT}", "❯ " if on else "  "), (f"bold fg:{_ACCENT}" if on else "", s.label.ljust(width)),
                 (f"fg:{_OK}" if value is True else (f"fg:{_DIM}" if value is False else ""), shown + "\n")]
     return out
@@ -198,7 +201,7 @@ def render_models(requests: list[stats.Request], range_key: str, top: int, today
 
 
 _HINTS = ("←/→ tabs · Esc close",
-          "←/→ tabs · ↑/↓ move · Space/Enter change (applies on restart) · type to search · Esc close",
+          "←/→ tabs · ↑/↓ move · Space/Enter change · type to search · Esc close",
           "←/→ tabs · Esc close",
           "←/→ tabs · Tab Overview/Models · r date range · ↑/↓ scroll models · Esc close")
 
@@ -284,7 +287,7 @@ def show(snap: Snapshot, *, input: Any = None, output: Any = None, today: date |
         if state["tab"] == 1 and rows:
             row = rows[state["cursor"]]
             row.write(row.next())
-            state["note"] = f"{row.label}: {str(row.value()).lower()} (applies the next time ClydeCLI starts)"
+            state["note"] = f"{row.label}: {'auto' if row.value() is None else str(row.value()).lower()} (applies {row.applies})"
 
     @keys.add("backspace")
     def _back(event: Any) -> None:

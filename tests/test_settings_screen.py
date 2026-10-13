@@ -60,6 +60,18 @@ class TestSettingsScreen(unittest.TestCase):
             settings_screen.show(SNAP, input=pipe, output=DummyOutput(), today=TODAY)
         self.assertEqual(config.get_update_channel(), "stable")
 
+    def test_the_context_window_cycles_from_auto_and_is_saved(self):
+        self.assertIsNone(config.get_context_tokens())
+        with create_pipe_input() as pipe:
+            pipe.send_text(RIGHT + "context" + " " + ESC)
+            settings_screen.show(SNAP, input=pipe, output=DummyOutput(), today=TODAY)
+        self.assertEqual(config.get_context_tokens(), 4096)
+        self.assertIn("4096", _text(settings_screen.render_config(0, 0, "context")))
+        config.set_context_tokens(None)
+        self.assertIn("auto", _text(settings_screen.render_config(0, 0, "context")))
+        with self.assertRaises(ValueError):
+            config.set_context_tokens(10)
+
     def test_stats_keys_flip_the_view_and_range_without_touching_settings(self):
         with create_pipe_input() as pipe:
             pipe.send_text(RIGHT * 3 + TAB + "r" + DOWN + ESC)
