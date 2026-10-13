@@ -113,7 +113,7 @@ from src.repl.esc import WATCHER
 from src.repl.images import IMAGE_TYPES, MAX_IMAGE_BYTES, clipboard_image, image_path, shrink
 from src.tool_system.permission_rules import load_rules, save_allow_rule
 from src.tool_system.tools.code_map import start_background_refresh
-from src.tool_system.mcp_client import McpServerTool, connect_servers, load_servers
+from src.tool_system.mcp_client import connect_servers, load_servers, merge_servers, register_mcp_tools
 from src.tool_system.defaults import build_default_registry
 from src.tool_system.protocol import ToolCall
 from src.tool_system.tools.cron import pop_due_jobs
@@ -397,7 +397,7 @@ class ClydeREPL:
 
         self.tool_registry = build_default_registry()
         hooks, servers = load_hooks(), load_servers()
-        servers = {**self._project_mcp_servers(Path.cwd(), set(servers)), **servers}   # yours win a clash
+        servers = merge_servers(servers, self._project_mcp_servers(Path.cwd(), set(servers)))   # yours first: they win a clash
         self.plugins = apply_plugins(self.tool_registry, hooks, servers)
         for loaded in self.plugins:
             for warning in loaded.warnings:
@@ -1775,12 +1775,16 @@ class ClydeREPL:
     def _project_mcp_servers(self, root: Path, taken: set[str]) -> dict[str, dict[str, Any]]:
         """The project's .mcp.json servers you've said yes to, asking about any new or changed entry."""
         from rich.prompt import Confirm
-        from src.tool_system.mcp_client import (_expand_vars, describe_server, is_mixed, project_approval,
+        from src.tool_system.mcp_client import (_NAME_RE, _expand_vars, describe_server, is_mixed, project_approval,
                                                 project_servers, set_project_approval)
 
         approved = {}
         for name, cfg in project_servers(root).items():
             if name in taken:
+                continue
+            if _NAME_RE.sub("_", name) in {_NAME_RE.sub("_", t) for t in taken}:
+                self.console.print(f"[yellow]Skipping MCP server '{name}' from this project's .mcp.json:[/yellow] "
+                                   "its name clashes with one of your own servers' tool names.")
                 continue
             if is_mixed(cfg):
                 self.console.print(f"[yellow]Skipping MCP server '{name}' from this project's .mcp.json:[/yellow] "
@@ -1820,12 +1824,8 @@ class ClydeREPL:
             elif verdict.recommendation == skill_scan.CAUTION:
                 self.console.print(f"[yellow]MCP server '{name}': SkillSpector says CAUTION (risk {verdict.score}); /skills scan shows why.[/yellow]")
         self.tool_context.mcp_clients = {**(self.tool_context.mcp_clients or {}), **clients}
-        for client in clients.values():
-            for tool in client.tools:
-                try:
-                    self.tool_registry.register(McpServerTool(client, tool))
-                except ValueError:  # two tools that sanitize to the same name: keep the first
-                    pass
+        for warning in register_mcp_tools(self.tool_registry, clients):
+            self.console.print(f"[yellow]{warning}[/yellow]", markup=True, highlight=False)
         for name, error in errors.items():
             trace.record("mcp_error", server=name, error=error)
             self.console.print(f"[yellow]MCP server '{name}' not connected: {error}[/yellow]", markup=True)

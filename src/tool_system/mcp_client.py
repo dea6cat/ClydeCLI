@@ -570,6 +570,31 @@ class McpServerTool:
                           content_type="text")
 
 
+def merge_servers(user: dict[str, dict[str, Any]], project: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """The user's own servers first, then the project's: the order tools are registered in, so on a name clash the user's wins."""
+    return {**user, **{name: cfg for name, cfg in project.items() if name not in user}}
+
+
+def register_mcp_tools(registry: Any, clients: dict[str, McpClient]) -> list[str]:
+    """Register every client's tools as mcp__<server>__<tool>, in client order. Two tools can sanitise to one name: the earlier
+    client keeps it and a warning naming both is returned for the one that lost, never a silent drop."""
+    owner: dict[str, str] = {}
+    warnings: list[str] = []
+    for client in clients.values():
+        for tool in client.tools:
+            wrapper = McpServerTool(client, tool)
+            exposed = wrapper.spec().name
+            try:
+                registry.register(wrapper)
+            except ValueError:
+                taken_by = owner.get(exposed.lower())
+                who = f"MCP server '{taken_by}'" if taken_by else "a built-in tool"
+                warnings.append(f"MCP tool '{tool['name']}' from server '{client.name}' was not registered: {exposed} is already {who}'s.")
+                continue
+            owner[exposed.lower()] = client.name
+    return warnings
+
+
 def connect_servers(servers: dict[str, dict[str, Any]], cwd: Path) -> tuple[dict[str, McpClient], dict[str, str]]:
     """Start or reach and initialize every server; return (clients, errors by server name)."""
     clients: dict[str, McpClient] = {}
