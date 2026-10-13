@@ -4,17 +4,28 @@ from src.config import clyde_home
 
 import importlib.util
 import os
+import re
 import types
 from pathlib import Path
 from typing import Any
 
 from ..context import ToolContext
 from ..errors import ToolInputError, ToolExecutionError
+from ..permission_handler import PermissionResult
 from ..protocol import ToolResult
 from ..registry import ToolSpec
 
 
+_LEGACY_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+
+
 class SkillTool:
+    def check_permissions(self, tool_input: dict[str, Any], context: ToolContext) -> PermissionResult:
+        """A SKILL.md skill is text; a legacy Python skill is code that runs in this process, so it asks first."""
+        if "skill" not in tool_input and "name" in tool_input:
+            return PermissionResult.ask(message=f"Run the Python skill module {tool_input.get('name')!r}")
+        return PermissionResult.allow()
+
     def spec(self) -> ToolSpec:
         return ToolSpec(
             name="Skill",
@@ -121,8 +132,11 @@ class SkillTool:
                     break
             else:
                 skill_dir = clyde_home() / "skills"
+        if not _LEGACY_NAME.fullmatch(name) or ".." in name:
+            raise ToolInputError("name must be a plain module name (letters, digits, '.', '_', '-'), no path")
         file_path = (skill_dir / f"{name}.py").resolve()
-        if not file_path.exists():
+        # Only a module that really lives in the skills folder may run (a symlink out of it does not count).
+        if not file_path.is_relative_to(skill_dir.resolve()) or not file_path.is_file():
             return ToolResult(name="Skill", output={"error": f"skill not found: {name}"}, is_error=True)
 
         module = _load_module(file_path, module_prefix="clyde_skill_")
