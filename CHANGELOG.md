@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.5] - 2026-10-13
+
 ### Fixed
 
 - SkillSpector: a plugin with more than 30 skills is scanned in parallel chunks, so a big plugin (`ecc`, 293 skills) finishes in about 90 s instead of timing out at 120 s.
@@ -551,6 +553,7 @@ The focus was on building a solid foundation with clean architecture, comprehens
 
 ---
 
+[0.4.5]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.4.5
 [0.4.4]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.4.4
 [0.4.3]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.4.3
 [0.4.2]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.4.2
