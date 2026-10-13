@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.3] - 2026-10-13
+
 ### Fixed
 
 - `/models local` no longer crashes with a traceback when Hugging Face is slow: a read that times out or drops after connecting is now treated like any other failed lookup, so that source just lists nothing.
@@ -595,6 +597,7 @@ The focus was on building a solid foundation with clean architecture, comprehens
 
 ---
 
+[0.5.3]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.5.3
 [0.5.2]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.5.2
 [0.5.1]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.5.1
 [0.5.0]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.5.0
