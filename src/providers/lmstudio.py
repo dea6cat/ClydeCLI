@@ -1,7 +1,7 @@
 """LM Studio: local models through its OpenAI-compatible server, picked up when LM Studio is installed.
 
 Models are listed from the server when it runs (http://localhost:1234/v1, override with
-LMSTUDIO_BASE_URL), or from `lms ls` when it doesn't. The server is started with `lms server start`
+LMSTUDIO_BASE_URL), or from `lms ls` when it doesn't. The server is started headless (`lms daemon up`, installing llmster first when missing)
 only when a request actually goes to an LM Studio model; LM Studio loads the model on first use.
 """
 
@@ -35,6 +35,21 @@ def _lms() -> str | None:
     """The `lms` CLI that ships with LM Studio, if it is installed."""
     bundled = Path.home() / ".lmstudio" / "bin" / "lms"
     return shutil.which("lms") or (str(bundled) if bundled.is_file() else None)
+
+
+INSTALL_URL = "https://lmstudio.ai/install.sh"
+
+
+def _llmster_installed() -> bool:
+    """True when LM Studio's headless daemon (llmster) is installed, so no app window is needed."""
+    return any((Path.home() / ".lmstudio" / "llmster").glob("*/llmster"))
+
+
+def _install_llmster() -> str | None:
+    """Install llmster with LM Studio's official installer (shell rc files left alone); the `lms` it provides, or None."""
+    env = {**os.environ, "LMS_NO_MODIFY_PATH": "1"}
+    subprocess.run(f"curl -fsSL {INSTALL_URL} | sh", shell=True, env=env, capture_output=True, text=True, timeout=300)
+    return _lms() if _llmster_installed() else None
 
 
 MODELS_DIR = Path.home() / ".lmstudio" / "models"
@@ -182,12 +197,21 @@ class LMStudioProvider(OpenAICompatProvider):
         self._ctx_cache = {}
 
     def _ensure_server(self) -> None:
+        """Bring the server up headless: `lms daemon up`, installing llmster first when it's missing.
+
+        Plain `lms server start` opens the LM Studio app when no daemon exists, so it only runs once llmster is there.
+        """
         if self._server_up():
             return
         exe = _lms()
         if exe is None:
             raise ProviderError(self.name, f"LM Studio's server isn't running at {self.base_url}; start it in LM Studio")
         try:
+            if not _llmster_installed():
+                exe = _install_llmster()
+                if exe is None:
+                    raise ProviderError(self.name, "couldn't install LM Studio's headless daemon; install it with `curl -fsSL https://lmstudio.ai/install.sh | sh`")
+            subprocess.run([exe, "daemon", "up"], capture_output=True, text=True, timeout=60)
             subprocess.run([exe, "server", "start"], capture_output=True, text=True, timeout=60)
         except (OSError, subprocess.TimeoutExpired) as e:
             raise ProviderError(self.name, f"couldn't start LM Studio's server: {e}") from e

@@ -41,14 +41,35 @@ class TestLMStudio(unittest.TestCase):
 
     def test_stream_starts_the_server_first(self):
         with patch.object(lmstudio, "_lms", return_value="/bin/lms"), \
+             patch.object(lmstudio, "_llmster_installed", return_value=True), \
              patch.object(self.provider, "_server_up", side_effect=[False, True]), \
              patch.object(self.provider, "ensure_loaded") as load, \
              patch("subprocess.run", return_value=_done()) as run, \
              patch("src.providers.openai_compat.OpenAICompatProvider.stream", return_value="reply") as parent:
             self.assertEqual(self.provider.stream(None, "m", (), lambda _c: None), "reply")
-        self.assertEqual(run.call_args.args[0], ["/bin/lms", "server", "start"])
+        self.assertEqual([c.args[0] for c in run.call_args_list], [["/bin/lms", "daemon", "up"], ["/bin/lms", "server", "start"]])
         load.assert_called_once_with("m")
         parent.assert_called_once()
+
+    def test_a_missing_daemon_is_installed_before_anything_starts(self):
+        with patch.object(lmstudio, "_lms", return_value="/bin/lms"), \
+             patch.object(lmstudio, "_llmster_installed", return_value=False), \
+             patch.object(lmstudio, "_install_llmster", return_value="/bin/lms") as install, \
+             patch.object(self.provider, "_server_up", side_effect=[False, True]), \
+             patch("subprocess.run", return_value=_done()) as run:
+            self.provider._ensure_server()
+        install.assert_called_once()
+        self.assertEqual(run.call_args_list[0].args[0], ["/bin/lms", "daemon", "up"])
+
+    def test_a_failed_install_never_falls_back_to_launching_the_app(self):
+        with patch.object(lmstudio, "_lms", return_value="/bin/lms"), \
+             patch.object(lmstudio, "_llmster_installed", return_value=False), \
+             patch.object(lmstudio, "_install_llmster", return_value=None), \
+             patch.object(self.provider, "_server_up", return_value=False), \
+             patch("subprocess.run") as run:
+            with self.assertRaisesRegex(ProviderError, "headless daemon"):
+                self.provider._ensure_server()
+        run.assert_not_called()
 
     def test_stream_without_lm_studio_is_a_clear_error(self):
         with patch.object(lmstudio, "_lms", return_value=None), patch.object(self.provider, "_server_up", return_value=False):
