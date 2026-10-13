@@ -338,6 +338,12 @@ def install(source: str) -> Plugin:
         dest = base / plugin.name
         if dest.exists():
             raise ValueError(f"plugin '{plugin.name}' is already installed; remove it first")
+        # The flag is a yes for the plugin that was enabled, not for the name: a leftover one (the folder deleted by hand)
+        # must not switch on whatever is installed under that name next.
+        try:
+            set_enabled(plugin.name, None)
+        except (OSError, ValueError) as e:
+            raise ValueError(f"could not reset the enable state of '{plugin.name}' in settings.json: {e}") from e
         staged.rename(dest)
     return Plugin(plugin.name, plugin.version, plugin.description, dest)
 
@@ -345,5 +351,5 @@ def install(source: str) -> Plugin:
 def remove(name: str) -> None:
     if not _NAME_RE.fullmatch(name) or not (plugins_dir() / name).is_dir():
         raise ValueError(f"no plugin named '{name}' is installed")
+    set_enabled(name, None)   # first: if settings can't be written, the folder and its flag stay together
     shutil.rmtree(plugins_dir() / name)
-    set_enabled(name, None)
