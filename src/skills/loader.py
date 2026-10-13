@@ -66,9 +66,13 @@ def clear_skill_registry() -> None:
     _REGISTRY.clear()
 
 
-def load_skills_from_dir(base_dir: str | Path, *, loaded_from: str = "skills") -> List[PromptSkill]:
+def load_skills_from_dir(base_dir: str | Path, *, loaded_from: str = "skills", confine_to: Path | None = None) -> List[PromptSkill]:
+    """Skills under `base_dir`. With `confine_to` (a repository's own skills: the repo is untrusted), a skills folder, skill
+    folder or SKILL.md whose real location is outside it (a committed symlink to ~/.ssh/id_rsa, say) is skipped."""
     base = Path(base_dir).expanduser().resolve()
     if not base.exists() or not base.is_dir():
+        return []
+    if confine_to is not None and not base.is_relative_to(confine_to):
         return []
 
     skills: List[PromptSkill] = []
@@ -78,6 +82,8 @@ def load_skills_from_dir(base_dir: str | Path, *, loaded_from: str = "skills") -
         skill_name = entry.name
         md_path = entry / "SKILL.md"
         if not md_path.exists():
+            continue
+        if confine_to is not None and not (entry.resolve().is_relative_to(confine_to) and md_path.resolve().is_relative_to(confine_to)):
             continue
         content = md_path.read_text(encoding="utf-8")
         parsed = parse_frontmatter(content)
@@ -176,7 +182,7 @@ def get_all_skills(
         if compat_path != main_path:
             proj_dirs.append(compat_path)
         for pr_dir in proj_dirs:
-            for s in load_skills_from_dir(pr_dir, loaded_from="project"):
+            for s in load_skills_from_dir(pr_dir, loaded_from="project", confine_to=pr):
                 if _cleared(s):
                     _REGISTRY.register(s)
 
