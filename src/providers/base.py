@@ -7,6 +7,7 @@ per-provider SDKs.
 from __future__ import annotations
 
 import email.utils
+import http.client
 import json
 import threading
 import time as _time
@@ -365,3 +366,5 @@ def get_json(url: str, headers: dict | None = None, timeout: int = 15, provider:
         raise _http_error(e, provider) from e
     except urllib.error.URLError as e:
         raise ProviderError(provider, f"connection failed: {e.reason}", retryable=True) from e
+    except (OSError, http.client.HTTPException) as e:   # a read that times out or drops after connecting is not a URLError
+        raise ProviderError(provider, f"connection failed: {e}", retryable=True) from e

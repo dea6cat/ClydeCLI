@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `/models local` no longer crashes with a traceback when Hugging Face is slow: a read that times out or drops after connecting is now treated like any other failed lookup, so that source just lists nothing.
+
 ## [0.5.2] - 2026-10-13
 
 ### Changed
