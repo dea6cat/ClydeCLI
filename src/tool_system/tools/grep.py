@@ -131,6 +131,21 @@ class GrepTool:
             files_to_search = [p for p in files_to_search if _matches_glob(p, glob_pattern)]
         if type_name:
             files_to_search = [p for p in files_to_search if _matches_type(p, type_name)]
+        skipped = 0
+        if not base_path.is_file():   # a file named on purpose was already asked about by the dispatcher if it is a secret
+            # A walk reads whatever it finds: leave out secret files and anything (a symlink) that lives outside the allowed folders.
+            from ..secret_paths import is_secret_path
+
+            def readable(p: Path) -> bool:
+                try:
+                    resolved = p.resolve()
+                    context.ensure_allowed_path(resolved)
+                except Exception:
+                    return False
+                return not is_secret_path(resolved.as_posix())
+
+            kept = [p for p in files_to_search if readable(p)]
+            skipped, files_to_search = len(files_to_search) - len(kept), kept
 
         matched_files: list[Path] = []
         content_lines: list[str] = []
@@ -168,6 +183,8 @@ class GrepTool:
             }
             if paged.applied_limit is not None:
                 output["appliedLimit"] = paged.applied_limit
+            if skipped:
+                output["skippedFiles"] = skipped
             return ToolResult(name="Grep", output=output)
 
         if output_mode == "count":
@@ -182,6 +199,8 @@ class GrepTool:
             }
             if paged.applied_limit is not None:
                 output["appliedLimit"] = paged.applied_limit
+            if skipped:
+                output["skippedFiles"] = skipped
             return ToolResult(name="Grep", output=output)
 
         filenames = [str(p) for p in matched_files]
@@ -194,5 +213,7 @@ class GrepTool:
         }
         if paged.applied_limit is not None:
             output["appliedLimit"] = paged.applied_limit
+        if skipped:
+            output["skippedFiles"] = skipped
         return ToolResult(name="Grep", output=output)
 
