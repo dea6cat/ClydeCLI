@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+from datetime import date
 from pathlib import Path
 
 from src.config import clyde_home
@@ -19,7 +20,9 @@ SCOPES = ("user", "project")
 MAX_ENTRIES = 40            # per file
 MAX_ENTRY_CHARS = 300
 PROMPT_CHARS = 2_000        # what rides in the prompt each turn
+STALE_DAYS = 90             # /memory stale lists notes older than this
 _BEGIN, _END = "===BEGIN MEMORY DATA===", "===END MEMORY DATA==="
+_STAMP = re.compile(r"\s*<!--(\d{4}-\d{2}-\d{2})-->\s*$")   # a note's save date, kept at the end of its line
 
 
 def project_key(workspace_root: Path) -> str:
@@ -37,19 +40,39 @@ def path_for(scope: str, workspace_root: Path) -> Path:
     raise ValueError(f"scope must be one of {', '.join(SCOPES)}")
 
 
-def entries(scope: str, workspace_root: Path) -> list[str]:
-    """The notes in one scope, oldest first. A file that cannot be read has none."""
+def _read(scope: str, workspace_root: Path) -> list[tuple[str, date | None]]:
+    """(note, date saved) pairs, oldest first; a note written by hand has no date."""
     try:
         text = path_for(scope, workspace_root).read_text(encoding="utf-8")
     except OSError:
         return []
-    return [line[2:].strip() for line in text.splitlines() if line.startswith("- ") and line[2:].strip()]
+    pairs = []
+    for line in text.splitlines():
+        if not line.startswith("- "):
+            continue
+        stamp = _STAMP.search(line)
+        note = _STAMP.sub("", line[2:]).strip()
+        if note:
+            pairs.append((note, date.fromisoformat(stamp.group(1)) if stamp else None))
+    return pairs
 
 
-def _write(scope: str, workspace_root: Path, notes: list[str]) -> None:
+def entries(scope: str, workspace_root: Path) -> list[str]:
+    """The notes in one scope, oldest first. A file that cannot be read has none."""
+    return [note for note, _ in _read(scope, workspace_root)]
+
+
+def stale(scope: str, workspace_root: Path, days: int = STALE_DAYS) -> list[tuple[int, str, int]]:
+    """(number, note, age in days) for notes saved more than `days` ago. Undated notes are dated on the next save, so they age from then."""
+    today = date.today()
+    return [(i, note, (today - saved).days) for i, (note, saved) in enumerate(_read(scope, workspace_root), 1)
+            if saved and (today - saved).days > days]
+
+
+def _write(scope: str, workspace_root: Path, notes: list[tuple[str, date | None]]) -> None:
     path = path_for(scope, workspace_root)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("".join(f"- {n}\n" for n in notes), encoding="utf-8")
+    path.write_text("".join(f"- {n} <!--{(d or date.today()).isoformat()}-->\n" for n, d in notes), encoding="utf-8")
 
 
 def add(scope: str, workspace_root: Path, text: str) -> str:
@@ -59,21 +82,21 @@ def add(scope: str, workspace_root: Path, text: str) -> str:
         raise ValueError("nothing to remember: the note is empty")
     if len(note) > MAX_ENTRY_CHARS:
         raise ValueError(f"the note is {len(note)} characters; keep it under {MAX_ENTRY_CHARS}")
-    notes = entries(scope, workspace_root)
-    if any(n.lower() == note.lower() for n in notes):
+    notes = _read(scope, workspace_root)
+    if any(n.lower() == note.lower() for n, _ in notes):
         raise ValueError("already remembered")
     if len(notes) >= MAX_ENTRIES:
-        raise ValueError(f"the {scope} memory is full ({MAX_ENTRIES} notes); forget one first")
-    _write(scope, workspace_root, notes + [note])
+        raise ValueError(f"the {scope} memory is full ({MAX_ENTRIES} notes); forget one first (/memory stale lists the old ones)")
+    _write(scope, workspace_root, [*notes, (note, date.today())])
     return note
 
 
 def forget(scope: str, workspace_root: Path, number: int) -> str:
     """Drop note `number` (1-based) and return it. ValueError when there is no such note."""
-    notes = entries(scope, workspace_root)
+    notes = _read(scope, workspace_root)
     if not 1 <= number <= len(notes):
         raise ValueError(f"no {scope} note {number} ({len(notes)} saved)")
-    gone = notes.pop(number - 1)
+    gone, _ = notes.pop(number - 1)
     _write(scope, workspace_root, notes)
     return gone
 

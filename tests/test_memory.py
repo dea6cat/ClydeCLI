@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+from datetime import date
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -28,6 +29,17 @@ class _Home(unittest.TestCase):
 
 
 class TestNotes(_Home):
+    def test_notes_carry_their_save_date_and_old_ones_are_listed_as_stale(self):
+        path = memory.path_for("user", self.root)
+        path.parent.mkdir(parents=True)
+        path.write_text("- hand written\n- old fact <!--2020-01-01-->\n", encoding="utf-8")
+        self.assertEqual(memory.entries("user", self.root), ["hand written", "old fact"])
+        self.assertEqual([(i, n) for i, n, _ in memory.stale("user", self.root)], [(2, "old fact")])   # undated is not judged
+        memory.add("user", self.root, "new fact")
+        self.assertEqual(memory.entries("user", self.root), ["hand written", "old fact", "new fact"])
+        self.assertEqual([n for _, n, _ in memory.stale("user", self.root)], ["old fact"])   # dated now, but today
+        self.assertNotIn("<!--", memory.memory_prompt(self.root))
+
     def test_add_list_and_forget_per_scope(self):
         self.assertEqual(memory.add("user", self.root, "  prefers   tabs "), "prefers tabs")
         memory.add("project", self.root, "tests run with uv run pytest")
@@ -39,7 +51,7 @@ class TestNotes(_Home):
     def test_the_files_are_plain_markdown_outside_the_repository(self):
         memory.add("user", self.root, "a")
         memory.add("project", self.root, "b")
-        self.assertEqual((self.home / ".clyde" / "memory.md").read_text(), "- a\n")
+        self.assertEqual((self.home / ".clyde" / "memory.md").read_text(), f"- a <!--{date.today().isoformat()}-->\n")
         project = memory.path_for("project", self.root)
         self.assertEqual(project.parent, self.home / ".clyde" / "memory" / "projects")
         self.assertEqual(list(self.root.iterdir()), [])                       # nothing written into the project
