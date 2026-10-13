@@ -96,7 +96,8 @@ def _duckdb_query(con: Any, sql: str, rows: int) -> tuple[list[str], list[tuple]
 
 def _sqlite_ro(path: Path) -> sqlite3.Connection:
     """A read-only connection whose authorizer refuses anything but reads, with a time limit."""
-    con = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=5)
+    # percent-encode the resolved path so a name like '..%2Fx.db' or one with '?'/'#' can't be reinterpreted by SQLite's URI parser
+    con = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True, timeout=5)
     allowed = {sqlite3.SQLITE_SELECT, sqlite3.SQLITE_READ, sqlite3.SQLITE_FUNCTION}
 
     def authorizer(action: int, arg1: Any, arg2: Any, db: Any, source: Any) -> int:
