@@ -7,7 +7,9 @@ answers. The browser polls /api/events (long poll), so no websocket or extra dep
 
 Guards, because any web page the user visits can try to talk to a localhost port: the server binds 127.0.0.1,
 checks the Host and Origin headers, requires a per-run token (put in the page, sent as X-Bonnie-Token) and JSON
-bodies, and caps body and prompt size. The token does not protect against other programs on the same machine.
+bodies, and caps body and prompt size. The page (which carries the token) is served only to the browser that opened
+the one-time launch link Bonnie prints: it is exchanged for an HttpOnly, SameSite=Strict cookie, so another program on
+the same machine, or a command the model runs, that fetches http://localhost:PORT/ gets a 403 and no token.
 """
 from __future__ import annotations
 
@@ -16,6 +18,7 @@ import collections
 import datetime
 import hashlib
 import hmac
+import http.cookies
 import json
 import os
 import re
@@ -410,6 +413,8 @@ def _attachment(name: str) -> str:
 
 def make_server(bonnie: Bonnie, host: str = "127.0.0.1", port: int = 0) -> ThreadingHTTPServer:
     token = secrets.token_urlsafe(24)
+    launch = [secrets.token_urlsafe(24)]   # the one-time secret in the link Bonnie prints; "" once used
+    sessions: set[str] = set()             # cookie values handed out in exchange for it
 
     def background_url() -> str | None:
         path = theme.image_path()
@@ -465,6 +470,15 @@ def make_server(bonnie: Bonnie, host: str = "127.0.0.1", port: int = 0) -> Threa
                 return False
             return True
 
+        def _has_session(self) -> bool:
+            jar = http.cookies.SimpleCookie()
+            try:
+                jar.load(self.headers.get("Cookie", ""))
+            except http.cookies.CookieError:
+                return False
+            morsel = jar.get("bonnie_session")
+            return morsel is not None and any(hmac.compare_digest(morsel.value, sid) for sid in sessions)
+
         def _body(self) -> dict | None:
             """The JSON object sent with a POST; None after answering an error."""
             if not self.headers.get("Content-Type", "").startswith("application/json"):
@@ -492,8 +506,23 @@ def make_server(bonnie: Bonnie, host: str = "127.0.0.1", port: int = 0) -> Threa
         def do_GET(self) -> None:
             url = urlparse(self.path)
             if url.path == "/":
-                if self._guard(api=False):
-                    self._send(200, render_page().encode(), "text/html; charset=utf-8")
+                if not self._guard(api=False):
+                    return
+                key = parse_qs(url.query).get("k", [""])[0]
+                if key:
+                    if launch[0] and hmac.compare_digest(key, launch[0]):
+                        launch[0] = ""   # a link works once
+                        sid = secrets.token_urlsafe(24)
+                        sessions.add(sid)
+                        self._send(302, b"", "text/plain", extra={
+                            "Location": "/", "Set-Cookie": f"bonnie_session={sid}; HttpOnly; SameSite=Strict; Path=/"})
+                    else:
+                        self._json(403, {"error": "this link is wrong or was already used; start Bonnie again for a new one"})
+                    return
+                if not self._has_session():
+                    self._json(403, {"error": "open the link Bonnie printed when it started"})
+                    return
+                self._send(200, render_page().encode(), "text/html; charset=utf-8")
                 return
             if url.path.startswith("/static/") or url.path in ("/theme/background", "/artifact/raw", "/session/image"):
                 self._asset(url)
@@ -860,6 +889,7 @@ def make_server(bonnie: Bonnie, host: str = "127.0.0.1", port: int = 0) -> Threa
 
     server = _Server((host, port), Handler)
     server.token = token   # type: ignore[attr-defined]
+    server.launch_secret = launch[0]   # type: ignore[attr-defined]
     return server
 
 
@@ -889,12 +919,12 @@ def main(model: str | None = None, port: int | None = None, open_browser: bool =
     except OSError as e:
         print(f"Can't use port {port}: {e.strerror or e}. Pick another, for example `clyde luv bonnie {port + 1}`.", file=sys.stderr)
         return 1
-    url = f"http://localhost:{server.server_address[1]}/"
+    url = f"http://localhost:{server.server_address[1]}/?k={server.launch_secret}"   # type: ignore[attr-defined]
     threading.Thread(target=server.serve_forever, name="bonnie-http", daemon=True).start()
     bonnie.start_scheduler()
     projects.remember(Path.cwd())
     moved = f"  (port {DEFAULT_PORT} was taken; `clyde luv bonnie PORT` picks one)" if not port and server.server_address[1] != DEFAULT_PORT else ""
-    print(f"Bonnie is running at {url}  (Ctrl+C to stop){moved}")
+    print(f"Bonnie is running. Open this link once, in your browser: {url}  (Ctrl+C to stop){moved}")
     if open_browser:
         webbrowser.open(url)
     try:

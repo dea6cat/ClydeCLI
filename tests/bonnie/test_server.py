@@ -28,9 +28,19 @@ class BonnieCase(unittest.TestCase):
         self.port = self.httpd.server_address[1]
         self.token = self.httpd.token
         threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
+        self.cookie = self._open_launch_link()
         self.runner = threading.Thread(target=self.bonnie.run, daemon=True)
         self.runner.start()
         self.addCleanup(self._shutdown)
+
+    def _open_launch_link(self) -> str:
+        """What the browser does with the printed link: trade the one-time secret for the session cookie."""
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
+        conn.request("GET", f"/?k={self.httpd.launch_secret}", headers={"Host": f"127.0.0.1:{self.port}"})
+        resp = conn.getresponse()
+        resp.read()
+        conn.close()
+        return resp.getheader("Set-Cookie", "").split(";")[0]
 
     def _shutdown(self):
         self.httpd.shutdown()
@@ -40,7 +50,7 @@ class BonnieCase(unittest.TestCase):
 
     def call(self, method, path, body=None, *, token=True, host=None, origin=None, raw=None, headers=None):
         conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
-        h = {"Host": host or f"127.0.0.1:{self.port}", **(headers or {})}
+        h = {"Host": host or f"127.0.0.1:{self.port}", "Cookie": self.cookie, **(headers or {})}
         if token:
             h["X-Bonnie-Token"] = self.token
         if origin:

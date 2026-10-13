@@ -185,7 +185,7 @@ whether it is true.
 `clyde luv bonnie` starts Bonnie, Clyde's luv accomplice, on `localhost` (only this computer can reach it) and opens your browser. It runs the same
 engine as the terminal, so it has every tool, your sessions, memory, skills and cardShuffle; Bonnie adds her own
 voice and a plainer way to use them. Start her on a model with `clyde --model <provider:model> luv bonnie`
-(Bonnie opens at `http://localhost:8080`; `clyde luv bonnie 7090` picks another port, and if 8080 is taken she moves to a free one and says so. `--no-open` skips the browser.) The other way round, `bonnie luv clyde` starts the terminal Clyde, the same as `clyde`, and takes the same options.
+(Bonnie opens at `http://localhost:8080`; `clyde luv bonnie 7090` picks another port, and if 8080 is taken she moves to a free one and says so. `--no-open` skips the browser.) Bonnie prints a one-time link (`http://localhost:8080/?k=...`): open that once and your browser keeps a session cookie. The bare address is refused, so no other program on the machine, and no command the model runs, can fetch the page and its API token. The other way round, `bonnie luv clyde` starts the terminal Clyde, the same as `clyde`, and takes the same options.
 
 Everything the page does goes through a small local API: queue prompts, steer or stop a running turn, list and
 reopen sessions, answer permission cards, change mode or model, vote on council answers. Requests need a
