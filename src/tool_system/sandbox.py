@@ -66,23 +66,41 @@ def writable(context: Any) -> list[Path]:
     return out
 
 
+def protected_paths(context: Any) -> list[Path]:
+    """Repository control files a sandboxed command must not change, even inside the writable project: git runs
+    the config and hooks outside the sandbox, so a write here would become code running as the user."""
+    out: list[Path] = []
+    for root in [context.workspace_root, *(getattr(getattr(context, "permission_context", None), "additional_working_directories", ()) or ())]:
+        git = Path(str(root)).expanduser() / ".git"
+        for name in ("config", "hooks"):
+            if (git / name).exists() and git.is_dir():
+                path = (git / name).resolve()
+                if path not in out:
+                    out.append(path)
+    return out
+
+
 def _sbpl(text: str) -> str:
     return '"' + text.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
-def macos_profile(paths: list[Path], network: bool) -> str:
+def macos_profile(paths: list[Path], network: bool, protected: list[Path] | None = None) -> str:
     allow = " ".join(f"(subpath {_sbpl(str(p))})" for p in paths)
     rules = ["(version 1)", "(allow default)", "(deny file-write*)",
              f'(allow file-write* {allow} (subpath "/dev"))']
+    if protected:
+        rules.append("(deny file-write* " + " ".join(f"(subpath {_sbpl(str(p))})" for p in protected) + ")")
     if not network:
         rules += ["(deny network*)", '(allow network* (local ip "localhost:*") (remote ip "localhost:*") (remote unix-socket))']
     return "".join(rules)
 
 
-def bwrap_args(paths: list[Path], network: bool) -> list[str]:
+def bwrap_args(paths: list[Path], network: bool, protected: list[Path] | None = None) -> list[str]:
     args = ["bwrap", "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc", "--die-with-parent"]
     for p in paths:
         args += ["--bind", str(p), str(p)]
+    for p in protected or []:
+        args += ["--ro-bind", str(p), str(p)]
     return args + ([] if network else ["--unshare-net"]) + ["--"]
 
 
@@ -92,10 +110,10 @@ def wrap(argv: list[str], context: Any) -> tuple[list[str], bool]:
     if kind is None:
         return argv, False
     network = settings().get("network", True) is not False
-    paths = writable(context)
+    paths, protected = writable(context), protected_paths(context)
     if kind == "sandbox-exec":
-        return ["sandbox-exec", "-p", macos_profile(paths, network), *argv], True
-    return [*bwrap_args(paths, network), *argv], True
+        return ["sandbox-exec", "-p", macos_profile(paths, network, protected), *argv], True
+    return [*bwrap_args(paths, network, protected), *argv], True
 
 
 def describe() -> str:

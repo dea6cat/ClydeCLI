@@ -15,6 +15,7 @@ import threading
 from pathlib import Path
 from typing import Any
 
+from ...git_safe import git_cmd, git_env
 from ..context import ToolContext
 from ..errors import ToolInputError
 from ..protocol import ToolResult
@@ -124,7 +125,7 @@ class MapTool:
 def _exclude_from_git(root: Path, pattern: str) -> None:
     """Keep the map folder out of `git status` without touching the tracked .gitignore."""
     try:
-        rel = subprocess.run(["git", "rev-parse", "--git-path", "info/exclude"], cwd=root,
+        rel = subprocess.run(git_cmd("rev-parse", "--git-path", "info/exclude"), cwd=root, env=git_env(),
                              capture_output=True, text=True, timeout=10).stdout.strip()
     except (OSError, subprocess.TimeoutExpired):
         return
@@ -145,7 +146,7 @@ def start_background_refresh(root: Path) -> threading.Thread | None:
     # ponytail: rebuilds the whole-repo map each session start; incremental in graphify, but huge monorepos may want a size cap
     if os.environ.get("CLYDE_MAP", "").lower() == "off" or shutil.which("graphify") is None:
         return None
-    if subprocess.run(["git", "rev-parse", "--is-inside-work-tree"], cwd=root, capture_output=True).returncode != 0:
+    if subprocess.run(git_cmd("rev-parse", "--is-inside-work-tree"), cwd=root, env=git_env(), capture_output=True).returncode != 0:
         return None
     _exclude_from_git(root, f"{MAP_DIR.as_posix()}/")
 

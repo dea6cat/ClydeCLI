@@ -10,6 +10,8 @@ import re
 import subprocess
 from pathlib import Path
 
+from ..git_safe import git_cmd, git_env
+
 STATUSES = ("pending", "in_progress", "complete")
 MAX_PLAN_BYTES = 200_000     # a bigger file is not read at all
 PLAN_HEAD_CHARS = 2_500      # what rides in the prompt each turn
@@ -51,8 +53,8 @@ def keep_plans_out_of_git(workspace_root: Path) -> bool:
     commit) so saved plans never end up in a commit. True when it is excluded afterwards; False when this is not a git
     repository, git is missing, or the file cannot be written. The plan is saved either way."""
     try:
-        done = subprocess.run(["git", "rev-parse", "--git-path", "info/exclude"], cwd=workspace_root, capture_output=True,
-                              text=True, timeout=5)
+        done = subprocess.run(git_cmd("rev-parse", "--git-path", "info/exclude"), cwd=workspace_root, env=git_env(),
+                              capture_output=True, text=True, timeout=5)
         if done.returncode != 0 or not done.stdout.strip():
             return False
         exclude = Path(done.stdout.strip())

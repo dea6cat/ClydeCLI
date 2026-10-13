@@ -103,6 +103,9 @@ def _is_major(spec: ToolSpec, tool_input: dict[str, Any], context: ToolContext) 
         except ValueError:
             return True
         from .secret_paths import is_secret_path
+        # Git runs a repository's config and hooks outside the sandbox: writing them is never routine.
+        if ".git" in target.relative_to(context.workspace_root).parts[:-1] or target.name == ".git":
+            return True
         return is_secret_path(target.as_posix())
     return False
 
