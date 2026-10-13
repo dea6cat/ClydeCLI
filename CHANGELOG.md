@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- SkillSpector: a plugin with more than 30 skills is scanned in parallel chunks, so a big plugin (`ecc`, 293 skills) finishes in about 90 s instead of timing out at 120 s.
+- SkillSpector: a scan that fails is remembered for a day instead of being repeated at every launch (`/skills scan` retries at once), and the verdict cache is written atomically from the freshest copy so concurrent sessions don't overwrite each other.
+
 ## [0.4.4] - 2026-10-12
 
 ### Fixed
