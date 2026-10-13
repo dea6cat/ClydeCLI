@@ -25,8 +25,9 @@ class TestSecretReadGuard(unittest.TestCase):
         for p in (patch.dict(os.environ, {"HOME": str(self.home)}), patch.object(Path, "home", return_value=self.home)):
             p.start()
             self.addCleanup(p.stop)
+        previous = os.getcwd()
         os.chdir(self.work)
-        self.addCleanup(os.chdir, "/")
+        self.addCleanup(os.chdir, previous)   # not "/": later tests read files by relative path
 
     def test_the_plain_spelling_asks_as_before(self):
         self.assertTrue(command_reads_secret("cat ~/.clyde/keys.json"))
