@@ -13,6 +13,8 @@ refuses anything but reads. Every call has a time limit and a row cap.
 """
 from __future__ import annotations
 
+import glob
+import re
 import sqlite3
 import threading
 import time
@@ -40,6 +42,28 @@ def _table(columns: list[str], rows: list[tuple]) -> str:
     lines = ["| " + " | ".join(columns) + " |", "|" + "---|" * len(columns)]
     lines += ["| " + " | ".join(cell(v) for v in row) + " |" for row in rows]
     return "\n".join(lines)
+
+
+_LITERAL = re.compile(r"'((?:[^']|'')*)'|\"((?:[^\"]|\"\")*)\"")
+_BUILDS_TEXT = re.compile(r"\|\||\b(concat|concat_ws|format|printf|chr|repeat|replace|regexp_replace|list_aggregate|from_base64|unhex|decode)\s*\(", re.IGNORECASE)
+
+
+def _refuse_secret_sql(sql: str, context: ToolContext) -> None:
+    """DuckDB would read any file in the workspace, .env and key files included, without the ask Read gives them. So SQL that
+    names a secret file (or a glob that reaches one) is refused, and so is SQL that builds a string at run time, since
+    the file it names can't be known before it runs."""
+    from ..secret_paths import is_secret_path
+
+    root = Path(context.workspace_root).resolve()
+    for match in _LITERAL.finditer(sql):
+        literal = (match.group(1) if match.group(1) is not None else match.group(2)).replace("''", "'").replace('""', '"')
+        candidates = [literal]
+        if any(c in literal for c in "*?["):
+            candidates += glob.glob(literal, root_dir=root)
+        if any(is_secret_path(c if Path(c).expanduser().is_absolute() else str(root / c)) for c in candidates):
+            raise ToolInputError(f"{literal!r} is a secret file (keys, credentials, .env); the Data tool does not read those")
+    if _BUILDS_TEXT.search(_LITERAL.sub("''", sql)):
+        raise ToolInputError("the Data tool needs file names written out in the SQL, not built with ||, concat() or similar")
 
 
 def _quote(text: str) -> str:
@@ -177,9 +201,13 @@ class DataTool:
             raise ToolInputError(f"outside the workspace: {path} (the Data tool reads only inside it)")
         if not path.is_file():
             raise ToolInputError(f"not a file: {path}")
+        from ..secret_paths import is_secret_path
+        if is_secret_path(path.as_posix()):
+            raise ToolInputError(f"{path.name} is a secret file (keys, credentials, .env); the Data tool does not read those")
         return path
 
     def _query_files(self, sql: str, rows: int, context: ToolContext) -> str:
+        _refuse_secret_sql(sql, context)
         con = _sandboxed_duckdb(context)
         try:
             columns, got, more = _with_timeout(con, lambda: _duckdb_query(con, sql, rows))
