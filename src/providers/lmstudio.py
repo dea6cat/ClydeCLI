@@ -13,6 +13,7 @@ import os
 import shutil
 import subprocess
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 from . import fit
@@ -79,6 +80,8 @@ class LMStudioProvider(OpenAICompatProvider):
     def __init__(self) -> None:
         super().__init__("lmstudio", os.environ.get("LMSTUDIO_BASE_URL", DEFAULT_URL), "LMSTUDIO_API_KEY",
                          dynamic_models=True, stream_usage=True)
+        # Set by the REPL: (model, loaded, planned) -> may Clyde reload a model it didn't load? None never reloads.
+        self.confirm_reload: Callable[[str, int, int], bool] | None = None
 
     @property
     def api_key(self) -> str:
@@ -173,7 +176,7 @@ class LMStudioProvider(OpenAICompatProvider):
         if exe is None or time.monotonic() - getattr(self, "_ensured", {}).get(key, -1e9) < _CONTEXT_TTL:
             return
         if self._loaded(model):
-            if not self._needs_reload(model):
+            if not (self._needs_reload(model) or self._asked_to_reload(model)):
                 return
             self.unload(model)
         try:
@@ -194,6 +197,18 @@ class LMStudioProvider(OpenAICompatProvider):
         self._ctx_cache = {}
         self._reloaded = {*tried, (model, fixed)}
         return self.context_window(model) != fixed
+
+    def _asked_to_reload(self, model: str) -> bool:
+        """No window is fixed and the loaded one is smaller than the plan: ask once per model whether to reload it
+        (a model you loaded yourself keeps your settings unless you say yes)."""
+        asked = getattr(self, "_reload_asked", set())
+        if self._fixed_window(model) is not None or model in asked or self.confirm_reload is None:
+            return False
+        loaded, planned = self.context_window(model), self.planned_window(model)
+        if loaded >= planned:
+            return False
+        self._reload_asked = {*asked, model}
+        return self.confirm_reload(model, loaded, planned)
 
     def estimate(self, model: str) -> int | None:
         """LM Studio's own estimate of the memory the model needs once loaded (`lms load --estimate-only`), in bytes."""
