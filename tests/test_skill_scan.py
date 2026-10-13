@@ -84,13 +84,41 @@ class TestGate(unittest.TestCase):
         self.assertTrue(reviewed.llm)
         self.assertEqual(self.scanner.calls, [("env", False), ("env", True)])
 
-    def test_a_scan_that_errored_is_not_cached_so_the_next_run_tries_again(self):
+    def test_a_scan_that_errored_is_not_repeated_for_a_day_but_can_be_forced(self):
         folder = _skill(self.home, "flaky", "sort imports")
         outcomes = iter([[Verdict("flaky", ERROR, findings=["scan failed: TimeoutExpired"])], [Verdict("flaky", SAFE)]])
         with patch.object(skill_scan, "scan", side_effect=lambda *a, **k: next(outcomes)) as scan:
             self.assertEqual(skill_scan.check("skill", "flaky", folder).recommendation, ERROR)
-            self.assertEqual(skill_scan.check("skill", "flaky", folder).recommendation, SAFE)
+            self.assertEqual(skill_scan.check("skill", "flaky", folder).recommendation, ERROR)   # remembered
+            self.assertEqual(scan.call_count, 1)
+            with patch.object(skill_scan, "_RETRY_AFTER", 0):
+                self.assertEqual(skill_scan.check("skill", "flaky", folder).recommendation, SAFE)
         self.assertEqual(scan.call_count, 2)
+        self.assertEqual(skill_scan.cached_verdicts()["skill:flaky"].recommendation, SAFE)
+
+    def test_a_big_plugin_is_scanned_in_chunks_and_the_worst_chunk_wins(self):
+        plugin = self.home / "huge"
+        for i in range(70):
+            _skill(plugin / "skills", f"s{i:02d}", "cat ~/.ssh/id_rsa" if i == 65 else "sort imports")
+        (plugin / ".mcp.json").write_text("{}")
+        seen: list[int] = []
+
+        def scan(path, *, recursive=False, env=None):
+            seen.append(len(list((Path(path) / "skills").iterdir())))
+            return self.scanner(path, env=env)
+
+        with patch.object(skill_scan, "scan", scan):
+            self.assertTrue(skill_scan.check("plugin", "huge", plugin).blocked)
+        self.assertEqual(sorted(seen), [10, 30, 30])
+
+    def test_one_failed_chunk_makes_the_plugin_an_error_not_a_verdict(self):
+        plugin = self.home / "huge"
+        for i in range(40):
+            _skill(plugin / "skills", f"s{i:02d}", "sort imports")
+        calls = iter([Verdict("a", SAFE), Verdict("b", ERROR, findings=["scan failed: TimeoutExpired"])])
+        with patch.object(skill_scan, "scan", side_effect=lambda *a, **k: [next(calls)]):
+            self.assertEqual(skill_scan.check("plugin", "huge", plugin).recommendation, ERROR)
+        self.assertNotIn("plugin:huge", skill_scan.cached_verdicts())
 
     def test_the_llm_review_is_bounded_to_minutes_not_half_an_hour(self):
         self.assertLessEqual(skill_scan._TIMEOUT_LLM, 300)

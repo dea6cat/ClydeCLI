@@ -27,12 +27,16 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
 SAFE, CAUTION, BLOCK, ERROR = "SAFE", "CAUTION", "DO_NOT_INSTALL", "ERROR"
 _TIMEOUT_STATIC, _TIMEOUT_LLM = 120, 300   # a review that takes longer is skipped, not waited for
+_CHUNK_SKILLS, _CHUNK_WORKERS = 30, 4   # a scan costs ~2 s plus ~0.25 s per file: big plugins go in parallel chunks
+_RETRY_AFTER = 24 * 3600                # a scan that failed is not repeated at every launch
 
 
 @dataclass
@@ -70,7 +74,16 @@ def _load_cache() -> dict[str, Any]:
 def _save_cache(cache: dict[str, Any]) -> None:
     path = cache_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(cache, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(cache, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+    tmp.replace(path)
+
+
+def _store(key: str, entry: dict[str, Any]) -> None:
+    """Write one entry into the freshest cache: a scan takes seconds, and other sessions save meanwhile."""
+    cache = _load_cache()
+    cache[key] = entry
+    _save_cache(cache)
 
 
 def digest(path: Path) -> str:
@@ -205,22 +218,69 @@ def check(kind: str, name: str, path: Path, *, env: dict[str, str] | None = None
         return _check(kind, name, staged, env, rescan)
 
 
+def _chunks(path: Path, tmp: Path) -> list[Path]:
+    """`path` itself, or when it holds many skills, folders of at most _CHUNK_SKILLS skills each (the first
+    also carries everything that isn't a skill, e.g. hooks and .mcp.json)."""
+    skills = sorted(d for d in (path / "skills").iterdir() if d.is_dir()) if (path / "skills").is_dir() else []
+    if len(skills) <= _CHUNK_SKILLS:
+        return [path]
+    chunks = []
+    for i in range(0, len(skills), _CHUNK_SKILLS):
+        chunk = tmp / f"{path.name}-{i // _CHUNK_SKILLS}"
+        (chunk / "skills").mkdir(parents=True)
+        for d in skills[i:i + _CHUNK_SKILLS]:
+            shutil.copytree(d, chunk / "skills" / d.name)
+        if i == 0:
+            for rest in (p for p in path.iterdir() if p.name != "skills"):
+                shutil.copytree(rest, chunk / rest.name) if rest.is_dir() else shutil.copy2(rest, chunk / rest.name)
+        chunks.append(chunk)
+    return chunks
+
+
+def _worst(name: str, verdicts: list[Verdict]) -> Verdict:
+    """One verdict for several: the worst recommendation, every finding. A BLOCK stands even if another
+    part failed to scan; otherwise any failed part makes the whole an ERROR, since it was not fully inspected."""
+    rank = {SAFE: 0, ERROR: 1, CAUTION: 2, BLOCK: 3}
+    worst = max(verdicts, key=lambda v: (rank.get(v.recommendation, 1), v.score))
+    failed = next((v for v in verdicts if v.recommendation == ERROR), None)
+    if failed and worst.recommendation != BLOCK:
+        return Verdict(name, ERROR, findings=failed.findings)
+    return Verdict(name, worst.recommendation, worst.score, worst.severity,
+                   [f"{v.name}: {f}" if len(verdicts) > 1 else f for v in verdicts for f in v.findings], all(v.llm for v in verdicts))
+
+
+def _scan_chunked(name: str, path: Path, env: dict[str, str] | None) -> Verdict:
+    with tempfile.TemporaryDirectory() as tmp:
+        chunks = _chunks(path, Path(tmp))
+        if len(chunks) == 1:
+            return next(iter(scan(path, env=env)), Verdict(name, ERROR, findings=["empty report"]))
+        with ThreadPoolExecutor(_CHUNK_WORKERS) as pool:
+            parts = list(pool.map(lambda c: next(iter(scan(c, env=env)), Verdict(c.name, ERROR, findings=["empty report"])), chunks))
+    return _worst(name, parts)
+
+
 def _check(kind: str, name: str, path: Path, env: dict[str, str] | None, rescan: bool) -> Verdict:
     if not enabled():
         return Verdict(name, SAFE)
     key, content = f"{kind}:{name}", digest(path)
-    cache = _load_cache()
-    entry = cache.get(key) or {}
+    entry = _load_cache().get(key) or {}
     cached = Verdict(**entry["verdict"]) if entry.get("hash") == content and "verdict" in entry else None
+    failed = entry.get("failed") or {}
+    if (not rescan and env is None and failed.get("hash") == content and time.time() - failed.get("at", 0) < _RETRY_AFTER
+            and cached is None):
+        return Verdict(name, ERROR, findings=["an earlier scan failed; trying again within a day or on /skills scan"])
     needs_review = cached is not None and env is not None and not cached.llm and cached.recommendation != SAFE
     if cached is not None and not rescan and not needs_review:
         return cached
-    verdict = next(iter(scan(path, env=env)), Verdict(name, ERROR, findings=["empty report"]))
+    verdict = _scan_chunked(name, path, env)
     verdict.name, verdict.approved = name, bool(cached and cached.approved)
     if verdict.recommendation == ERROR:
-        return verdict   # a timeout or a missing report says nothing about the content: scan again next time
-    cache[key] = {"hash": content, "verdict": asdict(verdict)}
-    _save_cache(cache)
+        # a timeout or a missing report says nothing about the content, so no verdict is kept; the failure is
+        # remembered so the next launches don't pay for the same timeout
+        if env is None:
+            _store(key, {**entry, "failed": {"hash": content, "at": time.time()}})
+        return verdict
+    _store(key, {"hash": content, "verdict": asdict(verdict)})
     return verdict
 
 
@@ -275,6 +335,5 @@ def check_mcp(server: str, tools: list[dict[str, Any]], *, env: dict[str, str] |
     worst = max(verdicts, key=lambda v: (rank.get(v.recommendation, 1), v.score))
     verdict = Verdict(server, worst.recommendation, worst.score, worst.severity,
                       [f"{v.name}: {f}" for v in verdicts for f in v.findings], any(v.llm for v in verdicts))
-    cache[key] = {"hash": content, "verdict": asdict(verdict)}
-    _save_cache(cache)
+    _store(key, {"hash": content, "verdict": asdict(verdict)})
     return verdict
