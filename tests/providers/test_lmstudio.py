@@ -194,6 +194,30 @@ class TestLMStudioWindow(unittest.TestCase):
         self.assertEqual([c.args[0][1] for c in run.call_args_list], ["unload", "load"])
         self.assertEqual(run.call_args.args[0][3:5], ["-c", "32768"])
 
+    def _auto_reload(self, loaded, planned, answer):
+        provider = lmstudio.LMStudioProvider()
+        provider.confirm_reload = lambda *a: answer
+        with patch.object(lmstudio, "_lms", return_value="/bin/lms"), patch.object(provider, "_loaded", return_value=True), \
+                patch.object(provider, "context_window", return_value=loaded), patch.object(provider, "planned_window", return_value=planned), \
+                patch("src.config.get_context_tokens", return_value=None), patch("subprocess.run", return_value=_done()) as run:
+            provider.ensure_loaded("m")
+            provider._ensured = {}
+            provider.ensure_loaded("m")   # asked once per model, never twice
+        return [c.args[0][1] for c in run.call_args_list]
+
+    def test_auto_mode_reloads_a_smaller_loaded_window_only_when_the_user_says_yes(self):
+        self.assertEqual(self._auto_reload(8192, 32768, True), ["unload", "load"])
+        self.assertEqual(self._auto_reload(8192, 32768, False), [])
+        self.assertEqual(self._auto_reload(32768, 32768, True), [])   # big enough: not even asked
+
+    def test_without_a_prompt_a_loaded_model_is_never_reloaded(self):
+        provider = lmstudio.LMStudioProvider()
+        with patch.object(lmstudio, "_lms", return_value="/bin/lms"), patch.object(provider, "_loaded", return_value=True), \
+                patch.object(provider, "context_window", return_value=8192), patch.object(provider, "planned_window", return_value=32768), \
+                patch("src.config.get_context_tokens", return_value=None), patch("subprocess.run") as run:
+            provider.ensure_loaded("m")
+        run.assert_not_called()
+
     def test_the_settings_window_feeds_the_plan_but_the_env_still_wins(self):
         with patch("src.config.get_context_tokens", return_value=32768):
             self.assertEqual(lmstudio.LMStudioProvider().planned_window("m"), 32768)

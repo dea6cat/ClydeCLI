@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- When LM Studio already has a model loaded with a smaller context than Clyde would give it (its own default is 8192), Clyde asks once whether to reload it with the larger window. No reloads without a yes; a window you fix in `/settings` is applied without asking.
+
 ## [0.5.1] - 2026-10-13
 
 ### Added

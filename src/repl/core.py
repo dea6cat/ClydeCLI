@@ -385,6 +385,8 @@ class ClydeREPL:
 
         keys.load_into_env()
         self.registry = build_registry()
+        if (lmstudio := self.registry.get("lmstudio")) is not None:
+            lmstudio.confirm_reload = self._confirm_reload
         resolved = self._startup_model(model)
         if resolved is None:
             sys.exit(1)
@@ -607,6 +609,12 @@ class ClydeREPL:
         """The pasted images a message refers to, in the order its [Image #N] markers appear."""
         numbers = dict.fromkeys(int(n) for n in re.findall(r"\[Image #(\d+)\]", text))
         return [p for n in numbers if isinstance(p := self._pastes.get(n), ImageContentBlock)]
+
+    def _confirm_reload(self, model: str, loaded: int, planned: int) -> bool:
+        """Ask before reloading an LM Studio model that is loaded with less context than Clyde would give it."""
+        self.console.print(Text(f"  {model} is loaded with a {loaded:,}-token context; Clyde would load it with {planned:,}.", style=_CARD_TEXT))
+        self.console.print(Text("  Reloading unloads it first (a few seconds); the conversation is kept.", style=_CARD_DIM))
+        return input("  Reload it? [y/N]: ").strip().lower() in ("y", "yes")
 
     def _add_rule_under_input(self) -> None:
         """Draw a line right under the input, hidden while the completion menu is open so the menu
