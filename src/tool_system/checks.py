@@ -151,16 +151,22 @@ def _rel(path: str, root: Path) -> str:
         return path
 
 
+def _operand(target: str) -> str:
+    """A file name that can never be read as an option: file names come from the model."""
+    return f"./{target}" if target.startswith("-") else target
+
+
 def lint_files(tooling: Tooling, files: list[Path], timeout: float = EDIT_TIMEOUT) -> list[Problem]:
     """ruff (and mypy, if configured) on just these files; problems in other files are dropped."""
     root, problems = tooling.root, []
     targets = [_rel(str(f), root) for f in files]
+    operands = [_operand(t) for t in targets]
     if "ruff" in tooling.tools:
-        _, out = _run([*tooling.tools["ruff"], "check", "--no-fix", "--output-format=concise", *targets], root, timeout)
+        _, out = _run([*tooling.tools["ruff"], "check", "--no-fix", "--output-format=concise", "--", *operands], root, timeout)
         problems += parse_ruff(out)
-    mypy_targets = [t for t, f in zip(targets, files) if f.suffix in _MYPY_SUFFIXES]
+    mypy_targets = [_operand(t) for t, f in zip(targets, files) if f.suffix in _MYPY_SUFFIXES]
     if "mypy" in tooling.tools and mypy_targets:
-        _, out = _run([*tooling.tools["mypy"], "--no-error-summary", *mypy_targets], root, timeout)
+        _, out = _run([*tooling.tools["mypy"], "--no-error-summary", "--", *mypy_targets], root, timeout)
         problems += parse_mypy(out)
     wanted = set(targets)
     return [p._replace(path=_rel(p.path, root)) for p in problems if _rel(p.path, root) in wanted]
@@ -213,7 +219,13 @@ def edit_check_for(tool_name: str, tool_input: dict, root: Path) -> EditCheck | 
     path = Path(raw)
     if path.suffix not in PY_SUFFIXES or not checks_enabled():
         return None
-    return EditCheck(root, path if path.is_absolute() else root / path)
+    path = path if path.is_absolute() else root / path
+    # The lint runs before the permission check: only files that really live in the workspace may reach it.
+    try:
+        path.resolve().relative_to(root.resolve())
+    except (ValueError, OSError):
+        return None
+    return EditCheck(root, path)
 
 
 def _pytest_summary(out: str) -> list[str]:

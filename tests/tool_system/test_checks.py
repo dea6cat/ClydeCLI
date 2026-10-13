@@ -168,7 +168,7 @@ class TestAgentLoopFeedback(ChecksTestCase):
         result = self._write('import os\nx: int = "s"\n')
         self.assertEqual(result["newProblems"],
                          "1 new problem(s) after this edit; fix them:\nmod.py:2: assignment Incompatible types in assignment")
-        self.assertIn("ruff check --no-fix --output-format=concise mod.py", self.log.read_text())
+        self.assertIn("ruff check --no-fix --output-format=concise -- mod.py", self.log.read_text())
 
     def test_an_untrusted_project_gets_only_the_users_own_ruff(self) -> None:
         planted = self.root / ".venv" / "bin" / "ruff"
