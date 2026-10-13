@@ -262,7 +262,8 @@ def _scan_chunked(name: str, path: Path, env: dict[str, str] | None) -> Verdict:
 def _check(kind: str, name: str, path: Path, env: dict[str, str] | None, rescan: bool) -> Verdict:
     if not enabled():
         return Verdict(name, SAFE)
-    key, content = f"{kind}:{name}", digest(path)
+    where = str(path) if kind == "skill" else ""
+    key, content = _key(kind, name, where, _load_cache()), digest(path)
     entry = _load_cache().get(key) or {}
     cached = Verdict(**entry["verdict"]) if entry.get("hash") == content and "verdict" in entry else None
     failed = entry.get("failed") or {}
@@ -278,21 +279,31 @@ def _check(kind: str, name: str, path: Path, env: dict[str, str] | None, rescan:
         # a timeout or a missing report says nothing about the content, so no verdict is kept; the failure is
         # remembered so the next launches don't pay for the same timeout
         if env is None:
-            _store(key, {**entry, "failed": {"hash": content, "at": time.time()}})
+            _store(key, {**entry, "path": where, "failed": {"hash": content, "at": time.time()}})
         return verdict
-    _store(key, {"hash": content, "verdict": asdict(verdict)})
+    _store(key, {"hash": content, "path": where, "verdict": asdict(verdict)})
     return verdict
 
 
+def _key(kind: str, name: str, where: str, cache: dict[str, Any]) -> str:
+    """Cache key for one item. Skills with the same name in different folders (a plugin's copy and an
+    agents' copy) hold different content, so a second folder gets its own key instead of overwriting the
+    first one's verdict, which made every load scan both again."""
+    base = f"{kind}:{name}"
+    owner = (cache.get(base) or {}).get("path")
+    return base if owner in (None, where) else f"{base} ({where})"
+
+
 def approve(kind: str, name: str) -> bool:
-    """Allow this exact content despite its verdict; False when it has no verdict yet."""
+    """Allow this exact content despite its verdict (every folder's copy of a skill); False when it has no verdict yet."""
     cache = _load_cache()
-    entry = cache.get(f"{kind}:{name}")
-    if not entry or "verdict" not in entry:
-        return False
-    entry["verdict"]["approved"] = True
-    _save_cache(cache)
-    return True
+    base = f"{kind}:{name}"
+    entries = [e for k, e in cache.items() if (k == base or k.startswith(f"{base} (")) and isinstance(e, dict) and "verdict" in e]
+    for entry in entries:
+        entry["verdict"]["approved"] = True
+    if entries:
+        _save_cache(cache)
+    return bool(entries)
 
 
 def cached_verdicts() -> dict[str, Verdict]:

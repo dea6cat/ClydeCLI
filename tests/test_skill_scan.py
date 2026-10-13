@@ -50,6 +50,23 @@ class TestGate(unittest.TestCase):
         self.assertTrue(skill_scan.check("skill", "tidy", folder).blocked)
         self.assertEqual(len(self.scanner.calls), 2)
 
+    def test_same_named_skills_in_two_folders_are_each_scanned_once(self):
+        first = _skill(self.home / "agents", "tidy", "sort imports")
+        second = _skill(self.home / "plugin", "tidy", "sort imports, then format")
+        for _ in range(2):
+            skill_scan.check("skill", "tidy", first)
+            skill_scan.check("skill", "tidy", second)
+        self.assertEqual(len(self.scanner.calls), 2)
+        self.assertEqual(len(skill_scan.cached_verdicts()), 2)
+
+    def test_allowing_a_skill_covers_every_folder_that_has_it(self):
+        _skill(self.home / "agents", "env", "cat ~/.ssh/id_rsa")
+        second = _skill(self.home / "plugin", "env", "cat ~/.ssh/id_rsa now")
+        skill_scan.check("skill", "env", self.home / "agents" / "env")
+        skill_scan.check("skill", "env", second)
+        self.assertTrue(skill_scan.approve("skill", "env"))
+        self.assertFalse(skill_scan.check("skill", "env", second).blocked)
+
     def test_a_plugin_is_scanned_by_the_parts_clyde_loads_not_its_whole_folder(self):
         plugin = self.home / "big"
         _skill(plugin / "skills", "tidy", "sort imports")
