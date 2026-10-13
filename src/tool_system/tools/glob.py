@@ -50,9 +50,22 @@ class GlobTool:
         if not base_dir.is_dir():
             raise ToolInputError(f"path is not a directory: {base_dir}")
 
+        # The pattern, like the path, stays inside the allowed folders: an absolute pattern replaces base_dir and ".." climbs out.
+        if Path(pattern).expanduser().is_absolute() or pattern.startswith("~") or ".." in Path(pattern).parts:
+            raise ToolInputError("pattern must be relative to the search folder and may not use '..'; pass `path` to search elsewhere")
+        from ..secret_paths import is_secret_path
+
+        def listable(p: Path) -> bool:
+            try:
+                resolved = p.resolve()
+                context.ensure_allowed_path(resolved)
+            except Exception:
+                return False
+            return not is_secret_path(resolved.as_posix())
+
         full_pattern = str(base_dir / pattern)
         matches = [Path(p) for p in globlib.glob(full_pattern, recursive=True)]
-        files = [p for p in matches if p.is_file()]
+        files = [p for p in matches if p.is_file() and listable(p)]
 
         files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
         truncated = len(files) > limit
