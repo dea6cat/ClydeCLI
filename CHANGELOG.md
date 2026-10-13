@@ -11,6 +11,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Memory notes keep their save date (an invisible comment at the end of the line; notes written by hand are dated the next time the file is saved). `/memory stale` lists notes older than 90 days, and a full memory file points to it.
 
+### Security
+
+A source audit of the whole tool turned up 19 leads; each is fixed here with its own regression test (`tests/security/`).
+
+- The MCP approval prompt for a project's `.mcp.json` now shows the real destination and the names of the environment variables an entry reads, and an entry with both a `command` and a `url` is refused. Before, it could be shown as a harmless command while the `url` received headers expanded from your provider keys.
+- MCP tools that don't call themselves read-only, the generic `MCP` tool and `file:` or secret resource reads now ask before they run. Deny rules written for `mcp__server__tool` also stop the generic `MCP` tool and the resource tools, a project server can no longer take over a tool name your own server owns (a clash is reported), and your servers load first.
+- The post-edit lint no longer lets a model-chosen file name act as a `ruff` or `mypy` option, and only checks files inside the workspace.
+- Every `git` call Clyde makes in the workspace now ignores repository-local code (`core.fsmonitor`, hooks); Write and Edit on `.git` paths ask even in all-in mode, and the shell sandbox can't write `.git/config` or `.git/hooks`.
+- The legacy Python Skill tool only runs modules inside the skills folder and asks first. `ExitPlanMode` asks before leaving plan mode and only writes the session's plan file.
+- The read-only Bash check no longer accepts parameter expansions that can run code (`${x@P}`, `${x:=...}`, `$'...'`, `$((...))`), nor `tree -o`/`-R`, `rg --hostname-bin`/`-z`, `file -C`, `date -s`.
+- The secret-read ask now recognises globs, braces, names after a `cd`, secret folders, `/proc/<pid>/environ`, Clyde's own settings and OAuth files, and `env`/`printenv`/`export -p`. Grep and Glob skip secret files and anything that resolves outside the workspace, and the Data tool refuses secret files, SQL that names one, and SQL that builds a file name at run time. SQLite files are opened by an encoded path.
+- A cloned repository's skills, README and instruction files (`CLAUDE.md`, `AGENTS.md`) must resolve inside the repository and not be secrets, so a committed symlink can't pull `~/.clyde/keys.json` into the model context.
+- Bonnie serves its page, and the API token inside it, only to the browser that opens the one-time link it prints; fetching `http://localhost:PORT/` from another program or a model command gets a 403.
+- A plugin's enabled flag no longer outlives the plugin: installing resets it, and removing clears it first.
+
 ## [0.4.5] - 2026-10-13
 
 ### Fixed
