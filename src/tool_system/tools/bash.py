@@ -36,16 +36,26 @@ _READ_ONLY_GIT = frozenset({"blame", "diff", "log", "ls-files", "rev-parse", "sh
 # Flags that make an otherwise read-only command run programs or write files.
 _UNSAFE_FLAGS = {
     "find": ("-exec", "-execdir", "-ok", "-okdir", "-delete", "-fprint", "-fls"),
-    "rg": ("--pre",),
+    "rg": ("--pre", "--hostname-bin", "--search-zip", "-z"),   # run another program
     "git": ("--output",),
+    "tree": ("-o", "-R", "--output"),   # -o writes a file; -R writes 00Tree.html in every folder
+    "file": ("-C", "--compile"),        # writes a compiled magic file
+    "date": ("-s", "--set"),            # sets the clock
 }
+
+
+def _has_flag(arg: str, flag: str) -> bool:
+    """Whether `arg` is `flag`, `flag=value`, `flagvalue`, or (for a one-letter flag) bundled in a cluster like -aR."""
+    if arg.startswith(flag):
+        return True
+    return len(flag) == 2 and not arg.startswith("--") and re.match(rf"-[A-Za-z]*{flag[1]}", arg) is not None
 
 
 def _is_read_only_part(words: list[str]) -> bool:
     if not words:
         return True
     name, args = words[0], words[1:]
-    if any(arg.startswith(flag) for flag in _UNSAFE_FLAGS.get(name, ()) for arg in args):
+    if any(_has_flag(arg, flag) for flag in _UNSAFE_FLAGS.get(name, ()) for arg in args):
         return False
     if name in ("find", "rg"):
         return True
