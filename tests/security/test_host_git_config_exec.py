@@ -46,7 +46,7 @@ class TestHostGitIgnoresRepoCode(unittest.TestCase):
         offenders = []
         for rel in ("src/context_system/git_context.py", "src/review.py", "src/tool_system/plan_file.py",
                     "src/tool_system/tools/worktree.py", "src/tool_system/tools/code_map.py"):
-            text = Path(rel).read_text()
+            text = (Path(__file__).resolve().parents[2] / rel).read_text()
             if re.search(r"\[\s*[\"']git[\"']", text):
                 offenders.append(rel)
         self.assertEqual(offenders, [], "these files still build a bare ['git', ...] argv")
