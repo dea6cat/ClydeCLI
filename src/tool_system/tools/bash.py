@@ -57,10 +57,17 @@ def _is_read_only_part(words: list[str]) -> bool:
     return name in _READ_ONLY_COMMANDS
 
 
+# Quoting forms bash expands into code or arbitrary bytes: ANSI-C $'..', locale $"..", arithmetic $((..)).
+_CAN_EVALUATE = re.compile(r"\$['\"]|\$\(\(")
+
+
 def split_command(command: str) -> list[list[str]] | None:
     """Words of each part of a compound command; None if it substitutes, redirects to a file or won't parse."""
-    if "$(" in command or "`" in command:
+    if "$(" in command or "`" in command or _CAN_EVALUATE.search(command):
         return None
+    names = re.findall(r"\$\{([^}]*)\}", command)
+    if command.count("${") != len(names) or any(not re.fullmatch(r"\w+", name) for name in names):
+        return None   # only a plain ${NAME} is a read; ${x@P}, ${x:=cmd}, ${!y}, ${x//a/b}, an unclosed ${ can assign or run code
     lexer = shlex.shlex(command.replace("\n", ";"), posix=True, punctuation_chars=True)
     lexer.whitespace_split = True
     try:
