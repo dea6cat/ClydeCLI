@@ -7,9 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-10-13
+
 ### Added
 
 - `/settings`: one screen with Status, Config, Usage and Stats tabs. Config toggles auto-save, request tracing, terse replies, history length, the context window for local models and the update channel (type to search; most changes apply from the next start, the context window from your next message, and LM Studio reloads the loaded model with it). Usage shows the session's cost, tokens and cache hits per model, and what each plugin's skill list adds to every prompt. Stats draws a heatmap with streaks and favorite model (Overview) and tokens per day per model (Models), for all time, 30 or 7 days (`r`), from the request traces.
+
+### Fixed
+
+- SkillSpector no longer rescans every launch: skills that share a name (one per plugin or folder) were overwriting each other's cached verdict, so each load scanned them again. The cache now keeps one verdict per folder, and approving a skill covers every folder with that name.
+- Starting LM Studio from Clyde no longer opens the LM Studio app. Clyde starts the headless `llmster` daemon (`lms daemon up`), installing it first when missing, and never falls back to launching the app.
 
 ## [0.5.0] - 2026-10-13
 
@@ -578,6 +585,7 @@ The focus was on building a solid foundation with clean architecture, comprehens
 
 ---
 
+[0.5.1]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.5.1
 [0.5.0]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.5.0
 [0.4.5]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.4.5
 [0.4.4]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.4.4
