@@ -43,6 +43,7 @@ import urllib.request
 from pathlib import Path
 from typing import Any, Iterator
 
+from .permission_handler import PermissionResult
 from .protocol import ToolResult
 from .registry import ToolSpec
 
@@ -494,6 +495,12 @@ def flatten_content(result: dict[str, Any]) -> str:
     return "\n".join(p for p in parts if p) or "(no output)"
 
 
+def _preview(arguments: Any, limit: int = 200) -> str:
+    """The arguments of a call, cut short, for an approval message."""
+    text = json.dumps(arguments, ensure_ascii=False, default=str)
+    return text if len(text) <= limit else text[:limit - 1] + "…"
+
+
 class McpServerTool:
     """One MCP server tool, exposed to the model as mcp__<server>__<tool>."""
 
@@ -501,6 +508,13 @@ class McpServerTool:
         self._client = client
         self._tool = tool
         self._name = f"mcp__{_NAME_RE.sub('_', client.name)}__{_NAME_RE.sub('_', tool['name'])}"
+
+    def check_permissions(self, tool_input: dict[str, Any], context: Any) -> PermissionResult:
+        """A server tool that does not call itself read-only asks first, like any tool that changes things. (The hint is
+        the server's own word: it can skip this ask, which is why a server is something you connect on purpose.)"""
+        if (self._tool.get("annotations") or {}).get("readOnlyHint"):
+            return PermissionResult.allow()
+        return PermissionResult.ask(f"Run {self._tool['name']} on MCP server {self._client.name} with {_preview(tool_input)}")
 
     def spec(self) -> ToolSpec:
         schema = self._tool.get("inputSchema") or {"type": "object", "properties": {}}

@@ -4,6 +4,7 @@ from typing import Any, Protocol
 
 from ..context import ToolContext
 from ..errors import ToolInputError
+from ..permission_handler import PermissionResult
 from ..protocol import ToolResult
 from ..registry import ToolSpec
 
@@ -66,6 +67,19 @@ class ListMcpResourcesTool:
 
 
 class ReadMcpResourceTool:
+    def check_permissions(self, tool_input: dict[str, Any], context: ToolContext) -> PermissionResult:
+        """A server's own resources are read freely; a file: address, or one that names a secret, is the server reading
+        this machine's files on the model's behalf, so it asks."""
+        from urllib.parse import unquote, urlparse
+
+        from ..secret_paths import is_secret_path
+
+        uri = str(tool_input.get("uri", ""))
+        parsed = urlparse(uri)
+        if parsed.scheme == "file" or is_secret_path(unquote(parsed.path or uri)):
+            return PermissionResult.ask(f"Read {uri} from MCP server {tool_input.get('server')}")
+        return PermissionResult.allow()
+
     def spec(self) -> ToolSpec:
         return ToolSpec(
             name="ReadMcpResourceTool",

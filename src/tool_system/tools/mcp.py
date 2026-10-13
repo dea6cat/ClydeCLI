@@ -4,6 +4,7 @@ from typing import Any, Protocol
 
 from ..context import ToolContext
 from ..errors import ToolInputError
+from ..permission_handler import PermissionResult
 from ..protocol import ToolResult
 from ..registry import ToolSpec
 
@@ -15,6 +16,12 @@ class MCPClient(Protocol):
 
 
 class MCPTool:
+    def check_permissions(self, tool_input: dict[str, Any], context: ToolContext) -> PermissionResult:
+        """The generic caller can reach any tool of any connected server, so it always asks."""
+        from ..mcp_client import _preview
+
+        return PermissionResult.ask(f"Call {tool_input.get('tool')} on MCP server {tool_input.get('server')} with {_preview(tool_input.get('input') or {})}")
+
     def spec(self) -> ToolSpec:
         return ToolSpec(
             name="MCP",

@@ -84,6 +84,7 @@ class TestMcpClient(unittest.TestCase):
         self.assertEqual(out.output, "echo: hi")
 
     def test_server_side_error_is_a_tool_error(self) -> None:
+        self.ctx.permission_handler = lambda tool, message, suggestion: (True, False)   # the user says yes to running `fail`
         out = self.registry.dispatch(ToolCall(name="mcp__fake__fail", input={}), self.ctx)
         self.assertTrue(out.is_error)
         self.assertEqual(out.output, "it broke")
