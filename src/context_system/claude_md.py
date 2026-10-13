@@ -49,10 +49,13 @@ def load_claude_md_context(
         if path is not None and path not in candidates:
             candidates.append(path)
 
+    from .project_summary import _inside_and_not_secret
+
     for base in _walk_up_to_root(current, root):
         for group in _PROJECT_GROUPS:
             path = _first_existing(base, group)
-            if path is not None and path not in candidates:
+            # _first_existing follows symlinks: an instruction file that really lives outside the repository is not the repo's.
+            if path is not None and path not in candidates and _inside_and_not_secret(path, root):
                 candidates.append(path)
 
     files: list[ClaudeMdFile] = []

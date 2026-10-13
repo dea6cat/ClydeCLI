@@ -32,9 +32,21 @@ def build_project_summary(
     )
 
 
+def _inside_and_not_secret(path: Path, root: Path) -> bool:
+    """A repository's file may be used only if it really lives in the repository (a committed symlink to ~/.ssh/id_rsa does
+    not) and is not a secret (a link to its own .env)."""
+    from ..tool_system.secret_paths import is_secret_path
+
+    try:
+        resolved = path.resolve()
+    except (OSError, RuntimeError):
+        return False
+    return resolved.is_relative_to(root) and not is_secret_path(resolved.as_posix())
+
+
 def _find_readme(root: Path) -> Path | None:
     try:
-        files = {p.name.lower(): p for p in root.iterdir() if p.is_file()}
+        files = {p.name.lower(): p for p in root.iterdir() if p.is_file() and _inside_and_not_secret(p, root)}
     except OSError:
         return None
     return next((files[name] for name in _README_NAMES if name in files), None)

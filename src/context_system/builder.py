@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import date
 from pathlib import Path
 
@@ -104,6 +105,13 @@ def _render_git_section(git, workspace_root: Path) -> list[str]:
     return lines
 
 
+def _fence(text: str, lang: str = "") -> tuple[str, str]:
+    """Opening and closing code fence for `text`: one backtick longer than the longest run inside it, so the text can't close it."""
+    longest = max((len(run) for run in re.findall(r"`+", text)), default=0)
+    ticks = "`" * max(3, longest + 1)
+    return ticks + lang, ticks
+
+
 def _render_claude_md_section(claude_md, workspace_root: Path) -> list[str]:
     if not claude_md.files:
         return []
@@ -114,11 +122,12 @@ def _render_claude_md_section(claude_md, workspace_root: Path) -> list[str]:
             label = f"./{rel}"
         except ValueError:
             label = str(item.path)
+        opening, closing = _fence(item.content, "md")
         lines.extend([
             f"### {label}",
-            "```md",
+            opening,
             item.content,
-            "```",
+            closing,
         ])
     if claude_md.truncated:
         lines.append("- Additional instruction files were truncated to stay within prompt budget.")
@@ -132,11 +141,11 @@ def _render_project_summary_section(summary, workspace_root: Path) -> list[str]:
     if summary.entry_points:
         lines.append(f"- Entry points: {', '.join(summary.entry_points)}")
     if summary.readme_path is not None:
+        opening, closing = _fence(summary.readme_excerpt, "text")
         lines.extend([
             f"### ./{summary.readme_path.relative_to(workspace_root)} (excerpt)",
-            # Four backticks so fenced code inside the README cannot close the block.
-            "````text",
+            opening,
             summary.readme_excerpt,
-            "````",
+            closing,
         ])
     return lines
