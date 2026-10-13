@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Memory notes keep their save date (an invisible comment at the end of the line; notes written by hand are dated the next time the file is saved). `/memory stale` lists notes older than 90 days, and a full memory file points to it.
+
 ## [0.4.5] - 2026-10-13
 
 ### Fixed

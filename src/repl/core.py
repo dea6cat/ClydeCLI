@@ -221,7 +221,7 @@ _HELP_TEXT = """
 - `/council [up N|down N]` - Show every answer from the last cardShuffle council turn with Laya's score, or vote one up or down (votes stay on this machine)
 - `/status` - Show the model, mode, directory, session, goal and token totals
 - `/goal [text|plan|clear]` - Set a goal for this session (kept in the system prompt every turn), show it, or clear it; `plan` makes it "every phase of the saved plan is complete"
-- `/remember [project] TEXT` - Keep a note between sessions, about you (default) or this project; `/memory` lists the notes, `/forget [project] N` drops one; the model can save one too when you ask it to remember
+- `/remember [project] TEXT` - Keep a note between sessions, about you (default) or this project; `/memory` lists the notes (`/memory stale` those older than 90 days), `/forget [project] N` drops one; the model can save one too when you ask it to remember
 - `/plan [done|start|pending N|clear]` - Show the saved plan and its phases; set phase N's status; or delete the plan
 - `/terse [on|off]` - Shorter replies (fewer tokens, quicker on local models); bare opens a picker; saved
 - `/purge [name]` - Delete local models (Ollama and LM Studio) from disk, all of them or only those matching name; asks first
@@ -1429,8 +1429,8 @@ class ClydeREPL:
         elif cmd == '/goal' or cmd.startswith('/goal '):
             self._handle_goal(raw.split(maxsplit=1)[1].strip() if " " in raw.strip() else "")
 
-        elif cmd == '/memory':
-            self._show_memory()
+        elif cmd == '/memory' or cmd == '/memory stale':
+            self._show_memory(stale=cmd.endswith('stale'))
 
         elif cmd == '/remember' or cmd.startswith('/remember '):
             self._handle_remember(raw.split(maxsplit=1)[1].strip() if " " in raw.strip() else "")
@@ -2424,20 +2424,22 @@ class ClydeREPL:
         if note := plans.status_note(plans.read_plan(self.tool_context.plan_file)):
             self.console.print(f"  plan:      {note}", markup=False)
 
-    def _show_memory(self) -> None:
-        """/memory: the notes Clyde keeps between sessions, numbered per scope for /forget."""
+    def _show_memory(self, stale: bool = False) -> None:
+        """/memory: the notes Clyde keeps between sessions, numbered per scope for /forget. /memory stale: only those saved over 90 days ago."""
         from src import memory
         root = self.tool_context.workspace_root
         shown = False
         for scope, label in (("user", "About you"), ("project", "About this project")):
-            notes = memory.entries(scope, root)
+            notes = [(i, n, f" ({age} days old)") for i, n, age in memory.stale(scope, root)] if stale else \
+                    [(i, n, "") for i, n in enumerate(memory.entries(scope, root), 1)]
             if notes:
                 shown = True
                 self.console.print(f"{label} ({memory.path_for(scope, root)}):", markup=False)
-                for i, note in enumerate(notes, 1):
-                    self.console.print(f"  {i}. {note}", markup=False, highlight=False)
+                for i, note, age in notes:
+                    self.console.print(f"  {i}. {note}{age}", markup=False, highlight=False)
         if not shown:
-            self.console.print("No notes yet. Save one with /remember TEXT, or ask me to remember something.", markup=False)
+            self.console.print(f"No notes older than {memory.STALE_DAYS} days." if stale else
+                               "No notes yet. Save one with /remember TEXT, or ask me to remember something.", markup=False)
 
     def _handle_remember(self, arg: str) -> None:
         """/remember [project] TEXT: save a note, about the user unless the first word is `project`."""
