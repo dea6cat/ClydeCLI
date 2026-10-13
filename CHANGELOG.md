@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-13
+
 ### Added
 
 - Memory notes keep their save date (an invisible comment at the end of the line; notes written by hand are dated the next time the file is saved). `/memory stale` lists notes older than 90 days, and a full memory file points to it.
@@ -572,6 +574,7 @@ The focus was on building a solid foundation with clean architecture, comprehens
 
 ---
 
+[0.5.0]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.5.0
 [0.4.5]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.4.5
 [0.4.4]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.4.4
 [0.4.3]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.4.3
