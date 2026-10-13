@@ -141,6 +141,7 @@ class TestCycling(unittest.TestCase):
             seen.append(repl.mode)
         self.assertEqual(seen, ["hold", "plan", "all_in", "hold"])
         repl._set_mode("plan")
+        repl.tool_context.permission_handler = lambda tool, message, suggestion: (True, False)   # the user says yes
         build_default_registry().dispatch(ToolCall(name="ExitPlanMode", input={}), repl.tool_context)
         self.assertEqual(repl.mode, "hold")
 
