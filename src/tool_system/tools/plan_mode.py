@@ -6,6 +6,7 @@ from typing import Any
 
 from ..context import ToolContext
 from ..errors import ToolInputError, ToolPermissionError
+from ..permission_handler import PermissionResult
 from ..protocol import ToolResult
 from ..plan_file import keep_plans_out_of_git
 from ..registry import ToolSpec
@@ -33,6 +34,10 @@ class EnterPlanModeTool:
 
 
 class ExitPlanModeTool:
+    def check_permissions(self, tool_input: dict[str, Any], context: ToolContext) -> PermissionResult:
+        """Leaving plan mode lifts "no edits": it needs a yes (headless runs have no one to ask, so they stay in plan mode)."""
+        return PermissionResult.ask(message="Leave plan mode and save this plan so edits can begin")
+
     def spec(self) -> ToolSpec:
         return ToolSpec(
             name="ExitPlanMode",
@@ -74,14 +79,16 @@ class ExitPlanModeTool:
 
         file_path_out: str | None = None
         if plan is not None:
+            # The plan goes to this session's plan file and nowhere else: a model-chosen path would be a write
+            # that skips the Write/Edit gates (a hook, a skill, a build script).
+            own = context.plan_file or context.workspace_root / ".clyde" / "plan.md"
             if plan_path:
-                target = Path(plan_path).expanduser()
-                if not target.is_absolute():
-                    target = (context.cwd or context.workspace_root) / target
-                target = context.ensure_allowed_path(target)
-            else:
-                target = context.plan_file or context.workspace_root / ".clyde" / "plan.md"
-                target.parent.mkdir(parents=True, exist_ok=True)
+                requested = Path(plan_path).expanduser()
+                if not requested.is_absolute():
+                    requested = (context.cwd or context.workspace_root) / requested
+                if requested.resolve() != Path(own).resolve():
+                    raise ToolInputError("planFilePath must be this session's plan file; leave it out to use that file")
+            target = Path(own)
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(plan, encoding="utf-8")
             file_path_out = str(target)

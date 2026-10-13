@@ -737,19 +737,16 @@ class TestPlanModeTools(ToolSystemTests):
         self.assertTrue(plan_file.exists())
         self.assertEqual(plan_file.read_text(encoding="utf-8"), plan_content)
 
-    def test_plan_mode_exit_with_custom_path(self) -> None:
-        """Test exiting plan mode with custom plan file path."""
+    def test_plan_mode_exit_rejects_a_custom_path(self) -> None:
+        """The plan is saved to the session's own plan file only: a model-chosen path would skip the Write/Edit gates."""
+        from src.tool_system.errors import ToolInputError
+
         EnterPlanModeTool().run({}, self.ctx)
-
         custom_path = self.root / "my-plan.md"
-        plan_content = "# Custom Plan"
-        exit_out = ExitPlanModeTool().run(
-            {"plan": plan_content, "planFilePath": str(custom_path)},
-            self.ctx,
-        ).output
-
-        self.assertEqual(exit_out["filePath"], str(custom_path))
-        self.assertTrue(custom_path.exists())
+        with self.assertRaises(ToolInputError):
+            ExitPlanModeTool().run({"plan": "# Custom Plan", "planFilePath": str(custom_path)}, self.ctx)
+        self.assertFalse(custom_path.exists())
+        self.assertTrue(self.ctx.plan_mode)
 
     def test_plan_mode_exit_not_in_mode(self) -> None:
         """Test exiting plan mode when not in it."""
