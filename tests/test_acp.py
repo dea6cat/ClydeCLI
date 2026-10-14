@@ -11,7 +11,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from src.acp import Server
+from src.acp import Server, _prompt_text
 from tests.fakes import FakeProvider, reply
 
 
@@ -102,6 +102,22 @@ class TestAcp(unittest.TestCase):
         with patch("src.repl.core.ClydeREPL", side_effect=SystemExit(1)):
             error = self.call(2, "session/new", {"cwd": str(self.ws), "mcpServers": []})["error"]
         self.assertEqual(error["code"], -32603)
+
+    def test_a_mentioned_file_reaches_the_model_as_a_path_and_lines(self):
+        link = {"type": "resource_link", "name": "acp.py", "uri": "file:///Users/me/my%20repo/src/acp.py#L115:116"}
+        self.assertEqual(_prompt_text([{"type": "text", "text": "fix"}, link]),
+                         "fix\n[Referenced by the user: /Users/me/my repo/src/acp.py, lines 115-116. Read it if you need it.]")
+        self.assertIn(", line 7.", _prompt_text([{**link, "uri": "file:///a/b.py#L7"}]))
+        self.assertNotIn("line", _prompt_text([{**link, "uri": "file:///a/b.py"}]))
+        self.assertIn("https://x.dev/doc", _prompt_text([{"type": "resource_link", "name": "doc", "uri": "https://x.dev/doc"}]))
+        self.assertEqual(_prompt_text([{"type": "image", "data": "..."}]), "")
+
+    def test_the_model_sees_the_mention_in_the_turn(self):
+        sid = self.call(2, "session/new", {"cwd": str(self.ws), "mcpServers": []})["result"]["sessionId"]
+        link = {"type": "resource_link", "name": "a.py", "uri": "file:///w/a.py#L1:2"}
+        self.call(3, "session/prompt", {"sessionId": sid, "prompt": [{"type": "text", "text": "apply the fix"}, link]})
+        sent = [m.text for m in self.provider.requests[0]["conversation"].messages if m.text]
+        self.assertIn("apply the fix\n[Referenced by the user: /w/a.py, lines 1-2.", sent[-1])
 
 
 if __name__ == "__main__":

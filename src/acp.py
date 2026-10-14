@@ -15,9 +15,11 @@ from __future__ import annotations
 import json
 import os
 import queue
+import re
 import sys
 import threading
 import uuid
+from urllib.parse import unquote, urlparse
 from typing import Any, TextIO
 
 PROTOCOL_VERSION = 1
@@ -27,6 +29,27 @@ AUTH_METHODS = [{"id": "login", "name": "Connect a provider", "type": "terminal"
                  "description": "Runs `clyde login` in a terminal: pick a provider and save its key (Ollama and LM Studio need none)."}]
 _KINDS = {"read": "read", "edit": "edit", "write": "edit", "notebookedit": "edit", "bash": "execute",
           "grep": "search", "glob": "search", "webfetch": "fetch", "websearch": "fetch"}
+
+
+_LINES = re.compile(r"L(\d+)(?::L?(\d+))?")   # Zed's file mentions end in #L115:116
+
+
+def _link_text(block: dict) -> str:
+    """A `resource_link` (an @-mentioned file) as text. Only the reference goes in, not the contents: the model reads the
+    file with its own Read tool, which keeps the permission and secret-file guards an editor-supplied path must not skip."""
+    uri = str(block.get("uri", ""))
+    parsed = urlparse(uri)
+    if parsed.scheme != "file":
+        return f"[Referenced by the user: {block.get('name') or uri}] {uri}"
+    span = _LINES.fullmatch(parsed.fragment)
+    where = f", lines {span[1]}-{span[2]}" if span and span[2] else f", line {span[1]}" if span else ""
+    return f"[Referenced by the user: {unquote(parsed.path)}{where}. Read it if you need it.]"
+
+
+def _prompt_text(blocks: list[dict]) -> str:
+    """What the model is told: the text blocks, and the files and links the user mentioned, in order."""
+    parts = [b.get("text", "") if b.get("type") == "text" else _link_text(b) for b in blocks if b.get("type") in ("text", "resource_link")]
+    return "\n".join(p for p in parts if p).strip()
 
 
 class AuthRequired(Exception):
@@ -156,7 +179,7 @@ class Server:
     def on_session_prompt(self, params: dict) -> dict:
         sid = params["sessionId"]
         repl = self.sessions[sid]
-        text = "\n".join(b.get("text", "") for b in params.get("prompt", []) if b.get("type") == "text").strip()
+        text = _prompt_text(params.get("prompt", []))
 
         def update(u: dict) -> None:
             self.notify("session/update", {"sessionId": sid, "update": u})
