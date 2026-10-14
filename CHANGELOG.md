@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `/models local` lists models that run slower than about 15 tokens per second last and marks them `(slow)`; `CLYDE_MIN_TOKS` changes the floor.
+- Downloads through LM Studio warn first that tool use isn't confirmed for that model.
+- Clyde asks for GPU offload: Ollama gets `num_gpu` and `lms load` gets `--gpu` when a GPU (Apple Silicon or NVIDIA) can hold all or part of the model. With no GPU, the runtime decides as before.
+
+### Fixed
+
+- `/models local` no longer offers models whose chat template can't call tools: the benchmark-ranked `best` source is now checked too.
+- A model that failed `/eval` is hidden from `/models local` whichever app runs it (Ollama, Hugging Face GGUF or LM Studio), and the match ignores case.
+
 ## [0.5.3] - 2026-10-13
 
 ### Fixed
