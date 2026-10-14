@@ -95,6 +95,7 @@ Examples:
   clyde -p "<prompt>"                 One turn without the prompt, answer on stdout (scripts, CI); also --mode,
                                       --output-format json, --max-turns. Piped input is added: git diff | clyde -p "review"
   clyde --acp                         Run as an Agent Client Protocol agent on stdio, for editors (Zed, JetBrains)
+  clyde acp install zed [-y]          Add Clyde to Zed's settings as an external agent (shows the change, asks first)
 """
     )
 
@@ -163,6 +164,10 @@ Examples:
     uninstall_parser = subparsers.add_parser('uninstall', help='Remove Clyde the way it was installed; --purge also deletes ~/.clyde (keys, sessions)')
     uninstall_parser.add_argument('--purge', action='store_true', help="also delete Clyde's data folder: settings, saved keys, sessions, licence record")
     uninstall_parser.add_argument('-y', '--yes', action='store_true', help='no confirmation questions')
+    acp_parser = subparsers.add_parser('acp', help="Set Clyde up as an editor's agent: `acp install zed`")
+    acp_parser.add_argument('action', choices=['install'])
+    acp_parser.add_argument('editor', choices=['zed'])
+    acp_parser.add_argument('-y', '--yes', action='store_true', help='write the change without asking')
     license_parser = subparsers.add_parser('license', help='Show the licence terms and whether you accepted them; `license accept` records it')
     license_parser.add_argument('action', nargs='?', choices=['show', 'accept'], default='show')
 
@@ -196,6 +201,10 @@ Examples:
 
     if args.command == 'sessions':
         return handle_sessions(Console(), args.action, ' '.join(args.target))
+
+    if args.command == 'acp':
+        from src.install import zed
+        return zed.install(Console(), assume_yes=args.yes)
 
     if args.command == 'tune':
         from src.tuning import tune
