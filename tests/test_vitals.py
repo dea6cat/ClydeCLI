@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 from unittest.mock import patch
 
-from src import vitals
+from src.system import vitals
 from src.providers.fit import GB
 
 

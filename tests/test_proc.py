@@ -6,7 +6,7 @@ import time
 import unittest
 from unittest.mock import patch
 
-from src.proc import run_group
+from src.system.proc import run_group
 
 
 def _gone(pid: int) -> bool:
@@ -41,7 +41,7 @@ class TestRunGroup(unittest.TestCase):
             return real(self, *a, **k)
 
         with patch.object(subprocess.Popen, "communicate", interrupted):
-            with patch("src.proc._kill_group", wraps=__import__("src.proc", fromlist=["x"])._kill_group) as kill:
+            with patch("src.system.proc._kill_group", wraps=__import__("src.system.proc", fromlist=["x"])._kill_group) as kill:
                 with self.assertRaises(KeyboardInterrupt):
                     run_group(["sh", "-c", "sleep 60 & wait"], stdout=subprocess.PIPE, text=True)
         kill.assert_called_once()

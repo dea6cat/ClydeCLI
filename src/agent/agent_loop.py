@@ -8,7 +8,7 @@ import time
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from .. import activity
+from ..runtime import activity
 from ..tool_system.checks import edit_check_for
 from . import trace
 from ..tool_system.registry import ToolRegistry

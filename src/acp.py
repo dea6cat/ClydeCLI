@@ -73,7 +73,7 @@ class Server:
         self.work.put(None)                                          # the client closed stdin
 
     def _cancel(self) -> None:
-        from src.run_control import interrupt_turn
+        from src.runtime.run_control import interrupt_turn
 
         self.cancelled.set()
         for rid in list(self.replies):                               # a turn waiting on a permission answer

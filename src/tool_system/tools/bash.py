@@ -6,7 +6,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from ... import proc
+from ...system import proc
 from .. import sandbox
 from ..context import ToolContext
 from ..errors import ToolInputError, ToolPermissionError

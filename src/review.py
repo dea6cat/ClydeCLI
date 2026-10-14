@@ -10,7 +10,7 @@ import re
 import subprocess
 from pathlib import Path
 
-from .git_safe import git_cmd, git_env
+from .security.git_safe import git_cmd, git_env
 
 MAX_DIFF_CHARS = 60_000
 _GIT_TIMEOUT = 30

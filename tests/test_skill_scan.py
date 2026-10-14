@@ -8,8 +8,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from src import skill_scan
-from src.skill_scan import BLOCK, CAUTION, ERROR, SAFE, Verdict
+from src.security import skill_scan
+from src.security.skill_scan import BLOCK, CAUTION, ERROR, SAFE, Verdict
 
 
 def _skill(root: Path, name: str, body: str) -> Path:

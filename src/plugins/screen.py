@@ -11,8 +11,9 @@ import sys
 from dataclasses import dataclass
 from typing import Any
 
-from src import plugins, skill_scan
-from src.picker import scroll
+from src import plugins
+from src.security import skill_scan
+from src.ui.picker import scroll
 
 _ACCENT = "#a8a8ff"
 _OK = "#4eba65"

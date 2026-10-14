@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from src import install_info
+from src.install import install_info
 from src.config import clyde_home
 
 REMOTE_URL = "https://github.com/dea6cat/ClydeCLI"

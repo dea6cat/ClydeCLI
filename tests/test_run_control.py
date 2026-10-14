@@ -4,7 +4,7 @@ from __future__ import annotations
 import unittest
 from unittest.mock import patch
 
-from src.run_control import RunControl
+from src.runtime.run_control import RunControl
 
 
 class TestRunControl(unittest.TestCase):
@@ -25,7 +25,7 @@ class TestRunControl(unittest.TestCase):
     def test_stop_interrupts_only_a_running_turn_and_drops_its_steering(self):
         control = RunControl()
         control.steer("old")
-        with patch("src.run_control.interrupt_turn") as interrupt:
+        with patch("src.runtime.run_control.interrupt_turn") as interrupt:
             control.stop()
             interrupt.assert_not_called()
             control.busy = True

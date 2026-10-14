@@ -11,7 +11,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 
-from src import tune_profile
+from src.tuning import tune_profile
 
 from . import fit, huggingface
 from .fit import Offer

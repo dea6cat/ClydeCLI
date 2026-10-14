@@ -11,7 +11,7 @@ from rich.console import Console
 from rich.prompt import Prompt
 from rich.table import Table
 
-from src.picker import Choice, pick
+from src.ui.picker import Choice, pick
 
 
 def pick_or_prompt(console: Console, title: str, choices: list[Choice], *, current: str | None = None,
@@ -173,7 +173,7 @@ Examples:
     # These never run the agent: doctor reports the licence status itself, and someone who declined the terms must be able to
     # uninstall (or update to terms they accept).
     if not args.version and args.command not in ('doctor', 'uninstall', 'update'):
-        from src import license_gate
+        from src.install import license_gate
         if not license_gate.ensure_accepted(Console()):
             return license_gate.EXIT_DECLINED
 
@@ -198,11 +198,11 @@ Examples:
         return handle_sessions(Console(), args.action, ' '.join(args.target))
 
     if args.command == 'tune':
-        from src import tune
+        from src.tuning import tune
         return tune.run(Console(), model=args.tune_model, ctx=args.ctx, reask=args.tune_ask)
 
     if args.command == 'doctor':
-        from src import install_info
+        from src.install import install_info
         print("ClydeCLI install:")
         print("\n".join(install_info.report_lines()))
         print("\nFor the full environment check (keys, providers, sandbox, config) run /doctor inside clyde.")
@@ -488,7 +488,7 @@ def handle_setup(console: Console, assume_yes: bool = False) -> int:
         console.print(f"• Laya's model isn't downloaded ({laya_client.DOWNLOAD_SIZE}); run [bold]clyde setup[/bold] to get it.")
 
     # 7b) Ollama tuning: loads the model several times, so only after a yes (never with --yes)
-    from src import tune
+    from src.tuning import tune
     tune.offer(console, assume_yes=assume_yes)
 
     # 8) PATH
@@ -585,7 +585,7 @@ def handle_hooks_import(console: Console, quiet: bool = False) -> int:
 def _scan_plugin(console: Console, plugin):  # type: ignore[no-untyped-def]
     """SkillSpector's verdict on a plugin before the user decides to enable it: the static scan, plus
     the LLM review with the default model when SkillSpector can use it (Ctrl+C skips the review)."""
-    from src import skill_scan
+    from src.security import skill_scan
 
     env = skill_scan.default_llm_env()
     try:
@@ -611,7 +611,8 @@ def handle_update(console: Console, check_only: bool = False, channel: str | Non
     current, 1 failed (or, with --check, a newer version exists), 2 not managed here (a source checkout), no stable release
     yet, or, with --check, the check could not be made."""
     import subprocess
-    from src import config, install_info, updates
+    from src import config
+    from src.install import install_info, updates
     if channel is not None:
         config.set_update_channel(channel)
         console.print(f"Update channel: [bold]{channel}[/bold] (saved)")
@@ -660,7 +661,7 @@ def handle_uninstall(console: Console, purge: bool = False, assume_yes: bool = F
     import shutil
     import subprocess
     from rich.prompt import Confirm
-    from src import install_info
+    from src.install import install_info
     info = install_info.detect()
     command = install_info.uninstall_command(info)
     if command is None:
@@ -695,7 +696,7 @@ def handle_uninstall(console: Console, purge: bool = False, assume_yes: bool = F
 def handle_license(console: Console, action: str) -> int:
     """`clyde license [show|accept]`: the terms and this machine's status; accept records it (typed phrase, or
     CLYDE_ACCEPT_LICENSE=1 when there is no terminal)."""
-    from src import license_gate
+    from src.install import license_gate
     if action == 'show':
         console.print(license_gate.SUMMARY, markup=False, highlight=False)
         console.print()
@@ -771,7 +772,7 @@ def handle_plugin(console: Console, action: str, target: str | None, assume_yes:
                     "Plugins run code: their tools, hooks and MCP servers run on this machine. Enable it?", default=False):
                 plugins.set_enabled(plugin.name, True)
                 if verdict.blocked:
-                    from src import skill_scan
+                    from src.security import skill_scan
                     skill_scan.approve("plugin", plugin.name)
                 console.print(f"[green]✓ Enabled {plugin.name}[/green]; it loads the next time ClydeCLI starts.")
             else:

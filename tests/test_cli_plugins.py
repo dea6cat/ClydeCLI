@@ -126,7 +126,7 @@ class TestPluginImport(unittest.TestCase):
         self.assertNotIn("alpha", {f.plugin.name for f in plugins.find_foreign() if f.plugin})
 
     def test_only_a_clean_scan_makes_yes_the_default(self) -> None:
-        from src.skill_scan import BLOCK, CAUTION, ERROR, SAFE, Verdict
+        from src.security.skill_scan import BLOCK, CAUTION, ERROR, SAFE, Verdict
         for recommendation, expected in ((SAFE, True), (CAUTION, False), (BLOCK, False), (ERROR, False)):
             with patch("src.cli._scan_plugin", return_value=Verdict("x", recommendation)), \
                     patch("rich.prompt.Confirm.ask", return_value=False) as ask:
@@ -135,8 +135,9 @@ class TestPluginImport(unittest.TestCase):
             self.assertEqual(alpha, expected, recommendation)
 
     def test_a_failed_llm_review_falls_back_to_the_static_scan(self) -> None:
-        from src import cli, skill_scan
-        from src.skill_scan import ERROR, SAFE, Verdict
+        from src import cli
+        from src.security import skill_scan
+        from src.security.skill_scan import ERROR, SAFE, Verdict
         plugin = type("P", (), {"name": "alpha", "root": self.home})()
         verdicts = iter([Verdict("alpha", ERROR, findings=["timed out"]), Verdict("alpha", SAFE)])
         with patch.object(skill_scan, "default_llm_env", return_value={"X": "1"}), \

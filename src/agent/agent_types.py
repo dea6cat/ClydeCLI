@@ -68,7 +68,7 @@ def _parse(path: Path) -> AgentType | None:
 
 def load(project_root: Path) -> dict[str, AgentType]:
     """Every agent type available here, by name; held-back ones (SkillSpector) are left out."""
-    from .. import skill_scan
+    from ..security import skill_scan
 
     found: dict[str, AgentType] = {GENERAL: _BUILT_IN}
     for folder in agent_dirs(project_root):

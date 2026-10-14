@@ -13,10 +13,10 @@ from unittest.mock import MagicMock, patch
 
 from rich.console import Console
 
-from src import tune, tune_profile
+from src.tuning import tune, tune_profile
 from src.providers.base import ProviderError
-from src.tune import Quality, Result
-from src.tune_profile import Profile
+from src.tuning.tune import Quality, Result
+from src.tuning.tune_profile import Profile
 
 GB = 2 ** 30
 CODING = Profile(("coding",), "context")

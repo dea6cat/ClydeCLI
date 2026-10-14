@@ -8,7 +8,7 @@ import unittest
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from src import usage_stats as stats
+from src.ui import usage_stats as stats
 
 TODAY = date(2026, 10, 13)
 

@@ -33,7 +33,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
-from src import activity
+from src.runtime import activity
 from src.config import clyde_home
 from src.providers import keys
 from src.agent.session import Session
@@ -41,7 +41,7 @@ from src.bonnie import artifacts, attachments, automations, pins, projects, prov
 from src.bonnie.page import PAGE
 from src.providers import model_ref
 from src.providers.card_shuffle import record_vote
-from src.run_control import RunControl
+from src.runtime.run_control import RunControl
 from src.tool_system.tools.web_search import WebSearchTool
 
 MAX_BODY = 1_000_000

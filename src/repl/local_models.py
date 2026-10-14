@@ -19,8 +19,8 @@ from typing import Any, Callable
 from rich.prompt import Confirm
 from rich.text import Text
 
-from src import tune
-from src.picker import Choice, pick
+from src.tuning import tune
+from src.ui.picker import Choice, pick
 from src.providers import best_fit, discover, fit, huggingface, mlx
 from src.providers.base import ProviderError, post_stream
 from src.providers.lmstudio import _lms, model_files

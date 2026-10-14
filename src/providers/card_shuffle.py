@@ -26,7 +26,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, wait
 from typing import Callable, Iterable
 
-from .. import activity
+from ..runtime import activity
 from ..agent import trace
 from ..config import clyde_home
 from . import laya_client

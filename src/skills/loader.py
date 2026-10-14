@@ -139,7 +139,7 @@ def _cleared(skill: PromptSkill) -> bool:
     """Whether SkillSpector's verdict lets this skill reach the model (see src/skill_scan.py)."""
     if not skill.skill_root:
         return True
-    from src import skill_scan
+    from src.security import skill_scan
 
     return not skill_scan.check("skill", skill.name, Path(skill.skill_root)).blocked
 

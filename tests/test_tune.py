@@ -11,10 +11,10 @@ from unittest.mock import patch
 
 from rich.console import Console
 
-from src import tune, tune_profile
+from src.tuning import tune, tune_profile
 from src.providers.base import ProviderError
-from src.tune import Candidate, Quality, Result, Row
-from src.tune_profile import Profile
+from src.tuning.tune import Candidate, Quality, Result, Row
+from src.tuning.tune_profile import Profile
 
 GB = 2 ** 30
 CODING = Profile(("coding",), "context")

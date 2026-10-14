@@ -7,7 +7,8 @@ import unittest
 from prompt_toolkit.input import create_pipe_input
 from prompt_toolkit.output import DummyOutput
 
-from src import plugin_screen, plugins
+from src import plugins
+from src.plugins import screen as plugin_screen
 from tests.test_plugins import PluginHomeCase, make_plugin
 
 LEFT, RIGHT, DOWN, ESC = "\x1b[D", "\x1b[C", "\x1b[B", "\x1b"
