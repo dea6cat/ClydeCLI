@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.6] - 2026-10-14
+
 ### Added
 
 - `clyde --acp` offers a terminal login (`clyde login`) as its auth method and answers `authenticate`, which the ACP Registry requires of listed agents. With no provider connected, `session/new` now replies with the protocol's auth-required error instead of leaving the editor waiting.
@@ -626,6 +628,7 @@ The focus was on building a solid foundation with clean architecture, comprehens
 
 ---
 
+[0.5.6]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.5.6
 [0.5.5]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.5.5
 [0.5.4]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.5.4
 [0.5.3]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.5.3
