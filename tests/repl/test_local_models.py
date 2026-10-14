@@ -284,6 +284,23 @@ class TestSetUpRunner(unittest.TestCase):
         pull.assert_called_once()
 
 
+class TestSpeedFloor(unittest.TestCase):
+    def test_slow_models_are_listed_last_with_the_rest_in_order(self):
+        repl = _Repl()
+        fast = Offer("fast", "fast:3b", 2 * GB, "relax", 1, "est. Q4", "ollama")
+        slow = Offer("slow", "slow:70b", 40 * GB, "hard", 9, "est. Q4", "ollama")
+        fast2 = Offer("fast2", "fast2:7b", 4 * GB, "relax", 1, "est. Q4", "ollama")
+        with patch.object(local_models.fit, "chip", return_value="Apple M3 Pro"), \
+                patch.object(local_models.fit, "budget_bytes", return_value=48 * GB), \
+                patch.object(local_models, "SOURCES", {"ollama": lambda q, b: [slow, fast, fast2]}), \
+                patch.object(local_models, "hidden_refs", return_value=set()), \
+                patch.object(local_models, "pick", return_value=None) as pick:
+            local_models.show(repl, " ollama")
+        self.assertEqual([c.label for c in pick.call_args.args[2]], ["fast", "fast2", "slow"])
+        self.assertIn("(slow)", pick.call_args.args[2][2].hint)
+        self.assertIn("1 listed last", repl.console.export_text())
+
+
 class TestFailedEvalHidden(unittest.TestCase):
     def test_a_model_that_failed_eval_is_not_listed_again(self):
         repl = _Repl()

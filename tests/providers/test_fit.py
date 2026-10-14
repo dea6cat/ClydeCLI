@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
-from src.providers.fit import GB, OVERHEAD, budget_bytes, pick, rate, tokens_per_s
+from src.providers.fit import GB, OVERHEAD, budget_bytes, is_slow, pick, rate, tokens_per_s
 
 
 class TestBudget(unittest.TestCase):
@@ -17,6 +18,19 @@ class TestBudget(unittest.TestCase):
 
     def test_other_machines_keep_a_quarter_for_the_os(self):
         self.assertEqual(budget_bytes(32 * GB, apple=False), 24 * GB)
+
+
+class TestSlow(unittest.TestCase):
+    def test_a_model_under_the_floor_is_slow_over_it_or_unknown_is_not(self):
+        self.assertTrue(is_slow(40 * GB, "Apple M3 Pro"))    # ~150 GB/s over 40 GB
+        self.assertFalse(is_slow(2 * GB, "Apple M3 Pro"))
+        self.assertFalse(is_slow(40 * GB, ""))               # unknown chip
+
+    def test_the_floor_can_be_changed_and_a_bad_value_is_ignored(self):
+        with patch.dict("os.environ", {"CLYDE_MIN_TOKS": "1000"}):
+            self.assertTrue(is_slow(2 * GB, "Apple M3 Pro"))
+        with patch.dict("os.environ", {"CLYDE_MIN_TOKS": "fast"}):
+            self.assertFalse(is_slow(2 * GB, "Apple M3 Pro"))
 
 
 class TestRating(unittest.TestCase):

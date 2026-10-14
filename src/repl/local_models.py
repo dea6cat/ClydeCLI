@@ -96,7 +96,7 @@ def _choices(offers: list[fit.Offer], chip: str) -> list[Choice]:
     for i, o in enumerate(offers):
         speed = fit.tokens_per_s(o.size_bytes, chip, o.name)
         rows.append(Choice(str(i), o.name, f"{o.rating} · {o.source} · {o.size_bytes / fit.GB:.1f} GB · "
-                                           + (f"~{speed} tok/s · " if speed else "") + f"{_count(o.popularity)} pulls · {_quant(o.note)}"))
+                                           + (f"~{speed} tok/s{' (slow)' if fit.is_slow(o.size_bytes, chip, o.name) else ''} · " if speed else "") + f"{_count(o.popularity)} pulls · {_quant(o.note)}"))
     return rows
 
 
@@ -209,7 +209,9 @@ def show(repl: Any, arg: str) -> None:
     shown_offers = [o for o in offers if f"ollama:{o.pull_tag}" not in failed]
     if len(shown_offers) < len(offers):
         repl.console.print(f"[dim]{len(offers) - len(shown_offers)} hidden: they failed /eval here before, e.g. no tool calling.[/dim]")
-    offers = shown_offers
+    offers = sorted(shown_offers, key=lambda o: fit.is_slow(o.size_bytes, chip, o.name))   # stable: slow ones last, ranking kept
+    if slow := sum(fit.is_slow(o.size_bytes, chip, o.name) for o in offers):
+        repl.console.print(f"[dim]{slow} listed last: under ~{fit.min_toks()} tok/s on this machine, too slow for a fluid chat.[/dim]")
     if not offers:
         repl.console.print(f"Nothing from {' or '.join(names)} fits {budget / fit.GB:.0f} GB" + (f" for '{query}'." if query else ".")
                            + " Try other search words.")

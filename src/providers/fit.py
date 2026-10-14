@@ -147,6 +147,22 @@ def tokens_per_s(file_bytes: int, chip_name: str, model_name: str = "") -> int |
     return round(bandwidth * GB * _EFFICIENCY / read)
 
 
+MIN_TOKS = 15   # below this a chat stops feeling fluid; CLYDE_MIN_TOKS overrides
+
+
+def min_toks() -> int:
+    try:
+        return int(os.environ.get("CLYDE_MIN_TOKS", MIN_TOKS))
+    except ValueError:
+        return MIN_TOKS
+
+
+def is_slow(file_bytes: int, chip_name: str, model_name: str = "") -> bool:
+    """True when the estimated decoding speed is under the floor; an unknown speed is never slow."""
+    speed = tokens_per_s(file_bytes, chip_name, model_name)
+    return speed is not None and speed < min_toks()
+
+
 def pick(variants: list[tuple[str, int]], budget: int) -> tuple[str, int, str] | None:
     """(tag, bytes, rating) of the variant to offer: the largest that runs relax or balance, else
     the largest that runs at all. None when nothing fits."""
