@@ -75,7 +75,7 @@ class TestAcp(unittest.TestCase):
     def test_the_editor_gets_a_model_picker_and_can_switch_models(self):
         self.call(1, "initialize", {"protocolVersion": 1})
         new = self.call(2, "session/new", {"cwd": str(self.ws), "mcpServers": []})["result"]
-        (option,) = new["configOptions"]
+        option = new["configOptions"][0]
         self.assertEqual((option["id"], option["category"], option["type"], option["currentValue"]), ("model", "model", "select", "glm:glm-4.5"))
         self.assertEqual([o["value"] for o in option["options"]], ["glm:glm-4.5", "glm:glm-4.6"])
         switched = self.call(3, "session/set_config_option", {"sessionId": new["sessionId"], "configId": "model", "value": "glm:glm-4.6"})
@@ -118,6 +118,32 @@ class TestAcp(unittest.TestCase):
         self.call(3, "session/prompt", {"sessionId": sid, "prompt": [{"type": "text", "text": "apply the fix"}, link]})
         sent = [m.text for m in self.provider.requests[0]["conversation"].messages if m.text]
         self.assertIn("apply the fix\n[Referenced by the user: /w/a.py, lines 1-2.", sent[-1])
+
+    def test_every_settings_toggle_is_offered_and_a_change_is_saved(self):
+        from src.ui.settings_screen import settings
+
+        self.call(1, "initialize", {"protocolVersion": 1})
+        new = self.call(2, "session/new", {"cwd": str(self.ws), "mcpServers": []})["result"]
+        offered = {o["name"]: o for o in new["configOptions"][1:]}
+        self.assertEqual(list(offered), [s.label for s in settings()])
+        terse = offered["Terse replies"]
+        self.assertEqual((terse["id"], terse["type"], terse["currentValue"]), ("setting_terse_replies", "select", "False"))
+        self.assertEqual([o["name"] for o in terse["options"]], ["On", "Off"])
+        self.assertEqual(offered["Context window (local models)"]["options"][0]["name"], "Default")
+        sid = new["sessionId"]
+        done = self.call(3, "session/set_config_option", {"sessionId": sid, "configId": "setting_terse_replies", "value": "True"})
+        self.assertEqual([o["currentValue"] for o in done["result"]["configOptions"] if o["id"] == "setting_terse_replies"], ["True"])
+        self.assertTrue(next(s for s in settings() if s.label == "Terse replies").value())
+        self.call(4, "session/set_config_option", {"sessionId": sid, "configId": "setting_max_history", "value": "200"})
+        self.assertEqual(next(s for s in settings() if s.label == "Max history").value(), 200)
+        self.call(5, "session/set_config_option", {"sessionId": sid, "configId": "setting_context_window_local_models", "value": "None"})
+        self.assertIsNone(next(s for s in settings() if s.label.startswith("Context window")).value())
+
+    def test_a_setting_that_does_not_exist_or_a_value_it_cannot_take_is_refused(self):
+        sid = self.call(2, "session/new", {"cwd": str(self.ws), "mcpServers": []})["result"]["sessionId"]
+        for config_id, value in (("setting_nope", "1"), ("setting_max_history", "7")):
+            error = self.call(3, "session/set_config_option", {"sessionId": sid, "configId": config_id, "value": value})["error"]
+            self.assertEqual(error["code"], -32603, config_id)
 
 
 if __name__ == "__main__":

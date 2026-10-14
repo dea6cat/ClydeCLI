@@ -2,8 +2,8 @@
 support it (Zed, JetBrains through an adapter) can run Clyde as their agent.
 
 Newline-delimited JSON-RPC 2.0, protocol version 1. Supported: initialize, session/new,
-session/prompt, session/cancel, authenticate and session/set_config_option (the model picker: a `model` select option in the
-session/new reply); the agent streams session/update (agent_message_chunk,
+session/prompt, session/cancel, authenticate and session/set_config_option (the model picker and the `/settings` toggles:
+select options in the session/new reply); the agent streams session/update (agent_message_chunk,
 tool_call, tool_call_update) and asks session/request_permission before anything that needs a yes.
 Logs go to stderr, never stdout.
 
@@ -167,15 +167,24 @@ class Server:
         repl.tool_context.permission_handler = lambda tool, message, rule: self._ask(sid, tool, message)
         repl.tool_context.ask_user = None
         self.sessions[sid] = repl
-        return {"sessionId": sid, "configOptions": [_model_option(repl)]}
+        return {"sessionId": sid, "configOptions": _config_options(repl)}
 
     def on_session_set_config_option(self, params: dict) -> dict:
-        repl = self.sessions[params["sessionId"]]
-        if params.get("configId") != "model":
-            raise ValueError(f"unknown option: {params.get('configId')}")
-        if not repl._switch_model(str(params.get("value"))):
-            raise ValueError(f"can't switch to {params.get('value')}")
-        return {"configOptions": [_model_option(repl)]}
+        from src.ui.settings_screen import settings
+
+        repl, config_id, value = self.sessions[params["sessionId"]], params.get("configId"), str(params.get("value"))
+        if config_id == "model":
+            if not repl._switch_model(value):
+                raise ValueError(f"can't switch to {value}")
+            return {"configOptions": _config_options(repl)}
+        setting = next((s for s in settings() if _setting_id(s) == config_id), None)
+        if setting is None:
+            raise ValueError(f"unknown option: {config_id}")
+        choice = next((c for c in setting.choices if str(c) == value), None)
+        if choice is None and value != "None":
+            raise ValueError(f"{setting.label} can't be {value}")
+        setting.write(choice)
+        return {"configOptions": _config_options(repl)}
 
     def on_session_prompt(self, params: dict) -> dict:
         sid = params["sessionId"]
@@ -227,6 +236,26 @@ def _model_option(repl: Any) -> dict:
     shown = [ref for ref in dict.fromkeys(refs) if ref not in hidden or ref == current]
     return {"id": "model", "name": "Model", "category": "model", "type": "select", "currentValue": current,
             "options": [{"value": ref, "name": ref} for ref in (shown if current in shown else [current, *shown])]}
+
+
+def _setting_id(setting: Any) -> str:
+    return "setting_" + re.sub(r"\W+", "_", setting.label.lower()).strip("_")
+
+
+def _setting_option(setting: Any) -> dict:
+    """One of the toggles /settings > Config offers, as a `select` option (works in every client, unlike a boolean one)."""
+    name = lambda c: "Default" if c is None else "On" if c is True else "Off" if c is False else str(c)   # noqa: E731
+    current = setting.value()
+    choices = [current, *(c for c in setting.choices if c != current)] if current not in setting.choices else list(setting.choices)
+    return {"id": _setting_id(setting), "name": setting.label, "description": f"Applies {setting.applies}.", "type": "select",
+            "currentValue": str(current), "options": [{"value": str(c), "name": name(c)} for c in choices]}
+
+
+def _config_options(repl: Any) -> list[dict]:
+    """Everything the editor can change in a session: the model, then each setting from `/settings` > Config."""
+    from src.ui.settings_screen import settings
+
+    return [_model_option(repl), *(_setting_option(s) for s in settings())]
 
 
 def _tool_update(ev: Any) -> dict:
