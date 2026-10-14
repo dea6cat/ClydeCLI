@@ -22,6 +22,9 @@ def _ranked(repo="bartowski/Qwen3-8B-GGUF", size=5 * GB, **kw):
 class TestBestFit(unittest.TestCase):
     def setUp(self):
         best_fit._ranked.cache_clear()
+        patcher = patch.object(best_fit.huggingface, "repo_lacks_tools", return_value=False)
+        self.lacks_tools = patcher.start()
+        self.addCleanup(patcher.stop)
 
     def _search(self, ranked, query="", budget=12 * GB):
         with patch.object(best_fit, "_cache_state", return_value="fresh"), patch.object(best_fit, "_ranked", return_value=tuple(ranked)):
@@ -34,6 +37,11 @@ class TestBestFit(unittest.TestCase):
 
     def test_models_without_a_gguf_repo_or_that_do_not_fit_are_left_out(self):
         self.assertEqual(self._search([_ranked(repo=None), _ranked(size=40 * GB)]), [])
+
+    def test_a_ranked_model_whose_chat_template_cannot_call_tools_is_left_out(self):
+        self.lacks_tools.side_effect = lambda repo: repo == "bartowski/NoTools-GGUF"
+        offers = self._search([_ranked(), _ranked(repo="bartowski/NoTools-GGUF")])
+        self.assertEqual([o.pull_tag for o in offers], ["hf.co/bartowski/Qwen3-8B-GGUF:Q4_K_M"])
 
     def test_the_query_filters_by_model_name(self):
         self.assertEqual(len(self._search([_ranked()], "qwen3")), 1)

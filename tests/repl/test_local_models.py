@@ -284,6 +284,42 @@ class TestSetUpRunner(unittest.TestCase):
         pull.assert_called_once()
 
 
+class TestSpeedFloor(unittest.TestCase):
+    def test_slow_models_are_listed_last_with_the_rest_in_order(self):
+        repl = _Repl()
+        fast = Offer("fast", "fast:3b", 2 * GB, "relax", 1, "est. Q4", "ollama")
+        slow = Offer("slow", "slow:70b", 40 * GB, "hard", 9, "est. Q4", "ollama")
+        fast2 = Offer("fast2", "fast2:7b", 4 * GB, "relax", 1, "est. Q4", "ollama")
+        with patch.object(local_models.fit, "chip", return_value="Apple M3 Pro"), \
+                patch.object(local_models.fit, "budget_bytes", return_value=48 * GB), \
+                patch.object(local_models, "SOURCES", {"ollama": lambda q, b: [slow, fast, fast2]}), \
+                patch.object(local_models, "hidden_refs", return_value=set()), \
+                patch.object(local_models, "pick", return_value=None) as pick:
+            local_models.show(repl, " ollama")
+        self.assertEqual([c.label for c in pick.call_args.args[2]], ["fast", "fast2", "slow"])
+        self.assertIn("(slow)", pick.call_args.args[2][2].hint)
+        self.assertIn("1 listed last", repl.console.export_text())
+
+
+class TestLmStudioToolWarning(unittest.TestCase):
+    def _show(self, runner):
+        repl = _Repl()
+        with patch.object(local_models.fit, "chip", return_value="Apple M3"), \
+                patch.object(local_models.fit, "budget_bytes", return_value=12 * GB), \
+                patch.object(local_models, "SOURCES", {"hf": lambda q, b: [GGUF]}), \
+                patch.object(local_models, "pick", return_value="0"), \
+                patch.object(local_models, "_runner", return_value=runner), \
+                patch.object(local_models, "_confirm", return_value=False):
+            local_models.show(repl, " hf")
+        return repl.console.export_text()
+
+    def test_an_lm_studio_download_warns_that_tool_use_is_unconfirmed(self):
+        self.assertIn("Tool use isn't confirmed", self._show("lmstudio"))
+
+    def test_an_ollama_download_does_not(self):
+        self.assertNotIn("Tool use isn't confirmed", self._show("ollama"))
+
+
 class TestFailedEvalHidden(unittest.TestCase):
     def test_a_model_that_failed_eval_is_not_listed_again(self):
         repl = _Repl()
@@ -295,6 +331,37 @@ class TestFailedEvalHidden(unittest.TestCase):
             local_models.show(repl, " ollama")
         self.assertEqual([c.label for c in pick.call_args.args[2]], ["big"])
         self.assertIn("1 hidden", repl.console.export_text())
+
+
+    def test_a_failed_hugging_face_offer_is_hidden_whatever_the_case(self):
+        repl = _Repl()
+        hf = Offer("Q", "hf.co/Bart/Qwen3-GGUF:Q4_K_M", 5 * GB, "relax", 1, "Q4_K_M", "hf")
+        with patch.object(local_models.fit, "chip", return_value="Apple M3"), \
+                patch.object(local_models.fit, "budget_bytes", return_value=12 * GB), \
+                patch.object(local_models, "SOURCES", {"hf": lambda q, b: [hf]}), \
+                patch.object(local_models, "hidden_refs", return_value={"ollama:hf.co/bart/qwen3-gguf:q4_k_m"}), \
+                patch.object(local_models, "pick", return_value=None) as pick:
+            local_models.show(repl, " hf")
+        pick.assert_not_called()
+
+
+    def test_a_failed_lm_studio_model_is_hidden_by_its_folder_not_its_key(self):
+        class _LMStudio:
+            def downloaded(self):
+                return [{"modelKey": "coder-4bit", "path": "mlx-community/Coder-4bit"},
+                        {"modelKey": "coder-q4", "path": "u/Coder/Coder.Q4_K_M.gguf"},
+                        {"modelKey": "other", "path": "x/Other"}]
+        repl = _Repl()
+        repl.registry["lmstudio"] = _LMStudio()
+        other_quant = Offer("u/coder", "hf.co/u/coder:Q8_0", 5 * GB, "balance", 1, "Q8_0", "hf")
+        with patch.object(local_models.fit, "chip", return_value="Apple M3"), \
+                patch.object(local_models.fit, "budget_bytes", return_value=12 * GB), \
+                patch.object(local_models, "SOURCES", {"hf": lambda q, b: [GGUF, other_quant, MLX]}), \
+                patch.object(local_models, "hidden_refs", return_value={"lmstudio:coder-4bit", "lmstudio:coder-q4"}), \
+                patch.object(local_models, "pick", return_value=None) as pick:
+            local_models.show(repl, " hf")
+        self.assertEqual([c.label for c in pick.call_args.args[2]], ["u/coder"])
+        self.assertIn("2 hidden", repl.console.export_text())
 
 
 class TestTuneAfterDownload(unittest.TestCase):

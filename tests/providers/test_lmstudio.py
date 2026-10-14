@@ -7,7 +7,7 @@ import subprocess
 import unittest
 from unittest.mock import patch
 
-from src.providers import lmstudio
+from src.providers import fit, lmstudio
 from src.providers.base import ProviderError
 
 LS = json.dumps([{"type": "llm", "modelKey": "qwen/qwen3.5-9b"}, {"type": "embedding", "modelKey": "nomic-embed"},
@@ -171,11 +171,19 @@ class TestLMStudioWindow(unittest.TestCase):
     def test_an_unloaded_model_is_loaded_with_the_window_and_one_slot(self):
         provider = lmstudio.LMStudioProvider()
         with patch.object(lmstudio, "_lms", return_value="/bin/lms"), patch.object(provider, "_loaded", return_value=False), \
-                patch.object(provider, "planned_window", return_value=16384), patch("subprocess.run", return_value=_done()) as run:
+                patch.object(provider, "planned_window", return_value=16384), patch.object(provider, "_gpu_flag", return_value=[]), \
+                patch("subprocess.run", return_value=_done()) as run:
             provider.ensure_loaded("m")
             provider.ensure_loaded("m")   # the second call is cached
         self.assertEqual(run.call_args.args[0], ["/bin/lms", "load", "m", "-c", "16384", "--parallel", "1", "--ttl", "3600", "-y"])
         self.assertEqual(run.call_count, 1)
+
+    def test_gpu_flag_is_max_when_the_gpu_holds_the_model_a_share_when_part_and_absent_without_a_gpu(self):
+        provider = lmstudio.LMStudioProvider()
+        entry = {"modelKey": "m", "sizeBytes": 8 * fit.GB}
+        for gpu, expected in ((20 * fit.GB, ["--gpu", "max"]), (4.75 * fit.GB, ["--gpu", "0.50"]), (None, [])):
+            with patch.object(provider, "downloaded", return_value=[entry]), patch.object(fit, "gpu_budget_bytes", return_value=gpu):
+                self.assertEqual(provider._gpu_flag("m"), expected)
 
     def test_a_model_already_loaded_is_left_alone(self):
         provider = lmstudio.LMStudioProvider()
@@ -188,7 +196,7 @@ class TestLMStudioWindow(unittest.TestCase):
         provider = lmstudio.LMStudioProvider()
         with patch.object(lmstudio, "_lms", return_value="/bin/lms"), patch.object(provider, "_loaded", return_value=True), \
                 patch.object(provider, "context_window", return_value=8192), patch("subprocess.run", return_value=_done()) as run, \
-                patch("src.config.get_context_tokens", return_value=32768):
+                patch.object(provider, "_gpu_flag", return_value=[]), patch("src.config.get_context_tokens", return_value=32768):
             provider.ensure_loaded("m")
             provider.ensure_loaded("m")
         self.assertEqual([c.args[0][1] for c in run.call_args_list], ["unload", "load"])
@@ -199,7 +207,8 @@ class TestLMStudioWindow(unittest.TestCase):
         provider.confirm_reload = lambda *a: answer
         with patch.object(lmstudio, "_lms", return_value="/bin/lms"), patch.object(provider, "_loaded", return_value=True), \
                 patch.object(provider, "context_window", return_value=loaded), patch.object(provider, "planned_window", return_value=planned), \
-                patch("src.config.get_context_tokens", return_value=None), patch("subprocess.run", return_value=_done()) as run:
+                patch("src.config.get_context_tokens", return_value=None), patch.object(provider, "_gpu_flag", return_value=[]), \
+                patch("subprocess.run", return_value=_done()) as run:
             provider.ensure_loaded("m")
             provider._ensured = {}
             provider.ensure_loaded("m")   # asked once per model, never twice

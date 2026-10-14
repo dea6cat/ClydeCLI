@@ -200,7 +200,17 @@ class OllamaProvider:
                 pass
         if self.api_key is None:
             opts["num_ctx"] = self.context_window(model)
+            if (layers := self._gpu_layers(model)) is not None:
+                opts["num_gpu"] = layers
         return opts
+
+    def _gpu_layers(self, model: str) -> int | None:
+        """Layers to ask Ollama to put on the GPU: all of them when the GPU holds the whole model, a share of them when it
+        holds only part, None (Ollama decides) when there is no GPU, or no layer count or size to go by."""
+        from .fit import gpu_share
+        blocks = _mi_int(self._show(model).get("model_info") or {}, ".block_count")
+        share = gpu_share(self._weight_bytes(model)) if blocks else None
+        return None if share is None else max(1, int(share * (blocks + 1)))   # +1: the output layer
 
     def is_available(self) -> bool:
         if self.api_key is not None and not self.api_key:

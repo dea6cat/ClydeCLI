@@ -106,6 +106,27 @@ def budget_bytes(ram: int | None = None, apple: bool | None = None, wired_limit_
     return int(ram * (2 / 3 if ram <= 36 * GB else 0.75))
 
 
+def gpu_budget_bytes() -> int | None:
+    """Memory a GPU can give a model: the unified-memory budget on Apple Silicon, the free VRAM of NVIDIA GPUs
+    (`nvidia-smi`), None when no GPU is known. ponytail: AMD and Intel GPUs count as none, so they load as before."""
+    if chip().startswith("Apple"):
+        return budget_bytes()
+    exe = shutil.which("nvidia-smi")
+    if exe is None:
+        return None
+    try:
+        out = subprocess.run([exe, "--query-gpu=memory.free", "--format=csv,noheader,nounits"], capture_output=True, text=True, timeout=5).stdout
+        return sum(int(line) for line in out.split()) * 1024 ** 2 or None
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
+
+
+def gpu_share(weights_bytes: int, gpu_bytes: int | None = None) -> float | None:
+    """The part of a model (0 to 1) the GPU can hold: 1.0 fully, less partially, None when there is no GPU or no size."""
+    gpu = gpu_budget_bytes() if gpu_bytes is None else gpu_bytes
+    return min(1.0, gpu / (weights_bytes + OVERHEAD)) if gpu and weights_bytes > 0 else None
+
+
 _QUALITY = {16: "lossless", 8: "near lossless", 6: "near lossless", 5: "very good", 4: "good balance", 3: "some loss", 2: "noticeable loss", 1: "heavy loss"}
 _BITS = re.compile(r"\b(?:b?f(16)|q(\d)(?:_|\b)|(\d)-?bit)", re.I)
 
@@ -145,6 +166,22 @@ def tokens_per_s(file_bytes: int, chip_name: str, model_name: str = "") -> int |
     moe = _MOE.search(model_name)
     read = file_bytes * (float(moe.group(2)) / float(moe.group(1)) if moe else 1)
     return round(bandwidth * GB * _EFFICIENCY / read)
+
+
+MIN_TOKS = 15   # below this a chat stops feeling fluid; CLYDE_MIN_TOKS overrides
+
+
+def min_toks() -> int:
+    try:
+        return int(os.environ.get("CLYDE_MIN_TOKS", MIN_TOKS))
+    except ValueError:
+        return MIN_TOKS
+
+
+def is_slow(file_bytes: int, chip_name: str, model_name: str = "") -> bool:
+    """True when the estimated decoding speed is under the floor; an unknown speed is never slow."""
+    speed = tokens_per_s(file_bytes, chip_name, model_name)
+    return speed is not None and speed < min_toks()
 
 
 def pick(variants: list[tuple[str, int]], budget: int) -> tuple[str, int, str] | None:
