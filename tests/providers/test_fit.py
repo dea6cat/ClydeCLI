@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
-from src.providers.fit import GB, OVERHEAD, budget_bytes, pick, rate, tokens_per_s
+from src.providers.fit import GB, OVERHEAD, budget_bytes, gpu_share, pick, rate, tokens_per_s
 
 
 class TestBudget(unittest.TestCase):
@@ -17,6 +18,15 @@ class TestBudget(unittest.TestCase):
 
     def test_other_machines_keep_a_quarter_for_the_os(self):
         self.assertEqual(budget_bytes(32 * GB, apple=False), 24 * GB)
+
+
+class TestGpuShare(unittest.TestCase):
+    def test_a_gpu_that_holds_the_model_gives_all_of_it_part_gives_a_share_none_gives_none(self):
+        self.assertEqual(gpu_share(8 * GB, 20 * GB), 1.0)
+        self.assertAlmostEqual(gpu_share(8 * GB, 4.75 * GB), 0.5)
+        self.assertIsNone(gpu_share(0, 20 * GB))
+        with patch("src.providers.fit.gpu_budget_bytes", return_value=None):   # no GPU
+            self.assertIsNone(gpu_share(8 * GB))
 
 
 class TestRating(unittest.TestCase):
