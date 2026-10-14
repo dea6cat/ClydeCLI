@@ -2,7 +2,7 @@
 support it (Zed, JetBrains through an adapter) can run Clyde as their agent.
 
 Newline-delimited JSON-RPC 2.0, protocol version 1. Supported: initialize, session/new,
-session/prompt, session/cancel and session/set_config_option (the model picker: a `model` select option in the
+session/prompt, session/cancel, authenticate and session/set_config_option (the model picker: a `model` select option in the
 session/new reply); the agent streams session/update (agent_message_chunk,
 tool_call, tool_call_update) and asks session/request_permission before anything that needs a yes.
 Logs go to stderr, never stdout.
@@ -21,8 +21,16 @@ import uuid
 from typing import Any, TextIO
 
 PROTOCOL_VERSION = 1
+AUTH_REQUIRED = -32000
+# Terminal auth: the editor runs `clyde login` in a terminal (the args replace `--acp` for that run only).
+AUTH_METHODS = [{"id": "login", "name": "Connect a provider", "type": "terminal", "args": ["login"],
+                 "description": "Runs `clyde login` in a terminal: pick a provider and save its key (Ollama and LM Studio need none)."}]
 _KINDS = {"read": "read", "edit": "edit", "write": "edit", "notebookedit": "edit", "bash": "execute",
           "grep": "search", "glob": "search", "webfetch": "fetch", "websearch": "fetch"}
+
+
+class AuthRequired(Exception):
+    """No provider is connected, so there is no model to run: the editor should offer the auth methods."""
 
 
 class Server:
@@ -102,19 +110,29 @@ class Server:
                 continue
             try:
                 self.send({"id": msg["id"], "result": handler(msg.get("params") or {})})
-            except Exception as e:  # report it, keep serving
+            except AuthRequired as e:
+                self.send({"id": msg["id"], "error": {"code": AUTH_REQUIRED, "message": str(e)}})
+            except (Exception, SystemExit) as e:  # report it, keep serving: an exit inside a handler must not leave the editor waiting
                 self.send({"id": msg["id"], "error": {"code": -32603, "message": str(e) or type(e).__name__}})
         return 0
 
     # -- agent methods ----------------------------------------------------------------------------
     def on_initialize(self, params: dict) -> dict:
-        return {"protocolVersion": PROTOCOL_VERSION, "authMethods": [],
+        return {"protocolVersion": PROTOCOL_VERSION, "authMethods": AUTH_METHODS,
                 "agentCapabilities": {"loadSession": False,
                                       "promptCapabilities": {"image": False, "audio": False, "embeddedContext": False}}}
 
+    def on_authenticate(self, params: dict) -> dict:
+        return {}   # login happens in the terminal the editor opened; the next session/new sees the saved key
+
     def on_session_new(self, params: dict) -> dict:
         from rich.console import Console
-        from src.repl.core import ClydeREPL
+        from src.providers import usable
+        from src.repl.core import ClydeREPL, build_registry
+
+        # before the REPL: with nothing connected it can't resolve a model and exits, which would leave the editor waiting
+        if not usable(build_registry()):
+            raise AuthRequired("No provider is connected. Run `clyde login`, or start Ollama or LM Studio.")
 
         # ponytail: one working directory per process; editors start one agent process per project
         if params.get("cwd"):

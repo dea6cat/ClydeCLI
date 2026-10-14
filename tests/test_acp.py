@@ -87,6 +87,22 @@ class TestAcp(unittest.TestCase):
             new = self.call(2, "session/new", {"cwd": str(self.ws), "mcpServers": []})["result"]
         self.assertEqual([o["value"] for o in new["configOptions"][0]["options"]], ["glm:glm-4.5"])
 
+    def test_it_offers_terminal_login_as_its_auth_method(self):
+        (method,) = self.call(1, "initialize", {"protocolVersion": 1})["result"]["authMethods"]
+        self.assertEqual((method["id"], method["type"], method["args"]), ("login", "terminal", ["login"]))
+        self.assertEqual(self.call(2, "authenticate", {"methodId": "login"})["result"], {})
+
+    def test_a_session_with_no_provider_connected_asks_for_auth_not_a_crash(self):
+        with patch("src.repl.core.build_registry", return_value={}):
+            error = self.call(2, "session/new", {"cwd": str(self.ws), "mcpServers": []})["error"]
+        self.assertEqual(error["code"], -32000)
+        self.assertIn("clyde login", error["message"])
+
+    def test_a_handler_that_exits_the_process_still_gets_an_error_reply(self):
+        with patch("src.repl.core.ClydeREPL", side_effect=SystemExit(1)):
+            error = self.call(2, "session/new", {"cwd": str(self.ws), "mcpServers": []})["error"]
+        self.assertEqual(error["code"], -32603)
+
 
 if __name__ == "__main__":
     unittest.main()
