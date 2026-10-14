@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.4] - 2026-10-14
+
 ### Added
 
 - `/models local` lists models that run slower than about 15 tokens per second last and marks them `(slow)`; `CLYDE_MIN_TOKS` changes the floor.
@@ -608,6 +610,7 @@ The focus was on building a solid foundation with clean architecture, comprehens
 
 ---
 
+[0.5.4]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.5.4
 [0.5.3]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.5.3
 [0.5.2]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.5.2
 [0.5.1]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.5.1
