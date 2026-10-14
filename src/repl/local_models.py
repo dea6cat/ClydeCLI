@@ -186,6 +186,27 @@ def _set_up_runner(repl: Any, offer: fit.Offer) -> str | None:
     return _runner(repl, offer)
 
 
+def _failed_lmstudio_paths(repl: Any, failed: set[str]) -> set[str]:
+    """Folders (`lms ls` path, lowercased) of the LM Studio models that failed /eval: its refs carry a short
+    model key, which doesn't name the Hugging Face repo the model came from, its path does."""
+    keys = {ref.removeprefix("lmstudio:") for ref in failed if ref.startswith("lmstudio:")}
+    lmstudio = repl.registry.get("lmstudio")
+    if not keys or lmstudio is None:
+        return set()
+    return {str(m.get("path", "")).lower() for m in lmstudio.downloaded() if str(m.get("modelKey", "")).lower() in keys}
+
+
+def _failed_eval(offer: fit.Offer, failed: set[str], failed_paths: set[str]) -> bool:
+    """True when /eval showed this offer's model doesn't work, whichever app runs it (all inputs lowercase)."""
+    tag = offer.pull_tag.lower()
+    if f"ollama:{tag}" in failed:
+        return True
+    if tag.startswith("hf.co/"):   # GGUF: path is publisher/repo/file.gguf, the quant is in the file name
+        repo, _, quant = tag.removeprefix("hf.co/").rpartition(":")
+        return any(p.startswith(f"{repo}/") and quant in p for p in failed_paths)
+    return tag.removeprefix("https://huggingface.co/") in failed_paths   # MLX: path is publisher/repo
+
+
 def show(repl: Any, arg: str) -> None:
     """List what fits, then offer to download a row. A first word naming a source searches only it;
     otherwise every source this machine can run is searched, with the whole argument (possibly
@@ -205,8 +226,9 @@ def show(repl: Any, arg: str) -> None:
     if best_fit.pending():
         repl.console.print("[dim]whichllm is building its ranking of models in the background (about 5 minutes, then every 6 hours); "
                            "the 'best' group joins this list when it is ready.[/dim]")
-    failed = hidden_refs()   # ollama.com's tool tag isn't proof: /eval already showed some of these don't work
-    shown_offers = [o for o in offers if f"ollama:{o.pull_tag}" not in failed]
+    failed = {ref.lower() for ref in hidden_refs()}   # ollama.com's tool tag isn't proof: /eval already showed some of these don't work
+    failed_paths = _failed_lmstudio_paths(repl, failed)
+    shown_offers = [o for o in offers if not _failed_eval(o, failed, failed_paths)]
     if len(shown_offers) < len(offers):
         repl.console.print(f"[dim]{len(offers) - len(shown_offers)} hidden: they failed /eval here before, e.g. no tool calling.[/dim]")
     offers = sorted(shown_offers, key=lambda o: fit.is_slow(o.size_bytes, chip, o.name))   # stable: slow ones last, ranking kept
@@ -225,6 +247,9 @@ def show(repl: Any, arg: str) -> None:
     runner = runner or _set_up_runner(repl, offer)
     if runner is None:
         return
+    if runner == "lmstudio":
+        repl.console.print(f"[yellow]Tool use isn't confirmed for {offer.pull_tag}:[/yellow] LM Studio gives no tool tag before download. "
+                           "A model without it writes tool calls as plain text; /eval after the download shows whether it works.")
     if not _confirm(repl, offer, budget, chip):
         return
     if runner == "ollama":

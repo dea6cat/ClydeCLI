@@ -4,6 +4,7 @@ Run: `python -m unittest tests.providers.test_reasoning_ollama`.
 import os
 import sys
 import unittest
+from unittest.mock import patch
 
 
 from src.providers.ollama import OllamaProvider  # noqa: E402
@@ -42,3 +43,16 @@ class ThinkValue(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestGpuLayers(unittest.TestCase):
+    def _layers(self, share):
+        p = OllamaProvider()
+        p._show_cache["m"] = {"model_info": {"llama.block_count": 31}}
+        with patch.object(p, "_weight_bytes", return_value=8 * 1024 ** 3), patch("src.providers.fit.gpu_share", return_value=share):
+            return p._gpu_layers("m")
+
+    def test_all_layers_when_the_gpu_holds_the_model_a_share_when_part_and_none_without_a_gpu(self):
+        self.assertEqual(self._layers(1.0), 32)
+        self.assertEqual(self._layers(0.5), 16)
+        self.assertIsNone(self._layers(None))

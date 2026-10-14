@@ -8,11 +8,12 @@ the chip's bandwidth. Every entry point returns [] on any failure, like the othe
 from __future__ import annotations
 
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 
 from src import tune_profile
 
-from . import fit
+from . import fit, huggingface
 from .fit import Offer
 
 _TOP = 12   # ranked candidates asked for; the ones without a GGUF repo are dropped
@@ -105,4 +106,7 @@ def search(query: str, budget: int) -> list[Offer]:
             continue
         offers.append(Offer(r.model.id, f"hf.co/{repo.id}:{variant.quant_type}", variant.file_size_bytes, rating,
                             r.model.downloads, variant.quant_type, _SOURCE, detail(r)))
-    return offers
+    # whichllm ranks on benchmarks and never checks tool support, so ask Hugging Face about each repo's chat template
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        lacking = list(pool.map(lambda o: huggingface.repo_lacks_tools(o.pull_tag.removeprefix("hf.co/").rpartition(":")[0]), offers))
+    return [o for o, no_tools in zip(offers, lacking) if not no_tools]

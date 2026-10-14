@@ -78,6 +78,13 @@ class TestHuggingFace(unittest.TestCase):
         probed = [c.args[0] for c in get.call_args_list if c.args[0].endswith("-Instruct")]
         self.assertNotIn("https://huggingface.co/api/models/Qwen/Coder-7B-Instruct-Instruct", probed)
 
+    def test_a_repo_is_judged_by_its_gguf_chat_template(self):
+        for gguf, expected in (({"chat_template": "hi"}, True), ({"chat_template": "x tool_call y"}, False), ({}, False)):
+            with patch.object(huggingface, "get_json", return_value={"gguf": gguf}):
+                self.assertEqual(huggingface.repo_lacks_tools("a/b"), expected)
+        with patch.object(huggingface, "get_json", side_effect=huggingface.ProviderError("huggingface", "offline")):
+            self.assertFalse(huggingface.repo_lacks_tools("a/b"))
+
     def test_mlx_template_lives_under_the_tokenizer_config(self):
         self.assertTrue(huggingface._lacks_tools({"config": {"tokenizer_config": {"chat_template": "hi"}}}, "mlx"))
         self.assertFalse(huggingface._lacks_tools({"config": {"tokenizer_config": {"chat_template": "x tool_call y"}}}, "mlx"))

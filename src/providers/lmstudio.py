@@ -180,12 +180,19 @@ class LMStudioProvider(OpenAICompatProvider):
                 return
             self.unload(model)
         try:
-            subprocess.run([exe, "load", model, "-c", str(self.planned_window(model)), "--parallel", "1", "--ttl", str(LOAD_TTL_S), "-y"],
-                           capture_output=True, text=True, timeout=600)
+            subprocess.run([exe, "load", model, "-c", str(self.planned_window(model)), "--parallel", "1", "--ttl", str(LOAD_TTL_S),
+                            *self._gpu_flag(model), "-y"], capture_output=True, text=True, timeout=600)
         except (OSError, subprocess.TimeoutExpired):
             pass   # the server loads it on the first request anyway
         self._ctx_cache = {}
         self._ensured = {**getattr(self, "_ensured", {}), key: time.monotonic()}
+
+    def _gpu_flag(self, model: str) -> list[str]:
+        """`--gpu max` when the GPU holds the whole model, `--gpu <share>` when it holds only part, nothing (LM Studio
+        decides) when there is no GPU or no size to go by."""
+        entry = next((m for m in self.downloaded() if m.get("modelKey") == model), {})
+        share = fit.gpu_share(int(entry.get("sizeBytes") or 0))
+        return [] if share is None else ["--gpu", "max" if share >= 1 else f"{share:.2f}"]
 
     def _needs_reload(self, model: str) -> bool:
         """A loaded model whose window differs from the one the user fixed is reloaded, once per value (LM Studio

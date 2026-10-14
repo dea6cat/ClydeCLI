@@ -34,6 +34,15 @@ def _lacks_tools(repo: dict, fmt: str) -> bool:
     return bool(template) and not _TOOLS.search(str(template))
 
 
+def repo_lacks_tools(repo_id: str) -> bool:
+    """True when a GGUF repo's chat template can't render a tool call; False when Hugging Face doesn't say or is unreachable."""
+    try:
+        info = get_json(f"{API}/{repo_id}?expand[]=gguf", provider="huggingface", timeout=10)
+    except ProviderError:
+        return False
+    return isinstance(info, dict) and _lacks_tools(info, "gguf")
+
+
 def _is_base(repo: dict) -> bool:
     """A quant of a base (pretrained, not chat-tuned) model: it writes tool calls as prose and ignores tool
     results. Its card names the base model; that model is a base when an `-Instruct` sibling is published
