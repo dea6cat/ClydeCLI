@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.5] - 2026-10-14
+
 ### Added
 
 - `clyde acp install zed` adds Clyde to Zed's `settings.json` as an external agent. It shows the change and asks first, keeps your comments and other settings, and saves a `.clyde-bak` copy.
@@ -615,6 +617,7 @@ The focus was on building a solid foundation with clean architecture, comprehens
 
 ---
 
+[0.5.5]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.5.5
 [0.5.4]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.5.4
 [0.5.3]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.5.3
 [0.5.2]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.5.2
