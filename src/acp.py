@@ -24,7 +24,8 @@ from typing import Any, TextIO
 
 PROTOCOL_VERSION = 1
 AUTH_REQUIRED = -32000
-# Terminal auth: the editor runs `clyde login` in a terminal (the args replace `--acp` for that run only).
+# Terminal auth: the editor runs `clyde login` in a terminal. Zed adds the args to the agent's own `--acp` command
+# (`clyde --acp login`), so cli.py lets a subcommand win over the flag.
 AUTH_METHODS = [{"id": "login", "name": "Connect a provider", "type": "terminal", "args": ["login"],
                  "description": "Runs `clyde login` in a terminal: pick a provider and save its key (Ollama and LM Studio need none)."}]
 _KINDS = {"read": "read", "edit": "edit", "write": "edit", "notebookedit": "edit", "bash": "execute",

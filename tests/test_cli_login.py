@@ -164,5 +164,25 @@ class TestReplLogin(unittest.TestCase):
             relogin.assert_called_once_with(expected, title="Connect a provider")
 
 
+class TestAcpFlagWithSubcommand(unittest.TestCase):
+    def _main(self, *argv):
+        from src import cli
+
+        with patch("sys.argv", ["clyde", *argv]), patch("src.install.license_gate.ensure_accepted", return_value=True), \
+                patch("src.cli.handle_login", return_value=0) as login, patch("src.acp.main", return_value=0) as serve:
+            cli.main()
+        return login, serve
+
+    def test_an_editors_terminal_login_runs_the_login_not_the_server(self):
+        login, serve = self._main("--acp", "login")
+        login.assert_called_once()
+        serve.assert_not_called()
+
+    def test_the_flag_alone_still_starts_the_server(self):
+        login, serve = self._main("--acp")
+        serve.assert_called_once()
+        login.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()
