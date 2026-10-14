@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `clyde acp install zed` adds Clyde to Zed's `settings.json` as an external agent. It shows the change and asks first, keeps your comments and other settings, and saves a `.clyde-bak` copy.
+- Over `--acp`, editors get a model picker: Clyde lists the models of your connected providers (leaving out ones that failed `/eval`) and switches when you pick one.
+
 ## [0.5.4] - 2026-10-14
 
 ### Added

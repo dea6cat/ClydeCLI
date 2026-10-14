@@ -21,7 +21,7 @@ class TestAcp(unittest.TestCase):
         cwd = os.getcwd()
         self.addCleanup(os.chdir, cwd)
         self.provider = FakeProvider(reply(tool_calls=[("Bash", {"command": "echo hi > hello.txt"}, "call_1")]),
-                                     reply("Made hello.txt."), name="glm", models=("glm-4.5",))
+                                     reply("Made hello.txt."), name="glm", models=("glm-4.5", "glm-4.6"))
         for p in (patch.object(Path, "home", return_value=self.home),
                   patch("src.repl.core.build_registry", return_value={"glm": self.provider}),
                   patch("src.repl.core.keys.load_into_env"),
@@ -71,6 +71,21 @@ class TestAcp(unittest.TestCase):
         self.to_agent.close()
         self.thread.join(5)
         self.assertFalse(self.thread.is_alive())
+
+    def test_the_editor_gets_a_model_picker_and_can_switch_models(self):
+        self.call(1, "initialize", {"protocolVersion": 1})
+        new = self.call(2, "session/new", {"cwd": str(self.ws), "mcpServers": []})["result"]
+        (option,) = new["configOptions"]
+        self.assertEqual((option["id"], option["category"], option["type"], option["currentValue"]), ("model", "model", "select", "glm:glm-4.5"))
+        self.assertEqual([o["value"] for o in option["options"]], ["glm:glm-4.5", "glm:glm-4.6"])
+        switched = self.call(3, "session/set_config_option", {"sessionId": new["sessionId"], "configId": "model", "value": "glm:glm-4.6"})
+        self.assertEqual(switched["result"]["configOptions"][0]["currentValue"], "glm:glm-4.6")
+        self.assertEqual(self.call(4, "session/set_config_option", {"sessionId": new["sessionId"], "configId": "mode", "value": "x"})["error"]["code"], -32603)
+
+    def test_a_model_that_failed_eval_is_left_out_of_the_picker(self):
+        with patch("src.providers.model_eval.hidden_refs", return_value={"glm:glm-4.6"}):
+            new = self.call(2, "session/new", {"cwd": str(self.ws), "mcpServers": []})["result"]
+        self.assertEqual([o["value"] for o in new["configOptions"][0]["options"]], ["glm:glm-4.5"])
 
 
 if __name__ == "__main__":

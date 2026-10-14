@@ -2,7 +2,8 @@
 support it (Zed, JetBrains through an adapter) can run Clyde as their agent.
 
 Newline-delimited JSON-RPC 2.0, protocol version 1. Supported: initialize, session/new,
-session/prompt and session/cancel; the agent streams session/update (agent_message_chunk,
+session/prompt, session/cancel and session/set_config_option (the model picker: a `model` select option in the
+session/new reply); the agent streams session/update (agent_message_chunk,
 tool_call, tool_call_update) and asks session/request_permission before anything that needs a yes.
 Logs go to stderr, never stdout.
 
@@ -124,7 +125,15 @@ class Server:
         repl.tool_context.permission_handler = lambda tool, message, rule: self._ask(sid, tool, message)
         repl.tool_context.ask_user = None
         self.sessions[sid] = repl
-        return {"sessionId": sid}
+        return {"sessionId": sid, "configOptions": [_model_option(repl)]}
+
+    def on_session_set_config_option(self, params: dict) -> dict:
+        repl = self.sessions[params["sessionId"]]
+        if params.get("configId") != "model":
+            raise ValueError(f"unknown option: {params.get('configId')}")
+        if not repl._switch_model(str(params.get("value"))):
+            raise ValueError(f"can't switch to {params.get('value')}")
+        return {"configOptions": [_model_option(repl)]}
 
     def on_session_prompt(self, params: dict) -> dict:
         sid = params["sessionId"]
@@ -159,6 +168,23 @@ class Server:
         })
         outcome = reply.get("outcome") or {}
         return outcome.get("outcome") == "selected" and outcome.get("optionId") == "allow-once", False
+
+
+def _model_option(repl: Any) -> dict:
+    """The model picker an editor shows (a `select` option in the `model` category): the models of every connected
+    provider that /eval hasn't shown to fail, plus the current one."""
+    from src.providers import model_ref, usable
+    from src.providers.model_eval import hidden_refs
+
+    current, hidden, refs = model_ref(repl.provider, repl.model), hidden_refs(), []
+    for name, provider in usable(repl.registry).items():
+        try:
+            refs += [f"{name}:{m}" for m in provider.list_models()]
+        except Exception:   # one provider that can't list its models must not take the picker away
+            continue
+    shown = [ref for ref in dict.fromkeys(refs) if ref not in hidden or ref == current]
+    return {"id": "model", "name": "Model", "category": "model", "type": "select", "currentValue": current,
+            "options": [{"value": ref, "name": ref} for ref in (shown if current in shown else [current, *shown])]}
 
 
 def _tool_update(ev: Any) -> dict:

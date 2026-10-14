@@ -356,6 +356,7 @@ clyde -c                       # Continue the latest session in this directory
 clyde --resume [id]            # Pick a recent session, or resume one by id
 clyde -p "explain src/cli.py"  # One turn, no prompt: the answer on stdout, for scripts and CI
 clyde --acp                    # Agent Client Protocol on stdio, for editors such as Zed
+clyde acp install zed          # Add Clyde to Zed's settings as an external agent (shows the change, asks first)
 git diff | clyde -p "review"   # Piped input is added to the prompt
 clyde setup                    # First-run onboarding (provider, other agents' hooks, PATH)
 clyde login                    # Connect a provider, pick a default model
