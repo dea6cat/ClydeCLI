@@ -13,8 +13,8 @@ from unittest.mock import patch
 
 from rich.console import Console
 
-from src import install_info as ii
-from src import updates
+from src.install import install_info as ii
+from src.install import updates
 
 FULL = "d" * 40
 OLD = ii.Install(method="uv-tool", version="0", location="/x", commit="aaaaaaa")
@@ -145,7 +145,7 @@ class TestCacheAndNote(unittest.TestCase):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         self.home = Path(tmp.name)
-        patcher = patch("src.updates.clyde_home", return_value=self.home)
+        patcher = patch("src.install.updates.clyde_home", return_value=self.home)
         patcher.start()
         self.addCleanup(patcher.stop)
         env = patch.dict(os.environ, {}, clear=False)

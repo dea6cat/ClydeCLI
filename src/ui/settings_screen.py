@@ -14,8 +14,8 @@ from datetime import date
 from typing import Any, Callable
 
 from src import config as config_mod
-from src import usage_stats as stats
-from src.picker import scroll
+from src.ui import usage_stats as stats
+from src.ui.picker import scroll
 
 Fragments = list[tuple[str, str]]
 

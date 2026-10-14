@@ -602,7 +602,7 @@ def doctor_command_call(args: str, context: CommandContext) -> LocalCommandResul
     from ..config import get_config_path
     from ..providers import keys
 
-    from .. import install_info
+    from ..install import install_info
     lines = ["ClydeCLI doctor:", "", *install_info.report_lines(), ""]
 
     running = ".".join(map(str, sys.version_info[:3]))
@@ -626,7 +626,7 @@ def doctor_command_call(args: str, context: CommandContext) -> LocalCommandResul
     from ..tool_system import sandbox
     lines.append(_check(sandbox.engine() is not None, f"Sandbox: {sandbox.describe()}",
                         "install bubblewrap (Linux), or set sandbox.enabled in ~/.clyde/settings.json"))
-    from .. import skill_scan
+    from ..security import skill_scan
     held = [k for k, v in skill_scan.cached_verdicts().items() if v.blocked]
     caution = [k for k, v in skill_scan.cached_verdicts().items() if v.recommendation == skill_scan.CAUTION]
     lines.append(_check(not held, f"SkillSpector: {len(skill_scan.cached_verdicts())} item(s) scanned, {len(held)} held back"

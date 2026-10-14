@@ -10,7 +10,7 @@ import re
 import subprocess
 from pathlib import Path
 
-from ..git_safe import git_cmd, git_env
+from ..security.git_safe import git_cmd, git_env
 
 STATUSES = ("pending", "in_progress", "complete")
 MAX_PLAN_BYTES = 200_000     # a bigger file is not read at all

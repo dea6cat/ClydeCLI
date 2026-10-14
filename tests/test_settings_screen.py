@@ -12,8 +12,9 @@ from unittest.mock import patch
 from prompt_toolkit.input import create_pipe_input
 from prompt_toolkit.output import DummyOutput
 
-from src import config, settings_screen
-from src import usage_stats as stats
+from src import config
+from src.ui import settings_screen
+from src.ui import usage_stats as stats
 
 RIGHT, ESC, TAB, DOWN = "\x1b[C", "\x1b", "\t", "\x1b[B"
 TODAY = date(2026, 10, 13)

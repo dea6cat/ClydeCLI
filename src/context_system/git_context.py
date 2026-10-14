@@ -3,7 +3,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from ..git_safe import git_cmd, git_env
+from ..security.git_safe import git_cmd, git_env
 from .models import GitContext
 
 _MAX_STATUS_CHARS = 2_000

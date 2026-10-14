@@ -17,7 +17,8 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Callable, Protocol
 
-from .. import __version__, activity
+from .. import __version__
+from ..runtime import activity
 from .toolspec import ToolSpec
 from .types import Conversation, Message
 

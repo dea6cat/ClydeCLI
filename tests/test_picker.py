@@ -8,8 +8,8 @@ from unittest.mock import patch
 
 from rich.console import Console
 
-from src import picker
-from src.picker import Choice, narrow, pick, render, scroll
+from src.ui import picker
+from src.ui.picker import Choice, narrow, pick, render, scroll
 
 CHOICES = [Choice("a", "alpha", "first"), Choice("b", "beta", "second"), Choice("c", "gamma", "third")]
 MANY = [Choice(str(i), f"model-{i}") for i in range(20)]

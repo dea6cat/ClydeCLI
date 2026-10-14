@@ -200,7 +200,7 @@ class TestSearchAndStatus(BonnieCase):
         self.assertEqual(self.call("POST", "/api/prompt", {"text": "hi", "mode": "yolo"})[0], 400)
 
     def test_state_says_what_the_turn_is_doing(self):
-        from src import activity
+        from src.runtime import activity
 
         activity.set("waiting for Laya to load")
         self.addCleanup(activity.clear)
@@ -247,7 +247,7 @@ class TestTurns(BonnieCase):
         self.bonnie.control.busy = True
         self.assertEqual(self.call("POST", "/api/steer", {"text": "also this"})[0], 200)
         self.assertEqual(self.bonnie.control.take_steer(), "also this")
-        with patch("src.run_control.interrupt_turn") as interrupt:
+        with patch("src.runtime.run_control.interrupt_turn") as interrupt:
             self.bonnie.control.busy = False
             self.call("POST", "/api/stop", {})
             interrupt.assert_not_called()
@@ -270,7 +270,7 @@ class TestTurns(BonnieCase):
         second = []
         threading.Thread(target=lambda: second.append(self.bonnie.ask_permission("Write", "write x", None))).start()
         self.wait_for("permission", after=card["id"])
-        with patch("src.run_control.interrupt_turn"):
+        with patch("src.runtime.run_control.interrupt_turn"):
             self.bonnie.stop()
         deadline = time.monotonic() + 5
         while not second and time.monotonic() < deadline:

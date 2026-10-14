@@ -75,7 +75,7 @@ class TestREPL(unittest.TestCase):
 
     def test_the_status_line_shows_the_machine_vitals_when_there_is_room(self):
         from src.providers.fit import GB
-        from src.vitals import Vitals
+        from src.system.vitals import Vitals
         with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
             with patch('src.repl.core.Session.create', return_value=Mock()):
                 with _fake_provider_env():
@@ -115,7 +115,7 @@ class TestREPL(unittest.TestCase):
                 with _fake_provider_env():
                     repl = ClydeREPL(model="glm:glm-4.5")
         repl.console = Mock()
-        with patch("src.tune.run", return_value=0) as run:
+        with patch("src.tuning.tune.run", return_value=0) as run:
             repl.handle_command("/tune")
             repl.handle_command("/tune --ask")
         self.assertEqual([c.kwargs for c in run.call_args_list], [{"reask": False}, {"reask": True}])

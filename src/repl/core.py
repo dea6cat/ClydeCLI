@@ -95,19 +95,19 @@ from src.output_styles import resolve_output_style
 from src.providers import build_registry, keys, model_ref, pick_default_model, resolve, usable
 from src.providers import catalog
 from src.providers.model_eval import hidden_refs
-from src.vitals import line, sample
+from src.system.vitals import line, sample
 from src.providers.base import ProviderError, ProviderResponse, is_auth_error
 from src.providers.types import Message
 from src.providers import laya_client
 from src.providers.card_shuffle import CardShuffle, record_vote
-from src.run_control import RunControl
+from src.runtime.run_control import RunControl
 from src.providers.convert import append_response, to_canonical
 from src.tool_system.context import ToolContext
 from src.tool_system.registry import ToolRegistry
 from src.plugins import apply_plugins
 from src.tool_system.hooks import load_hooks
-from src import activity
-from src.picker import Choice, pick
+from src.runtime import activity
+from src.ui.picker import Choice, pick
 from src.tool_system.deferral import advertised
 from src.repl.esc import WATCHER
 from src.repl.images import IMAGE_TYPES, MAX_IMAGE_BYTES, clipboard_image, image_path, shrink
@@ -1164,7 +1164,7 @@ class ClydeREPL:
     def run(self):
         """Run the REPL."""
         self._print_startup_header()
-        from src import updates
+        from src.install import updates
         if note := updates.cached_note():
             self.console.print(f"[{_CARD_DIM}]{note}[/{_CARD_DIM}]")
             self.console.print()
@@ -1490,7 +1490,7 @@ class ClydeREPL:
             self._mcp_auth(*raw.strip().split()[1:3])
 
         elif cmd == '/plugins':
-            from src import plugin_screen
+            from src.plugins import screen as plugin_screen
             plugin_screen.show(self.plugins) if plugin_screen.interactive() else self._print_plugins()
         elif cmd == '/rewind':
             self._rewind()
@@ -1499,7 +1499,7 @@ class ClydeREPL:
         elif cmd == '/laya':
             self._show_laya()
         elif cmd == '/tune' or cmd.startswith('/tune '):
-            from src import tune
+            from src.tuning import tune
             tune.run(self.console, reask='--ask' in raw.split())
 
         elif cmd == '/council' or cmd.startswith('/council '):
@@ -1624,7 +1624,7 @@ class ClydeREPL:
         """/skills scan rescans every skill ClydeCLI loads from a folder (user, other agents', plugins',
         the project's), with the LLM review when the current model allows it, and shows every verdict,
         MCP servers' and plugins' included; /skills allow <kind:name> lets a held-back item in."""
-        from src import skill_scan
+        from src.security import skill_scan
         from src.skills.loader import get_all_skills, load_skills_from_dir
         from src.skills.loader import _candidate_user_skills_dirs
 
@@ -1827,7 +1827,7 @@ class ClydeREPL:
             return
         clients, errors = connect_servers(servers, Path.cwd())
         self._mcp_errors = {**{k: v for k, v in getattr(self, "_mcp_errors", {}).items() if k not in servers}, **errors}
-        from src import skill_scan
+        from src.security import skill_scan
         for name in list(clients):
             verdict = skill_scan.check_mcp(name, clients[name].tools)
             if verdict.blocked:
@@ -2443,7 +2443,9 @@ class ClydeREPL:
 
     def _show_settings(self) -> None:
         """/settings: the tabbed screen, or the plain /status block where there is no terminal."""
-        from src import __version__, plugins, settings_screen, skill_scan
+        from src import __version__, plugins
+        from src.ui import settings_screen
+        from src.security import skill_scan
         if not settings_screen.interactive():
             self._show_status()
             return

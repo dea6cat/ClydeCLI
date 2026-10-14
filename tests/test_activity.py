@@ -11,7 +11,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from src import activity
+from src.runtime import activity
 from src.agent.agent_loop import run_agent_loop
 from src.agent.conversation import Conversation
 from src.providers import base

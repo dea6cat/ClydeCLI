@@ -14,7 +14,7 @@ from unittest.mock import patch
 
 from rich.console import Console
 
-from src import license_gate as gate
+from src.install import license_gate as gate
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -24,7 +24,7 @@ class TestGate(unittest.TestCase):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         self.home = Path(tmp.name)
-        patcher = patch("src.license_gate.clyde_home", return_value=self.home)
+        patcher = patch("src.install.license_gate.clyde_home", return_value=self.home)
         patcher.start()
         self.addCleanup(patcher.stop)
         env = patch.dict(os.environ, {}, clear=False)
@@ -70,7 +70,7 @@ class TestGate(unittest.TestCase):
         self.assertFalse((self.home / "license.json").exists())
 
     def test_an_unwritable_home_does_not_count_as_accepted(self):
-        with patch("src.license_gate.record_acceptance", side_effect=OSError("read-only")):
+        with patch("src.install.license_gate.record_acceptance", side_effect=OSError("read-only")):
             self.assertFalse(self._typed("I accept"))
 
 
@@ -83,7 +83,7 @@ class TestExemptCommands(unittest.TestCase):
             os.environ.pop(gate.ENV_ACCEPT, None)
             for argv, handler in ((["clyde", "uninstall", "-y"], "handle_uninstall"), (["clyde", "update", "--check"], "handle_update")):
                 with patch.object(sys, "argv", argv), patch.object(cli, handler, return_value=0) as called, \
-                        patch("src.license_gate.ensure_accepted", side_effect=AssertionError("asked")):
+                        patch("src.install.license_gate.ensure_accepted", side_effect=AssertionError("asked")):
                     self.assertEqual(cli.main(), 0, argv)
                 called.assert_called_once()
 

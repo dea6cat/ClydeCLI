@@ -24,11 +24,11 @@ from rich.console import Console
 from rich.prompt import Confirm
 from rich.table import Table
 
-from src import tune_profile
+from src.tuning import tune_profile
 from src.providers import model_eval
 from src.providers.base import ProviderError, get_json, post_json
 from src.providers.ollama import OllamaProvider, _ctx_env_key, _total_ram_bytes, local
-from src.tune_profile import Profile
+from src.tuning.tune_profile import Profile
 
 FLASH = {"OLLAMA_FLASH_ATTENTION": "1"}
 # Bytes per cache element against f16, from ggml's block layouts: q8_0 is 8.5 bits, q4_0 4.5 bits.

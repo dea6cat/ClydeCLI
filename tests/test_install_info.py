@@ -11,7 +11,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from src import install_info as ii
+from src.install import install_info as ii
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -70,7 +70,7 @@ class TestClaudeCode(unittest.TestCase):
 class TestReport(unittest.TestCase):
     def _report(self, commands: list[Path], claude) -> str:
         with patch.object(ii, "clyde_commands", return_value=commands), patch.object(ii, "claude_code", return_value=claude), \
-                patch("src.license_gate.is_accepted", return_value=True):
+                patch("src.install.license_gate.is_accepted", return_value=True):
             return "\n".join(ii.report_lines())
 
     def test_one_install_is_clean(self):

@@ -100,7 +100,7 @@ def _check(ok: bool, text: str, hint: str = "") -> str:
 
 def report_lines() -> list[str]:
     """The install section of `clyde doctor` and `/doctor`."""
-    from src import license_gate
+    from src.install import license_gate
     info = detect()
     lines = [_check(True, f"ClydeCLI {info.version} installed with {info.method}"
                     + (f" from commit {info.commit}" if info.commit else "") + f" ({info.location})")]

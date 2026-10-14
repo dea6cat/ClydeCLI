@@ -5,7 +5,7 @@ import unittest
 from types import SimpleNamespace as NS
 from unittest.mock import patch
 
-from src import tune_profile
+from src.tuning import tune_profile
 from src.providers import best_fit, fit
 from src.providers.fit import GB
 
