@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `clyde --acp` offers a terminal login (`clyde login`) as its auth method and answers `authenticate`, which the ACP Registry requires of listed agents. With no provider connected, `session/new` now replies with the protocol's auth-required error instead of leaving the editor waiting.
+
+### Fixed
+
+- Files you `@`-mention in an editor (Zed) over `--acp` now reach the model: it is told the path and line range and reads the file itself, so its permission and secret-file guards still apply. Before, mentions were dropped and the model saw only your text.
+- `clyde --acp` no longer hangs the editor when a request makes Clyde exit (for example a model that can't be resolved): the editor gets an error reply.
+
 ## [0.5.5] - 2026-10-14
 
 ### Added
