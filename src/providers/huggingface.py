@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import Callable
 
 from .base import ProviderError, get_json, get_text
-from .fit import TOO_LARGE, Offer, pick, rate
+from .fit import TOO_LARGE, Offer, model_key, pick, rate
 
 API = "https://huggingface.co/api/models"
 _REPOS = 15     # repos looked at per listing; a search merges up to three, so at most twice this many are rated
@@ -119,6 +119,20 @@ def offers(fmt: str, query: str, offer: Callable[[dict], Offer | None]) -> list[
     return sorted(found, key=lambda o: o.popularity, reverse=True)
 
 
+def original(repo: dict) -> str:
+    """The model a quantized repo was made from, named by its card's base_model, but only when that is the same model as
+    the repo (same model_key) and not the repo itself. Cards sometimes point at a base or sibling model instead (an MLX
+    Reasoning repo naming the Base model), and a fine-tune is not its parent: those give ""."""
+    base = (repo.get("cardData") or {}).get("base_model")
+    base = base[0] if isinstance(base, list) and base else base
+    repo_id = str(repo.get("id", ""))
+    if not isinstance(base, str) or "/" not in base or base == repo_id:
+        return ""
+    base_key = model_key(base)
+    # bartowski names its repos <org>_<model>, so the org prefix is allowed too
+    return base if model_key(repo_id) in (base_key, f"{base.split('/')[0].lower()}-{base_key}") else ""
+
+
 def gguf_offer(repo: dict, budget: int) -> Offer | None:
     """One GGUF repo ({id, downloads}) at its best-fitting quant, with every quant as an option; None when none fits."""
     repo_id = repo.get("id", "")
@@ -132,7 +146,7 @@ def gguf_offer(repo: dict, budget: int) -> Offer | None:
     def download(q: str, s: int) -> Offer:
         return Offer(repo_id, f"hf.co/{repo_id}:{q}", s, rate(s, budget) or TOO_LARGE, downloads, q, "hf")
     options = tuple(download(q, s) for q, s in sorted(quants, key=lambda v: v[1])) if len(quants) > 1 else ()
-    return Offer(repo_id, f"hf.co/{repo_id}:{quant}", size, rating, downloads, quant, "hf", options=options)
+    return Offer(repo_id, f"hf.co/{repo_id}:{quant}", size, rating, downloads, quant, "hf", options=options, model=original(repo))
 
 
 def search(query: str, budget: int) -> list[Offer]:
@@ -145,6 +159,7 @@ class Details:
     """What a model's page shows: the Hub's numbers, the README's opening paragraph, capabilities read from the
     repo, and other repos by the same author in the same format."""
     author: str
+    original: str                 # the model this repo was quantized from ("" when its card doesn't say, or says something else)
     downloads: int
     likes: int
     updated: str                  # ISO time of the last change
@@ -191,12 +206,22 @@ def details(repo_id: str, fmt: str = "gguf") -> Details | None:
     if not isinstance(info, dict):
         return None
     author = str(info.get("author") or repo_id.split("/")[0])
+    source = original(info)   # the model this repo was quantized from: its card and numbers are the model's page
 
     def readme() -> str:
         try:
-            return get_text(f"https://huggingface.co/{repo_id}/raw/main/README.md", provider="huggingface", timeout=10)
+            return get_text(f"https://huggingface.co/{source or repo_id}/raw/main/README.md", provider="huggingface", timeout=10)
         except ProviderError:
             return ""
+
+    def source_info() -> dict:
+        if not source:
+            return {}
+        try:
+            found = get_json(f"{API}/{source}?{urllib.parse.urlencode({'expand[]': fields[:4]}, doseq=True)}", provider="huggingface", timeout=10)
+        except ProviderError:
+            return {}
+        return found if isinstance(found, dict) else {}
 
     def others() -> list:
         query = {"author": author, "filter": fmt, "pipeline_tag": "text-generation", "sort": "downloads", "direction": "-1", "limit": "8"}
@@ -205,23 +230,25 @@ def details(repo_id: str, fmt: str = "gguf") -> Details | None:
         except ProviderError:
             return []
         return found if isinstance(found, list) else []
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        text, found = pool.submit(readme), pool.submit(others)
-        text, found = text.result(), found.result()
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        jobs = pool.submit(readme), pool.submit(others), pool.submit(source_info)
+        text, found, origin = (job.result() for job in jobs)
     meta = info.get("gguf") if fmt == "gguf" else (info.get("config") or {}).get("tokenizer_config")
     meta = meta if isinstance(meta, dict) else {}
     template = meta.get("chat_template")
     tags = [str(t) for t in info.get("tags") or []]
-    card = info.get("cardData") or {}
-    license_ = card.get("license") or next((t.split(":", 1)[1] for t in tags if t.startswith("license:")), "")
+    numbers = origin or info   # downloads, likes and last update belong to the model, not to one quantizer's repo
+    license_ = ((origin.get("cardData") or {}).get("license") or (info.get("cardData") or {}).get("license")
+                or next((t.split(":", 1)[1] for t in tags if t.startswith("license:")), ""))
     related = tuple((r["id"], int(r.get("downloads") or 0), int(r.get("likes") or 0)) for r in found
                     if isinstance(r, dict) and r.get("id") and r["id"] != repo_id and not _NOT_CHAT.search(r["id"]))[:5]
     return Details(
-        author, int(info.get("downloads") or 0), int(info.get("likes") or 0), str(info.get("lastModified") or ""),
-        meta.get("total") if isinstance(meta.get("total"), int) else None, str(meta.get("architecture") or ""),
-        meta.get("context_length") if isinstance(meta.get("context_length"), int) else None,
-        str(license_[0] if isinstance(license_, list) and license_ else license_),
-        _summary(text), None if not template else bool(_TOOLS.search(str(template))),
-        info.get("pipeline_tag") == "image-text-to-text" or any(t in ("vision", "image-text-to-text", "multimodal") for t in tags)
+        author=author, original=source, downloads=int(numbers.get("downloads") or 0), likes=int(numbers.get("likes") or 0),
+        updated=str(numbers.get("lastModified") or ""),
+        params=meta.get("total") if isinstance(meta.get("total"), int) else None, arch=str(meta.get("architecture") or ""),
+        context=meta.get("context_length") if isinstance(meta.get("context_length"), int) else None,
+        license=str(license_[0] if isinstance(license_, list) and license_ else license_),
+        summary=_summary(text), tools=None if not template else bool(_TOOLS.search(str(template))),
+        vision=info.get("pipeline_tag") == "image-text-to-text" or any(t in ("vision", "image-text-to-text", "multimodal") for t in tags)
         or any("mmproj" in str(s.get("rfilename", "")).lower() for s in info.get("siblings") or [] if isinstance(s, dict)),
-        bool(_REASON.search(" ".join(tags) + " " + repo_id)), related)
+        reasoning=bool(_REASON.search(" ".join(tags) + " " + repo_id)), related=related)

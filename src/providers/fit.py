@@ -50,6 +50,7 @@ class Offer:
     source: str = ""   # the source module that offered it (ollama, hf, mlx)
     detail: str = ""   # what a ranking source knows beyond size: benchmark quality, speed range, license
     options: tuple["Offer", ...] = ()   # every download of this model (quantizations, formats), when it has several
+    model: str = ""    # the original model this repo was quantized from (mistralai/…), shown instead of the repo's name
 
 
 _NOISE = re.compile(r"(?:^|[-_.])(?:gguf|mlx|bf16|f16|i?q\d\w*|\d+-?bits?|oq\d\w*)(?=[-_.]|$)", re.I)
@@ -69,7 +70,7 @@ def group(offers: list[Offer], prefer: tuple[str, ...] = ()) -> list[Offer]:
     named in `prefer` (earlier is better) outranks popularity inside its model's row, so the row leads with its repo."""
     rows: dict[str, list[Offer]] = {}
     for offer in offers:
-        rows.setdefault(model_key(offer.name), []).append(offer)
+        rows.setdefault(model_key(offer.model or offer.name), []).append(offer)   # `model` is verified to be the repo's own model
     first_choice = [p.lower() + "/" for p in prefer]
     merged = []
     for members in rows.values():
@@ -83,7 +84,9 @@ def group(offers: list[Offer], prefer: tuple[str, ...] = ()) -> list[Offer]:
             for option in member.options or (member,):
                 chosen.setdefault((option.source, option.note), option)
         options = tuple(chosen.values())
-        merged.append(first if len(options) < 2 and not first.options else replace(first, options=options))
+        model = next((m.model for m in members if m.model), "")   # whichever repo of the model knows its original's name
+        row = first if first.model == model else replace(first, model=model)
+        merged.append(row if len(options) < 2 and not first.options else replace(row, options=options))
     return merged
 
 

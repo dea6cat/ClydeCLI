@@ -319,7 +319,7 @@ class TestDownloadOptions(unittest.TestCase):
 
     def _details(self, **over):
         updated = (datetime.now(timezone.utc) - timedelta(days=13)).isoformat()
-        base = dict(author="IFM", downloads=35214, likes=76, updated=updated, params=8_999_178_240, arch="k2-horizon",
+        base = dict(author="IFM", original="", downloads=35214, likes=76, updated=updated, params=8_999_178_240, arch="k2-horizon",
                     context=524288, license="apache-2.0", summary="A dense open-weights model tuned for long documents.",
                     tools=True, vision=False, reasoning=False, related=(("IFM/K2-0.9B-GGUF", 25809, 97),))
         return Details(**{**base, **over})
@@ -368,6 +368,22 @@ class TestDownloadOptions(unittest.TestCase):
         _, pick, confirm, pull, _ = self._show(details=self._details(related=()))
         self.assertEqual(pick.call_count, 1)
         confirm.assert_called_once()
+
+    def test_a_row_is_named_after_the_original_model_and_says_who_it_comes_from(self):
+        row = replace(self.row, name="lmstudio-community/K2-7B-GGUF", model="IFM/K2-7B")
+        (choice,) = local_models._choices([row], "Apple M3 Pro")
+        self.assertEqual(choice.label, "IFM/K2-7B")
+        self.assertIn("via lmstudio-community", choice.hint)
+        (plain,) = local_models._choices([self.row], "Apple M3 Pro")
+        self.assertEqual(plain.label, "u/m")
+        self.assertNotIn("via", plain.hint)
+
+    def test_the_page_is_titled_with_the_original_model_and_names_the_repo_it_downloads_from(self):
+        repl, pick, *_ = self._show("0", details=self._details(original="IFM/K2-7B"))
+        text = repl.console.export_text()
+        self.assertIn("IFM/K2-7B", text)
+        self.assertIn("via u/m", text)
+        self.assertIn("IFM/K2-7B", pick.call_args_list[1].args[1])
 
     def test_the_model_row_says_how_many_options_it_has(self):
         (row,) = local_models._choices([self.row], "Apple M3 Pro")

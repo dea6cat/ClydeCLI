@@ -119,6 +119,22 @@ class TestGrouping(unittest.TestCase):
         (row,) = group([popular, catalog])      # without a preference the first (most downloaded) repo leads, as before
         self.assertEqual(row.name, "Random/K2-7B-GGUF")
 
+    def test_a_grouped_row_keeps_the_original_models_name_from_whichever_repo_knows_it(self):
+        named = Offer("lmstudio-community/K2-7B-GGUF", "hf.co/lmstudio-community/K2-7B-GGUF:Q4_K_M", 5 * GB, "balance", 3, "Q4_K_M", "hf", model="IFM/K2-7B")
+        plain = Offer("x/K2-7B-4bit", "https://huggingface.co/x/K2-7B-4bit", 4 * GB, "relax", 9, "MLX 4-bit", "mlx")
+        (row,) = group([plain, named])
+        self.assertEqual(row.model, "IFM/K2-7B")
+        (row,) = group([plain, named], prefer=("lmstudio-community",))
+        self.assertEqual((row.name, row.model), ("lmstudio-community/K2-7B-GGUF", "IFM/K2-7B"))
+
+    def test_repos_that_name_the_same_original_model_share_a_row_even_when_their_own_names_differ(self):
+        lm = Offer("lmstudio-community/Ministral-3-14B-Reasoning-2512-GGUF", "hf.co/lmstudio-community/M:Q4_K_M", 5 * GB, "balance", 3, "Q4_K_M", "hf",
+                   model="mistralai/Ministral-3-14B-Reasoning-2512")
+        bart = Offer("bartowski/mistralai_Ministral-3-14B-Reasoning-2512-GGUF", "hf.co/bartowski/M:Q4_K_M", 5 * GB, "balance", 9, "Q4_K_M", "hf",
+                     model="mistralai/Ministral-3-14B-Reasoning-2512")
+        (row,) = group([bart, lm], prefer=("lmstudio-community",))
+        self.assertEqual(row.name, "lmstudio-community/Ministral-3-14B-Reasoning-2512-GGUF")
+
     def test_a_lone_offer_is_left_alone(self):
         solo = Offer("a/B-3B-GGUF", "hf.co/a/B-3B-GGUF:Q4_K_M", 2 * GB, "relax", 1, "Q4_K_M", "hf")
         self.assertEqual(group([solo]), [solo])

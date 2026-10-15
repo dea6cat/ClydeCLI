@@ -60,6 +60,53 @@ class TestHuggingFace(unittest.TestCase):
             (offer,) = huggingface.search("m", 12 * GB)
         self.assertEqual(offer.options, ())
 
+    def test_the_original_model_is_named_only_when_the_base_model_is_the_same_model_as_the_repo(self):
+        def repo(rid, base=None):
+            return {"id": rid, **({"cardData": {"base_model": base}} if base else {})}
+        cases = [
+            (repo("lmstudio-community/Ministral-3-14B-Reasoning-2512-GGUF", "mistralai/Ministral-3-14B-Reasoning-2512"), "mistralai/Ministral-3-14B-Reasoning-2512"),
+            (repo("x/K2-7B-GGUF", ["IFM/K2-7B"]), "IFM/K2-7B"),                                       # a list, as some cards write it
+            (repo("bartowski/mistralai_Ministral-3-14B-Reasoning-2512-GGUF", "mistralai/Ministral-3-14B-Reasoning-2512"),
+             "mistralai/Ministral-3-14B-Reasoning-2512"),                                              # bartowski prefixes the org
+            (repo("mlx-community/Ministral-3-14B-Reasoning-2512-4bit", ["mistralai/Ministral-3-14B-Base-2512"]), ""),   # a mislabelled base
+            (repo("u/Gemma-12B-coder-GGUF", "google/gemma-12b"), ""),                                  # a fine-tune is not the original
+            (repo("a/B-3B-GGUF", "a/B-3B-GGUF"), ""),
+            (repo("a/C-3B-GGUF"), ""),
+        ]
+        self.assertEqual([huggingface.original(r) for r, _ in cases], [want for _, want in cases])
+
+    def test_search_names_the_original_model_on_the_offer(self):
+        listing = [{"id": "lmstudio-community/K2-7B-GGUF", "downloads": 5, "cardData": {"base_model": "IFM/K2-7B"}}]
+        with patch.object(huggingface, "get_json", side_effect=lambda url, **_: [{"type": "file", "path": "M-Q4_K_M.gguf", "size": 5 * GB}] if "/tree/" in url else listing):
+            (offer,) = huggingface.search("k2", 12 * GB)
+        self.assertEqual((offer.name, offer.model), ("lmstudio-community/K2-7B-GGUF", "IFM/K2-7B"))
+
+    def test_a_models_page_uses_the_original_repos_numbers_and_readme_and_the_quant_repos_specs(self):
+        quant = {"id": "lmstudio-community/K2-7B-GGUF", "author": "lmstudio-community", "downloads": 30, "likes": 1,
+                 "lastModified": "2026-01-01T00:00:00.000Z", "tags": [], "cardData": {"base_model": "IFM/K2-7B"},
+                 "gguf": {"total": 7_000_000_000, "architecture": "k2", "context_length": 8192, "chat_template": "{{ tools }}"}}
+        orig = {"id": "IFM/K2-7B", "author": "IFM", "downloads": 74000, "likes": 90, "lastModified": "2026-10-02T00:00:00.000Z",
+                "tags": [], "cardData": {"license": "apache-2.0"}}
+        texts = []
+
+        def fake_text(url, **_):
+            texts.append(url)
+            return "# T\n\nThe original model card describes a dense open-weights model for long documents."
+        with patch.object(huggingface, "get_json", side_effect=lambda url, **_: [] if "author=" in url else orig if "/IFM/K2-7B?" in url else quant), \
+                patch.object(huggingface, "get_text", side_effect=fake_text):
+            d = huggingface.details("lmstudio-community/K2-7B-GGUF", "gguf")
+        self.assertEqual((d.original, d.downloads, d.likes, d.updated, d.license), ("IFM/K2-7B", 74000, 90, "2026-10-02T00:00:00.000Z", "apache-2.0"))
+        self.assertEqual((d.params, d.arch, d.context, d.tools), (7_000_000_000, "k2", 8192, True))
+        self.assertTrue(any("IFM/K2-7B/raw/main/README.md" in u for u in texts))
+        self.assertTrue(d.summary.startswith("The original model card"))
+
+    def test_a_page_without_an_original_keeps_the_repos_own_numbers(self):
+        bare = {"id": "u/m", "author": "u", "downloads": 3, "likes": 2, "lastModified": "2026-01-01T00:00:00.000Z", "tags": [], "gguf": {}}
+        with patch.object(huggingface, "get_json", side_effect=lambda url, **_: [] if "author=" in url else bare), \
+                patch.object(huggingface, "get_text", return_value=""):
+            d = huggingface.details("u/m", "gguf")
+        self.assertEqual((d.original, d.downloads, d.likes), ("", 3, 2))
+
     def test_search_also_finds_vision_models_and_the_catalog_publishers_untagged_repos(self):
         # Hugging Face tags a vision-language model image-text-to-text, and lmstudio-community's repos often carry no pipeline tag:
         # asking only for text-generation hid both (Ministral 3 14B Reasoning, Gemma 4 12B).

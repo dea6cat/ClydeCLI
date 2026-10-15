@@ -96,9 +96,10 @@ def _choices(offers: list[fit.Offer], chip: str) -> list[Choice]:
     rows = []
     for i, o in enumerate(offers):
         speed = fit.tokens_per_s(o.size_bytes, chip, o.name)
-        rows.append(Choice(str(i), o.name, f"{o.rating} · {o.source} · {o.size_bytes / fit.GB:.1f} GB · "
+        rows.append(Choice(str(i), o.model or o.name, f"{o.rating} · {o.source} · {o.size_bytes / fit.GB:.1f} GB · "
                                            + (f"~{speed} tok/s{' (slow)' if fit.is_slow(o.size_bytes, chip, o.name) else ''} · " if speed else "") + f"{_count(o.popularity)} pulls · {_quant(o.note)}"
-                                           + (f" · {len(o.options)} download options" if o.options else "")))
+                                           + (f" · {len(o.options)} download options" if o.options else "")
+                                           + (f" · via {o.name.split('/')[0]}" if o.model else "")))
     return rows
 
 
@@ -121,10 +122,13 @@ def _tick(flag: bool | None) -> str:
 def _card(repl: Any, offer: fit.Offer, d: huggingface.Details) -> None:
     """A model's page: what the Hub says about it, its specs, and what it can do."""
     formats = ", ".join(sorted({_FORMAT.get(o.source, o.source) for o in (offer.options or (offer,))}))
+    title = d.original or offer.model or offer.name
     repl.console.print()
-    repl.console.print(Text.assemble((offer.name, "bold"), (f"   ↓{_count(d.downloads)}  ♥{d.likes}", ""),
+    repl.console.print(Text.assemble((title, "bold"), (f"   ↓{_count(d.downloads)}  ♥{d.likes}", ""),
                                      (f"  ·  updated {_ago(d.updated)}" if _ago(d.updated) else "", "dim"),
                                      (f"  ·  {d.license}" if d.license else "", "dim")))
+    if title != offer.name:
+        repl.console.print(Text(f"via {offer.name}", style="dim"))
     if d.summary:
         repl.console.print(Text(d.summary))
     specs = [("PARAMS", f"{d.params / 1e9:.1f}B") if d.params else None, ("ARCH", d.arch) if d.arch else None,
@@ -166,7 +170,7 @@ def _choose_option(repl: Any, offer: fit.Offer, chip: str) -> fit.Offer | None:
             rows.append(Choice(str(i), f"{name}{recommended}", fit_note + (f" · {o.name}" if several_repos else "")))
         rows += [Choice(f"more:{repo}", repo, f"more from {d.author} · ↓{_count(downloads)} ♥{likes}") for repo, downloads, likes in related]
         current = next((str(i) for i, o in enumerate(options) if o.pull_tag == offer.pull_tag), None)
-        choice = pick(repl.console, f"Download options for {offer.name}", rows, current=current, visible=10,
+        choice = pick(repl.console, f"Download options for {(d.original if d is not None else '') or offer.model or offer.name}", rows, current=current, visible=10,
                       description="Enter picks one (you confirm what it costs first); options too large for this machine can't be chosen. "
                                   "The last rows open other models by the same author.")
         if choice is None:
