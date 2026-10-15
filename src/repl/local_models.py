@@ -97,6 +97,11 @@ def _quant(note: str) -> str:
     return f"{note} ({hint})" if hint else note
 
 
+def _squeezed(o: fit.Offer) -> bool:
+    """Whether the recommended download is compressed to 2 bits or fewer, where quality drops a lot."""
+    return fit.quant_hint(o.note) in ("noticeable loss", "heavy loss")
+
+
 _TITLES = ("FIT", "FORMAT", "SIZE", "TOK/S", "PULLS", "QUANT", "OPTIONS", "VIA")   # the columns after MODEL; a narrow terminal drops from the right
 _OPTION_TITLES = ("FIT", "SIZE", "TOK/S", "QUALITY", "FROM")                        # the columns after OPTION on a model's page
 
@@ -359,7 +364,10 @@ def show(repl: Any, arg: str) -> None:
         repl.console.print(f"[dim]{len(offers) - len(shown_offers)} hidden: they failed /eval here before, e.g. no tool calling.[/dim]")
     grouped = [replace(o, options=tuple(x for x in o.options if not _failed_eval(x, failed, failed_paths)))
                for o in fit.group(shown_offers, huggingface.PREFERRED)]   # one row per model; its quantizations and formats are the options
-    offers = sorted(grouped, key=lambda o: fit.is_slow(o.size_bytes, chip, o.name))   # stable: slow ones last, ranking kept
+    # stable: a 2-bit quant that is only fast because it is squeezed goes below the usable rows, then slow ones, ranking kept
+    offers = sorted(grouped, key=lambda o: (_squeezed(o), fit.is_slow(o.size_bytes, chip, o.name)))
+    if squeezed := sum(_squeezed(o) for o in offers):
+        repl.console.print(f"[dim]{squeezed} listed last: a 2-bit or lower quantization loses a lot of quality.[/dim]")
     if slow := sum(fit.is_slow(o.size_bytes, chip, o.name) for o in offers):
         repl.console.print(f"[dim]{slow} listed last: under ~{fit.min_toks()} tok/s on this machine, too slow for a fluid chat.[/dim]")
     if not offers:

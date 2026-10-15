@@ -505,6 +505,33 @@ class TestDownloadOptions(unittest.TestCase):
         self.assertEqual(pick.call_count, 1)
 
 
+class TestResultOrder(unittest.TestCase):
+    """Heavily compressed quants go below usable ones; slow rows go last among the rest."""
+
+    def _search(self, offers):
+        repl = _Repl()
+        with patch.object(local_models.fit, "chip", return_value="Apple M3 Pro"), \
+                patch.object(local_models.fit, "budget_bytes", return_value=12 * GB), \
+                patch.object(local_models, "SOURCES", {"hf": lambda q, b: offers}), \
+                patch.object(local_models, "hidden_refs", return_value=set()), \
+                patch.object(local_models.huggingface, "details", return_value=None), \
+                patch.object(local_models, "pick", return_value=None) as pick:
+            local_models.show(repl, " hf")
+        return [c.label for c in pick.call_args.args[2]], repl.console.export_text()
+
+    def test_a_two_bit_quant_does_not_outrank_a_usable_one_even_when_it_is_faster(self):
+        official = Offer("lmstudio-community/Big-14B-GGUF", "hf.co/lmstudio-community/Big-14B-GGUF:Q4_K_M", 7 * GB, "balance", 9, "Q4_K_M", "hf")   # ~slow
+        squeezed = Offer("x/Big-14B-DASHQ-Q2-GGUF", "hf.co/x/Big-14B-DASHQ-Q2-GGUF:IQ2_M", 4 * GB, "relax", 99, "IQ2_M", "hf")                   # fast, lossy
+        fast = Offer("y/Small-3B-GGUF", "hf.co/y/Small-3B-GGUF:Q4_K_M", 2 * GB, "relax", 1, "Q4_K_M", "hf")
+        labels, text = self._search([squeezed, official, fast])
+        self.assertEqual(labels, ["y/Small-3B-GGUF", "lmstudio-community/Big-14B-GGUF", "x/Big-14B-DASHQ-Q2-GGUF"])
+        self.assertIn("1 listed last: a 2-bit or lower quantization", text)
+
+    def test_nothing_is_said_when_no_row_is_that_compressed(self):
+        _, text = self._search([Offer("y/Small-3B-GGUF", "hf.co/y/Small-3B-GGUF:Q4_K_M", 2 * GB, "relax", 1, "Q4_K_M", "hf")])
+        self.assertNotIn("2-bit", text)
+
+
 class TestSpeedFloor(unittest.TestCase):
     def test_slow_models_are_listed_last_with_the_rest_in_order(self):
         repl = _Repl()
@@ -670,6 +697,11 @@ class TestQuantHint(unittest.TestCase):
     def test_a_quant_note_gets_its_quality_in_words(self):
         for note, hint in (("Q4_K_M", "good balance"), ("est. Q4", "good balance"), ("MLX 4-bit", "good balance"),
                            ("Q8_0", "near lossless"), ("F16", "lossless"), ("BF16", "lossless"), ("Q2_K", "noticeable loss")):
+            self.assertEqual(local_models.fit.quant_hint(note), hint, note)
+
+    def test_iquants_get_their_quality_too(self):
+        for note, hint in (("IQ2_M", "noticeable loss"), ("IQ1_S", "heavy loss"), ("IQ3_XS", "some loss"), ("IQ4_XS", "good balance"),
+                           ("Q2_K_XL", "noticeable loss")):
             self.assertEqual(local_models.fit.quant_hint(note), hint, note)
 
     def test_a_note_with_no_quant_gets_no_hint(self):
