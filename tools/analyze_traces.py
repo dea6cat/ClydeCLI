@@ -20,6 +20,8 @@ GROWTH = 1.5             # "more than ~50%" for the reuse check
 DROP = 0.8               # input_tokens under this share of the previous turn: compaction or a shorter prompt
 JUMP = 2.0               # input_tokens over this multiple of the previous turn: a new prefix
 MIN_TOKENS = 500         # below this, growth is just a short conversation, not a prefix change
+SPIKE_MS = 3000          # a prefill longer than this ...
+SPIKE_X = 5              # ... and this many times the session's median prefill is a spike
 
 
 def events(path):
@@ -90,6 +92,18 @@ def report(path):
 
     flagged = [(i, a, b) for i, (a, b) in enumerate(zip(ts, ts[1:]), 2)
                if a["in"] and a["pre"] and b["in"] > a["in"] * GROWTH and b["pre"] > a["pre"] * GROWTH]
+    # The growth check above misses a miss when the input barely grows, e.g. a changed tool list near the start of the
+    # prompt makes the server re-prefill nearly everything: spot those by prefill time against the session's norm.
+    cold = next((t for t in ts if t["load"] > COLD_LOAD_MS and t["pre"]), None)
+    rate = cold["in"] / cold["pre"] if cold else None   # tokens per ms when nothing was reused
+    norm = statistics.median(t["pre"] for t in ts if t is not cold) if len(ts) > 1 else 0
+    spikes = [(i, t) for i, t in enumerate(ts, 1) if t is not cold and t["pre"] > max(SPIKE_MS, SPIKE_X * norm)]
+    print(f"  prefill spikes (over {SPIKE_MS / 1000:.0f}s and over {SPIKE_X}x the median of the other turns):",
+          "none" if not spikes else "")
+    for i, t in spikes:
+        # An upper bound: prefill is slower deeper into a prompt than at the cold start, so fewer tokens were redone.
+        redone = f", up to ~{t['pre'] * rate:.0f} of {t['in']} tokens ({t['pre'] * rate / t['in']:.0%}) redone at the cold-start rate" if rate else ""
+        print(f"    turn {i}: prefill {t['pre']:.0f} ms{redone}")
     print("  reuse check (input and prefill_ms both grew >50%, a candidate full re-prefill):",
           ", ".join(f"turn {i} ({a['in']}->{b['in']} tok, {a['pre']:.0f}->{b['pre']:.0f} ms)" for i, a, b in flagged) or "none")
 
