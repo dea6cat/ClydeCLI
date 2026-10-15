@@ -310,6 +310,8 @@ def run_agent_loop(
     if system_extra:   # a custom sub-agent's own instructions
         system_prompt += "\n\n" + system_extra
     only = local_tools(_last_prompt(conversation)) if _small_local(provider) else None   # the few tools this prompt needs
+    if only is not None:   # grow-only: see ToolContext.local_only; a changed tool list re-prefills the server's cache
+        only = tool_context.local_only = tool_context.local_only | only
     if index := index_prompt(all_specs, only):
         system_prompt += "\n\n" + index
     if only is not None:   # a small local model checks code against the project and the docs before it presents it
