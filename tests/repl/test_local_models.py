@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import unittest
 from contextlib import nullcontext
+from dataclasses import replace
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 from rich.console import Console
 
 from src.providers.fit import GB, Offer
+from src.providers.huggingface import Details
 from src.repl import local_models
 
 HARD = Offer("big", "big:30b", 10 * GB, "hard", 1, "est. Q4", "ollama")
@@ -49,6 +52,17 @@ class TestConfirm(unittest.TestCase):
         shown = self.repl.console.export_text()
         self.assertIn("barely fits", shown)
         self.assertIn("close apps to free", shown)   # 11.5 GB loaded vs 4 GB free right now
+
+    def test_the_cost_is_a_table_of_labelled_rows(self):
+        with patch.object(local_models.Confirm, "ask", return_value=True):
+            local_models._confirm(self.repl, RELAX, 12 * GB, "Apple M3 Pro")
+        shown = self.repl.console.export_text()
+        for title in ("WHAT", "DETAIL"):
+            self.assertIn(title, shown)
+        for row in ("download", "when run", "speed", "quality", "means"):
+            self.assertRegex(shown, rf"(?m)^\s*{row}\s+\S")                  # each fact starts its own row, label then detail
+        self.assertIn("2.0 GB", shown)
+        self.assertIn("relax", shown)
 
     def test_easy_models_default_to_yes(self):
         with patch.object(local_models.Confirm, "ask", return_value=True) as ask:
@@ -282,6 +296,213 @@ class TestSetUpRunner(unittest.TestCase):
             local_models.show(self.repl, " ollama")
         setup.assert_called_once()
         pull.assert_called_once()
+
+
+_Q4 = Offer("u/m", "hf.co/u/m:Q4_K_M", 5 * GB, "balance", 5, "Q4_K_M", "hf")
+_Q8 = Offer("u/m", "hf.co/u/m:Q8_0", 8 * GB, "balance", 5, "Q8_0", "hf")
+_F16 = Offer("u/m", "hf.co/u/m:F16", 30 * GB, "too large", 5, "F16", "hf")
+_MLX4 = Offer("mlx-community/m-4bit", "https://huggingface.co/mlx-community/m-4bit", 4 * GB, "relax", 2, "MLX 4-bit", "mlx")
+
+
+class TestDownloadOptions(unittest.TestCase):
+    """A model row opens a second picker with every quantization and format of that model."""
+
+    def setUp(self):
+        self.row = Offer("u/m", _Q8.pull_tag, 8 * GB, "balance", 5, "Q8_0", "hf", options=(_Q4, _Q8, _F16, _MLX4))
+
+    def _show(self, *rest, runner="ollama", details=None, opened=None):
+        """Run /models local with the picker answering "0" (the model row), then `rest` in turn."""
+        repl = _Repl()
+        with patch.object(local_models.fit, "chip", return_value="Apple M3 Pro"), \
+                patch.object(local_models.fit, "budget_bytes", return_value=12 * GB), \
+                patch.object(local_models, "SOURCES", {"hf": lambda q, b: [self.row]}), \
+                patch.object(local_models, "hidden_refs", return_value=set()), \
+                patch.object(local_models.huggingface, "details", return_value=details), \
+                patch.object(local_models.huggingface, "gguf_offer", return_value=opened), \
+                patch.object(local_models, "pick", side_effect=["0", *rest]) as pick, \
+                patch.object(local_models, "_runner", return_value=runner), \
+                patch.object(local_models, "_confirm", return_value=True) as confirm, \
+                patch.object(local_models, "_pull_ollama") as pull, \
+                patch.object(local_models, "_get_lmstudio") as lms:
+            local_models.show(repl, " hf")
+        self.repl = repl
+        return repl, pick, confirm, pull, lms
+
+    def _details(self, **over):
+        updated = (datetime.now(timezone.utc) - timedelta(days=13)).isoformat()
+        base = dict(author="IFM", original="", downloads=35214, likes=76, updated=updated, params=8_999_178_240, arch="k2-horizon",
+                    context=524288, license="apache-2.0", summary="A dense open-weights model tuned for long documents.",
+                    tools=True, vision=False, reasoning=False, related=(("IFM/K2-0.9B-GGUF", 25809, 97),))
+        return Details(**{**base, **over})
+
+    def test_the_page_shows_the_numbers_description_specs_and_capabilities(self):
+        repl, *_ = self._show("0", details=self._details())
+        text = repl.console.export_text()
+        for expected in ("u/m", "35K", "76", "13 days ago", "apache-2.0", "A dense open-weights model tuned for long documents.",
+                         "9.0B", "k2-horizon", "512K", "GGUF", "MLX", "Tool use ✓", "Vision –", "Reasoning –"):
+            self.assertIn(expected, text)
+
+    def test_unknown_capabilities_are_marked_unknown_not_absent(self):
+        repl, *_ = self._show("0", details=self._details(tools=None, params=None, context=None, summary=""))
+        self.assertIn("Tool use ?", repl.console.export_text())
+
+    def test_the_options_picker_ends_with_other_models_by_the_same_author(self):
+        _, pick, *_ = self._show("0", details=self._details())
+        args, _ = pick.call_args_list[1]
+        more = [c for c in args[2] if c.value.startswith("more:")]
+        self.assertEqual([(c.value, c.label) for c in more], [("more:IFM/K2-0.9B-GGUF", "IFM/K2-0.9B-GGUF")])
+        self.assertIn("more from IFM", more[0].hint)
+        self.assertIn("26K", more[0].hint)
+        self.assertEqual(args[2][-1].value, "more:IFM/K2-0.9B-GGUF")
+
+    def test_choosing_another_model_opens_its_page_and_downloads_from_there(self):
+        small = Offer("IFM/K2-0.9B-GGUF", "hf.co/IFM/K2-0.9B-GGUF:Q8_0", 1 * GB, "relax", 9, "Q8_0", "hf",
+                      options=(Offer("IFM/K2-0.9B-GGUF", "hf.co/IFM/K2-0.9B-GGUF:Q4_K_M", GB // 2, "relax", 9, "Q4_K_M", "hf"),
+                               Offer("IFM/K2-0.9B-GGUF", "hf.co/IFM/K2-0.9B-GGUF:Q8_0", 1 * GB, "relax", 9, "Q8_0", "hf")))
+        _, pick, _, pull, _ = self._show("more:IFM/K2-0.9B-GGUF", "0", details=self._details(), opened=small)
+        self.assertEqual(pull.call_args.args[1].pull_tag, "hf.co/IFM/K2-0.9B-GGUF:Q4_K_M")
+        self.assertIn("IFM/K2-0.9B-GGUF", pick.call_args_list[2].args[1])
+
+    def test_another_model_with_nothing_that_fits_says_so_and_stays_on_the_current_page(self):
+        repl, _, _, pull, _ = self._show("more:IFM/K2-0.9B-GGUF", "0", details=self._details(), opened=None)
+        text = repl.console.export_text()
+        self.assertIn("Nothing from IFM/K2-0.9B-GGUF fits", text)
+        self.assertEqual(pull.call_args.args[1].pull_tag, _Q4.pull_tag)
+
+    def test_without_details_the_options_picker_still_works_and_no_page_is_printed(self):
+        repl, pick, _, pull, _ = self._show("0", details=None)
+        self.assertEqual(pull.call_args.args[1].pull_tag, _Q4.pull_tag)
+        self.assertNotIn("PARAMS", repl.console.export_text())
+
+    def test_a_single_download_with_nothing_related_goes_straight_to_confirm(self):
+        self.row = replace(self.row, options=())
+        _, pick, confirm, pull, _ = self._show(details=self._details(related=()))
+        self.assertEqual(pick.call_count, 1)
+        confirm.assert_called_once()
+
+    def test_a_row_is_named_after_the_original_model_and_says_who_it_comes_from(self):
+        row = replace(self.row, name="lmstudio-community/K2-7B-GGUF", model="IFM/K2-7B")
+        header, (choice,) = local_models._table([row], "Apple M3 Pro", 200)
+        self.assertEqual(choice.label, "IFM/K2-7B")
+        self.assertEqual(choice.hint.index("lmstudio-community"), header[1].index("VIA"))   # the publisher sits in the VIA column
+        (plain,) = local_models._choices([self.row], "Apple M3 Pro")
+        self.assertEqual(plain.label, "u/m")
+        self.assertNotIn("lmstudio-community", plain.hint)
+
+    def test_the_page_is_titled_with_the_original_model_and_names_the_repo_it_downloads_from(self):
+        repl, pick, *_ = self._show("0", details=self._details(original="IFM/K2-7B"))
+        text = repl.console.export_text()
+        self.assertIn("IFM/K2-7B", text)
+        self.assertIn("via u/m", text)
+        self.assertIn("IFM/K2-7B", pick.call_args_list[1].args[1])
+
+    def test_the_search_is_a_table_with_labelled_aligned_columns(self):
+        slow = Offer("big/Model-70B-GGUF", "hf.co/big/Model-70B-GGUF:Q4_K_M", 40 * GB, "hard", 1_500_000, "Q4_K_M", "hf")
+        header, rows = local_models._table([self.row, slow], "Apple M3 Pro", 200)
+        self.assertEqual(header[0], "MODEL")
+        for label in ("FIT", "FORMAT", "SIZE", "TOK/S", "PULLS", "QUANT", "OPTIONS"):
+            self.assertIn(label, header[1])
+        first, second = rows
+        self.assertEqual((first.label, second.label), ("u/m", "big/Model-70B-GGUF"))
+        for cell in ("balance", "GGUF", "8.0 GB", "5", "Q8_0", "4"):
+            self.assertIn(cell, first.hint)
+        self.assertIn("(slow)", second.hint)
+        self.assertIn("1.5M", second.hint)
+        self.assertEqual(first.hint.index("balance"), header[1].index("FIT"))        # each title sits over its column's cells
+        self.assertEqual(second.hint.index("hard"), header[1].index("FIT"))
+        self.assertEqual(first.hint.index("GGUF"), header[1].index("FORMAT"))
+        self.assertEqual(second.hint.index("1.5M"), header[1].index("PULLS"))
+        self.assertEqual(len(first.hint), len(second.hint))
+
+    def test_a_narrow_terminal_drops_the_right_hand_columns_instead_of_wrapping(self):
+        wide_header, _ = local_models._table([self.row], "Apple M3 Pro", 200)
+        narrow_header, narrow_rows = local_models._table([self.row], "Apple M3 Pro", 70)
+        self.assertIn("VIA", wide_header[1])
+        self.assertNotIn("VIA", narrow_header[1])
+        self.assertIn("FIT", narrow_header[1])
+        self.assertLessEqual(len(narrow_rows[0].label) + len(narrow_rows[0].hint) + 8, 70)
+
+    def test_the_search_picker_gets_the_table_header(self):
+        _, pick, *_ = self._show("0", details=None)
+        self.assertEqual(pick.call_args_list[0].kwargs["header"][0], "MODEL")
+
+    def test_the_model_row_says_how_many_options_it_has(self):
+        (row,) = local_models._choices([self.row], "Apple M3 Pro")
+        self.assertEqual(row.hint.split()[-1], "4")      # the OPTIONS cell; this row has no "via" after it
+
+    def test_the_chosen_option_is_what_gets_confirmed_and_downloaded(self):
+        _, _, confirm, pull, _ = self._show("0")
+        self.assertEqual(confirm.call_args.args[1].pull_tag, _Q4.pull_tag)
+        self.assertEqual(pull.call_args.args[1].pull_tag, _Q4.pull_tag)
+
+    def test_the_option_picker_names_format_quant_size_fit_and_marks_the_recommendation(self):
+        _, pick, _, _, _ = self._show("0")
+        args, kwargs = pick.call_args_list[1]
+        labels = {c.value: c for c in args[2]}
+        self.assertIn("u/m", args[1])
+        self.assertEqual(kwargs["current"], "1")    # the row's own pick, the Q8_0 option
+        self.assertIn("GGUF", labels["0"].label)
+        self.assertIn("Q4_K_M", labels["0"].label)
+        self.assertIn("recommended", labels["1"].label)
+        self.assertIn("5.0 GB", labels["0"].hint)
+        self.assertIn("too large", labels["2"].hint)
+        self.assertIn("MLX", labels["3"].label)
+
+    def test_the_options_picker_is_a_table_with_titles_over_aligned_columns_and_the_related_rows_inside_it(self):
+        _, pick, *_ = self._show("0", details=self._details())
+        args, kwargs = pick.call_args_list[1]
+        title, columns = kwargs["header"]
+        self.assertEqual(title, "OPTION")
+        for name in ("FIT", "SIZE", "TOK/S", "QUALITY", "FROM"):
+            self.assertIn(name, columns)
+        rows = {c.value: c for c in args[2]}
+        self.assertEqual(rows["0"].hint.index("balance"), columns.index("FIT"))          # Q4_K_M
+        self.assertEqual(rows["2"].hint.index("too large"), columns.index("FIT"))        # F16
+        self.assertEqual(rows["0"].hint.index("5.0 GB"), columns.index("SIZE"))
+        self.assertEqual(rows["0"].hint.index("u/m"), columns.index("FROM"))             # the repo the download comes from
+        self.assertEqual(rows["more:IFM/K2-0.9B-GGUF"].hint.index("more from IFM"), columns.index("FROM"))
+        self.assertEqual(len({len(c.hint) for c in args[2]}), 1)                         # every row padded to the same width
+
+    def test_a_narrow_terminal_drops_the_options_tables_right_hand_columns(self):
+        repl = _Repl()
+        repl.console = Console(record=True, width=60)
+        with patch.object(local_models.fit, "chip", return_value="Apple M3 Pro"), \
+                patch.object(local_models.fit, "budget_bytes", return_value=12 * GB), \
+                patch.object(local_models.huggingface, "details", return_value=None), \
+                patch.object(local_models, "pick", return_value=None) as pick:
+            local_models._choose_option(repl, self.row, "Apple M3 Pro")
+        columns = pick.call_args.kwargs["header"][1]
+        self.assertIn("FIT", columns)
+        self.assertNotIn("FROM", columns)
+
+    def test_a_too_large_option_is_refused_and_nothing_downloads(self):
+        repl, _, confirm, pull, lms = self._show("2")
+        confirm.assert_not_called()
+        pull.assert_not_called()
+        lms.assert_not_called()
+        self.assertIn("Too large: u/m F16 is 30.0 GB", repl.console.export_text())
+
+    def test_cancelling_the_option_picker_downloads_nothing(self):
+        _, _, confirm, pull, _ = self._show(None)
+        confirm.assert_not_called()
+        pull.assert_not_called()
+
+    def test_an_mlx_option_is_downloaded_through_the_app_that_runs_it(self):
+        _, _, _, pull, lms = self._show("3", runner="lmstudio")
+        pull.assert_not_called()
+        self.assertEqual(lms.call_args.args[1].pull_tag, _MLX4.pull_tag)
+
+    def test_a_row_without_options_skips_the_second_picker(self):
+        repl = _Repl()
+        with patch.object(local_models.fit, "chip", return_value="Apple M3 Pro"), \
+                patch.object(local_models.fit, "budget_bytes", return_value=12 * GB), \
+                patch.object(local_models, "SOURCES", {"ollama": lambda q, b: [RELAX]}), \
+                patch.object(local_models, "hidden_refs", return_value=set()), \
+                patch.object(local_models, "pick", return_value="0") as pick, \
+                patch.object(local_models, "_runner", return_value="ollama"), \
+                patch.object(local_models, "_confirm", return_value=False):
+            local_models.show(repl, " ollama")
+        self.assertEqual(pick.call_count, 1)
 
 
 class TestSpeedFloor(unittest.TestCase):

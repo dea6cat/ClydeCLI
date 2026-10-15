@@ -43,8 +43,8 @@ def scroll(top: int, cursor: int, rows: int, visible: int) -> int:
 
 
 def render(choices: list[Choice], cursor: int, top: int, visible: int, *, title: str, description: str,
-           current: str | None, query: str, hint: str) -> list[tuple[str, str]]:
-    """The picker as prompt_toolkit fragments (style, text)."""
+           current: str | None, query: str, hint: str, header: tuple[str, str] | None = None) -> list[tuple[str, str]]:
+    """The picker as prompt_toolkit fragments (style, text). `header` is the label and hint column titles, drawn over the rows."""
     out: list[tuple[str, str]] = [(f"bold fg:{_ACCENT}", title + "\n")]
     if description:
         out.append((f"fg:{_DIM}", description + "\n"))
@@ -56,6 +56,8 @@ def render(choices: list[Choice], cursor: int, top: int, visible: int, *, title:
         out.append((f"fg:{_DIM}", "  Nothing matches.\n"))
     width = min(_LABEL_MAX, max((len(c.label) for c in choices), default=0))
     shown = choices[top:top + visible]
+    if header and choices:
+        out.append((f"bold fg:{_DIM}", " " * 7 + header[0].ljust(width) + ("  " if current is not None else "") + "  " + header[1] + "\n"))   # 7 = cursor mark + row number
     if top:
         out.append((f"fg:{_DIM}", f"  ↑ {top} more\n"))
     for offset, c in enumerate(shown):
@@ -65,7 +67,7 @@ def render(choices: list[Choice], cursor: int, top: int, visible: int, *, title:
         style = f"bold fg:{_OK}" if c.value == current else ("bold" if on else "")
         out.append((f"fg:{_ACCENT}", "❯ " if on else "  "))
         out.append((f"fg:{_DIM}", f"{at + 1:>3}. "))
-        out.append((style, label.ljust(width) + (" ✔" if c.value == current else "")))
+        out.append((style, label.ljust(width) + (" ✔" if c.value == current else "  " if header and current is not None else "")))   # a marked row must not shift the columns
         out.append((f"fg:{_DIM}", ("  " + c.hint if c.hint else "") + "\n"))
     below = len(choices) - top - len(shown)
     if below > 0:
@@ -83,11 +85,15 @@ def _interactive() -> bool:
     return sys.stdin.isatty() and sys.stdout.isatty()
 
 
-def _ask_numbered(console: Any, title: str, choices: list[Choice], current: str | None, allow_custom: bool) -> str | None:
+def _ask_numbered(console: Any, title: str, choices: list[Choice], current: str | None, allow_custom: bool,
+                  header: tuple[str, str] | None = None) -> str | None:
     """No terminal to draw on: list the choices and ask for a number (or, when allowed, any text)."""
     console.print(Text(title, style="bold"))
+    width = max((len(c.label) for c in choices), default=0) if header else 0   # columns line up only when there is a header
+    if header:
+        console.print(Text(" " * 7 + header[0].ljust(width) + "  " + header[1], style="bold dim"))
     for i, c in enumerate(choices, start=1):
-        console.print(Text.assemble(f"  {i:>3}. {c.label}" + (" ✔" if c.value == current else ""), (f"  {c.hint}" if c.hint else "", "dim")))
+        console.print(Text.assemble(f"  {i:>3}. {c.label.ljust(width)}" + (" ✔" if c.value == current else ""), (f"  {c.hint}" if c.hint else "", "dim")))
     raw = Prompt.ask("Number (Enter to cancel)", default="", show_default=False, console=console).strip()
     if raw.isdigit() and 1 <= int(raw) <= len(choices):
         return choices[int(raw) - 1].value
@@ -95,14 +101,16 @@ def _ask_numbered(console: Any, title: str, choices: list[Choice], current: str 
 
 
 def pick(console: Any, title: str, choices: list[Choice], *, description: str = "", current: str | None = None,
-         allow_custom: bool = False, visible: int = 8, input: Any = None, output: Any = None) -> str | None:
+         allow_custom: bool = False, visible: int = 8, header: tuple[str, str] | None = None, input: Any = None,
+         output: Any = None) -> str | None:
     """Let the user choose one of `choices`; its value, or None when they cancel. `current` is marked
     and starts selected. With `allow_custom`, Enter on a filter that matches nothing returns the typed
-    text (for model ids the list doesn't know). `input`/`output` are prompt_toolkit's, for tests."""
+    text (for model ids the list doesn't know). `header` titles the label and hint columns when the hints
+    are laid out as aligned columns. `input`/`output` are prompt_toolkit's, for tests."""
     if not choices and not allow_custom:
         return None
     if input is None and not _interactive():
-        return _ask_numbered(console, title, choices, current, allow_custom)
+        return _ask_numbered(console, title, choices, current, allow_custom, header)
 
     from prompt_toolkit import Application
     from prompt_toolkit.key_binding import KeyBindings
@@ -122,7 +130,7 @@ def pick(console: Any, title: str, choices: list[Choice], *, description: str = 
         state["cursor"] = max(0, min(state["cursor"], len(rows) - 1))
         state["top"] = scroll(state["top"], state["cursor"], len(rows), visible)
         return render(rows, state["cursor"], state["top"], visible, title=title, description=description,
-                      current=current, query=state["query"], hint=hint)
+                      current=current, query=state["query"], hint=hint, header=header)
 
     keys = KeyBindings()
 

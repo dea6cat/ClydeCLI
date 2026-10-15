@@ -12,11 +12,14 @@ import shutil
 import subprocess
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable
 
+from rich import box
 from rich.prompt import Confirm
+from rich.table import Table
 from rich.text import Text
 
 from src.tuning import tune
@@ -62,20 +65,24 @@ def _confirm(repl: Any, offer: fit.Offer, budget: int, chip: str) -> bool:
         return False
     loaded = offer.size_bytes + fit.OVERHEAD
     speed = fit.tokens_per_s(offer.size_bytes, chip, offer.name)
-    lines = [
-        Text.assemble(("Download ", ""), (offer.pull_tag, "bold"), ("  ", ""), (offer.rating, _RATING_STYLE[offer.rating])),
-        Text(f"  download   {_gb(offer.size_bytes)} ({_gb(disk)} disk free)"),
-        Text(f"  when run   ~{_gb(loaded)}, {fit.share(offer.size_bytes, budget):.0%} of the {_gb(budget)} models can use"
-             + (f"; {_gb(free)} is free right now" if free is not None else "")),
-        Text(f"  speed      ~{speed} tok/s" if speed else "  speed      unknown on this machine"),
-        *([Text(f"  quality    {_quant(offer.note)}")] if offer.note else []),
-        Text(f"  means      {fit.MEANING[offer.rating]}", style=_RATING_STYLE[offer.rating]),
-        *([Text(f"  details    {offer.detail}  [{best_fit.CREDIT}]")] if offer.detail else []),
+    rows = [
+        ("download", f"{_gb(offer.size_bytes)} ({_gb(disk)} disk free)", ""),
+        ("when run", f"~{_gb(loaded)}, {fit.share(offer.size_bytes, budget):.0%} of the {_gb(budget)} models can use"
+                     + (f"; {_gb(free)} is free right now" if free is not None else ""), ""),
+        ("speed", f"~{speed} tok/s" if speed else "unknown on this machine", ""),
+        *([("quality", _quant(offer.note), "")] if offer.note else []),
+        ("means", fit.MEANING[offer.rating], _RATING_STYLE[offer.rating]),
+        *([("details", f"{offer.detail}  [{best_fit.CREDIT}]", "")] if offer.detail else []),
     ]
     if free is not None and loaded > free:
-        lines.append(Text(f"  right now  more than is free: close apps to free {_gb(loaded - free)} before running it", style="dim"))
-    for line in lines:
-        repl.console.print(line)
+        rows.append(("right now", f"more than is free: close apps to free {_gb(loaded - free)} before running it", "dim"))
+    table = Table(box=box.SIMPLE_HEAD, header_style="bold dim", pad_edge=False)
+    table.add_column("WHAT", style="dim", no_wrap=True)
+    table.add_column("DETAIL")
+    for what, detail, style in rows:
+        table.add_row(what, Text(detail, style=style))
+    repl.console.print(Text.assemble(("Download ", ""), (offer.pull_tag, "bold"), ("  ", ""), (offer.rating, _RATING_STYLE[offer.rating])))
+    repl.console.print(table)
     with repl._esc.paused():
         return Confirm.ask("Download it?", default=offer.rating != "hard", console=repl.console)
 
@@ -90,14 +97,133 @@ def _quant(note: str) -> str:
     return f"{note} ({hint})" if hint else note
 
 
+_TITLES = ("FIT", "FORMAT", "SIZE", "TOK/S", "PULLS", "QUANT", "OPTIONS", "VIA")   # the columns after MODEL; a narrow terminal drops from the right
+_OPTION_TITLES = ("FIT", "SIZE", "TOK/S", "QUALITY", "FROM")                        # the columns after OPTION on a model's page
+
+
+def _grid(titles: tuple[str, ...], cells: list[tuple[str, ...]], labels: list[str], width: int) -> tuple[str, list[str]]:
+    """Aligned columns for picker rows: the titles line and one line per row of `cells`, each cell padded to its column.
+    `labels` are the first column's texts (the picker truncates it at 44). Columns that don't fit in `width` characters
+    are left out, right-most first."""
+    sizes = [max([len(title)] + [len(row[i]) for row in cells]) for i, title in enumerate(titles)]
+    room = width - 7 - 2 - min(44, max(map(len, labels), default=0)) - 2   # row mark and number, gap, first column, margin
+    keep = len(titles)
+    while keep > 1 and sum(sizes[:keep]) + 2 * (keep - 1) > room:
+        keep -= 1
+
+    def line(parts: tuple[str, ...]) -> str:
+        return "  ".join(part.ljust(sizes[i]) for i, part in enumerate(parts[:keep]))
+    return line(titles), [line(row) for row in cells]
+
+
+def _cells(o: fit.Offer, chip: str) -> tuple[str, ...]:
+    speed = fit.tokens_per_s(o.size_bytes, chip, o.name)
+    return (o.rating, _FORMAT.get(o.source, o.source), f"{o.size_bytes / fit.GB:.1f} GB",
+            (f"~{speed}" + (" (slow)" if fit.is_slow(o.size_bytes, chip, o.name) else "")) if speed else "?",
+            _count(o.popularity), _quant(o.note), str(len(o.options) or 1), o.name.split("/")[0] if o.model else "")
+
+
+def _table(offers: list[fit.Offer], chip: str, width: int) -> tuple[tuple[str, str], list[Choice]]:
+    """The search as a table: ((MODEL title, column titles), one picker row per offer, its columns aligned; the value is its
+    index in `offers`). Columns that don't fit in `width` characters are left out, right-most first."""
+    labels = [o.model or o.name for o in offers]
+    titles_line, lines = _grid(_TITLES, [_cells(o, chip) for o in offers], labels + ["MODEL"], width)
+    return ("MODEL", titles_line), [Choice(str(i), label, line) for i, (label, line) in enumerate(zip(labels, lines))]
+
+
 def _choices(offers: list[fit.Offer], chip: str) -> list[Choice]:
-    """One picker row per offer; the value is its index in `offers`."""
-    rows = []
-    for i, o in enumerate(offers):
-        speed = fit.tokens_per_s(o.size_bytes, chip, o.name)
-        rows.append(Choice(str(i), o.name, f"{o.rating} · {o.source} · {o.size_bytes / fit.GB:.1f} GB · "
-                                           + (f"~{speed} tok/s{' (slow)' if fit.is_slow(o.size_bytes, chip, o.name) else ''} · " if speed else "") + f"{_count(o.popularity)} pulls · {_quant(o.note)}"))
-    return rows
+    """The search rows at any width (every column)."""
+    return _table(offers, chip, 10_000)[1]
+
+
+_FORMAT = {"hf": "GGUF", "mlx": "MLX", "ollama": "Ollama"}
+
+
+def _ago(iso: str) -> str:
+    """`13 days ago` for an ISO time, or "" when it can't be read."""
+    try:
+        days = (datetime.now(timezone.utc) - datetime.fromisoformat(iso.replace("Z", "+00:00"))).days
+    except ValueError:
+        return ""
+    return "today" if days < 1 else f"{days} days ago" if days < 60 else f"{days // 30} months ago" if days < 700 else f"{days // 365} years ago"
+
+
+def _tick(flag: bool | None) -> str:
+    return "?" if flag is None else "✓" if flag else "–"
+
+
+def _card(repl: Any, offer: fit.Offer, d: huggingface.Details) -> None:
+    """A model's page: what the Hub says about it, its specs, and what it can do."""
+    formats = ", ".join(sorted({_FORMAT.get(o.source, o.source) for o in (offer.options or (offer,))}))
+    title = d.original or offer.model or offer.name
+    repl.console.print()
+    repl.console.print(Text.assemble((title, "bold"), (f"   ↓{_count(d.downloads)}  ♥{d.likes}", ""),
+                                     (f"  ·  updated {_ago(d.updated)}" if _ago(d.updated) else "", "dim"),
+                                     (f"  ·  {d.license}" if d.license else "", "dim")))
+    if title != offer.name:
+        repl.console.print(Text(f"via {offer.name}", style="dim"))
+    if d.summary:
+        repl.console.print(Text(d.summary))
+    specs = [("PARAMS", f"{d.params / 1e9:.1f}B") if d.params else None, ("ARCH", d.arch) if d.arch else None,
+             ("CONTEXT", f"{d.context // 1024}K") if d.context else None, ("FORMAT", formats)]
+    repl.console.print(Text("  ·  ".join(f"{k} {v}" for k, v in filter(None, specs)), style="dim"))
+    repl.console.print(Text.assemble(("CAPABILITIES  ", "dim"), (f"Tool use {_tick(d.tools)}  ·  Vision {_tick(d.vision)}  ·  Reasoning {_tick(d.reasoning)}", ""),
+                                     ("   (read from the repo)", "dim")))
+
+
+def _choose_option(repl: Any, offer: fit.Offer, chip: str) -> fit.Offer | None:
+    """The model's page and the download to make from it: its details, then every download (quantizations, GGUF and
+    MLX) with size, fit and speed, then other models by the same author to open instead. Returns the chosen download
+    (the row itself when there is nothing to choose between), or None when they cancel or pick one that is too large."""
+    budget = fit.budget_bytes()
+    while True:
+        d = None
+        if offer.source in ("hf", "mlx"):
+            with repl.console.status("[dim]Loading the model's page…[/dim]", spinner="dots"):
+                d = huggingface.details(offer.name, "gguf" if offer.source == "hf" else "mlx")
+        if d is not None:
+            _card(repl, offer, d)
+        related = d.related if d is not None and offer.source == "hf" else ()   # only GGUF repos can be opened from here
+        if not offer.options and not related:
+            return offer
+        options = offer.options or (offer,)
+        order = sorted(range(len(options)), key=lambda i: (_FORMAT.get(options[i].source, options[i].source), options[i].size_bytes))
+        values, labels, cells = [], [], []
+        for i in order:
+            o = options[i]
+            fmt = _FORMAT.get(o.source, o.source)
+            speed = None if o.rating == fit.TOO_LARGE else fit.tokens_per_s(o.size_bytes, chip, o.name)
+            recommended = " (recommended)" if o.pull_tag == offer.pull_tag else ""
+            values.append(str(i))
+            labels.append((o.note if o.note.upper().startswith(fmt.upper()) else f"{fmt} {o.note}") + recommended)   # an MLX note already says MLX
+            cells.append((o.rating, _gb(o.size_bytes), f"~{speed}" if speed else "", "" if o.rating == fit.TOO_LARGE else fit.quant_hint(o.note), o.name))
+        for repo, downloads, likes in related:   # other models by the author share the table: their facts go in the last column
+            values.append(f"more:{repo}")
+            labels.append(repo)
+            cells.append(("", "", "", "", f"more from {d.author} · ↓{_count(downloads)} ♥{likes}"))
+        columns, lines = _grid(_OPTION_TITLES, cells, labels + ["OPTION"], repl.console.width)
+        rows = [Choice(value, label, line) for value, label, line in zip(values, labels, lines)]
+        current = next((str(i) for i, o in enumerate(options) if o.pull_tag == offer.pull_tag), None)
+        choice = pick(repl.console, f"Download options for {(d.original if d is not None else '') or offer.model or offer.name}", rows,
+                      header=("OPTION", columns), current=current, visible=10,
+                      description="Enter picks one (you confirm what it costs first); options too large for this machine can't be chosen. "
+                                  "The last rows open other models by the same author.")
+        if choice is None:
+            return None
+        if choice.startswith("more:"):
+            repo = choice.removeprefix("more:")
+            opened = huggingface.gguf_offer({"id": repo, "downloads": next((n for r, n, _ in related if r == repo), 0)}, budget)
+            if opened is None:
+                repl.console.print(f"[yellow]Nothing from {repo} fits the {_gb(budget)} this machine's models can use.[/yellow]")
+            else:
+                offer = opened
+            continue
+        chosen = options[int(choice)]
+        if chosen.rating == fit.TOO_LARGE:
+            repl.console.print(f"[red]Too large:[/red] {chosen.name} {chosen.note} is {_gb(chosen.size_bytes)}, more than the "
+                               f"{_gb(budget)} this machine's models can use.")
+            return None
+        return chosen
 
 
 def _runner(repl: Any, offer: fit.Offer) -> str | None:
@@ -231,18 +357,23 @@ def show(repl: Any, arg: str) -> None:
     shown_offers = [o for o in offers if not _failed_eval(o, failed, failed_paths)]
     if len(shown_offers) < len(offers):
         repl.console.print(f"[dim]{len(offers) - len(shown_offers)} hidden: they failed /eval here before, e.g. no tool calling.[/dim]")
-    offers = sorted(shown_offers, key=lambda o: fit.is_slow(o.size_bytes, chip, o.name))   # stable: slow ones last, ranking kept
+    grouped = [replace(o, options=tuple(x for x in o.options if not _failed_eval(x, failed, failed_paths)))
+               for o in fit.group(shown_offers, huggingface.PREFERRED)]   # one row per model; its quantizations and formats are the options
+    offers = sorted(grouped, key=lambda o: fit.is_slow(o.size_bytes, chip, o.name))   # stable: slow ones last, ranking kept
     if slow := sum(fit.is_slow(o.size_bytes, chip, o.name) for o in offers):
         repl.console.print(f"[dim]{slow} listed last: under ~{fit.min_toks()} tok/s on this machine, too slow for a fluid chat.[/dim]")
     if not offers:
         repl.console.print(f"Nothing from {' or '.join(names)} fits {budget / fit.GB:.0f} GB" + (f" for '{query}'." if query else ".")
                            + " Try other search words.")
         return
-    choice = pick(repl.console, "Download which model?", _choices(offers, chip), visible=10,
+    header, rows = _table(offers, chip, repl.console.width)
+    choice = pick(repl.console, "Download which model?", rows, header=header, visible=10,
                   description="Enter picks it (you confirm what it costs first); type to filter.")
     if choice is None:
         return
-    offer = offers[int(choice)]
+    offer = _choose_option(repl, offers[int(choice)], chip)
+    if offer is None:
+        return
     runner = _runner(repl, offer)
     runner = runner or _set_up_runner(repl, offer)
     if runner is None:
