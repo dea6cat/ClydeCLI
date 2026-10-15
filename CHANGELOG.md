@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `/models local` shows its results as a table with titled columns: model, fit, format, size, tokens per second, pulls, quantization, number of download options, and the publisher the download comes from. A narrow terminal drops the right-hand columns instead of wrapping.
+- Choosing a model opens its page: downloads, likes, last update and license, the opening of its README, parameters, architecture, context length, and what it can do (tool use, vision, reasoning, read from the repo; `?` when it can't tell). Below it, every download of that model as a table: each GGUF quantization and MLX build with its size, fit, estimated speed and quality, the recommended one marked, and options too large for your machine shown but not selectable. Other models by the same publisher end the list and open their own page.
+- Search results are named after the model they were made from (`mistralai/Ministral-3-14B-Reasoning-2512`, downloaded via `lmstudio-community`) when the repo's card says so reliably, and repos of one model share a row.
+- The cost shown before a download is a table of labelled rows (download, when run, speed, quality, means).
+- Replies from Ollama now record prefill, decode and load time in milliseconds in the trace (`prefill_ms`, `decode_ms`, `load_ms`).
+- `tools/analyze_traces.py`, a diagnostic script that is not part of Clyde: it reads trace files and reports prefill against decode, cold starts and prefill spikes.
+
+### Changed
+
+- `/models local` lists a model whose best download is 2-bit or lower after the usable ones, and says how many it moved. IQ quantizations (`IQ2_M`) now get a quality note like the others.
+- The Pylint check runs on Python 3.14 with the project installed and fails below a score of 9. It used to run on 3.8 to 3.10 and failed every time.
+
+### Fixed
+
+- `/models local` now finds vision-language models and the repos of the catalog publishers (`lmstudio-community`, `mlx-community`). It asked only for `text-generation`, which hid the official Ministral 3 and Gemma 4 repos.
+- A speculative-decoding file (`…-MTP-F16.gguf`) or a drafter model could be offered as a tiny download of the model itself. They are now skipped.
+- For Ollama and LM Studio, a small local model's tool list only grows within a session. Before, it changed between prompts, so the server re-read the whole conversation each time (one change cost 55 seconds of prefill on a CPU).
+
 ## [0.5.6] - 2026-10-14
 
 ### Added
