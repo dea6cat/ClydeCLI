@@ -85,7 +85,12 @@ def _kv_bytes_per_token(mi: dict) -> int:
 def _usage(obj: dict) -> dict | None:
     if obj.get("prompt_eval_count") is None and obj.get("eval_count") is None:
         return None
-    return {"input_tokens": obj.get("prompt_eval_count") or 0, "output_tokens": obj.get("eval_count") or 0}
+    usage = {"input_tokens": obj.get("prompt_eval_count") or 0, "output_tokens": obj.get("eval_count") or 0}
+    # Ollama reports these in nanoseconds; the trace keeps milliseconds so prefill can be told from decode.
+    for key, field in (("prefill_ms", "prompt_eval_duration"), ("decode_ms", "eval_duration"), ("load_ms", "load_duration")):
+        if isinstance(obj.get(field), int):
+            usage[key] = obj[field] // 1_000_000
+    return usage
 
 
 class OllamaProvider:
