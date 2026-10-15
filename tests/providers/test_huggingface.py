@@ -60,6 +60,26 @@ class TestHuggingFace(unittest.TestCase):
             (offer,) = huggingface.search("m", 12 * GB)
         self.assertEqual(offer.options, ())
 
+    def test_a_speculative_decoding_file_is_not_a_quantization_of_the_model(self):
+        tree = [{"type": "file", "path": "Model-Q8_0.gguf", "size": 12 * GB}, {"type": "file", "path": "gemma-4-12B-it-MTP-F16.gguf", "size": 1 * GB},
+                {"type": "file", "path": "Model-Q4_K_M.gguf", "size": 7 * GB}, {"type": "file", "path": "Model-draft-Q8_0.gguf", "size": 1 * GB},
+                {"type": "file", "path": "Model-noMTP-Q6_K.gguf", "size": 9 * GB}]     # noMTP is the full model without the MTP head: a real quant
+        self.assertEqual(sorted(huggingface._quants(tree)), [("Q4_K_M", 7 * GB), ("Q6_K", 9 * GB), ("Q8_0", 12 * GB)])
+
+    def test_a_repo_whose_only_fitting_file_is_a_drafter_is_not_offered(self):
+        tree = [{"type": "file", "path": "Model-Q8_0.gguf", "size": 12 * GB}, {"type": "file", "path": "Model-MTP-F16.gguf", "size": 1 * GB}]
+        with patch.object(huggingface, "get_json", side_effect=lambda url, **_: tree if "/tree/" in url else [{"id": "u/m", "downloads": 9}]):
+            self.assertEqual(huggingface.search("m", 12 * GB), [])     # the 12 GB model does not fit and the 1 GB file is not the model
+
+    def test_drafter_repos_are_dropped_from_the_search(self):
+        listing = [{"id": "g/gemma-4-12B-it-assistant", "downloads": 9, "config": {"model_type": "gemma4_unified_assistant"}},
+                   {"id": "m/gemma-4-12B-it-qat-assistant-4bit", "downloads": 8, "config": {"model_type": "gemma4"}, "tags": ["mlx", "draft-model"]},
+                   {"id": "m/gemma-4-12B-it-4bit", "downloads": 7, "config": {"model_type": "gemma4"}, "tags": ["mlx"]}]
+        seen = []
+        with patch.object(huggingface, "get_json", side_effect=lambda url, **_: listing):
+            huggingface.offers("mlx", "gemma", lambda repo: seen.append(repo["id"]))
+        self.assertEqual(sorted(set(seen)), ["m/gemma-4-12B-it-4bit"])
+
     def test_the_original_model_is_named_only_when_the_base_model_is_the_same_model_as_the_repo(self):
         def repo(rid, base=None):
             return {"id": rid, **({"cardData": {"base_model": base}} if base else {})}

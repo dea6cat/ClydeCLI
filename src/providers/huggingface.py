@@ -23,6 +23,9 @@ _CATALOG = {"gguf": "lmstudio-community", "mlx": "mlx-community"}
 PREFERRED = ("lmstudio-community", "mlx-community", "unsloth", "bartowski")   # publishers whose repo leads a model's row
 _QUANT = re.compile(r"[-_.]((?:I?Q\d(?:_[A-Z0-9]+)*)|F16|BF16)\.gguf$", re.I)
 _SPLIT = re.compile(r"-\d{5}-of-\d{5}\.gguf$")
+# Files in a GGUF repo that are not the model: a vision projector, a speculative-decoding draft, an MTP head (but not
+# "noMTP", the full model without it).
+_NOT_THE_MODEL = re.compile(r"mmproj|draft|(?<![a-z])mtp(?![a-z])")
 # Repos tagged text-generation that can't chat: embedding and reranker models (seen live: Qwen3-Embedding).
 _NOT_CHAT = re.compile(r"embed|rerank", re.I)
 
@@ -30,8 +33,15 @@ _NOT_CHAT = re.compile(r"embed|rerank", re.I)
 # A chat template that never mentions tools can't render a tool call. No template at all (it can live in a
 # separate file) proves nothing, so only a template that is present and silent drops the repo.
 _TOOLS = re.compile(r"\btools?\b|tool_call", re.I)
-_EXPAND = {"gguf": ["gguf", "downloads", "cardData"], "mlx": ["config", "downloads", "cardData"]}
+_EXPAND = {"gguf": ["gguf", "downloads", "cardData", "tags"], "mlx": ["config", "downloads", "cardData", "tags"]}
 _CHAT_NAME = re.compile(r"instruct|chat|[-_]it\b|assistant|thinking|\bsft\b|dpo", re.I)
+
+
+def _is_drafter(repo: dict) -> bool:
+    """A small speculative-decoding model (a Gemma `…_assistant`, a repo tagged draft-model): it helps a big model generate
+    faster but cannot chat, and its few hundred MB would pass for a tiny download of the model itself."""
+    kind = str(((repo.get("config") or {}).get("model_type")) or ((repo.get("gguf") or {}).get("architecture")) or "")
+    return "assistant" in kind.lower() or "draft-model" in (repo.get("tags") or [])
 
 
 def _lacks_tools(repo: dict, fmt: str) -> bool:
@@ -74,8 +84,7 @@ def _quants(files: list[dict]) -> list[tuple[str, int]]:
         path, size = str(f.get("path", "")), f.get("size")
         m = _QUANT.search(path)
         lower = path.lower()
-        if f.get("type") != "file" or not m or not isinstance(size, int) or _SPLIT.search(path) \
-                or "mmproj" in lower or "draft" in lower:
+        if f.get("type") != "file" or not m or not isinstance(size, int) or _SPLIT.search(path) or _NOT_THE_MODEL.search(lower):
             continue
         quant = m.group(1).upper()
         sizes[quant] = max(size, sizes.get(quant, 0))
@@ -112,7 +121,7 @@ def offers(fmt: str, query: str, offer: Callable[[dict], Offer | None]) -> list[
     seen: set = set()
     repos = [r for r in sorted((r for rows in lists for r in rows if isinstance(r, dict)), key=lambda r: -int(r.get("downloads") or 0))
              if not (r.get("id") in seen or seen.add(r.get("id")))][:_REPOS * 2]
-    repos = [r for r in repos if not _NOT_CHAT.search(str(r.get("id", ""))) and not _lacks_tools(r, fmt)]
+    repos = [r for r in repos if not _NOT_CHAT.search(str(r.get("id", ""))) and not _is_drafter(r) and not _lacks_tools(r, fmt)]
     with ThreadPoolExecutor(max_workers=8) as pool:
         repos = [r for r, base in zip(repos, pool.map(_is_base, repos)) if not base]
         found = [o for o in pool.map(offer, repos) if o is not None]

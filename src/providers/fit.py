@@ -168,7 +168,7 @@ def gpu_share(weights_bytes: int, gpu_bytes: int | None = None) -> float | None:
 
 
 _QUALITY = {16: "lossless", 8: "near lossless", 6: "near lossless", 5: "very good", 4: "good balance", 3: "some loss", 2: "noticeable loss", 1: "heavy loss"}
-_BITS = re.compile(r"\b(?:b?f(16)|q(\d)(?:_|\b)|(\d)-?bit)", re.I)
+_BITS = re.compile(r"\b(?:b?f(16)|i?q(\d)(?:_|\b)|(\d)-?bit)", re.I)   # i?q: IQ2_M and Q2_K are both 2-bit class
 
 
 def quant_hint(note: str) -> str:
