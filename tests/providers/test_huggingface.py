@@ -60,6 +60,33 @@ class TestHuggingFace(unittest.TestCase):
             (offer,) = huggingface.search("m", 12 * GB)
         self.assertEqual(offer.options, ())
 
+    def test_search_also_finds_vision_models_and_the_catalog_publishers_untagged_repos(self):
+        # Hugging Face tags a vision-language model image-text-to-text, and lmstudio-community's repos often carry no pipeline tag:
+        # asking only for text-generation hid both (Ministral 3 14B Reasoning, Gemma 4 12B).
+        urls, tree = [], [{"type": "file", "path": "M-Q4_K_M.gguf", "size": 5 * GB}]
+        by_query = {"text-generation": [{"id": "x/plain", "downloads": 10}],
+                    "image-text-to-text": [{"id": "x/vision", "downloads": 50}],
+                    "lmstudio-community": [{"id": "lmstudio-community/M-GGUF", "downloads": 30}, {"id": "x/plain", "downloads": 10}]}
+
+        def fake_get(url, **_):
+            if "/tree/" in url:
+                return tree
+            urls.append(url)
+            return next(v for k, v in by_query.items() if k in url)
+        with patch.object(huggingface, "get_json", side_effect=fake_get):
+            offers = huggingface.search("m", 12 * GB)
+        self.assertEqual([o.name for o in offers], ["x/vision", "lmstudio-community/M-GGUF", "x/plain"])   # by downloads, once each
+        self.assertTrue(any("pipeline_tag=image-text-to-text" in u for u in urls))
+        catalog = [u for u in urls if "author=lmstudio-community" in u]
+        self.assertEqual(len(catalog), 1)
+        self.assertNotIn("pipeline_tag", catalog[0])
+
+    def test_mlx_search_asks_the_mlx_community_without_a_pipeline_tag_too(self):
+        urls = []
+        with patch.object(huggingface, "get_json", side_effect=lambda url, **_: urls.append(url) or []):
+            huggingface.offers("mlx", "m", lambda repo: None)
+        self.assertTrue(any("author=mlx-community" in u and "pipeline_tag" not in u for u in urls))
+
     def test_details_read_the_card_numbers_capabilities_and_other_repos_by_the_author(self):
         info = {"id": "IFM/K2-7B-GGUF", "author": "IFM", "downloads": 35214, "likes": 76, "lastModified": "2026-10-02T13:23:24.000Z",
                 "pipeline_tag": "text-generation", "tags": ["gguf", "license:apache-2.0", "reasoning"],

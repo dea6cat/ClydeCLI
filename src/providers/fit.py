@@ -61,16 +61,19 @@ def model_key(name: str) -> str:
     return re.sub(r"[-_.]+", "-", _NOISE.sub("", name.rsplit("/", 1)[-1].lower())).strip("-")
 
 
-def group(offers: list[Offer]) -> list[Offer]:
+def group(offers: list[Offer], prefer: tuple[str, ...] = ()) -> list[Offer]:
     """One row per model, in ranked order: offers that share a `model_key` merge into the first one's row, whose
     `options` are that model's downloads, one per format and quantization. A format that lists several quants in one
     repo (GGUF) comes from its top-ranked repo only, so other publishers don't repeat them; single-download repos
-    (each MLX bit-width is its own repo) add one option per distinct quantization, the most popular first."""
+    (each MLX bit-width is its own repo) add one option per distinct quantization, the most popular first. A publisher
+    named in `prefer` (earlier is better) outranks popularity inside its model's row, so the row leads with its repo."""
     rows: dict[str, list[Offer]] = {}
     for offer in offers:
         rows.setdefault(model_key(offer.name), []).append(offer)
+    first_choice = [p.lower() + "/" for p in prefer]
     merged = []
     for members in rows.values():
+        members = sorted(members, key=lambda m: next((i for i, p in enumerate(first_choice) if m.name.lower().startswith(p)), len(first_choice)))
         first, chosen, listed_in_full = members[0], {}, set()
         for member in members:
             if member.options:

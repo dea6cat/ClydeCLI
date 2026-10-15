@@ -319,7 +319,7 @@ def show(repl: Any, arg: str) -> None:
     if len(shown_offers) < len(offers):
         repl.console.print(f"[dim]{len(offers) - len(shown_offers)} hidden: they failed /eval here before, e.g. no tool calling.[/dim]")
     grouped = [replace(o, options=tuple(x for x in o.options if not _failed_eval(x, failed, failed_paths)))
-               for o in fit.group(shown_offers)]   # one row per model; its quantizations and formats are the options
+               for o in fit.group(shown_offers, huggingface.PREFERRED)]   # one row per model; its quantizations and formats are the options
     offers = sorted(grouped, key=lambda o: fit.is_slow(o.size_bytes, chip, o.name))   # stable: slow ones last, ranking kept
     if slow := sum(fit.is_slow(o.size_bytes, chip, o.name) for o in offers):
         repl.console.print(f"[dim]{slow} listed last: under ~{fit.min_toks()} tok/s on this machine, too slow for a fluid chat.[/dim]")

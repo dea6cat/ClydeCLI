@@ -108,6 +108,17 @@ class TestGrouping(unittest.TestCase):
         self.assertEqual([(o.name, o.note) for o in row.options],
                          [("IFM/K2-7B-GGUF", "Q4_K_M"), ("a/K2-7B-MLX-4bit", "MLX 4-bit"), ("a/K2-7B-oQ6e", "MLX oQ6e")])
 
+    def test_a_preferred_publisher_leads_its_models_row_and_supplies_the_quants(self):
+        def repo(name, downloads):
+            quants = tuple(Offer(name, f"hf.co/{name}:{q}", (4 + i) * GB, "balance", downloads, q, "hf") for i, q in enumerate(("Q4_K_M", "Q8_0")))
+            return Offer(name, quants[0].pull_tag, 4 * GB, "balance", downloads, "Q4_K_M", "hf", options=quants)
+        popular, catalog = repo("Random/K2-7B-GGUF", 90), repo("lmstudio-community/K2-7B-GGUF", 30)
+        (row,) = group([popular, catalog], prefer=("lmstudio-community", "unsloth"))
+        self.assertEqual(row.name, "lmstudio-community/K2-7B-GGUF")
+        self.assertEqual({o.name for o in row.options}, {"lmstudio-community/K2-7B-GGUF"})
+        (row,) = group([popular, catalog])      # without a preference the first (most downloaded) repo leads, as before
+        self.assertEqual(row.name, "Random/K2-7B-GGUF")
+
     def test_a_lone_offer_is_left_alone(self):
         solo = Offer("a/B-3B-GGUF", "hf.co/a/B-3B-GGUF:Q4_K_M", 2 * GB, "relax", 1, "Q4_K_M", "hf")
         self.assertEqual(group([solo]), [solo])

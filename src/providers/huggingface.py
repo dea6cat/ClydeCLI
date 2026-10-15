@@ -15,7 +15,12 @@ from .base import ProviderError, get_json, get_text
 from .fit import TOO_LARGE, Offer, pick, rate
 
 API = "https://huggingface.co/api/models"
-_REPOS = 15     # repos looked at per search
+_REPOS = 15     # repos looked at per listing; a search merges up to three, so at most twice this many are rated
+# A vision-language model is tagged image-text-to-text, not text-generation, and the publishers LM Studio's catalog draws on
+# often leave the tag off: asking for text-generation alone hid Ministral 3 and Gemma 4's official repos.
+_PIPELINES = ("text-generation", "image-text-to-text")
+_CATALOG = {"gguf": "lmstudio-community", "mlx": "mlx-community"}
+PREFERRED = ("lmstudio-community", "mlx-community", "unsloth", "bartowski")   # publishers whose repo leads a model's row
 _QUANT = re.compile(r"[-_.]((?:I?Q\d(?:_[A-Z0-9]+)*)|F16|BF16)\.gguf$", re.I)
 _SPLIT = re.compile(r"-\d{5}-of-\d{5}\.gguf$")
 # Repos tagged text-generation that can't chat: embedding and reranker models (seen live: Qwen3-Embedding).
@@ -91,17 +96,23 @@ def offers(fmt: str, query: str, offer: Callable[[dict], Offer | None]) -> list[
     empty) whose chat template can call tools, each turned into an Offer by `offer` (None drops it), ranked by downloads."""
     if os.environ.get("CLYDE_NO_MODEL_FETCH"):
         return []
-    params = {"filter": fmt, "pipeline_tag": "text-generation", "sort": "downloads", "direction": "-1",
-              "limit": str(_REPOS), "expand[]": _EXPAND[fmt]}
-    if query:
-        params["search"] = query
-    try:
-        repos = get_json(f"{API}?{urllib.parse.urlencode(params, doseq=True)}", provider="huggingface", timeout=10)
-    except ProviderError:
-        return []
-    if not isinstance(repos, list):
-        return []
-    repos = [r for r in repos if isinstance(r, dict) and not _NOT_CHAT.search(str(r.get("id", ""))) and not _lacks_tools(r, fmt)]
+
+    def listing(extra: dict) -> list:
+        params = {"filter": fmt, "sort": "downloads", "direction": "-1", "limit": str(_REPOS), "expand[]": _EXPAND[fmt], **extra}
+        if query:
+            params["search"] = query
+        try:
+            found = get_json(f"{API}?{urllib.parse.urlencode(params, doseq=True)}", provider="huggingface", timeout=10)
+        except ProviderError:
+            return []
+        return found if isinstance(found, list) else []
+    searches = [{"pipeline_tag": tag} for tag in _PIPELINES] + [{"author": _CATALOG[fmt]}]
+    with ThreadPoolExecutor(max_workers=len(searches)) as pool:
+        lists = list(pool.map(listing, searches))
+    seen: set = set()
+    repos = [r for r in sorted((r for rows in lists for r in rows if isinstance(r, dict)), key=lambda r: -int(r.get("downloads") or 0))
+             if not (r.get("id") in seen or seen.add(r.get("id")))][:_REPOS * 2]
+    repos = [r for r in repos if not _NOT_CHAT.search(str(r.get("id", ""))) and not _lacks_tools(r, fmt)]
     with ThreadPoolExecutor(max_workers=8) as pool:
         repos = [r for r, base in zip(repos, pool.map(_is_base, repos)) if not base]
         found = [o for o in pool.map(offer, repos) if o is not None]
