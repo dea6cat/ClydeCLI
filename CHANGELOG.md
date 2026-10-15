@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.7] - 2026-10-15
+
 ### Added
 
 - `/models local` shows its results as a table with titled columns: model, fit, format, size, tokens per second, pulls, quantization, number of download options, and the publisher the download comes from. A narrow terminal drops the right-hand columns instead of wrapping.
@@ -648,6 +650,7 @@ The focus was on building a solid foundation with clean architecture, comprehens
 
 ---
 
+[0.5.7]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.5.7
 [0.5.6]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.5.6
 [0.5.5]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.5.5
 [0.5.4]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.5.4
