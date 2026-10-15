@@ -11,7 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Callable
 
 from .base import ProviderError, get_json
-from .fit import Offer, pick
+from .fit import TOO_LARGE, Offer, pick, rate
 
 API = "https://huggingface.co/api/models"
 _REPOS = 15     # repos looked at per search
@@ -111,9 +111,15 @@ def search(query: str, budget: int) -> list[Offer]:
     """GGUF repos matching `query` that fit `budget` bytes, each at its best-fitting quant."""
     def offer(repo: dict) -> Offer | None:
         repo_id = repo.get("id", "")
-        best = pick(_quants(files(repo_id)), budget)
+        quants = _quants(files(repo_id))
+        best = pick(quants, budget)
         if best is None:
             return None
         quant, size, rating = best
-        return Offer(repo_id, f"hf.co/{repo_id}:{quant}", size, rating, int(repo.get("downloads") or 0), quant, "hf")
+        downloads = int(repo.get("downloads") or 0)
+
+        def download(q: str, s: int) -> Offer:
+            return Offer(repo_id, f"hf.co/{repo_id}:{q}", s, rate(s, budget) or TOO_LARGE, downloads, q, "hf")
+        options = tuple(download(q, s) for q, s in sorted(quants, key=lambda v: v[1])) if len(quants) > 1 else ()
+        return Offer(repo_id, f"hf.co/{repo_id}:{quant}", size, rating, downloads, quant, "hf", options=options)
     return offers("gguf", query, offer)

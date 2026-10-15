@@ -40,6 +40,25 @@ class TestHuggingFace(unittest.TestCase):
             offers = huggingface.search("coder", 12 * GB)
         self.assertEqual([(o.pull_tag, o.rating) for o in offers], [("hf.co/u/fits:Q8_0", "balance")])
 
+    def test_search_lists_every_quant_as_an_option_smallest_first_and_flags_the_ones_too_large(self):
+        tree = [{"type": "file", "path": "M-Q8_0.gguf", "size": 8 * GB}, {"type": "file", "path": "M-Q4_K_M.gguf", "size": 5 * GB},
+                {"type": "file", "path": "M-F16.gguf", "size": 30 * GB}]
+
+        def fake_get(url, **_):
+            return tree if "/tree/" in url else [{"id": "u/m", "downloads": 10}]
+        with patch.object(huggingface, "get_json", side_effect=fake_get):
+            (offer,) = huggingface.search("m", 12 * GB)
+        self.assertEqual([(o.note, o.rating) for o in offer.options], [("Q4_K_M", "balance"), ("Q8_0", "balance"), ("F16", "too large")])
+        self.assertEqual(offer.pull_tag, "hf.co/u/m:Q8_0")                 # the recommendation is unchanged
+        self.assertIn(offer.pull_tag, [o.pull_tag for o in offer.options])
+
+    def test_a_repo_with_one_quant_has_no_extra_options(self):
+        def fake_get(url, **_):
+            return [{"type": "file", "path": "M-Q4_K_M.gguf", "size": 5 * GB}] if "/tree/" in url else [{"id": "u/m", "downloads": 1}]
+        with patch.object(huggingface, "get_json", side_effect=fake_get):
+            (offer,) = huggingface.search("m", 12 * GB)
+        self.assertEqual(offer.options, ())
+
     def test_repos_whose_chat_template_has_no_tools_are_dropped_unknown_templates_stay(self):
         listing = [
             {"id": "u/tools", "downloads": 3, "gguf": {"chat_template": "{% if tools %}{{ tools }}{% endif %}"}},

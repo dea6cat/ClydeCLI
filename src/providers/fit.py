@@ -12,7 +12,7 @@ import platform
 import re
 import shutil
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from .ollama import _total_ram_bytes
@@ -20,6 +20,7 @@ from .ollama import _total_ram_bytes
 GB = 1024 ** 3
 OVERHEAD = int(1.5 * GB)   # ponytail: flat KV + runtime allowance; size it from the model's layers if ratings drift
 RATINGS = (("relax", 0.5), ("balance", 0.8), ("hard", 1.0))   # share of the budget a model may use
+TOO_LARGE = "too large"   # the rating of a download that fits no part of the budget: listed as an option, never offered
 MEANING = {
     "relax": "plenty of headroom: long context, and your other apps keep running normally",
     "balance": "comfortable, but close other heavy apps (browsers with many tabs, IDEs, Docker) while it runs",
@@ -48,6 +49,39 @@ class Offer:
     note: str = ""     # e.g. the quantization
     source: str = ""   # the source module that offered it (ollama, hf, mlx)
     detail: str = ""   # what a ranking source knows beyond size: benchmark quality, speed range, license
+    options: tuple["Offer", ...] = ()   # every download of this model (quantizations, formats), when it has several
+
+
+_NOISE = re.compile(r"(?:^|[-_.])(?:gguf|mlx|bf16|f16|i?q\d\w*|\d+-?bits?|oq\d\w*)(?=[-_.]|$)", re.I)
+
+
+def model_key(name: str) -> str:
+    """What the repos of one model share: the repo name without its publisher, format tag and quantization tag
+    (`IFM/K2-Horizon-7B-GGUF` and `x/K2-Horizon-7B-MLX-4bit` both give `k2-horizon-7b`). A fine-tune keeps its own key."""
+    return re.sub(r"[-_.]+", "-", _NOISE.sub("", name.rsplit("/", 1)[-1].lower())).strip("-")
+
+
+def group(offers: list[Offer]) -> list[Offer]:
+    """One row per model, in ranked order: offers that share a `model_key` merge into the first one's row, whose
+    `options` are that model's downloads, one per format and quantization. A format that lists several quants in one
+    repo (GGUF) comes from its top-ranked repo only, so other publishers don't repeat them; single-download repos
+    (each MLX bit-width is its own repo) add one option per distinct quantization, the most popular first."""
+    rows: dict[str, list[Offer]] = {}
+    for offer in offers:
+        rows.setdefault(model_key(offer.name), []).append(offer)
+    merged = []
+    for members in rows.values():
+        first, chosen, listed_in_full = members[0], {}, set()
+        for member in members:
+            if member.options:
+                if member.source in listed_in_full:
+                    continue
+                listed_in_full.add(member.source)
+            for option in member.options or (member,):
+                chosen.setdefault((option.source, option.note), option)
+        options = tuple(chosen.values())
+        merged.append(first if len(options) < 2 and not first.options else replace(first, options=options))
+    return merged
 
 
 def _sysctl(name: str) -> str:

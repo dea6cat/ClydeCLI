@@ -284,6 +284,84 @@ class TestSetUpRunner(unittest.TestCase):
         pull.assert_called_once()
 
 
+_Q4 = Offer("u/m", "hf.co/u/m:Q4_K_M", 5 * GB, "balance", 5, "Q4_K_M", "hf")
+_Q8 = Offer("u/m", "hf.co/u/m:Q8_0", 8 * GB, "balance", 5, "Q8_0", "hf")
+_F16 = Offer("u/m", "hf.co/u/m:F16", 30 * GB, "too large", 5, "F16", "hf")
+_MLX4 = Offer("mlx-community/m-4bit", "https://huggingface.co/mlx-community/m-4bit", 4 * GB, "relax", 2, "MLX 4-bit", "mlx")
+
+
+class TestDownloadOptions(unittest.TestCase):
+    """A model row opens a second picker with every quantization and format of that model."""
+
+    def setUp(self):
+        self.row = Offer("u/m", _Q8.pull_tag, 8 * GB, "balance", 5, "Q8_0", "hf", options=(_Q4, _Q8, _F16, _MLX4))
+
+    def _show(self, second, runner="ollama"):
+        repl = _Repl()
+        with patch.object(local_models.fit, "chip", return_value="Apple M3 Pro"), \
+                patch.object(local_models.fit, "budget_bytes", return_value=12 * GB), \
+                patch.object(local_models, "SOURCES", {"hf": lambda q, b: [self.row]}), \
+                patch.object(local_models, "hidden_refs", return_value=set()), \
+                patch.object(local_models, "pick", side_effect=["0", second]) as pick, \
+                patch.object(local_models, "_runner", return_value=runner), \
+                patch.object(local_models, "_confirm", return_value=True) as confirm, \
+                patch.object(local_models, "_pull_ollama") as pull, \
+                patch.object(local_models, "_get_lmstudio") as lms:
+            local_models.show(repl, " hf")
+        return repl, pick, confirm, pull, lms
+
+    def test_the_model_row_says_how_many_options_it_has(self):
+        (row,) = local_models._choices([self.row], "Apple M3 Pro")
+        self.assertIn("4 download options", row.hint)
+
+    def test_the_chosen_option_is_what_gets_confirmed_and_downloaded(self):
+        _, _, confirm, pull, _ = self._show("0")
+        self.assertEqual(confirm.call_args.args[1].pull_tag, _Q4.pull_tag)
+        self.assertEqual(pull.call_args.args[1].pull_tag, _Q4.pull_tag)
+
+    def test_the_option_picker_names_format_quant_size_fit_and_marks_the_recommendation(self):
+        _, pick, _, _, _ = self._show("0")
+        args, kwargs = pick.call_args_list[1]
+        labels = {c.value: c for c in args[2]}
+        self.assertIn("u/m", args[1])
+        self.assertEqual(kwargs["current"], "1")    # the row's own pick, the Q8_0 option
+        self.assertIn("GGUF", labels["0"].label)
+        self.assertIn("Q4_K_M", labels["0"].label)
+        self.assertIn("recommended", labels["1"].label)
+        self.assertIn("5.0 GB", labels["0"].hint)
+        self.assertIn("too large", labels["2"].hint)
+        self.assertIn("MLX", labels["3"].label)
+
+    def test_a_too_large_option_is_refused_and_nothing_downloads(self):
+        repl, _, confirm, pull, lms = self._show("2")
+        confirm.assert_not_called()
+        pull.assert_not_called()
+        lms.assert_not_called()
+        self.assertIn("Too large: u/m F16 is 30.0 GB", repl.console.export_text())
+
+    def test_cancelling_the_option_picker_downloads_nothing(self):
+        _, _, confirm, pull, _ = self._show(None)
+        confirm.assert_not_called()
+        pull.assert_not_called()
+
+    def test_an_mlx_option_is_downloaded_through_the_app_that_runs_it(self):
+        _, _, _, pull, lms = self._show("3", runner="lmstudio")
+        pull.assert_not_called()
+        self.assertEqual(lms.call_args.args[1].pull_tag, _MLX4.pull_tag)
+
+    def test_a_row_without_options_skips_the_second_picker(self):
+        repl = _Repl()
+        with patch.object(local_models.fit, "chip", return_value="Apple M3 Pro"), \
+                patch.object(local_models.fit, "budget_bytes", return_value=12 * GB), \
+                patch.object(local_models, "SOURCES", {"ollama": lambda q, b: [RELAX]}), \
+                patch.object(local_models, "hidden_refs", return_value=set()), \
+                patch.object(local_models, "pick", return_value="0") as pick, \
+                patch.object(local_models, "_runner", return_value="ollama"), \
+                patch.object(local_models, "_confirm", return_value=False):
+            local_models.show(repl, " ollama")
+        self.assertEqual(pick.call_count, 1)
+
+
 class TestSpeedFloor(unittest.TestCase):
     def test_slow_models_are_listed_last_with_the_rest_in_order(self):
         repl = _Repl()

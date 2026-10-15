@@ -12,7 +12,7 @@ import shutil
 import subprocess
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable
 
@@ -96,8 +96,47 @@ def _choices(offers: list[fit.Offer], chip: str) -> list[Choice]:
     for i, o in enumerate(offers):
         speed = fit.tokens_per_s(o.size_bytes, chip, o.name)
         rows.append(Choice(str(i), o.name, f"{o.rating} · {o.source} · {o.size_bytes / fit.GB:.1f} GB · "
-                                           + (f"~{speed} tok/s{' (slow)' if fit.is_slow(o.size_bytes, chip, o.name) else ''} · " if speed else "") + f"{_count(o.popularity)} pulls · {_quant(o.note)}"))
+                                           + (f"~{speed} tok/s{' (slow)' if fit.is_slow(o.size_bytes, chip, o.name) else ''} · " if speed else "") + f"{_count(o.popularity)} pulls · {_quant(o.note)}"
+                                           + (f" · {len(o.options)} download options" if o.options else "")))
     return rows
+
+
+_FORMAT = {"hf": "GGUF", "mlx": "MLX", "ollama": "Ollama"}
+
+
+def _choose_option(repl: Any, offer: fit.Offer, chip: str) -> fit.Offer | None:
+    """The download to make for a model row: the row itself, or, when the model has several downloads (quantizations,
+    GGUF and MLX), the one the user picks, with its size, fit and speed beside it. None when they cancel or pick one
+    that is too large for this machine."""
+    if not offer.options:
+        return offer
+    options = offer.options
+    order = sorted(range(len(options)), key=lambda i: (_FORMAT.get(options[i].source, options[i].source), options[i].size_bytes))
+    several_repos = len({o.name for o in options}) > 1
+    rows = []
+    for i in order:
+        o = options[i]
+        fmt = _FORMAT.get(o.source, o.source)
+        recommended = " (recommended)" if o.pull_tag == offer.pull_tag else ""
+        if o.rating == fit.TOO_LARGE:
+            fit_note = f"too large for this machine · {_gb(o.size_bytes)}"
+        else:
+            speed = fit.tokens_per_s(o.size_bytes, chip, o.name)
+            quality = fit.quant_hint(o.note)
+            fit_note = " · ".join(filter(None, (o.rating, _gb(o.size_bytes), f"~{speed} tok/s" if speed else "", quality)))
+        name = o.note if o.note.upper().startswith(fmt.upper()) else f"{fmt} {o.note}"   # an MLX note already says MLX
+        rows.append(Choice(str(i), f"{name}{recommended}", fit_note + (f" · {o.name}" if several_repos else "")))
+    current = next((str(i) for i, o in enumerate(options) if o.pull_tag == offer.pull_tag), None)
+    choice = pick(repl.console, f"Download options for {offer.name}", rows, current=current, visible=10,
+                  description="Enter picks one (you confirm what it costs first); options too large for this machine can't be chosen.")
+    if choice is None:
+        return None
+    chosen = options[int(choice)]
+    if chosen.rating == fit.TOO_LARGE:
+        repl.console.print(f"[red]Too large:[/red] {chosen.name} {chosen.note} is {_gb(chosen.size_bytes)}, more than the "
+                           f"{_gb(fit.budget_bytes())} this machine's models can use.")
+        return None
+    return chosen
 
 
 def _runner(repl: Any, offer: fit.Offer) -> str | None:
@@ -231,7 +270,9 @@ def show(repl: Any, arg: str) -> None:
     shown_offers = [o for o in offers if not _failed_eval(o, failed, failed_paths)]
     if len(shown_offers) < len(offers):
         repl.console.print(f"[dim]{len(offers) - len(shown_offers)} hidden: they failed /eval here before, e.g. no tool calling.[/dim]")
-    offers = sorted(shown_offers, key=lambda o: fit.is_slow(o.size_bytes, chip, o.name))   # stable: slow ones last, ranking kept
+    grouped = [replace(o, options=tuple(x for x in o.options if not _failed_eval(x, failed, failed_paths)))
+               for o in fit.group(shown_offers)]   # one row per model; its quantizations and formats are the options
+    offers = sorted(grouped, key=lambda o: fit.is_slow(o.size_bytes, chip, o.name))   # stable: slow ones last, ranking kept
     if slow := sum(fit.is_slow(o.size_bytes, chip, o.name) for o in offers):
         repl.console.print(f"[dim]{slow} listed last: under ~{fit.min_toks()} tok/s on this machine, too slow for a fluid chat.[/dim]")
     if not offers:
@@ -242,7 +283,9 @@ def show(repl: Any, arg: str) -> None:
                   description="Enter picks it (you confirm what it costs first); type to filter.")
     if choice is None:
         return
-    offer = offers[int(choice)]
+    offer = _choose_option(repl, offers[int(choice)], chip)
+    if offer is None:
+        return
     runner = _runner(repl, offer)
     runner = runner or _set_up_runner(repl, offer)
     if runner is None:

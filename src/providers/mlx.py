@@ -27,6 +27,7 @@ def search(query: str, budget: int) -> list[Offer]:
         if rating is None:
             return None
         bits = _BITS.search(repo_id)
+        tag = re.split(r"[-_]", repo_id.rsplit("/", 1)[-1])[-1]   # a repo without a bit count names its variant last: oQ6e, bf16
         return Offer(repo_id, f"https://huggingface.co/{repo_id}", size, rating, int(repo.get("downloads") or 0),
-                     f"MLX {bits.group(1)}-bit" if bits else "MLX", "mlx")
+                     f"MLX {bits.group(1)}-bit" if bits else f"MLX {tag}", "mlx")
     return offers("mlx", query, offer)
