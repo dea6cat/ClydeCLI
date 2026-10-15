@@ -371,12 +371,12 @@ class TestDownloadOptions(unittest.TestCase):
 
     def test_a_row_is_named_after_the_original_model_and_says_who_it_comes_from(self):
         row = replace(self.row, name="lmstudio-community/K2-7B-GGUF", model="IFM/K2-7B")
-        (choice,) = local_models._choices([row], "Apple M3 Pro")
+        header, (choice,) = local_models._table([row], "Apple M3 Pro", 200)
         self.assertEqual(choice.label, "IFM/K2-7B")
-        self.assertIn("via lmstudio-community", choice.hint)
+        self.assertEqual(choice.hint.index("lmstudio-community"), header[1].index("VIA"))   # the publisher sits in the VIA column
         (plain,) = local_models._choices([self.row], "Apple M3 Pro")
         self.assertEqual(plain.label, "u/m")
-        self.assertNotIn("via", plain.hint)
+        self.assertNotIn("lmstudio-community", plain.hint)
 
     def test_the_page_is_titled_with_the_original_model_and_names_the_repo_it_downloads_from(self):
         repl, pick, *_ = self._show("0", details=self._details(original="IFM/K2-7B"))
@@ -385,9 +385,39 @@ class TestDownloadOptions(unittest.TestCase):
         self.assertIn("via u/m", text)
         self.assertIn("IFM/K2-7B", pick.call_args_list[1].args[1])
 
+    def test_the_search_is_a_table_with_labelled_aligned_columns(self):
+        slow = Offer("big/Model-70B-GGUF", "hf.co/big/Model-70B-GGUF:Q4_K_M", 40 * GB, "hard", 1_500_000, "Q4_K_M", "hf")
+        header, rows = local_models._table([self.row, slow], "Apple M3 Pro", 200)
+        self.assertEqual(header[0], "MODEL")
+        for label in ("FIT", "FORMAT", "SIZE", "TOK/S", "PULLS", "QUANT", "OPTIONS"):
+            self.assertIn(label, header[1])
+        first, second = rows
+        self.assertEqual((first.label, second.label), ("u/m", "big/Model-70B-GGUF"))
+        for cell in ("balance", "GGUF", "8.0 GB", "5", "Q8_0", "4"):
+            self.assertIn(cell, first.hint)
+        self.assertIn("(slow)", second.hint)
+        self.assertIn("1.5M", second.hint)
+        self.assertEqual(first.hint.index("balance"), header[1].index("FIT"))        # each title sits over its column's cells
+        self.assertEqual(second.hint.index("hard"), header[1].index("FIT"))
+        self.assertEqual(first.hint.index("GGUF"), header[1].index("FORMAT"))
+        self.assertEqual(second.hint.index("1.5M"), header[1].index("PULLS"))
+        self.assertEqual(len(first.hint), len(second.hint))
+
+    def test_a_narrow_terminal_drops_the_right_hand_columns_instead_of_wrapping(self):
+        wide_header, _ = local_models._table([self.row], "Apple M3 Pro", 200)
+        narrow_header, narrow_rows = local_models._table([self.row], "Apple M3 Pro", 70)
+        self.assertIn("VIA", wide_header[1])
+        self.assertNotIn("VIA", narrow_header[1])
+        self.assertIn("FIT", narrow_header[1])
+        self.assertLessEqual(len(narrow_rows[0].label) + len(narrow_rows[0].hint) + 8, 70)
+
+    def test_the_search_picker_gets_the_table_header(self):
+        _, pick, *_ = self._show("0", details=None)
+        self.assertEqual(pick.call_args_list[0].kwargs["header"][0], "MODEL")
+
     def test_the_model_row_says_how_many_options_it_has(self):
         (row,) = local_models._choices([self.row], "Apple M3 Pro")
-        self.assertIn("4 download options", row.hint)
+        self.assertEqual(row.hint.split()[-1], "4")      # the OPTIONS cell; this row has no "via" after it
 
     def test_the_chosen_option_is_what_gets_confirmed_and_downloaded(self):
         _, _, confirm, pull, _ = self._show("0")

@@ -52,6 +52,25 @@ class TestPureParts(unittest.TestCase):
         self.assertNotIn("model-1\n", text.replace("model-10", ""))   # row 1 is above the window
         self.assertTrue(text.rstrip().endswith("H"))
 
+    def test_render_draws_a_column_header_over_the_rows_aligned_with_their_hints(self):
+        lines = "".join(t for _, t in render(CHOICES, cursor=0, top=0, visible=8, title="T", description="", current=None, query="",
+                                             hint="H", header=("MODEL", "FIT"))).splitlines()
+        header = next(line for line in lines if "MODEL" in line)
+        row = next(line for line in lines if "alpha" in line)
+        self.assertEqual(header.index("MODEL"), row.index("alpha"))
+        self.assertEqual(header.index("FIT"), row.index("first"))
+        self.assertLess(lines.index(header), lines.index(row))
+
+    def test_a_picker_without_a_header_draws_none(self):
+        text = "".join(t for _, t in render(CHOICES, cursor=0, top=0, visible=8, title="T", description="", current=None, query="", hint="H"))
+        self.assertNotIn("MODEL", text)
+
+    def test_the_numbered_fallback_prints_the_header_too(self):
+        out = io.StringIO()
+        with patch.object(picker, "_interactive", return_value=False), patch.object(picker.Prompt, "ask", return_value=""):
+            pick(Console(file=out, width=100), "Pick", CHOICES, header=("MODEL", "FIT"))
+        self.assertIn("MODEL", out.getvalue())
+
     def test_render_shows_the_filter_and_an_empty_result(self):
         text = "".join(t for _, t in render([], 0, 0, 8, title="T", description="", current=None, query="zz", hint="H"))
         self.assertIn("Filter: zz", text)

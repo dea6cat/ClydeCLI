@@ -91,16 +91,33 @@ def _quant(note: str) -> str:
     return f"{note} ({hint})" if hint else note
 
 
+_TITLES = ("FIT", "FORMAT", "SIZE", "TOK/S", "PULLS", "QUANT", "OPTIONS", "VIA")   # the columns after MODEL; a narrow terminal drops from the right
+
+
+def _cells(o: fit.Offer, chip: str) -> tuple[str, ...]:
+    speed = fit.tokens_per_s(o.size_bytes, chip, o.name)
+    return (o.rating, _FORMAT.get(o.source, o.source), f"{o.size_bytes / fit.GB:.1f} GB",
+            (f"~{speed}" + (" (slow)" if fit.is_slow(o.size_bytes, chip, o.name) else "")) if speed else "?",
+            _count(o.popularity), _quant(o.note), str(len(o.options) or 1), o.name.split("/")[0] if o.model else "")
+
+
+def _table(offers: list[fit.Offer], chip: str, width: int) -> tuple[tuple[str, str], list[Choice]]:
+    """The search as a table: ((MODEL title, column titles), one picker row per offer, its columns aligned; the value is its
+    index in `offers`). Columns that don't fit in `width` characters are left out, right-most first."""
+    cells = [_cells(o, chip) for o in offers]
+    sizes = [max([len(title)] + [len(row[i]) for row in cells]) for i, title in enumerate(_TITLES)]
+    room = width - 7 - 2 - min(44, max([len("MODEL")] + [len(o.model or o.name) for o in offers])) - 2   # row mark and number, gap, MODEL, margin
+    keep = len(_TITLES)
+    while keep > 1 and sum(sizes[:keep]) + 2 * (keep - 1) > room:
+        keep -= 1
+    line = lambda parts: "  ".join(p.ljust(sizes[i]) for i, p in enumerate(parts[:keep]))   # noqa: E731
+    rows = [Choice(str(i), o.model or o.name, line(row)) for i, (o, row) in enumerate(zip(offers, cells))]
+    return ("MODEL", line(_TITLES)), rows
+
+
 def _choices(offers: list[fit.Offer], chip: str) -> list[Choice]:
-    """One picker row per offer; the value is its index in `offers`."""
-    rows = []
-    for i, o in enumerate(offers):
-        speed = fit.tokens_per_s(o.size_bytes, chip, o.name)
-        rows.append(Choice(str(i), o.model or o.name, f"{o.rating} · {o.source} · {o.size_bytes / fit.GB:.1f} GB · "
-                                           + (f"~{speed} tok/s{' (slow)' if fit.is_slow(o.size_bytes, chip, o.name) else ''} · " if speed else "") + f"{_count(o.popularity)} pulls · {_quant(o.note)}"
-                                           + (f" · {len(o.options)} download options" if o.options else "")
-                                           + (f" · via {o.name.split('/')[0]}" if o.model else "")))
-    return rows
+    """The search rows at any width (every column)."""
+    return _table(offers, chip, 10_000)[1]
 
 
 _FORMAT = {"hf": "GGUF", "mlx": "MLX", "ollama": "Ollama"}
@@ -331,7 +348,8 @@ def show(repl: Any, arg: str) -> None:
         repl.console.print(f"Nothing from {' or '.join(names)} fits {budget / fit.GB:.0f} GB" + (f" for '{query}'." if query else ".")
                            + " Try other search words.")
         return
-    choice = pick(repl.console, "Download which model?", _choices(offers, chip), visible=10,
+    header, rows = _table(offers, chip, repl.console.width)
+    choice = pick(repl.console, "Download which model?", rows, header=header, visible=10,
                   description="Enter picks it (you confirm what it costs first); type to filter.")
     if choice is None:
         return
