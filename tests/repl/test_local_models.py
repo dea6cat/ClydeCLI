@@ -53,6 +53,17 @@ class TestConfirm(unittest.TestCase):
         self.assertIn("barely fits", shown)
         self.assertIn("close apps to free", shown)   # 11.5 GB loaded vs 4 GB free right now
 
+    def test_the_cost_is_a_table_of_labelled_rows(self):
+        with patch.object(local_models.Confirm, "ask", return_value=True):
+            local_models._confirm(self.repl, RELAX, 12 * GB, "Apple M3 Pro")
+        shown = self.repl.console.export_text()
+        for title in ("WHAT", "DETAIL"):
+            self.assertIn(title, shown)
+        for row in ("download", "when run", "speed", "quality", "means"):
+            self.assertRegex(shown, rf"(?m)^\s*{row}\s+\S")                  # each fact starts its own row, label then detail
+        self.assertIn("2.0 GB", shown)
+        self.assertIn("relax", shown)
+
     def test_easy_models_default_to_yes(self):
         with patch.object(local_models.Confirm, "ask", return_value=True) as ask:
             self.assertTrue(local_models._confirm(self.repl, RELAX, 12 * GB, "Apple M3 Pro"))
@@ -436,6 +447,33 @@ class TestDownloadOptions(unittest.TestCase):
         self.assertIn("5.0 GB", labels["0"].hint)
         self.assertIn("too large", labels["2"].hint)
         self.assertIn("MLX", labels["3"].label)
+
+    def test_the_options_picker_is_a_table_with_titles_over_aligned_columns_and_the_related_rows_inside_it(self):
+        _, pick, *_ = self._show("0", details=self._details())
+        args, kwargs = pick.call_args_list[1]
+        title, columns = kwargs["header"]
+        self.assertEqual(title, "OPTION")
+        for name in ("FIT", "SIZE", "TOK/S", "QUALITY", "FROM"):
+            self.assertIn(name, columns)
+        rows = {c.value: c for c in args[2]}
+        self.assertEqual(rows["0"].hint.index("balance"), columns.index("FIT"))          # Q4_K_M
+        self.assertEqual(rows["2"].hint.index("too large"), columns.index("FIT"))        # F16
+        self.assertEqual(rows["0"].hint.index("5.0 GB"), columns.index("SIZE"))
+        self.assertEqual(rows["0"].hint.index("u/m"), columns.index("FROM"))             # the repo the download comes from
+        self.assertEqual(rows["more:IFM/K2-0.9B-GGUF"].hint.index("more from IFM"), columns.index("FROM"))
+        self.assertEqual(len({len(c.hint) for c in args[2]}), 1)                         # every row padded to the same width
+
+    def test_a_narrow_terminal_drops_the_options_tables_right_hand_columns(self):
+        repl = _Repl()
+        repl.console = Console(record=True, width=60)
+        with patch.object(local_models.fit, "chip", return_value="Apple M3 Pro"), \
+                patch.object(local_models.fit, "budget_bytes", return_value=12 * GB), \
+                patch.object(local_models.huggingface, "details", return_value=None), \
+                patch.object(local_models, "pick", return_value=None) as pick:
+            local_models._choose_option(repl, self.row, "Apple M3 Pro")
+        columns = pick.call_args.kwargs["header"][1]
+        self.assertIn("FIT", columns)
+        self.assertNotIn("FROM", columns)
 
     def test_a_too_large_option_is_refused_and_nothing_downloads(self):
         repl, _, confirm, pull, lms = self._show("2")

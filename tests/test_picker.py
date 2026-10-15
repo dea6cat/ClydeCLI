@@ -61,6 +61,13 @@ class TestPureParts(unittest.TestCase):
         self.assertEqual(header.index("FIT"), row.index("first"))
         self.assertLess(lines.index(header), lines.index(row))
 
+    def test_the_current_mark_does_not_push_its_row_out_of_the_columns(self):
+        lines = "".join(t for _, t in render(CHOICES, cursor=0, top=0, visible=8, title="T", description="", current="b", query="",
+                                             hint="H", header=("MODEL", "FIT"))).splitlines()
+        header = next(line for line in lines if "MODEL" in line)
+        columns = {name: next(line for line in lines if name in line).index(hint) for name, hint in (("alpha", "first"), ("beta", "second"), ("gamma", "third"))}
+        self.assertEqual(set(columns.values()), {header.index("FIT")})      # the marked row (beta) lines up with the others
+
     def test_a_picker_without_a_header_draws_none(self):
         text = "".join(t for _, t in render(CHOICES, cursor=0, top=0, visible=8, title="T", description="", current=None, query="", hint="H"))
         self.assertNotIn("MODEL", text)

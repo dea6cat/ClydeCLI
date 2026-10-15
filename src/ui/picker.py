@@ -57,7 +57,7 @@ def render(choices: list[Choice], cursor: int, top: int, visible: int, *, title:
     width = min(_LABEL_MAX, max((len(c.label) for c in choices), default=0))
     shown = choices[top:top + visible]
     if header and choices:
-        out.append((f"bold fg:{_DIM}", " " * 7 + header[0].ljust(width) + "  " + header[1] + "\n"))   # 7 = cursor mark + row number
+        out.append((f"bold fg:{_DIM}", " " * 7 + header[0].ljust(width) + ("  " if current is not None else "") + "  " + header[1] + "\n"))   # 7 = cursor mark + row number
     if top:
         out.append((f"fg:{_DIM}", f"  ↑ {top} more\n"))
     for offset, c in enumerate(shown):
@@ -67,7 +67,7 @@ def render(choices: list[Choice], cursor: int, top: int, visible: int, *, title:
         style = f"bold fg:{_OK}" if c.value == current else ("bold" if on else "")
         out.append((f"fg:{_ACCENT}", "❯ " if on else "  "))
         out.append((f"fg:{_DIM}", f"{at + 1:>3}. "))
-        out.append((style, label.ljust(width) + (" ✔" if c.value == current else "")))
+        out.append((style, label.ljust(width) + (" ✔" if c.value == current else "  " if header and current is not None else "")))   # a marked row must not shift the columns
         out.append((f"fg:{_DIM}", ("  " + c.hint if c.hint else "") + "\n"))
     below = len(choices) - top - len(shown)
     if below > 0:

@@ -17,7 +17,9 @@ from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable
 
+from rich import box
 from rich.prompt import Confirm
+from rich.table import Table
 from rich.text import Text
 
 from src.tuning import tune
@@ -63,20 +65,24 @@ def _confirm(repl: Any, offer: fit.Offer, budget: int, chip: str) -> bool:
         return False
     loaded = offer.size_bytes + fit.OVERHEAD
     speed = fit.tokens_per_s(offer.size_bytes, chip, offer.name)
-    lines = [
-        Text.assemble(("Download ", ""), (offer.pull_tag, "bold"), ("  ", ""), (offer.rating, _RATING_STYLE[offer.rating])),
-        Text(f"  download   {_gb(offer.size_bytes)} ({_gb(disk)} disk free)"),
-        Text(f"  when run   ~{_gb(loaded)}, {fit.share(offer.size_bytes, budget):.0%} of the {_gb(budget)} models can use"
-             + (f"; {_gb(free)} is free right now" if free is not None else "")),
-        Text(f"  speed      ~{speed} tok/s" if speed else "  speed      unknown on this machine"),
-        *([Text(f"  quality    {_quant(offer.note)}")] if offer.note else []),
-        Text(f"  means      {fit.MEANING[offer.rating]}", style=_RATING_STYLE[offer.rating]),
-        *([Text(f"  details    {offer.detail}  [{best_fit.CREDIT}]")] if offer.detail else []),
+    rows = [
+        ("download", f"{_gb(offer.size_bytes)} ({_gb(disk)} disk free)", ""),
+        ("when run", f"~{_gb(loaded)}, {fit.share(offer.size_bytes, budget):.0%} of the {_gb(budget)} models can use"
+                     + (f"; {_gb(free)} is free right now" if free is not None else ""), ""),
+        ("speed", f"~{speed} tok/s" if speed else "unknown on this machine", ""),
+        *([("quality", _quant(offer.note), "")] if offer.note else []),
+        ("means", fit.MEANING[offer.rating], _RATING_STYLE[offer.rating]),
+        *([("details", f"{offer.detail}  [{best_fit.CREDIT}]", "")] if offer.detail else []),
     ]
     if free is not None and loaded > free:
-        lines.append(Text(f"  right now  more than is free: close apps to free {_gb(loaded - free)} before running it", style="dim"))
-    for line in lines:
-        repl.console.print(line)
+        rows.append(("right now", f"more than is free: close apps to free {_gb(loaded - free)} before running it", "dim"))
+    table = Table(box=box.SIMPLE_HEAD, header_style="bold dim", pad_edge=False)
+    table.add_column("WHAT", style="dim", no_wrap=True)
+    table.add_column("DETAIL")
+    for what, detail, style in rows:
+        table.add_row(what, Text(detail, style=style))
+    repl.console.print(Text.assemble(("Download ", ""), (offer.pull_tag, "bold"), ("  ", ""), (offer.rating, _RATING_STYLE[offer.rating])))
+    repl.console.print(table)
     with repl._esc.paused():
         return Confirm.ask("Download it?", default=offer.rating != "hard", console=repl.console)
 
@@ -92,6 +98,22 @@ def _quant(note: str) -> str:
 
 
 _TITLES = ("FIT", "FORMAT", "SIZE", "TOK/S", "PULLS", "QUANT", "OPTIONS", "VIA")   # the columns after MODEL; a narrow terminal drops from the right
+_OPTION_TITLES = ("FIT", "SIZE", "TOK/S", "QUALITY", "FROM")                        # the columns after OPTION on a model's page
+
+
+def _grid(titles: tuple[str, ...], cells: list[tuple[str, ...]], labels: list[str], width: int) -> tuple[str, list[str]]:
+    """Aligned columns for picker rows: the titles line and one line per row of `cells`, each cell padded to its column.
+    `labels` are the first column's texts (the picker truncates it at 44). Columns that don't fit in `width` characters
+    are left out, right-most first."""
+    sizes = [max([len(title)] + [len(row[i]) for row in cells]) for i, title in enumerate(titles)]
+    room = width - 7 - 2 - min(44, max(map(len, labels), default=0)) - 2   # row mark and number, gap, first column, margin
+    keep = len(titles)
+    while keep > 1 and sum(sizes[:keep]) + 2 * (keep - 1) > room:
+        keep -= 1
+
+    def line(parts: tuple[str, ...]) -> str:
+        return "  ".join(part.ljust(sizes[i]) for i, part in enumerate(parts[:keep]))
+    return line(titles), [line(row) for row in cells]
 
 
 def _cells(o: fit.Offer, chip: str) -> tuple[str, ...]:
@@ -104,15 +126,9 @@ def _cells(o: fit.Offer, chip: str) -> tuple[str, ...]:
 def _table(offers: list[fit.Offer], chip: str, width: int) -> tuple[tuple[str, str], list[Choice]]:
     """The search as a table: ((MODEL title, column titles), one picker row per offer, its columns aligned; the value is its
     index in `offers`). Columns that don't fit in `width` characters are left out, right-most first."""
-    cells = [_cells(o, chip) for o in offers]
-    sizes = [max([len(title)] + [len(row[i]) for row in cells]) for i, title in enumerate(_TITLES)]
-    room = width - 7 - 2 - min(44, max([len("MODEL")] + [len(o.model or o.name) for o in offers])) - 2   # row mark and number, gap, MODEL, margin
-    keep = len(_TITLES)
-    while keep > 1 and sum(sizes[:keep]) + 2 * (keep - 1) > room:
-        keep -= 1
-    line = lambda parts: "  ".join(p.ljust(sizes[i]) for i, p in enumerate(parts[:keep]))   # noqa: E731
-    rows = [Choice(str(i), o.model or o.name, line(row)) for i, (o, row) in enumerate(zip(offers, cells))]
-    return ("MODEL", line(_TITLES)), rows
+    labels = [o.model or o.name for o in offers]
+    titles_line, lines = _grid(_TITLES, [_cells(o, chip) for o in offers], labels + ["MODEL"], width)
+    return ("MODEL", titles_line), [Choice(str(i), label, line) for i, (label, line) in enumerate(zip(labels, lines))]
 
 
 def _choices(offers: list[fit.Offer], chip: str) -> list[Choice]:
@@ -172,22 +188,24 @@ def _choose_option(repl: Any, offer: fit.Offer, chip: str) -> fit.Offer | None:
             return offer
         options = offer.options or (offer,)
         order = sorted(range(len(options)), key=lambda i: (_FORMAT.get(options[i].source, options[i].source), options[i].size_bytes))
-        several_repos = len({o.name for o in options}) > 1
-        rows = []
+        values, labels, cells = [], [], []
         for i in order:
             o = options[i]
             fmt = _FORMAT.get(o.source, o.source)
+            speed = None if o.rating == fit.TOO_LARGE else fit.tokens_per_s(o.size_bytes, chip, o.name)
             recommended = " (recommended)" if o.pull_tag == offer.pull_tag else ""
-            if o.rating == fit.TOO_LARGE:
-                fit_note = f"too large for this machine · {_gb(o.size_bytes)}"
-            else:
-                speed = fit.tokens_per_s(o.size_bytes, chip, o.name)
-                fit_note = " · ".join(filter(None, (o.rating, _gb(o.size_bytes), f"~{speed} tok/s" if speed else "", fit.quant_hint(o.note))))
-            name = o.note if o.note.upper().startswith(fmt.upper()) else f"{fmt} {o.note}"   # an MLX note already says MLX
-            rows.append(Choice(str(i), f"{name}{recommended}", fit_note + (f" · {o.name}" if several_repos else "")))
-        rows += [Choice(f"more:{repo}", repo, f"more from {d.author} · ↓{_count(downloads)} ♥{likes}") for repo, downloads, likes in related]
+            values.append(str(i))
+            labels.append((o.note if o.note.upper().startswith(fmt.upper()) else f"{fmt} {o.note}") + recommended)   # an MLX note already says MLX
+            cells.append((o.rating, _gb(o.size_bytes), f"~{speed}" if speed else "", "" if o.rating == fit.TOO_LARGE else fit.quant_hint(o.note), o.name))
+        for repo, downloads, likes in related:   # other models by the author share the table: their facts go in the last column
+            values.append(f"more:{repo}")
+            labels.append(repo)
+            cells.append(("", "", "", "", f"more from {d.author} · ↓{_count(downloads)} ♥{likes}"))
+        columns, lines = _grid(_OPTION_TITLES, cells, labels + ["OPTION"], repl.console.width)
+        rows = [Choice(value, label, line) for value, label, line in zip(values, labels, lines)]
         current = next((str(i) for i, o in enumerate(options) if o.pull_tag == offer.pull_tag), None)
-        choice = pick(repl.console, f"Download options for {(d.original if d is not None else '') or offer.model or offer.name}", rows, current=current, visible=10,
+        choice = pick(repl.console, f"Download options for {(d.original if d is not None else '') or offer.model or offer.name}", rows,
+                      header=("OPTION", columns), current=current, visible=10,
                       description="Enter picks one (you confirm what it costs first); options too large for this machine can't be chosen. "
                                   "The last rows open other models by the same author.")
         if choice is None:

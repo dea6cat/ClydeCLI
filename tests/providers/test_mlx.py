@@ -32,5 +32,16 @@ class TestMLX(unittest.TestCase):
                          [("mlx-community/Coder-4bit", "balance", "MLX 4-bit", "mlx")])
 
 
+    def test_the_quantization_label_names_a_real_quant_tag_and_otherwise_just_says_mlx(self):
+        names = {"u/M-4bit": "MLX 4-bit", "u/M-q8-mlx": "MLX q8", "u/M-oQ6e": "MLX oQ6e", "u/M-bf16": "MLX bf16", "u/M-mxfp4": "MLX mxfp4",
+                 "u/Ministral-3-3B-Instruct-2512": "MLX",          # a version number is not a quantization
+                 "u/M-q8-something": "MLX q8", "u/Plain-MLX": "MLX"}
+        tree = [{"type": "file", "path": "model.safetensors", "size": 2 * GB}]
+        listing = [{"id": rid, "downloads": 1} for rid in names]
+        with patch.object(huggingface, "get_json", side_effect=lambda url, **_: tree if "/tree/" in url else listing):
+            offers = mlx.search("m", 12 * GB)
+        self.assertEqual({o.name: o.note for o in offers}, names)
+
+
 if __name__ == "__main__":
     unittest.main()
