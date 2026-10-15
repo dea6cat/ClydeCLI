@@ -117,6 +117,39 @@ class TestAgentLoopDeferral(unittest.TestCase):
         first, second = (r["conversation"].system_prompt for r in provider.requests)
         self.assertEqual(first, second)
 
+    def _ask(self, provider, text):
+        conversation = Conversation()
+        conversation.add_user_message(text)
+        run_agent_loop(conversation=conversation, provider=provider, model="m", tool_registry=self.registry,
+                       tool_context=self.ctx, verbose=False)
+
+    def test_a_small_local_model_keeps_a_tool_once_offered_so_the_prompt_prefix_stays_put(self):
+        # The tool list and its index sit early in the prompt. A list that shrinks again re-prefills everything
+        # after it on a local server, so a tool offered earlier in the session stays offered.
+        provider = FakeProvider(reply("a"), reply("b"), reply("c"), name="lmstudio")
+        for text in ("run the tests", "explain this function", "explain it once more"):
+            self._ask(provider, text)
+        first, second, third = provider.requests
+        self.assertIn("Bash", _names(first["tools"]))
+        self.assertEqual(_names(first["tools"]), _names(second["tools"]))
+        self.assertEqual(_names(second["tools"]), _names(third["tools"]))
+        self.assertEqual(first["conversation"].system_prompt, second["conversation"].system_prompt)
+
+    def test_a_small_local_model_gains_a_tool_when_the_prompt_needs_one_and_does_not_lose_the_rest(self):
+        provider = FakeProvider(reply("a"), reply("b"), name="lmstudio")
+        self._ask(provider, "explain this function")
+        self._ask(provider, "run the tests")
+        first, second = (_names(r["tools"]) for r in provider.requests)
+        self.assertNotIn("Bash", first)
+        self.assertEqual(second - first, {"Bash"})
+
+    def test_a_hosted_model_is_unaffected_by_the_local_tool_set(self):
+        provider = FakeProvider(reply("a"), reply("b"))
+        self._ask(provider, "run the tests")
+        self._ask(provider, "explain this function")
+        self.assertEqual(self.ctx.local_only, frozenset())
+        self.assertEqual(_names(provider.requests[0]["tools"]), _names(provider.requests[1]["tools"]))
+
     def test_a_small_local_model_is_told_when_to_check_code_and_a_hosted_one_is_not(self):
         local, hosted = FakeProvider(reply("hi"), name="lmstudio"), FakeProvider(reply("hi"))
         self._run(local)

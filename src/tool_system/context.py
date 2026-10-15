@@ -31,6 +31,9 @@ class ToolContext:
     team: dict[str, Any] | None = None
     # Deferred tools the model has loaded (lowercase names); see deferral.py. Shared with sub-agents.
     loaded_tools: set[str] = field(default_factory=set)
+    # The tools offered to a small local model so far this session (lowercase names). It only grows, because the tool
+    # list sits early in the prompt and a list that shrinks again makes the server re-prefill everything after it.
+    local_only: frozenset[str] = frozenset()
     # The user's answer to "send a weak local reply to a cloud model for a check?", asked once per session (cloud_review.py).
     cloud_review_ok: bool | None = None
     output_style_name: str | None = None
