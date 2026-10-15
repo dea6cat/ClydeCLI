@@ -8,9 +8,10 @@ import os
 import re
 import urllib.parse
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from typing import Callable
 
-from .base import ProviderError, get_json
+from .base import ProviderError, get_json, get_text
 from .fit import TOO_LARGE, Offer, pick, rate
 
 API = "https://huggingface.co/api/models"
@@ -107,19 +108,109 @@ def offers(fmt: str, query: str, offer: Callable[[dict], Offer | None]) -> list[
     return sorted(found, key=lambda o: o.popularity, reverse=True)
 
 
+def gguf_offer(repo: dict, budget: int) -> Offer | None:
+    """One GGUF repo ({id, downloads}) at its best-fitting quant, with every quant as an option; None when none fits."""
+    repo_id = repo.get("id", "")
+    quants = _quants(files(repo_id))
+    best = pick(quants, budget)
+    if best is None:
+        return None
+    quant, size, rating = best
+    downloads = int(repo.get("downloads") or 0)
+
+    def download(q: str, s: int) -> Offer:
+        return Offer(repo_id, f"hf.co/{repo_id}:{q}", s, rate(s, budget) or TOO_LARGE, downloads, q, "hf")
+    options = tuple(download(q, s) for q, s in sorted(quants, key=lambda v: v[1])) if len(quants) > 1 else ()
+    return Offer(repo_id, f"hf.co/{repo_id}:{quant}", size, rating, downloads, quant, "hf", options=options)
+
+
 def search(query: str, budget: int) -> list[Offer]:
     """GGUF repos matching `query` that fit `budget` bytes, each at its best-fitting quant."""
-    def offer(repo: dict) -> Offer | None:
-        repo_id = repo.get("id", "")
-        quants = _quants(files(repo_id))
-        best = pick(quants, budget)
-        if best is None:
-            return None
-        quant, size, rating = best
-        downloads = int(repo.get("downloads") or 0)
+    return offers("gguf", query, lambda repo: gguf_offer(repo, budget))
 
-        def download(q: str, s: int) -> Offer:
-            return Offer(repo_id, f"hf.co/{repo_id}:{q}", s, rate(s, budget) or TOO_LARGE, downloads, q, "hf")
-        options = tuple(download(q, s) for q, s in sorted(quants, key=lambda v: v[1])) if len(quants) > 1 else ()
-        return Offer(repo_id, f"hf.co/{repo_id}:{quant}", size, rating, downloads, quant, "hf", options=options)
-    return offers("gguf", query, offer)
+
+@dataclass(frozen=True)
+class Details:
+    """What a model's page shows: the Hub's numbers, the README's opening paragraph, capabilities read from the
+    repo, and other repos by the same author in the same format."""
+    author: str
+    downloads: int
+    likes: int
+    updated: str                  # ISO time of the last change
+    params: int | None
+    arch: str
+    context: int | None           # tokens
+    license: str
+    summary: str
+    tools: bool | None            # the chat template can render a tool call; None when there is no template to read
+    vision: bool                  # inferred from the pipeline tag, tags or a projector file
+    reasoning: bool              # inferred from tags and the name
+    related: tuple[tuple[str, int, int], ...]   # (repo id, downloads, likes), most downloaded first
+
+
+_MD_LINK = re.compile(r"\[([^\]]*)\]\([^)]*\)")
+_SKIP = ("#", ">", "<", "|", "!", "[!", "```", "- ", "* ", "---", "1.")
+_REASON = re.compile(r"reason|think|\br1\b", re.I)
+
+
+def _summary(readme: str, limit: int = 280) -> str:
+    """The first real paragraph of a README (not a heading, note, badge, table or code), cut at a word."""
+    body = re.sub(r"\A---\n.*?\n---\n", "", readme, flags=re.S)
+    for para in re.split(r"\n\s*\n", body):
+        para = para.strip()
+        if not para or para.startswith(_SKIP) or "```" in para:
+            continue
+        text = " ".join(_MD_LINK.sub(r"\1", para).replace("**", "").replace("`", "").split())
+        if len(text) >= 40:
+            return text if len(text) <= limit else text[:limit].rsplit(" ", 1)[0] + "…"
+    return ""
+
+
+def details(repo_id: str, fmt: str = "gguf") -> Details | None:
+    """A repo's page data; None when the Hub can't be reached for it. The README and the author's other repos
+    are best effort: without them the page just lacks a description and a related list."""
+    if os.environ.get("CLYDE_NO_MODEL_FETCH"):
+        return None
+    fields = ["downloads", "likes", "lastModified", "cardData", "tags", "pipeline_tag", "author", "siblings",
+              "gguf" if fmt == "gguf" else "config"]
+    try:
+        info = get_json(f"{API}/{repo_id}?{urllib.parse.urlencode({'expand[]': fields}, doseq=True)}", provider="huggingface", timeout=10)
+    except ProviderError:
+        return None
+    if not isinstance(info, dict):
+        return None
+    author = str(info.get("author") or repo_id.split("/")[0])
+
+    def readme() -> str:
+        try:
+            return get_text(f"https://huggingface.co/{repo_id}/raw/main/README.md", provider="huggingface", timeout=10)
+        except ProviderError:
+            return ""
+
+    def others() -> list:
+        query = {"author": author, "filter": fmt, "pipeline_tag": "text-generation", "sort": "downloads", "direction": "-1", "limit": "8"}
+        try:
+            found = get_json(f"{API}?{urllib.parse.urlencode(query)}", provider="huggingface", timeout=10)
+        except ProviderError:
+            return []
+        return found if isinstance(found, list) else []
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        text, found = pool.submit(readme), pool.submit(others)
+        text, found = text.result(), found.result()
+    meta = info.get("gguf") if fmt == "gguf" else (info.get("config") or {}).get("tokenizer_config")
+    meta = meta if isinstance(meta, dict) else {}
+    template = meta.get("chat_template")
+    tags = [str(t) for t in info.get("tags") or []]
+    card = info.get("cardData") or {}
+    license_ = card.get("license") or next((t.split(":", 1)[1] for t in tags if t.startswith("license:")), "")
+    related = tuple((r["id"], int(r.get("downloads") or 0), int(r.get("likes") or 0)) for r in found
+                    if isinstance(r, dict) and r.get("id") and r["id"] != repo_id and not _NOT_CHAT.search(r["id"]))[:5]
+    return Details(
+        author, int(info.get("downloads") or 0), int(info.get("likes") or 0), str(info.get("lastModified") or ""),
+        meta.get("total") if isinstance(meta.get("total"), int) else None, str(meta.get("architecture") or ""),
+        meta.get("context_length") if isinstance(meta.get("context_length"), int) else None,
+        str(license_[0] if isinstance(license_, list) and license_ else license_),
+        _summary(text), None if not template else bool(_TOOLS.search(str(template))),
+        info.get("pipeline_tag") == "image-text-to-text" or any(t in ("vision", "image-text-to-text", "multimodal") for t in tags)
+        or any("mmproj" in str(s.get("rfilename", "")).lower() for s in info.get("siblings") or [] if isinstance(s, dict)),
+        bool(_REASON.search(" ".join(tags) + " " + repo_id)), related)

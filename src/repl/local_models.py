@@ -13,6 +13,7 @@ import subprocess
 import sys
 import time
 from dataclasses import dataclass, replace
+from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable
 
@@ -104,39 +105,86 @@ def _choices(offers: list[fit.Offer], chip: str) -> list[Choice]:
 _FORMAT = {"hf": "GGUF", "mlx": "MLX", "ollama": "Ollama"}
 
 
+def _ago(iso: str) -> str:
+    """`13 days ago` for an ISO time, or "" when it can't be read."""
+    try:
+        days = (datetime.now(timezone.utc) - datetime.fromisoformat(iso.replace("Z", "+00:00"))).days
+    except ValueError:
+        return ""
+    return "today" if days < 1 else f"{days} days ago" if days < 60 else f"{days // 30} months ago" if days < 700 else f"{days // 365} years ago"
+
+
+def _tick(flag: bool | None) -> str:
+    return "?" if flag is None else "✓" if flag else "–"
+
+
+def _card(repl: Any, offer: fit.Offer, d: huggingface.Details) -> None:
+    """A model's page: what the Hub says about it, its specs, and what it can do."""
+    formats = ", ".join(sorted({_FORMAT.get(o.source, o.source) for o in (offer.options or (offer,))}))
+    repl.console.print()
+    repl.console.print(Text.assemble((offer.name, "bold"), (f"   ↓{_count(d.downloads)}  ♥{d.likes}", ""),
+                                     (f"  ·  updated {_ago(d.updated)}" if _ago(d.updated) else "", "dim"),
+                                     (f"  ·  {d.license}" if d.license else "", "dim")))
+    if d.summary:
+        repl.console.print(Text(d.summary))
+    specs = [("PARAMS", f"{d.params / 1e9:.1f}B") if d.params else None, ("ARCH", d.arch) if d.arch else None,
+             ("CONTEXT", f"{d.context // 1024}K") if d.context else None, ("FORMAT", formats)]
+    repl.console.print(Text("  ·  ".join(f"{k} {v}" for k, v in filter(None, specs)), style="dim"))
+    repl.console.print(Text.assemble(("CAPABILITIES  ", "dim"), (f"Tool use {_tick(d.tools)}  ·  Vision {_tick(d.vision)}  ·  Reasoning {_tick(d.reasoning)}", ""),
+                                     ("   (read from the repo)", "dim")))
+
+
 def _choose_option(repl: Any, offer: fit.Offer, chip: str) -> fit.Offer | None:
-    """The download to make for a model row: the row itself, or, when the model has several downloads (quantizations,
-    GGUF and MLX), the one the user picks, with its size, fit and speed beside it. None when they cancel or pick one
-    that is too large for this machine."""
-    if not offer.options:
-        return offer
-    options = offer.options
-    order = sorted(range(len(options)), key=lambda i: (_FORMAT.get(options[i].source, options[i].source), options[i].size_bytes))
-    several_repos = len({o.name for o in options}) > 1
-    rows = []
-    for i in order:
-        o = options[i]
-        fmt = _FORMAT.get(o.source, o.source)
-        recommended = " (recommended)" if o.pull_tag == offer.pull_tag else ""
-        if o.rating == fit.TOO_LARGE:
-            fit_note = f"too large for this machine · {_gb(o.size_bytes)}"
-        else:
-            speed = fit.tokens_per_s(o.size_bytes, chip, o.name)
-            quality = fit.quant_hint(o.note)
-            fit_note = " · ".join(filter(None, (o.rating, _gb(o.size_bytes), f"~{speed} tok/s" if speed else "", quality)))
-        name = o.note if o.note.upper().startswith(fmt.upper()) else f"{fmt} {o.note}"   # an MLX note already says MLX
-        rows.append(Choice(str(i), f"{name}{recommended}", fit_note + (f" · {o.name}" if several_repos else "")))
-    current = next((str(i) for i, o in enumerate(options) if o.pull_tag == offer.pull_tag), None)
-    choice = pick(repl.console, f"Download options for {offer.name}", rows, current=current, visible=10,
-                  description="Enter picks one (you confirm what it costs first); options too large for this machine can't be chosen.")
-    if choice is None:
-        return None
-    chosen = options[int(choice)]
-    if chosen.rating == fit.TOO_LARGE:
-        repl.console.print(f"[red]Too large:[/red] {chosen.name} {chosen.note} is {_gb(chosen.size_bytes)}, more than the "
-                           f"{_gb(fit.budget_bytes())} this machine's models can use.")
-        return None
-    return chosen
+    """The model's page and the download to make from it: its details, then every download (quantizations, GGUF and
+    MLX) with size, fit and speed, then other models by the same author to open instead. Returns the chosen download
+    (the row itself when there is nothing to choose between), or None when they cancel or pick one that is too large."""
+    budget = fit.budget_bytes()
+    while True:
+        d = None
+        if offer.source in ("hf", "mlx"):
+            with repl.console.status("[dim]Loading the model's page…[/dim]", spinner="dots"):
+                d = huggingface.details(offer.name, "gguf" if offer.source == "hf" else "mlx")
+        if d is not None:
+            _card(repl, offer, d)
+        related = d.related if d is not None and offer.source == "hf" else ()   # only GGUF repos can be opened from here
+        if not offer.options and not related:
+            return offer
+        options = offer.options or (offer,)
+        order = sorted(range(len(options)), key=lambda i: (_FORMAT.get(options[i].source, options[i].source), options[i].size_bytes))
+        several_repos = len({o.name for o in options}) > 1
+        rows = []
+        for i in order:
+            o = options[i]
+            fmt = _FORMAT.get(o.source, o.source)
+            recommended = " (recommended)" if o.pull_tag == offer.pull_tag else ""
+            if o.rating == fit.TOO_LARGE:
+                fit_note = f"too large for this machine · {_gb(o.size_bytes)}"
+            else:
+                speed = fit.tokens_per_s(o.size_bytes, chip, o.name)
+                fit_note = " · ".join(filter(None, (o.rating, _gb(o.size_bytes), f"~{speed} tok/s" if speed else "", fit.quant_hint(o.note))))
+            name = o.note if o.note.upper().startswith(fmt.upper()) else f"{fmt} {o.note}"   # an MLX note already says MLX
+            rows.append(Choice(str(i), f"{name}{recommended}", fit_note + (f" · {o.name}" if several_repos else "")))
+        rows += [Choice(f"more:{repo}", repo, f"more from {d.author} · ↓{_count(downloads)} ♥{likes}") for repo, downloads, likes in related]
+        current = next((str(i) for i, o in enumerate(options) if o.pull_tag == offer.pull_tag), None)
+        choice = pick(repl.console, f"Download options for {offer.name}", rows, current=current, visible=10,
+                      description="Enter picks one (you confirm what it costs first); options too large for this machine can't be chosen. "
+                                  "The last rows open other models by the same author.")
+        if choice is None:
+            return None
+        if choice.startswith("more:"):
+            repo = choice.removeprefix("more:")
+            opened = huggingface.gguf_offer({"id": repo, "downloads": next((n for r, n, _ in related if r == repo), 0)}, budget)
+            if opened is None:
+                repl.console.print(f"[yellow]Nothing from {repo} fits the {_gb(budget)} this machine's models can use.[/yellow]")
+            else:
+                offer = opened
+            continue
+        chosen = options[int(choice)]
+        if chosen.rating == fit.TOO_LARGE:
+            repl.console.print(f"[red]Too large:[/red] {chosen.name} {chosen.note} is {_gb(chosen.size_bytes)}, more than the "
+                               f"{_gb(budget)} this machine's models can use.")
+            return None
+        return chosen
 
 
 def _runner(repl: Any, offer: fit.Offer) -> str | None:

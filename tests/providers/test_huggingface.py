@@ -6,6 +6,7 @@ import unittest
 from unittest.mock import patch
 
 from src.providers import huggingface
+from src.providers.base import ProviderError
 from src.providers.fit import GB
 
 TREE = [
@@ -58,6 +59,43 @@ class TestHuggingFace(unittest.TestCase):
         with patch.object(huggingface, "get_json", side_effect=fake_get):
             (offer,) = huggingface.search("m", 12 * GB)
         self.assertEqual(offer.options, ())
+
+    def test_details_read_the_card_numbers_capabilities_and_other_repos_by_the_author(self):
+        info = {"id": "IFM/K2-7B-GGUF", "author": "IFM", "downloads": 35214, "likes": 76, "lastModified": "2026-10-02T13:23:24.000Z",
+                "pipeline_tag": "text-generation", "tags": ["gguf", "license:apache-2.0", "reasoning"],
+                "cardData": {"license": "apache-2.0"},
+                "gguf": {"total": 8999178240, "architecture": "k2-horizon", "context_length": 524288, "chat_template": "{{ tools }}"},
+                "siblings": [{"rfilename": "mmproj-F16.gguf"}]}
+        readme = ("---\nlicense: mit\n---\n\n# K2\n\n> [!NOTE]\n> a note that is not the description\n\n"
+                  "The K2 Horizon 7B model is a **dense** open-weights model, see [the card](http://x), tuned for long documents.\n\n| a | b |")
+        others = [{"id": "IFM/K2-7B-GGUF", "downloads": 35214, "likes": 76}, {"id": "IFM/K2-0.9B-GGUF", "downloads": 25809, "likes": 97}]
+        with patch.object(huggingface, "get_json", side_effect=lambda url, **_: others if "author=" in url else info), \
+                patch.object(huggingface, "get_text", return_value=readme):
+            d = huggingface.details("IFM/K2-7B-GGUF", "gguf")
+        self.assertEqual((d.downloads, d.likes, d.updated, d.params, d.arch, d.context, d.license),
+                         (35214, 76, "2026-10-02T13:23:24.000Z", 8999178240, "k2-horizon", 524288, "apache-2.0"))
+        self.assertEqual(d.summary, "The K2 Horizon 7B model is a dense open-weights model, see the card, tuned for long documents.")
+        self.assertEqual((d.tools, d.vision, d.reasoning), (True, True, True))
+        self.assertEqual(d.author, "IFM")
+        self.assertEqual(d.related, (("IFM/K2-0.9B-GGUF", 25809, 97),))      # not the repo itself
+
+    def test_details_leave_unknowns_empty_and_a_failed_lookup_is_none(self):
+        bare = {"id": "u/m", "author": "u", "downloads": 3, "likes": 0, "tags": [], "gguf": {}}
+        with patch.object(huggingface, "get_json", side_effect=lambda url, **_: [] if "author=" in url else bare), \
+                patch.object(huggingface, "get_text", side_effect=ProviderError("huggingface", "down")):
+            d = huggingface.details("u/m", "gguf")
+        self.assertEqual((d.params, d.arch, d.context, d.license, d.summary, d.tools, d.vision, d.reasoning, d.related),
+                         (None, "", None, "", "", None, False, False, ()))
+        with patch.object(huggingface, "get_json", side_effect=ProviderError("huggingface", "down")):
+            self.assertIsNone(huggingface.details("u/m", "gguf"))
+
+    def test_the_description_is_the_first_real_paragraph_and_is_cut_at_a_word(self):
+        long = "word " * 120
+        self.assertEqual(huggingface._summary("---\na: b\n---\n# T\n\n![badge](x)\n\n<p>html</p>\n\n```\ncode\n```\n\nShort."), "")
+        text = huggingface._summary(f"# T\n\n{long}")
+        self.assertTrue(len(text) <= 281 and text.endswith("…") and "  " not in text)
+        self.assertEqual(huggingface._summary("# T\n\nA real description paragraph that is long enough to count."),
+                         "A real description paragraph that is long enough to count.")
 
     def test_repos_whose_chat_template_has_no_tools_are_dropped_unknown_templates_stay(self):
         listing = [

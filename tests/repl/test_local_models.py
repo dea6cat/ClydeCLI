@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import unittest
 from contextlib import nullcontext
+from dataclasses import replace
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 from rich.console import Console
 
 from src.providers.fit import GB, Offer
+from src.providers.huggingface import Details
 from src.repl import local_models
 
 HARD = Offer("big", "big:30b", 10 * GB, "hard", 1, "est. Q4", "ollama")
@@ -296,19 +299,75 @@ class TestDownloadOptions(unittest.TestCase):
     def setUp(self):
         self.row = Offer("u/m", _Q8.pull_tag, 8 * GB, "balance", 5, "Q8_0", "hf", options=(_Q4, _Q8, _F16, _MLX4))
 
-    def _show(self, second, runner="ollama"):
+    def _show(self, *rest, runner="ollama", details=None, opened=None):
+        """Run /models local with the picker answering "0" (the model row), then `rest` in turn."""
         repl = _Repl()
         with patch.object(local_models.fit, "chip", return_value="Apple M3 Pro"), \
                 patch.object(local_models.fit, "budget_bytes", return_value=12 * GB), \
                 patch.object(local_models, "SOURCES", {"hf": lambda q, b: [self.row]}), \
                 patch.object(local_models, "hidden_refs", return_value=set()), \
-                patch.object(local_models, "pick", side_effect=["0", second]) as pick, \
+                patch.object(local_models.huggingface, "details", return_value=details), \
+                patch.object(local_models.huggingface, "gguf_offer", return_value=opened), \
+                patch.object(local_models, "pick", side_effect=["0", *rest]) as pick, \
                 patch.object(local_models, "_runner", return_value=runner), \
                 patch.object(local_models, "_confirm", return_value=True) as confirm, \
                 patch.object(local_models, "_pull_ollama") as pull, \
                 patch.object(local_models, "_get_lmstudio") as lms:
             local_models.show(repl, " hf")
+        self.repl = repl
         return repl, pick, confirm, pull, lms
+
+    def _details(self, **over):
+        updated = (datetime.now(timezone.utc) - timedelta(days=13)).isoformat()
+        base = dict(author="IFM", downloads=35214, likes=76, updated=updated, params=8_999_178_240, arch="k2-horizon",
+                    context=524288, license="apache-2.0", summary="A dense open-weights model tuned for long documents.",
+                    tools=True, vision=False, reasoning=False, related=(("IFM/K2-0.9B-GGUF", 25809, 97),))
+        return Details(**{**base, **over})
+
+    def test_the_page_shows_the_numbers_description_specs_and_capabilities(self):
+        repl, *_ = self._show("0", details=self._details())
+        text = repl.console.export_text()
+        for expected in ("u/m", "35K", "76", "13 days ago", "apache-2.0", "A dense open-weights model tuned for long documents.",
+                         "9.0B", "k2-horizon", "512K", "GGUF", "MLX", "Tool use ✓", "Vision –", "Reasoning –"):
+            self.assertIn(expected, text)
+
+    def test_unknown_capabilities_are_marked_unknown_not_absent(self):
+        repl, *_ = self._show("0", details=self._details(tools=None, params=None, context=None, summary=""))
+        self.assertIn("Tool use ?", repl.console.export_text())
+
+    def test_the_options_picker_ends_with_other_models_by_the_same_author(self):
+        _, pick, *_ = self._show("0", details=self._details())
+        args, _ = pick.call_args_list[1]
+        more = [c for c in args[2] if c.value.startswith("more:")]
+        self.assertEqual([(c.value, c.label) for c in more], [("more:IFM/K2-0.9B-GGUF", "IFM/K2-0.9B-GGUF")])
+        self.assertIn("more from IFM", more[0].hint)
+        self.assertIn("26K", more[0].hint)
+        self.assertEqual(args[2][-1].value, "more:IFM/K2-0.9B-GGUF")
+
+    def test_choosing_another_model_opens_its_page_and_downloads_from_there(self):
+        small = Offer("IFM/K2-0.9B-GGUF", "hf.co/IFM/K2-0.9B-GGUF:Q8_0", 1 * GB, "relax", 9, "Q8_0", "hf",
+                      options=(Offer("IFM/K2-0.9B-GGUF", "hf.co/IFM/K2-0.9B-GGUF:Q4_K_M", GB // 2, "relax", 9, "Q4_K_M", "hf"),
+                               Offer("IFM/K2-0.9B-GGUF", "hf.co/IFM/K2-0.9B-GGUF:Q8_0", 1 * GB, "relax", 9, "Q8_0", "hf")))
+        _, pick, _, pull, _ = self._show("more:IFM/K2-0.9B-GGUF", "0", details=self._details(), opened=small)
+        self.assertEqual(pull.call_args.args[1].pull_tag, "hf.co/IFM/K2-0.9B-GGUF:Q4_K_M")
+        self.assertIn("IFM/K2-0.9B-GGUF", pick.call_args_list[2].args[1])
+
+    def test_another_model_with_nothing_that_fits_says_so_and_stays_on_the_current_page(self):
+        repl, _, _, pull, _ = self._show("more:IFM/K2-0.9B-GGUF", "0", details=self._details(), opened=None)
+        text = repl.console.export_text()
+        self.assertIn("Nothing from IFM/K2-0.9B-GGUF fits", text)
+        self.assertEqual(pull.call_args.args[1].pull_tag, _Q4.pull_tag)
+
+    def test_without_details_the_options_picker_still_works_and_no_page_is_printed(self):
+        repl, pick, _, pull, _ = self._show("0", details=None)
+        self.assertEqual(pull.call_args.args[1].pull_tag, _Q4.pull_tag)
+        self.assertNotIn("PARAMS", repl.console.export_text())
+
+    def test_a_single_download_with_nothing_related_goes_straight_to_confirm(self):
+        self.row = replace(self.row, options=())
+        _, pick, confirm, pull, _ = self._show(details=self._details(related=()))
+        self.assertEqual(pick.call_count, 1)
+        confirm.assert_called_once()
 
     def test_the_model_row_says_how_many_options_it_has(self):
         (row,) = local_models._choices([self.row], "Apple M3 Pro")

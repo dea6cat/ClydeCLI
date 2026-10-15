@@ -355,6 +355,20 @@ def cached_model_list(provider, fetch) -> list[str]:
     return models
 
 
+def get_text(url: str, timeout: int = 15, provider: str = "http", limit: int = 200_000) -> str:
+    """The first `limit` bytes of a page as text (a README); errors raise ProviderError like get_json."""
+    req = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT}, method="GET")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.read(limit).decode("utf-8", errors="replace")
+    except urllib.error.HTTPError as e:
+        raise _http_error(e, provider) from e
+    except urllib.error.URLError as e:
+        raise ProviderError(provider, f"connection failed: {e.reason}", retryable=True) from e
+    except (OSError, http.client.HTTPException) as e:
+        raise ProviderError(provider, f"connection failed: {e}", retryable=True) from e
+
+
 def get_json(url: str, headers: dict | None = None, timeout: int = 15, provider: str = "http") -> dict:
     hdrs = {"User-Agent": _USER_AGENT}
     if headers:
