@@ -1,0 +1,10 @@
+[MASTER]
+jobs=0
+
+[FORMAT]
+# The project writes long lines on purpose; 200 leaves about 60 of them over the limit instead of thousands.
+max-line-length=200
+
+[MESSAGES CONTROL]
+# Docstring and import-placement checks are style noise here: functions import lazily to keep startup fast.
+disable=C0114,C0115,C0116,C0415
