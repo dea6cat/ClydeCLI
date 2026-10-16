@@ -64,16 +64,10 @@ def hint(spec: ToolSpec) -> str:
 
 
 def index_prompt(specs: Iterable[ToolSpec], only: frozenset[str] | None = None) -> str:
-    """The system-prompt section naming the tools that aren't sent; "" when everything is. For a small local model
-    (`only` given) it is the names alone on one line: their descriptions cost about 400 tokens in every first request
-    and ToolSearch matches keywords against the full definitions anyway."""
-    deferred = [s for s in specs if is_deferred(s.name, only)]
-    if not deferred:
+    """The system-prompt section naming the tools that aren't sent; "" when everything is."""
+    rows = [f"- {s.name}: {hint(s)}" for s in specs if is_deferred(s.name, only)]
+    if not rows:
         return ""
-    if only is not None:
-        return ("## More tools\nNot loaded, to save tokens: " + ", ".join(s.name for s in deferred)
-                + ". Call ToolSearch with `select:Name` (several: `select:A,B`) before using one.")
-    rows = [f"- {s.name}: {hint(s)}" for s in deferred]
     return ("## More tools\nThese exist, but their definitions aren't loaded, to save tokens. Before using one, call "
             "ToolSearch with `select:Name` (several: `select:A,B`) or keywords; it is ready on your next step.\n"
             + "\n".join(rows))
