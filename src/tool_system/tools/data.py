@@ -16,6 +16,7 @@ from __future__ import annotations
 import glob
 import re
 import sqlite3
+import sys
 import threading
 import time
 from pathlib import Path
@@ -73,6 +74,19 @@ def _quote(text: str) -> str:
 def _allowed_dirs(context: ToolContext) -> list[Path]:
     extra = getattr(context.permission_context, "additional_working_directories", ()) or ()
     return [Path(context.workspace_root).resolve(), *(Path(d).resolve() for d in extra)]
+
+
+# ponytail: the same range as pyproject.toml; keep the two in step.
+DUCKDB_REQUIREMENT = "duckdb>=1.5,<2"
+
+
+def _error_text(error: Exception) -> str:
+    """What goes back to the model. A missing DuckDB says what to install and with which Python, since a bare
+    ModuleNotFoundError gives neither the model nor the user anything to act on."""
+    if isinstance(error, ModuleNotFoundError) and error.name == "duckdb":
+        return (f"DuckDB is not installed in {sys.executable}, and the Data tool needs it for CSV, Parquet, JSON and Excel. "
+                f"Tell the user to run: {sys.executable} -m pip install '{DUCKDB_REQUIREMENT}'")
+    return f"{type(error).__name__}: {str(error)[:600]}"
 
 
 def _sandboxed_duckdb(context: ToolContext) -> Any:
@@ -190,7 +204,7 @@ class DataTool:
         except (ToolInputError, ToolPermissionError):
             raise   # Clyde's own input and permission handling, as for every tool
         except Exception as e:   # DuckDB / SQLite errors go back to the model as tool errors
-            return ToolResult(name=NAME, output={"error": f"{type(e).__name__}: {str(e)[:600]}"}, is_error=True)
+            return ToolResult(name=NAME, output={"error": _error_text(e)}, is_error=True)
         return ToolResult(name=NAME, output=text, content_type="text")
 
     @staticmethod
