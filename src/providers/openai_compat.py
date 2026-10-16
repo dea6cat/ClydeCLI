@@ -6,6 +6,7 @@ API-key env var + options; new services are added as data in registry.py, not co
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -50,6 +51,13 @@ def _usage(raw: dict | None) -> dict | None:
         usage["input_tokens"] = max(usage["input_tokens"] - cached, 0)
         usage["cache_read_input_tokens"] = cached
     return usage
+
+
+def _nine_character_id(call_id: str) -> str:
+    """Mistral takes only tool call ids of exactly nine letters and digits. Its own pass through; any other (another
+    provider's `toolu_…` or `call_…`, kept in a conversation that moved here) becomes the first nine hex digits of its
+    hash, the same each time so a call and its result still match."""
+    return call_id if re.fullmatch(r"[A-Za-z0-9]{9}", call_id) else hashlib.sha1(call_id.encode("utf-8", "replace")).hexdigest()[:9]
 
 
 class OpenAICompatProvider:
@@ -119,11 +127,12 @@ class OpenAICompatProvider:
         return sorted(i for i in ids if i and _is_chat_model(i))
 
     def _messages(self, conv: Conversation) -> list[dict]:
+        call_id = _nine_character_id if self.name == "mistral" else (lambda i: i)
         out = [{"role": "system", "content": conv.system_prompt}]
         for m in conv.messages:
             if m.tool_results:
                 for r in m.tool_results:
-                    out.append({"role": "tool", "tool_call_id": r.tool_call_id, "content": r.content})
+                    out.append({"role": "tool", "tool_call_id": call_id(r.tool_call_id), "content": r.content})
                 continue
             if m.role == Role.ASSISTANT:
                 entry: dict = {"role": "assistant", "content": m.text or ""}
@@ -133,7 +142,7 @@ class OpenAICompatProvider:
                     entry["reasoning_content"] = m.thinking
                 if m.tool_calls:
                     entry["tool_calls"] = [
-                        {"id": tc.id, "type": "function",
+                        {"id": call_id(tc.id), "type": "function",
                          "function": {"name": tc.name, "arguments": json.dumps(tc.arguments)}}
                         for tc in m.tool_calls
                     ]
