@@ -37,6 +37,18 @@ class TestContextSystem(unittest.TestCase):
             self.assertIn("README.md", prompt)
             self.assertIn("pyproject.toml", prompt)
 
+    def test_compact_leaves_out_the_readme_excerpt_but_keeps_the_instructions(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "CLAUDE.md").write_text("Project rule: always add tests.", encoding="utf-8")
+            (root / "README.md").write_text("# Demo\nREADME-MARKER\n", encoding="utf-8")
+
+            self.assertIn("README-MARKER", build_context_prompt(root))
+            compact = build_context_prompt(root, compact=True)
+
+            self.assertNotIn("README-MARKER", compact)
+            self.assertIn("Project rule: always add tests.", compact)
+
     def test_readme_excerpt_keeps_leading_sections_within_budget(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
