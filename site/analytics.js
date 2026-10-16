@@ -3,9 +3,9 @@
 // privacy.html. With ENDPOINT empty it sends nothing at all.
 (function (root) {
   "use strict";
-  // The counter to send to: any service or server that takes GoatCounter's GET /count (p=, e=, r=, t=, b=), such as
-  // "https://CODE.goatcounter.com/count", or tools/telemetry_receiver.py behind https.
-  var ENDPOINT = "";
+  // The counter to send to: the project's GoatCounter. Any service or server that takes GoatCounter's GET /count (p=, e=, r=, t=, b=)
+  // works instead, such as tools/telemetry_receiver.py behind https. Empty: nothing is sent.
+  var ENDPOINT = "https://dea6cat.goatcounter.com/count";
   var OPT_OUT_KEY = "clyde-analytics";
 
   function slug(text) {

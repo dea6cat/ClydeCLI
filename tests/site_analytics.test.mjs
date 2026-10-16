@@ -26,7 +26,7 @@ function run({ endpoint = COUNTER, host = "dea6cat.github.io", path = "/ClydeCLI
     URL, Math, Object, String, encodeURIComponent, Image: function () {},
   };
   sandbox.window.window = sandbox.window;
-  vm.runInNewContext(SOURCE.replace('var ENDPOINT = "";', `var ENDPOINT = ${JSON.stringify(endpoint)};`), { ...sandbox, root: undefined }, { filename: "analytics.js" });
+  vm.runInNewContext(SOURCE.replace(/var ENDPOINT = "[^"]*";/, `var ENDPOINT = ${JSON.stringify(endpoint)};`), { ...sandbox, root: undefined }, { filename: "analytics.js" });
   const params = (i) => Object.fromEntries(new URL(requests[i].url).searchParams);
   return { requests, clicks, params, button, listeners, stored };
 }
