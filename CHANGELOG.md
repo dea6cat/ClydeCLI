@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The list of tools a local model can load on request has no descriptions for a model of about 3.7 billion parameters or fewer, and keeps them for larger models and unknown sizes. With the descriptions, Qwen2.5-Coder 3B called the `Remember` tool 1 time in 6 and answered "Remembered" without saving anything; without them 6 in 6, and across six tools its first-turn calls went from 39 of 60 to 50 of 60. Larger and hosted models read the descriptions and find tools better with them. Clyde takes the size from Ollama, or from the model's name.
 - A small local model's first request is smaller: about 1,880 tokens, down from about 3,070 in our test with a 3B model. The README excerpt is left out (the model can read it), and the sections of your own global `CLAUDE.md` that are about a language your project does not use (a Dart section in a Python project) are left out. Your own model names the language of each section once; the answer is kept in `~/.clyde/section_languages.json`. When it cannot tell, or the project's languages are unknown, the section stays. A project's own `CLAUDE.md` is never filtered, and hosted models get the same prompt as before.
 
 ### Fixed

@@ -16,12 +16,13 @@ from ..tool_system.context import ToolContext
 from ..memory import memory_prompt
 from ..tool_system.plan_file import PLAN_SHAPE, plan_prompt, read_plan
 from ..context_system.microcompact import trim_old_tool_results
-from ..tool_system.deferral import VERIFY_PROMPT, advertised, index_prompt, is_deferred, local_tools
+from ..tool_system.deferral import NAMES_ONLY_UP_TO_BILLIONS, VERIFY_PROMPT, advertised, index_prompt, is_deferred, local_tools
 from .cloud_review import review_reply
 from .repeat_guard import RepeatedCall, RepeatGuard
 from .conversation import Conversation
 from ..context_system import build_context_prompt, instruction_filter
 from ..output_styles import resolve_output_style
+from ..providers import model_size
 from ..providers.base import Provider, stream_with_retry
 from ..providers.convert import append_response, to_canonical
 from ..providers.toolcall_repair import coerce_tool_args
@@ -318,7 +319,8 @@ def run_agent_loop(
     only = local_tools(_last_prompt(conversation)) if _small_local(provider) else None   # the few tools this prompt needs
     if only is not None:   # grow-only: see ToolContext.local_only; a changed tool list re-prefills the server's cache
         only = tool_context.local_only = tool_context.local_only | only
-    if index := index_prompt(all_specs, only):
+    size = model_size.billions(provider, model) if only is not None else None
+    if index := index_prompt(all_specs, only, names_only=size is not None and size <= NAMES_ONLY_UP_TO_BILLIONS):
         system_prompt += "\n\n" + index
     if only is not None:   # a small local model checks code against the project and the docs before it presents it
         system_prompt += "\n\n" + VERIFY_PROMPT
