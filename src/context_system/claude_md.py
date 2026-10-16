@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Callable
 
 from .models import ClaudeMdContext, ClaudeMdFile
 
@@ -37,17 +38,21 @@ def load_claude_md_context(
     max_files: int = 6,
     max_chars_per_file: int = 4_000,
     max_total_chars: int = 12_000,
+    filter_user_file: Callable[[str], str] | None = None,
 ) -> ClaudeMdContext:
+    """`filter_user_file` rewrites the user's own instruction files (not the project's) before they are cut to budget."""
     root = Path(workspace_root).expanduser().resolve()
     current = Path(cwd).expanduser().resolve() if cwd is not None else root
 
     candidates: list[Path] = []
 
     home = Path.home()
+    user_files: set[Path] = set()
     for group in _USER_GROUPS:
         path = _first_existing(home, group)
         if path is not None and path not in candidates:
             candidates.append(path)
+            user_files.add(path)
 
     from .project_summary import _inside_and_not_secret
 
@@ -71,6 +76,8 @@ def load_claude_md_context(
             content = path.read_text(encoding="utf-8").strip()
         except Exception:
             continue
+        if content and filter_user_file is not None and path in user_files:
+            content = filter_user_file(content).strip()
         if not content:
             continue
         if len(content) > max_chars_per_file:

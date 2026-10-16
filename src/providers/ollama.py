@@ -8,6 +8,9 @@ from __future__ import annotations
 
 import json as _json
 import os
+import re
+import subprocess
+import sys
 import urllib.error
 import urllib.request
 from typing import Callable
@@ -31,6 +34,10 @@ CTX_FLOOR = 2048         # never pin below this
 CTX_ROUND = 1024         # round the computed window down to a clean multiple
 KV_RESERVE_BYTES = 3 * 1024 ** 3   # RAM kept free for OS + app + compute buffers
 KV_USE_FRACTION = 0.75             # of the RAM left after weights+reserve, give this to KV
+# Weights and KV cache together never take more than this share of RAM. Ollama allocates the whole cache for num_ctx up
+# front and Metal wires it: a 68,608-token window (9.4 GB of cache plus 2.3 GB of weights) on an 18 GB Mac starved the
+# system until the watchdog panicked it. The reserve above ignores what other apps already hold; this cap does not need to know.
+MODEL_RAM_FRACTION = 0.35
 
 _THINK_STRING_MODELS = ("gpt-oss",)   # accept think:"low|medium|high"; other thinking models are boolean
 
@@ -49,6 +56,21 @@ def _parse_args(args):
         except (ValueError, TypeError):
             return {}
     return args if isinstance(args, dict) else {}
+
+
+def _available_ram_bytes() -> int:
+    """Memory that can be handed out right now: free, inactive, speculative and purgeable pages (macOS, from vm_stat) or
+    MemAvailable (Linux). 0 when it can't be read."""
+    try:
+        if sys.platform == "darwin":
+            out = subprocess.run(["vm_stat"], capture_output=True, text=True, timeout=5).stdout
+            page = int(re.search(r"page size of (\d+) bytes", out).group(1))
+            return page * sum(int(m.group(1)) for kind in ("free", "inactive", "speculative", "purgeable")
+                              if (m := re.search(rf"Pages {kind}:\s+(\d+)", out)))
+        with open("/proc/meminfo", encoding="utf-8") as f:
+            return next((int(line.split()[1]) * 1024 for line in f if line.startswith("MemAvailable:")), 0)
+    except (OSError, ValueError, AttributeError, subprocess.SubprocessError):
+        return 0
 
 
 def _total_ram_bytes() -> int:
@@ -156,12 +178,24 @@ class OllamaProvider:
         per_tok = _kv_bytes_per_token(mi)
         ram = _total_ram_bytes()
         weights = self._weight_bytes(model)
+        if free := _available_ram_bytes():
+            ram = min(ram, free + self._loaded_bytes(model))   # what is free now, plus what this model already holds
         if not (trained and per_tok and ram and weights):
             return min(trained, CTX_FALLBACK) if trained else CTX_FALLBACK
-        avail = max(0.0, ram - weights - KV_RESERVE_BYTES) * KV_USE_FRACTION
+        avail = min(max(0.0, ram - weights - KV_RESERVE_BYTES) * KV_USE_FRACTION,
+                    max(0.0, _total_ram_bytes() * MODEL_RAM_FRACTION - weights))
         eff = min(trained, int(avail / per_tok))
         eff = max(CTX_FLOOR, (eff // CTX_ROUND) * CTX_ROUND)
         return min(eff, trained)
+
+    def _loaded_bytes(self, model: str) -> int:
+        """Memory Ollama holds for `model` right now (0 when it isn't loaded or Ollama doesn't answer): it is not free,
+        but a reload at another window gives it back, so it counts toward what the model can use."""
+        try:
+            loaded = get_json(f"{self.host}/api/ps", headers=self._headers(), timeout=3, provider=self.name).get("models") or []
+        except ProviderError:
+            return 0
+        return sum(int(m.get("size") or 0) for m in loaded if model in (m.get("name"), m.get("model")))
 
     def trained_context(self, model: str) -> int:
         """The context length the model was trained for, or 0 when Ollama doesn't say."""
