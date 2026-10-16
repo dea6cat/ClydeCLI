@@ -44,7 +44,7 @@ class TestImageMessages(unittest.TestCase):
         conv = to_canonical(self.history, "sys")
         anthropic = AnthropicProvider.__new__(AnthropicProvider)._messages(conv)[0]["content"][1]
         self.assertEqual(anthropic["source"], {"type": "base64", "media_type": "image/jpeg", "data": "QUJD"})
-        openai = OpenAICompatProvider.__new__(OpenAICompatProvider)._messages(conv)[1]["content"][1]
+        openai = OpenAICompatProvider("openai", "http://localhost/v1", "OPENAI_API_KEY")._messages(conv)[1]["content"][1]
         self.assertEqual(openai["image_url"]["url"], "data:image/jpeg;base64,QUJD")
         self.assertEqual(OllamaProvider.__new__(OllamaProvider)._messages(conv)[1]["images"], ["QUJD"])
         google = GoogleProvider.__new__(GoogleProvider)._contents(conv)[0]["parts"][1]
