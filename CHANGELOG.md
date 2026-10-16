@@ -7,8 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `clyde tune` can apply the setting it recommends. With the Ollama app on a Mac it sets the variables and restarts the app. With only the `ollama` command, it keeps the setting in `~/.clyde/tune.json` and starts `ollama serve` with it whenever Clyde needs a server; if an Ollama is already running it asks before stopping it (through `brew services` when Homebrew runs it) and never touches a server on another machine. Elsewhere it prints the steps as before.
+- A small local model is sent the tool a request names on its first turn, so it does not have to ask for it: `Remember` for "remember that…", `TodoWrite` for a to-do list, plan mode, `CronCreate` for reminders and schedules, `AskUserQuestion` for "ask me" options, `Data` for CSV and similar files, `Map` for the code map. On Qwen2.5-Coder 3B it picked the right tool in 30 of 35 trials, up from 1 of 35 when it had to find the tool itself.
+
+### Changed
+
+- A small local model's first request is smaller: about 1,880 tokens, down from about 3,070 in our test with a 3B model. The README excerpt is left out (the model can read it), and the sections of your own global `CLAUDE.md` that are about a language your project does not use (a Dart section in a Python project) are left out. Your own model names the language of each section once; the answer is kept in `~/.clyde/section_languages.json`. When it cannot tell, or the project's languages are unknown, the section stays. A project's own `CLAUDE.md` is never filtered, and hosted models get the same prompt as before.
+
 ### Fixed
 
+- Clyde no longer asks Ollama for a context window that can starve the machine. The window used to fill about 75% of the RAM left after the model's weights; on an 18 GB Mac that gave `qwen3:4b` 68,608 tokens (9.4 GB of cache) and macOS restarted with a watchdog panic. The window now counts the memory that is free, keeps a 3 GB reserve, and holds weights plus cache under 35% of RAM, so the same model gets about 8,000 tokens on a busy machine and more on a free one.
+- A small model that calls a tool taking no arguments as `{"name": "EnterPlanMode", "arguments": {}}` is no longer rejected every time: Clyde unwraps the call.
 - The editor's "Connect a provider" button now runs `clyde login`. Zed adds the login argument to the agent's own `--acp` command, and `--acp` used to win, so the terminal showed the protocol server's banner and Zed kept waiting on "Authenticating to Clyde…".
 
 ## [0.5.7] - 2026-10-15
