@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 from datetime import date
 from pathlib import Path
 
@@ -14,7 +15,10 @@ def build_context_prompt(
     workspace_root: str | Path,
     *,
     cwd: str | Path | None = None,
+    compact: bool = False,
 ) -> str:
+    """The workspace, git, project and instruction sections. `compact` leaves out the README excerpt, for a small local
+    model whose every prompt token costs prefill time and which can read the README itself."""
     root = Path(workspace_root).expanduser().resolve()
     current = Path(cwd).expanduser().resolve() if cwd is not None else root
 
@@ -22,6 +26,8 @@ def build_context_prompt(
     git = collect_git_context(root)
     claude_md = load_claude_md_context(root, cwd=current)
     summary = build_project_summary(root)
+    if compact:
+        summary = replace(summary, readme_path=None, readme_excerpt="")
 
     sections: list[str] = []
 

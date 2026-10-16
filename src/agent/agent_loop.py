@@ -135,11 +135,12 @@ def goal_prompt(goal: str | None) -> str:
     return f"## Session goal\nThe user set this goal for the session: {goal}\nKeep working toward it, and say when it is met."
 
 
-def _build_effective_system_prompt(style_prompt: str, tool_context: ToolContext) -> str:
+def _build_effective_system_prompt(style_prompt: str, tool_context: ToolContext, compact: bool = False) -> str:
     try:
         context_prompt = build_context_prompt(
             tool_context.workspace_root,
             cwd=tool_context.cwd,
+            compact=compact,
         )
     except Exception:
         context_prompt = ""
@@ -306,7 +307,7 @@ def run_agent_loop(
     style_name = getattr(tool_context, "output_style_name", None)
     style_dir = getattr(tool_context, "output_style_dir", None)
     style_prompt = resolve_output_style(style_name, style_dir).prompt
-    system_prompt = _build_effective_system_prompt(style_prompt, tool_context)
+    system_prompt = _build_effective_system_prompt(style_prompt, tool_context, compact=_small_local(provider))
     if system_extra:   # a custom sub-agent's own instructions
         system_prompt += "\n\n" + system_extra
     only = local_tools(_last_prompt(conversation)) if _small_local(provider) else None   # the few tools this prompt needs
