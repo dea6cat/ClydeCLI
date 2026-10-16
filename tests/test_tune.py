@@ -190,19 +190,37 @@ class ApplyHintTests(unittest.TestCase):
 
 
 class ApplyTests(unittest.TestCase):
-    def test_it_sets_each_variable_then_restarts_the_app(self):
-        with patch.object(tune.subprocess, "run") as run, patch.object(tune.time, "sleep"):
-            ok = tune.apply(Console(file=io.StringIO()), tune.kv("q8_0"))
-        calls = [c.args[0] for c in run.call_args_list]
+    def _apply(self, run):
+        out = io.StringIO()
+        with patch.object(tune.subprocess, "run", side_effect=run) as call, patch.object(tune.time, "sleep"):
+            ok = tune.apply(Console(file=out), tune.kv("q8_0"))
+        return ok, [c.args[0] for c in call.call_args_list], out.getvalue()
+
+    def test_it_sets_each_variable_ends_the_app_by_signal_and_reopens_it(self):
+        gone = unittest.mock.Mock(returncode=1)   # pgrep finds no app process once it has been signalled
+        ok, calls, _ = self._apply(lambda *a, **k: gone)
         self.assertTrue(ok)
         self.assertEqual(calls[:2], [["launchctl", "setenv", "OLLAMA_FLASH_ATTENTION", "1"], ["launchctl", "setenv", "OLLAMA_KV_CACHE_TYPE", "q8_0"]])
+        self.assertEqual(calls[2][:3], ["pkill", "-TERM", "-f"])   # the real app vetoes an AppleScript quit with -128
+        self.assertNotIn("osascript", [c[0] for c in calls])
         self.assertEqual(calls[-1], ["open", "-a", "Ollama"])
 
-    def test_a_failure_is_reported_and_not_claimed_applied(self):
-        out = io.StringIO()
-        with patch.object(tune.subprocess, "run", side_effect=OSError("no launchctl")):
-            self.assertFalse(tune.apply(Console(file=out), tune.kv("q8_0")))
-        self.assertIn("Could not apply", out.getvalue())
+    def test_a_failure_to_set_the_variables_is_reported_and_not_claimed_applied(self):
+        def run(cmd, **_):
+            raise OSError("no launchctl")
+        ok, _, out = self._apply(run)
+        self.assertFalse(ok)
+        self.assertIn("Could not apply", out)
+
+    def test_an_app_that_will_not_quit_is_reported_with_what_is_already_set(self):
+        stays = unittest.mock.Mock(returncode=0)   # pgrep keeps finding it
+        ticks = iter(range(0, 1000, 10))
+        with patch.object(tune.time, "monotonic", side_effect=lambda: next(ticks)):
+            ok, calls, out = self._apply(lambda *a, **k: stays)
+        self.assertFalse(ok)
+        self.assertNotIn(["open", "-a", "Ollama"], calls)
+        self.assertIn("variables are set", out)
+        self.assertIn("Quit and reopen", out)
 
 
 class ClydeServerTests(unittest.TestCase):

@@ -357,16 +357,31 @@ def apply_to_clyde_server(console: Console, env: dict[str, str]) -> bool:
     return True
 
 
+def _quit_app() -> None:
+    """End the Ollama app and its server and wait until they are gone. The app vetoes an AppleScript quit (error -128, checked
+    on 0.34.2), so this signals it; a signal is also what a running app gets from the Dock's Force Quit."""
+    pattern = f"{OLLAMA_APP}/Contents/MacOS/Ollama"
+    subprocess.run(["pkill", "-TERM", "-f", pattern], timeout=10)   # nothing to end when the app is not running
+    deadline = time.monotonic() + _STARTUP_S
+    while subprocess.run(["pgrep", "-f", pattern], capture_output=True, timeout=10).returncode == 0:
+        if time.monotonic() > deadline:
+            raise subprocess.SubprocessError("the Ollama app did not quit")
+        time.sleep(0.5)
+
+
 def apply(console: Console, env: dict[str, str]) -> bool:
-    """Set env for the Ollama app with launchctl, then quit and reopen it. launchctl settings last until the next reboot."""
+    """Set env for the Ollama app with launchctl, then end and reopen it. launchctl settings last until the next reboot."""
     try:
         for k, v in env.items():
             subprocess.run(["launchctl", "setenv", k, v], check=True, timeout=10)
-        subprocess.run(["osascript", "-e", 'tell application "Ollama" to quit'], check=True, timeout=30)
-        time.sleep(2)
-        subprocess.run(["open", "-a", "Ollama"], check=True, timeout=10)
     except (subprocess.SubprocessError, OSError) as e:
         console.print(f"[red]Could not apply it: {e}[/red]")
+        return False
+    try:
+        _quit_app()
+        subprocess.run(["open", "-a", "Ollama"], check=True, timeout=10)
+    except (subprocess.SubprocessError, OSError) as e:
+        console.print(f"[red]The variables are set, but Ollama did not restart: {e}.[/red] Quit and reopen the Ollama app yourself.")
         return False
     return True
 
