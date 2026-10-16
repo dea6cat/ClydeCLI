@@ -22,7 +22,7 @@ from rich.prompt import Confirm
 from rich.table import Table
 from rich.text import Text
 
-from src.tuning import tune
+from src.tuning import tune, tune_profile
 from src.ui.picker import Choice, pick
 from src.providers import best_fit, discover, fit, huggingface, mlx
 from src.providers.base import ProviderError, post_stream
@@ -261,15 +261,7 @@ _START_WAIT = 30   # seconds to wait for a freshly started app to answer
 
 def _start_ollama(repl: Any) -> bool:
     """Start `ollama serve` in the background and wait until it answers."""
-    exe = shutil.which("ollama")
-    if exe is None:
-        return False
-    subprocess.Popen([exe, "serve"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-    for _ in range(_START_WAIT * 2):
-        if repl.registry["ollama"].is_available():
-            return True
-        time.sleep(0.5)
-    return False
+    return tune.start_server(tune_profile.serve_env(), _START_WAIT)
 
 
 def _start_lmstudio() -> bool:

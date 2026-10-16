@@ -363,6 +363,9 @@ def run_login_flow(console: Console, registry: dict, default_provider: str = "an
         registry = build_registry()   # Ollama Cloud only registers once its key is set
 
     provider = registry.get(provider_name)
+    if provider_name == "ollama" and provider is not None and not provider.is_available():
+        from src.tuning import tune
+        tune.start_saved_server(console)
     if provider is None or not provider.is_available():
         if provider_name == "ollama":
             console.print(f"[red]Ollama isn't reachable at {getattr(provider, 'host', 'localhost:11434')}.[/red] "

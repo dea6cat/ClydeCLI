@@ -2287,6 +2287,10 @@ class ClydeREPL:
     def _resolve_model(self, requested: str):
         """(provider, model) for a model string, or None after explaining why it didn't resolve."""
         resolved = resolve(self.registry, requested)
+        if resolved is None and requested.startswith("ollama:"):
+            from src.tuning import tune
+            if tune.start_saved_server(self.console):
+                resolved = resolve(self.registry, requested)
         if resolved is not None:
             return resolved
         prefix = requested.split(":", 1)[0] if ":" in requested else ""
