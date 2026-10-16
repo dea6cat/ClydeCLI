@@ -34,6 +34,7 @@ from typing import Any
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
 from src.runtime import activity
+from src import telemetry
 from src.config import clyde_home
 from src.providers import keys
 from src.agent.session import Session
@@ -922,6 +923,7 @@ def main(model: str | None = None, port: int | None = None, open_browser: bool =
     url = f"http://localhost:{server.server_address[1]}/?k={server.launch_secret}"   # type: ignore[attr-defined]
     threading.Thread(target=server.serve_forever, name="bonnie-http", daemon=True).start()
     bonnie.start_scheduler()
+    telemetry.record("bonnie_start")
     projects.remember(Path.cwd())
     moved = f"  (port {DEFAULT_PORT} was taken; `clyde luv bonnie PORT` picks one)" if not port and server.server_address[1] != DEFAULT_PORT else ""
     print(f"Bonnie is running. Open this link once, in your browser: {url}  (Ctrl+C to stop){moved}")

@@ -22,6 +22,7 @@ from .repeat_guard import RepeatedCall, RepeatGuard
 from .conversation import Conversation
 from ..context_system import build_context_prompt, instruction_filter
 from ..output_styles import resolve_output_style
+from .. import telemetry
 from ..providers import model_size
 from ..providers.base import Provider, stream_with_retry
 from ..providers.convert import append_response, to_canonical
@@ -320,7 +321,8 @@ def run_agent_loop(
     if only is not None:   # grow-only: see ToolContext.local_only; a changed tool list re-prefills the server's cache
         only = tool_context.local_only = tool_context.local_only | only
     size = model_size.billions(provider, model) if only is not None else None
-    if index := index_prompt(all_specs, only, names_only=size is not None and size <= NAMES_ONLY_UP_TO_BILLIONS):
+    names_only = size is not None and size <= NAMES_ONLY_UP_TO_BILLIONS
+    if index := index_prompt(all_specs, only, names_only=names_only):
         system_prompt += "\n\n" + index
     if only is not None:   # a small local model checks code against the project and the docs before it presents it
         system_prompt += "\n\n" + VERIFY_PROMPT
@@ -328,6 +330,16 @@ def run_agent_loop(
 
     last_user_visible_message: str | None = None
     repeat_guard = RepeatGuard()
+    run_stats = {"tool_calls": 0, "tool_errors": 0, "repeats_refused": 0, "first_input_tokens": 0}
+
+    def record_run(outcome: str, turns: int) -> None:
+        if not telemetry.enabled():
+            return
+        kind, model_class = telemetry.describe(provider, model)
+        telemetry.record("run", surface=telemetry.surface(), outcome=outcome, turns=turns, tool_calls=run_stats["tool_calls"],
+                         tool_errors=run_stats["tool_errors"], repeats_refused=run_stats["repeats_refused"],
+                         first_input_tokens=telemetry.token_bucket(run_stats["first_input_tokens"]),
+                         index="none" if not index else "names" if names_only else "full", provider_kind=kind, model_size=model_class)
     total_usage: dict[str, int] = {"input_tokens": 0, "output_tokens": 0}
     turn_count = 0
 
@@ -354,6 +366,8 @@ def run_agent_loop(
         ))
         turn_count += 1
         _add_usage(total_usage, response.usage)
+        if turn_count == 1:
+            run_stats["first_input_tokens"] = (response.usage or {}).get("input_tokens", 0) or 0
         append_response(conversation, response.message)
 
         final_assistant_content = response.message.text or ""
@@ -366,6 +380,7 @@ def run_agent_loop(
                 text_handler("\n\n" + fixed)   # a weak local reply already streamed; the cloud model's correction follows it
                 conversation.messages[-1].content = fixed
                 final_assistant_content = fixed
+            record_run("done", turn_count)
             return AgentLoopResult(
                 response_text=final_assistant_content,
                 usage=_usage_or_none(),
@@ -373,6 +388,7 @@ def run_agent_loop(
             )
 
         for tc in tool_calls:
+            run_stats["tool_calls"] += 1
             tool_id = tc.id
             tool_name, tool_input = coerce_tool_args(tc.name, tc.arguments, known_tools)
             if is_deferred(tool_name, only):
@@ -422,9 +438,13 @@ def run_agent_loop(
                 )
                 conversation.add_tool_result_message(tool_id, result_output, is_error=result.is_error)
                 repeat_guard.record(tool_name, tool_input, result_output)
+                run_stats["tool_errors"] += bool(result.is_error)
             except Exception as e:
                 error_str = f"Error: {e}"
-                if not isinstance(e, RepeatedCall):
+                run_stats["tool_errors"] += 1
+                if isinstance(e, RepeatedCall):
+                    run_stats["repeats_refused"] += 1
+                else:
                     repeat_guard.record(tool_name, tool_input, error_str)
                 _trace_tool(tool_name, tool_input, started, True, error_str)
                 if verbose:
@@ -437,8 +457,10 @@ def run_agent_loop(
                 conversation.add_tool_result_message(tool_id, error_str, is_error=True)
 
         if repeat_guard.stuck:
+            record_run("stuck", turn_count)
             return AgentLoopResult(response_text=repeat_guard.stop_reply(), usage=_usage_or_none(), num_turns=turn_count)
 
+    record_run("max_turns", turn_count)
     return AgentLoopResult(
         response_text=MAX_TURNS_REPLY,
         usage=_usage_or_none(),

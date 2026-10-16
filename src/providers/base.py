@@ -314,6 +314,18 @@ MAX_RETRY_AFTER_WAIT_S = 30.0   # longer asks bench the card instead of stalling
 
 def stream_with_retry(provider, conversation, model, tools, on_text, *, retries=3, cancel=None,
                       reasoning=None, on_thinking=None) -> ProviderResponse:
+    """_stream_with_retry, counting (anonymously, and only if the user opted in) the errors that get out of it."""
+    try:
+        return _stream_with_retry(provider, conversation, model, tools, on_text, retries=retries, cancel=cancel,
+                                  reasoning=reasoning, on_thinking=on_thinking)
+    except ProviderError as e:
+        from src import telemetry
+        telemetry.provider_error(e)
+        raise
+
+
+def _stream_with_retry(provider, conversation, model, tools, on_text, *, retries=3, cancel=None,
+                       reasoning=None, on_thinking=None) -> ProviderResponse:
     """provider.stream with backoff on retryable ProviderError (429/5xx/connection). Honors a
     cancel Event (re-raises immediately). When a retryable error survives every retry, the
     message gets a `— retried N×, still failing` suffix so it doesn't read as a single blip."""
