@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from datetime import date
 from pathlib import Path
+from typing import Callable
 
 from .claude_md import load_claude_md_context
 from .git_context import collect_git_context
@@ -14,13 +15,14 @@ def build_context_prompt(
     workspace_root: str | Path,
     *,
     cwd: str | Path | None = None,
+    filter_user_file: Callable[[str], str] | None = None,
 ) -> str:
     root = Path(workspace_root).expanduser().resolve()
     current = Path(cwd).expanduser().resolve() if cwd is not None else root
 
     workspace = build_workspace_snapshot(root, cwd=current)
     git = collect_git_context(root)
-    claude_md = load_claude_md_context(root, cwd=current)
+    claude_md = load_claude_md_context(root, cwd=current, filter_user_file=filter_user_file)
     summary = build_project_summary(root)
 
     sections: list[str] = []
