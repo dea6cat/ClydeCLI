@@ -265,6 +265,14 @@ class TestToolCallRepair(unittest.TestCase):
         self.assertEqual(recover_toolcalls('```json\n{"name": "Nope"}\n```', ["Read"]), [])
         self.assertEqual(recover_toolcalls("just talking about Read", ["Read"]), [])
 
+    def test_an_echoed_call_with_empty_arguments_unwraps_to_none_for_a_tool_that_takes_none(self):
+        echoed = {"name": "EnterPlanMode", "arguments": {}}
+        self.assertEqual(coerce_tool_args("EnterPlanMode", echoed), ("EnterPlanMode", {}))
+
+    def test_empty_arguments_without_a_matching_name_are_left_alone(self):
+        for args in ({"arguments": {}}, {"name": "Other", "arguments": {}}):
+            self.assertEqual(coerce_tool_args("mcp__x__search", args), ("mcp__x__search", args))
+
     def test_a_wrapper_repeating_the_tool_name_unwraps_for_any_tool(self):
         echoed = {"name": "add_numbers", "arguments": {"a": 1, "b": 2}}
         self.assertEqual(coerce_tool_args("add_numbers", echoed), ("add_numbers", {"a": 1, "b": 2}))

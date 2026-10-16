@@ -41,13 +41,9 @@ def _unwrap_nested(args: dict) -> tuple[dict, str] | None:
         if k in args:
             inner = _as_arg_dict(args[k])
             extra = set(args) - {k} - set(_NAME_KEYS)
-            if inner and not extra:
-                wrapped_name = ""
-                for nk in _NAME_KEYS:
-                    v = args.get(nk)
-                    if isinstance(v, str) and v.strip():
-                        wrapped_name = v.strip()
-                        break
+            wrapped_name = next((v.strip() for nk in _NAME_KEYS if isinstance(v := args.get(nk), str) and v.strip()), "")
+            # A named wrapper with empty arguments is a call echoed for a tool that takes none (EnterPlanMode).
+            if (inner or wrapped_name) and not extra:
                 return inner, wrapped_name
     return None
 
