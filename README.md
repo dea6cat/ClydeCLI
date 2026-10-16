@@ -1023,10 +1023,10 @@ A plugin is a folder that bundles extensions; Claude Code plugins mostly work as
   (`github.com`), as the label a link carries in `?ref=` (the README's links carry `?ref=github-readme`), as `internal` for a move
   between the site's own pages, or `direct`. Do Not Track and Global Privacy Control switch it off, and `privacy.html` has a switch
   for one browser
-- It sends nothing until a counter is set: put its address in `ENDPOINT` at the top of `site/analytics.js`. The beacon is
-  GoatCounter's `GET /count` (`p`, `e`, `r`, `t`, `b`), so a GoatCounter site works
-  (`https://CODE.goatcounter.com/count`), and so does `python3 tools/telemetry_receiver.py 8787 events.jsonl site-counts.json`
-  behind https. The receiver counts per day, tells visitors apart with a salted hash that changes daily and is never saved, and
+- It reports to the project's GoatCounter, `https://dea6cat.goatcounter.com/count`, set in `ENDPOINT` at the top of
+  `site/analytics.js`; with `ENDPOINT` empty it sends nothing. The beacon is GoatCounter's `GET /count` (`p`, `e`, `r`, `t`, `b`),
+  so another GoatCounter site works, and so does `python3 tools/telemetry_receiver.py 8787 events.jsonl site-counts.json` behind
+  https. That receiver counts per day, tells visitors apart with a salted hash that changes daily and is never saved, and
   `python3 tools/telemetry_receiver.py report site-counts.json` prints the pages, clicks and where visitors came from
 - To tell the repository's own link apart too, set the repository's website to `https://dea6cat.github.io/ClydeCLI/?ref=github-about`
 
