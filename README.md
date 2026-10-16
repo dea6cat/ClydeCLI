@@ -996,6 +996,26 @@ A plugin is a folder that bundles extensions; Claude Code plugins mostly work as
 - Off: `CLYDE_TRACE=off` or `"session": {"trace": false}` in `~/.clyde/config.json`; the newest 50
   traces are kept
 
+### Telemetry
+
+- Off until you turn it on with `clyde telemetry on`. `CLYDE_TELEMETRY=off` and `DO_NOT_TRACK=1` always win
+- What it can record is fixed in `SCHEMA` in `src/telemetry.py` and checked on every event: counts, flags and words from
+  fixed sets, so a prompt, a path, a model's name or an error message cannot be sent even by mistake:
+  - `run` (after each agent run): the surface (terminal, `-p`, Bonnie, editor), how it ended, turns, tool calls, tool errors,
+    repeated calls refused, a bucket for the first request's size, which tool list the model got, the kind of provider and
+    a size bucket for the model
+  - `provider_error`: a built-in provider's name (else "custom") and the kind of failure (HTTP 429, timeout, SSL…)
+  - `tune`: how `clyde tune` ended and a bucket for the memory it saved
+  - `bonnie_start`
+  - every event also carries Clyde's version, a random install id, the OS, CPU, Python version, a RAM bucket and the date
+- Events wait in `~/.clyde/telemetry/queue.jsonl`; `clyde telemetry show` prints exactly that and the schema, and
+  `clyde telemetry off` stops it and deletes the queue. `clyde telemetry reset-id` gives a new install id
+- They go out in one batch when Clyde exits, or on `clyde telemetry send`, to the endpoint set with
+  `clyde telemetry endpoint https://…` (or `CLYDE_TELEMETRY_URL`), and only to https (or localhost). With no endpoint nothing
+  leaves the machine, and none is set by default
+- `tools/telemetry_receiver.py` is a reference receiver that re-checks every event against the schema; run it to try this
+  out or to host your own
+
 ***
 
 ## 📦 Project Structure

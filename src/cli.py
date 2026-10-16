@@ -90,6 +90,7 @@ Examples:
   clyde update [--check] [--channel latest|stable]  Move Clyde to the newest version of its channel, the way it was installed
   clyde uninstall [--purge] [-y]      Remove Clyde the way it was installed; --purge also deletes ~/.clyde
   clyde tune [--ask]                  Find the best Ollama setup for how you use it, keeping quality (memory, speed, context)
+  clyde telemetry [on|off|show|send]  Anonymous usage counters: off until you turn them on; `show` prints exactly what is queued
   clyde doctor                        How Clyde is installed: method, version, PATH, other installs, Claude Code
   clyde license [accept]              Show the licence terms and whether you accepted them; accept records it
   clyde -p "<prompt>"                 One turn without the prompt, answer on stdout (scripts, CI); also --mode,
@@ -157,6 +158,9 @@ Examples:
     tune_parser.add_argument('--ask', dest='tune_ask', action='store_true', help='answer the questions again (what you use the model for)')
     tune_parser.add_argument('--model', dest='tune_model', metavar='NAME', help='installed Ollama model to test (default: the smallest)')
     tune_parser.add_argument('--ctx', type=int, metavar='TOKENS', help="context window to test at (default: the one Clyde pins for the model)")
+    telemetry_parser = subparsers.add_parser('telemetry', help='Anonymous usage counters: off until you turn them on')
+    telemetry_parser.add_argument('action', nargs='?', default='status', choices=['status', 'on', 'off', 'show', 'send', 'endpoint', 'reset-id'])
+    telemetry_parser.add_argument('value', nargs='?', help='endpoint: the https URL to send to')
     subparsers.add_parser('doctor', help='How Clyde is installed: method, version, PATH, other installs, Claude Code, licence')
     update_parser = subparsers.add_parser('update', help='Move Clyde to the newest version, the way it was installed')
     update_parser.add_argument('--channel', choices=['latest', 'stable'], help='follow every commit on main (latest) or tagged releases (stable); saved')
@@ -185,16 +189,21 @@ Examples:
     # An editor's terminal login runs the agent's own command with the auth method's args added (`clyde --acp login`):
     # a subcommand wins, so that runs the login instead of starting the protocol server and waiting forever.
     if args.acp and args.command is None:
-        from src import acp
+        from src import acp, telemetry
+        telemetry.set_surface("acp")
         return acp.main(model=args.model)
 
     if args.print_prompt is not None:
+        from src import telemetry
         from src.repl import headless
+        telemetry.set_surface("print")
         return headless.run(args.print_prompt, model=args.model, mode=args.mode,
                             output_format=args.output_format, max_turns=args.max_turns)
 
     if args.command == 'luv':
+        from src import telemetry
         from src.bonnie import server
+        telemetry.set_surface("bonnie")
         port = args.port if args.port is not None else args.port_flag
         if port is not None and not 1 <= port <= 65535:
             print(f"Port {port} is not valid: use 1 to 65535.", file=sys.stderr)
@@ -208,6 +217,9 @@ Examples:
         from src.install import zed
         return zed.install(Console(), assume_yes=args.yes)
 
+    if args.command == 'telemetry':
+        from src import telemetry
+        return telemetry.command(Console(), args.action, args.value)
     if args.command == 'tune':
         from src.tuning import tune
         return tune.run(Console(), model=args.tune_model, ctx=args.ctx, reask=args.tune_ask)
@@ -226,8 +238,10 @@ Examples:
         return handle_uninstall(Console(), purge=args.purge, assume_yes=args.yes)
 
     if args.command == 'review':
+        from src import telemetry
         from src.repl import headless
         from src.review import ReviewError, build_review_prompt
+        telemetry.set_surface("print")
         try:
             prompt = build_review_prompt(' '.join(args.target), Path.cwd())
         except ReviewError as e:
@@ -511,6 +525,10 @@ def handle_setup(console: Console, assume_yes: bool = False) -> int:
             subprocess.run(["uv", "tool", "update-shell"], check=False)
         else:
             console.print("• Add clyde to your PATH later with [bold]uv tool update-shell[/bold].")
+
+    if not assume_yes:
+        from src import telemetry
+        telemetry.ask_once(console, Confirm.ask)
 
     console.print("\nClydeCLI is ready. Start it from any project directory with [bold]clyde[/bold].")
     return 0
