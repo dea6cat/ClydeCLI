@@ -19,16 +19,17 @@ class TodoWriteTool:
                 "properties": {
                     "todos": {
                         "type": "array",
+                        "description": "The whole list, replacing the previous one. Keep finished items in it.",
                         "items": {
                             "type": "object",
                             "additionalProperties": False,
                             "properties": {
-                                "content": {"type": "string", "minLength": 1},
+                                "content": {"type": "string", "minLength": 1, "description": "The step as an instruction: Run the tests."},
                                 "status": {
                                     "type": "string",
                                     "enum": ["pending", "in_progress", "completed"],
                                 },
-                                "activeForm": {"type": "string", "minLength": 1},
+                                "activeForm": {"type": "string", "minLength": 1, "description": "The same step as it reads while under way: Running the tests. Never empty."},
                             },
                             "required": ["content", "status", "activeForm"],
                         },
