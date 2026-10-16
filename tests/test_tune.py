@@ -6,6 +6,7 @@ import io
 import os
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 from unittest.mock import patch
 
@@ -186,6 +187,86 @@ class ApplyHintTests(unittest.TestCase):
         self.assertIn("systemctl", self._hint("Linux", False))
         self.assertIn("CLYDE_MODEL_CONTEXT_M_1=16384", self._hint("Linux", False, ctx=16384))
         self.assertNotIn("CLYDE_MODEL_CONTEXT", self._hint("Linux", False))
+
+
+class ApplyTests(unittest.TestCase):
+    def test_it_sets_each_variable_then_restarts_the_app(self):
+        with patch.object(tune.subprocess, "run") as run, patch.object(tune.time, "sleep"):
+            ok = tune.apply(Console(file=io.StringIO()), tune.kv("q8_0"))
+        calls = [c.args[0] for c in run.call_args_list]
+        self.assertTrue(ok)
+        self.assertEqual(calls[:2], [["launchctl", "setenv", "OLLAMA_FLASH_ATTENTION", "1"], ["launchctl", "setenv", "OLLAMA_KV_CACHE_TYPE", "q8_0"]])
+        self.assertEqual(calls[-1], ["open", "-a", "Ollama"])
+
+    def test_a_failure_is_reported_and_not_claimed_applied(self):
+        out = io.StringIO()
+        with patch.object(tune.subprocess, "run", side_effect=OSError("no launchctl")):
+            self.assertFalse(tune.apply(Console(file=out), tune.kv("q8_0")))
+        self.assertIn("Could not apply", out.getvalue())
+
+
+class ClydeServerTests(unittest.TestCase):
+    def setUp(self):
+        self.out = io.StringIO()
+        self.console = Console(file=self.out)
+
+    def test_it_keeps_the_setting_and_starts_a_server_with_it_when_none_is_running(self):
+        with patch.object(tune.tune_profile, "save_serve_env") as save, patch.object(tune, "local") as local, \
+                patch.object(tune, "start_server", return_value=True) as start:
+            local.return_value.is_available.return_value = False
+            self.assertTrue(tune.apply_to_clyde_server(self.console, tune.kv("q8_0")))
+        save.assert_called_once_with(tune.kv("q8_0"))
+        start.assert_called_once_with(tune.kv("q8_0"))
+
+    def _running(self, confirm, brewed=False, command="ollama serve"):
+        patches = [patch.object(tune.tune_profile, "save_serve_env"), patch.object(tune, "local"),
+                   patch.object(tune, "start_server", return_value=True), patch.object(tune, "_listener_pid", return_value=99),
+                   patch.object(tune, "_brew_service_started", return_value=brewed), patch.object(tune.os, "kill"),
+                   patch.object(tune.subprocess, "run", return_value=unittest.mock.Mock(stdout=command)),
+                   patch.object(tune.Confirm, "ask", return_value=confirm), patch.object(tune.time, "sleep")]
+        mocks = [p.start() for p in patches]
+        self.addCleanup(lambda: [p.stop() for p in patches])
+        local = mocks[1]
+        local.return_value.host = "http://localhost:11434"
+        local.return_value.is_available.side_effect = [True, True, False, False]
+        return mocks
+
+    def test_after_a_yes_it_ends_the_running_server_and_starts_one_with_the_setting(self):
+        mocks = self._running(True)
+        self.assertTrue(tune.apply_to_clyde_server(self.console, tune.kv("q8_0")))
+        mocks[5].assert_called_once_with(99, tune.signal.SIGTERM)
+        mocks[2].assert_called_once_with(tune.kv("q8_0"))
+
+    def test_a_brew_service_is_stopped_through_brew(self):
+        mocks = self._running(True, brewed=True)
+        tune.apply_to_clyde_server(self.console, tune.kv("q8_0"))
+        mocks[5].assert_not_called()
+        self.assertIn(["brew", "services", "stop", "ollama"], [c.args[0] for c in mocks[6].call_args_list])
+
+    def test_a_no_leaves_the_server_alone_and_says_the_setting_is_saved(self):
+        mocks = self._running(False)
+        self.assertFalse(tune.apply_to_clyde_server(self.console, tune.kv("q8_0")))
+        mocks[5].assert_not_called()
+        mocks[2].assert_not_called()
+        self.assertIn("saved", self.out.getvalue())
+
+    def test_a_process_that_is_not_ollama_is_never_stopped(self):
+        mocks = self._running(True, command="python other.py")
+        self.assertFalse(tune.apply_to_clyde_server(self.console, tune.kv("q8_0")))
+        mocks[5].assert_not_called()
+
+    def test_a_remote_ollama_is_never_stopped(self):
+        mocks = self._running(True)
+        mocks[1].return_value.host = "http://gpu-box:11434"
+        self.assertFalse(tune.apply_to_clyde_server(self.console, tune.kv("q8_0")))
+        mocks[5].assert_not_called()
+
+    def test_the_server_gets_the_setting_in_its_environment(self):
+        with patch.object(tune.shutil, "which", return_value="/bin/ollama"), patch.object(tune.subprocess, "Popen") as popen, \
+                patch.object(tune, "local") as local:
+            local.return_value.is_available.return_value = True
+            self.assertTrue(tune.start_server(tune.kv("q8_0")))
+        self.assertEqual(popen.call_args.kwargs["env"]["OLLAMA_KV_CACHE_TYPE"], "q8_0")
 
 
 class EvalTests(unittest.TestCase):

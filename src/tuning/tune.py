@@ -13,11 +13,13 @@ import difflib
 import os
 import platform
 import shutil
+import signal
 import socket
 import subprocess
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass
+from urllib.parse import urlparse
 from typing import Callable, ContextManager, Iterator
 
 from rich.console import Console
@@ -266,6 +268,109 @@ def choose(rows: list[Row], profile: Profile) -> Row:
 OLLAMA_APP = "/Applications/Ollama.app"
 
 
+def ctx_hint(model: str, ctx: int, base_ctx: int) -> list[str]:
+    return [f"For the longer window, also set export CLYDE_MODEL_CONTEXT_{_ctx_env_key(model)}={ctx} in your shell profile."] if ctx != base_ctx else []
+
+
+def can_apply() -> bool:
+    """Only the macOS Ollama app can be set up from here: a shell's `ollama serve` or a systemd service needs the user's own profile or sudo."""
+    return platform.system() == "Darwin" and os.path.exists(OLLAMA_APP)
+
+
+def owns_server() -> bool:
+    """A Mac with the `ollama` CLI and no app: no launchd service to configure, so Clyde starts the server itself."""
+    return platform.system() == "Darwin" and not os.path.exists(OLLAMA_APP) and bool(shutil.which("ollama"))
+
+
+def start_server(env: dict[str, str], wait: float = _STARTUP_S) -> bool:
+    """Start `ollama serve` in the background with env on top of this process's, and wait until it answers."""
+    exe, provider = shutil.which("ollama"), local()
+    if exe is None:
+        return False
+    subprocess.Popen([exe, "serve"], env={**os.environ, **env}, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    deadline = time.monotonic() + wait
+    while time.monotonic() < deadline:
+        if provider.is_available():
+            return True
+        time.sleep(0.5)
+    return False
+
+
+def start_saved_server(console: Console) -> bool:
+    """Bring up Ollama with the setting the user let Clyde apply; False when none is saved or it did not come up."""
+    env = tune_profile.serve_env()
+    if not env or local().is_available():
+        return False
+    with console.status("[dim]Starting Ollama with your tuned setup…[/dim]", spinner="dots"):
+        return start_server(env)
+
+
+def _brew_service_started() -> bool:
+    """launchd restarts a `brew services` Ollama as soon as it is killed, without the setting, so it must be stopped through brew."""
+    if not shutil.which("brew"):
+        return False
+    out = subprocess.run(["brew", "services", "list"], capture_output=True, text=True).stdout
+    return any(line.split()[:2] == ["ollama", "started"] for line in out.splitlines())
+
+
+def _listener_pid(port: int) -> int | None:
+    pids = subprocess.run(["lsof", "-ti", f"tcp:{port}", "-sTCP:LISTEN"], capture_output=True, text=True).stdout.split()
+    return int(pids[0]) if pids else None
+
+
+def stop_server(console: Console) -> bool:
+    """Stop the Ollama on this machine, after a yes: through brew when brew runs it, else by ending the process that listens
+    on its port. Never touches a server on another host or a process that is not `ollama serve`."""
+    provider = local()
+    host = urlparse(provider.host)
+    if host.hostname not in ("localhost", "127.0.0.1", "::1"):
+        console.print(f"[yellow]Ollama runs on {host.hostname}, not on this machine; Clyde can't restart it.[/yellow]")
+        return False
+    pid = _listener_pid(host.port or 11434)
+    brewed = _brew_service_started()
+    command = subprocess.run(["ps", "-o", "command=", "-p", str(pid)], capture_output=True, text=True).stdout if pid else ""
+    if not brewed and "ollama" not in command:
+        console.print("[yellow]Clyde can't tell what runs this Ollama, so it won't stop it.[/yellow]")
+        return False
+    if not Confirm.ask("An Ollama is already running. Stop it and start it again with the setting? "
+                       "A loaded model unloads and a request in progress ends", default=False, console=console):
+        return False
+    if brewed:
+        subprocess.run(["brew", "services", "stop", "ollama"], capture_output=True)
+    else:
+        os.kill(pid, signal.SIGTERM)
+    deadline = time.monotonic() + _STARTUP_S
+    while provider.is_available() and time.monotonic() < deadline:
+        time.sleep(0.5)
+    return not provider.is_available()
+
+
+def apply_to_clyde_server(console: Console, env: dict[str, str]) -> bool:
+    """Keep env for every server Clyde starts, and start one now, after stopping a running Ollama the user agrees to stop."""
+    tune_profile.save_serve_env(env)
+    if local().is_available() and not stop_server(console):
+        console.print("The setting is saved. Stop Ollama yourself; Clyde then starts it with the setting whenever it needs one.")
+        return False
+    if not start_server(env):
+        console.print("[red]Ollama didn't come up with the setting.[/red] It is saved; start `ollama serve` again to retry.")
+        return False
+    return True
+
+
+def apply(console: Console, env: dict[str, str]) -> bool:
+    """Set env for the Ollama app with launchctl, then quit and reopen it. launchctl settings last until the next reboot."""
+    try:
+        for k, v in env.items():
+            subprocess.run(["launchctl", "setenv", k, v], check=True, timeout=10)
+        subprocess.run(["osascript", "-e", 'tell application "Ollama" to quit'], check=True, timeout=30)
+        time.sleep(2)
+        subprocess.run(["open", "-a", "Ollama"], check=True, timeout=10)
+    except (subprocess.SubprocessError, OSError) as e:
+        console.print(f"[red]Could not apply it: {e}[/red]")
+        return False
+    return True
+
+
 def apply_hint(env: dict[str, str], model: str, ctx: int, base_ctx: int) -> str:
     """How to make a setting permanent where this machine runs Ollama. Settings reach the server only through its own
     environment: launchd's reaches the Ollama app, never an `ollama serve` started from a shell (checked on macOS)."""
@@ -279,9 +384,7 @@ def apply_hint(env: dict[str, str], model: str, ctx: int, base_ctx: int) -> str:
     else:
         lines = ["sudo systemctl edit ollama, and under [Service] add: " + " ".join(f'Environment="{k}={v}"' for k, v in env.items()),
                  "then sudo systemctl restart ollama."]
-    if ctx != base_ctx:
-        lines.append(f"For the longer window, also set export CLYDE_MODEL_CONTEXT_{_ctx_env_key(model)}={ctx} in your shell profile.")
-    return "\n".join(lines)
+    return "\n".join(lines + ctx_hint(model, ctx, base_ctx))
 
 
 def unload_loaded(console: Console, provider: OllamaProvider) -> bool:
@@ -373,7 +476,16 @@ def run(console: Console, model: str | None = None, ctx: int | None = None, reas
     if chosen is rows[0]:
         console.print("[bold]Keep your current setup.[/bold] Nothing tested was better without costing memory, speed or quality.")
     else:
-        console.print(f"[bold]Recommended: {chosen.cand.label}.[/bold]\n{apply_hint(chosen.cand.env, name, chosen.cand.ctx, rows[0].cand.ctx)}")
+        console.print(f"[bold]Recommended: {chosen.cand.label}.[/bold]")
+        if can_apply() and Confirm.ask("Apply it now? This sets the Ollama app's environment and restarts it (a loaded model unloads)", default=True, console=console):
+            if apply(console, chosen.cand.env):
+                console.print("\n".join(["Applied. Ollama is restarting; the setting lasts until the next reboot, rerun `clyde tune` then.",
+                                          *ctx_hint(name, chosen.cand.ctx, rows[0].cand.ctx)]))
+        elif owns_server() and Confirm.ask("Apply it? Clyde keeps the setting and starts `ollama serve` with it whenever it needs one", default=True, console=console):
+            if apply_to_clyde_server(console, chosen.cand.env):
+                console.print("\n".join(["Applied. Ollama is running with it.", *ctx_hint(name, chosen.cand.ctx, rows[0].cand.ctx)]))
+        else:
+            console.print(apply_hint(chosen.cand.env, name, chosen.cand.ctx, rows[0].cand.ctx))
     tune_profile.save(profile, {"model": name, "ctx": chosen.cand.ctx, "env": chosen.cand.env})
     return 0
 

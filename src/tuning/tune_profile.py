@@ -83,6 +83,16 @@ def save(profile: Profile, result: dict | None = None) -> None:
     _write({"profile": {**asdict(profile), "uses": list(profile.uses)}, **({"result": result} if result else {})})
 
 
+def serve_env() -> dict[str, str]:
+    """The Ollama settings the user let Clyde apply to a server it starts."""
+    env = _read().get("serve_env")
+    return {str(k): str(v) for k, v in env.items()} if isinstance(env, dict) else {}
+
+
+def save_serve_env(env: dict[str, str]) -> None:
+    _write({"serve_env": env})
+
+
 def _numbers(answer: str, limit: int) -> list[int]:
     return sorted({int(t) for t in answer.replace(",", " ").split() if t.isdigit() and 1 <= int(t) <= limit})
 
