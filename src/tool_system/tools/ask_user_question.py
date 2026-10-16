@@ -19,30 +19,32 @@ class AskUserQuestionTool:
                 "properties": {
                     "questions": {
                         "type": "array",
+                        "description": "One to four questions to put to the user.",
                         "minItems": 1,
                         "maxItems": 4,
                         "items": {
                             "type": "object",
                             "additionalProperties": False,
                             "properties": {
-                                "question": {"type": "string"},
-                                "header": {"type": "string"},
+                                "question": {"type": "string", "description": "The full question, a sentence that ends in a question mark."},
+                                "header": {"type": "string", "description": "A tag of one to three words shown above the question. Not the question itself."},
                                 "options": {
                                     "type": "array",
+                                    "description": "Two to four choices to pick from.",
                                     "minItems": 2,
                                     "maxItems": 4,
                                     "items": {
                                         "type": "object",
                                         "additionalProperties": False,
                                         "properties": {
-                                            "label": {"type": "string"},
-                                            "description": {"type": "string"},
+                                            "label": {"type": "string", "description": "The choice's short name, one to five words."},
+                                            "description": {"type": "string", "description": "What picking this choice means."},
                                             "preview": {"type": "string"},
                                         },
                                         "required": ["label", "description"],
                                     },
                                 },
-                                "multiSelect": {"type": "boolean"},
+                                "multiSelect": {"type": "boolean", "description": "true to let the user pick more than one option."},
                             },
                             "required": ["question", "header", "options"],
                         },
