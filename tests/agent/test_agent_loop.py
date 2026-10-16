@@ -46,6 +46,25 @@ class TestAgentLoop(unittest.TestCase):
         sent = {t["name"].lower() if isinstance(t, dict) else t.name.lower() for t in provider.requests[0]["tools"]}
         self.assertEqual(sent, {"read", "grep", "glob", "toolsearch"})
 
+    def _system_prompt_sent(self, provider_name, model):
+        provider = FakeProvider(reply("done"), name=provider_name, models=(model,))
+        provider.context_window = lambda _model: 20000
+        conversation = Conversation()
+        conversation.add_user_message("review the login code")
+        run_agent_loop(conversation=conversation, provider=provider, model=model, tool_registry=self.registry,
+                       tool_context=self.context, verbose=False)
+        return provider.requests[0]["conversation"].system_prompt
+
+    def test_a_small_local_model_gets_the_names_only_index_and_a_larger_one_the_full_index(self):
+        small, larger, unknown = (self._system_prompt_sent("ollama", m) for m in ("qwen2.5-coder-3b", "qwen3-8b", "mystery-model"))
+        self.assertIn("Not loaded, to save tokens:", small)
+        self.assertNotIn("- Bash:", small)
+        self.assertIn("- Bash:", larger)
+        self.assertIn("- Bash:", unknown)   # an unknown size keeps the full index
+
+    def test_a_hosted_model_never_gets_the_names_only_index(self):
+        self.assertNotIn("Not loaded, to save tokens:", self._system_prompt_sent("openrouter", "tiny-1b"))
+
     def test_a_remote_model_still_gets_the_whole_core_set(self):
         provider = FakeProvider(reply("done"), name="openrouter")
         conversation = Conversation()

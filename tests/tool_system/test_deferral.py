@@ -186,6 +186,27 @@ class TestLocalToolRouting(unittest.TestCase):
         self.assertNotIn("- Read:", index)
 
 
+class TestNamesOnlyIndex(unittest.TestCase):
+    SPECS = [ToolSpec(n, f"{n} does things. More.", {}) for n in ("Read", "Edit", "Bash", "ToolSearch")]
+
+    def test_names_only_lists_the_hidden_tools_on_one_line_without_descriptions(self):
+        from src.tool_system.deferral import local_tools
+        index = index_prompt(self.SPECS, local_tools("explain this"), names_only=True)
+        self.assertIn("Edit, Bash", index)
+        self.assertNotIn("does things", index)
+        self.assertNotIn("- Edit:", index)
+
+    def test_the_default_index_keeps_its_descriptions(self):
+        from src.tool_system.deferral import local_tools
+        self.assertIn("- Edit: Edit does things", index_prompt(self.SPECS, local_tools("explain this")))
+
+    def test_nothing_hidden_means_no_index_either_way(self):
+        from src.tool_system.deferral import local_tools
+        everything_sent = local_tools("edit it and run it")
+        self.assertEqual(index_prompt(self.SPECS, everything_sent, names_only=True), "")
+        self.assertEqual(index_prompt(self.SPECS, everything_sent), "")
+
+
 class TestHiddenToolRouting(unittest.TestCase):
     """A small model never asks ToolSearch for a tool it was not given, so the prompt that names the job sends the tool."""
     CASES = (

@@ -138,6 +138,11 @@ class OllamaProvider:
                 self._show_cache[model] = {}
         return self._show_cache[model]
 
+    def parameter_billions(self, model: str) -> float | None:
+        """The model's size as Ollama reports it ("3.09B"), in billions, or None."""
+        from .model_size import parse_reported
+        return parse_reported((self._show(model).get("details") or {}).get("parameter_size"))
+
     def reads_images(self, model: str) -> bool | None:
         """Whether the model takes images ("vision" in its capabilities); None when Ollama doesn't say."""
         caps = self._show(model).get("capabilities")

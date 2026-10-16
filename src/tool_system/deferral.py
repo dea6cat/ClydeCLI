@@ -44,6 +44,12 @@ When you write or change code that uses a library, API or version you are not su
 3. If that does not settle it, look up the documentation for that version with WebSearch or WebFetch.
 Load a tool with ToolSearch first if it is listed under "More tools". Skip this for code that only uses the language itself.
 After checking, say what you checked and what you could not confirm."""
+# The descriptions in the index help a model that can read them and distract one that cannot. Qwen2.5-Coder 3B, handed the
+# Remember tool, called it 1 time in 6 with the full index (it answered "Remembered: ..." and saved nothing) and 6 in 6
+# without; across six routed tools its first-turn calls were 39/60 against 50/60. Qwen3 4B did well with the full index, and
+# capable hosted models found hidden tools 89% of the time with it against 55% without. Ollama reports the first as 3.4B and
+# the second as 4.0B, so the line sits between them. Two models measured, so move it only with more evidence.
+NAMES_ONLY_UP_TO_BILLIONS = 3.7
 _HINT_CHARS = 55
 _SENTENCE_END = re.compile(r"(?<!e\.g)(?<!i\.e)\.\s")   # not the dots inside "e.g." and "i.e."
 
@@ -71,11 +77,16 @@ def hint(spec: ToolSpec) -> str:
     return first[:_HINT_CHARS].rsplit(" ", 1)[0] + "…"   # at a word boundary
 
 
-def index_prompt(specs: Iterable[ToolSpec], only: frozenset[str] | None = None) -> str:
-    """The system-prompt section naming the tools that aren't sent; "" when everything is."""
-    rows = [f"- {s.name}: {hint(s)}" for s in specs if is_deferred(s.name, only)]
-    if not rows:
+def index_prompt(specs: Iterable[ToolSpec], only: frozenset[str] | None = None, names_only: bool = False) -> str:
+    """The system-prompt section naming the tools that aren't sent; "" when everything is. `names_only` drops the
+    descriptions (about 400 tokens fewer): see NAMES_ONLY_UP_TO_BILLIONS."""
+    deferred = [s for s in specs if is_deferred(s.name, only)]
+    if not deferred:
         return ""
+    if names_only:
+        return ("## More tools\nNot loaded, to save tokens: " + ", ".join(s.name for s in deferred)
+                + ". Call ToolSearch with `select:Name` (several: `select:A,B`) before using one.")
+    rows = [f"- {s.name}: {hint(s)}" for s in deferred]
     return ("## More tools\nThese exist, but their definitions aren't loaded, to save tokens. Before using one, call "
             "ToolSearch with `select:Name` (several: `select:A,B`) or keywords; it is ready on your next step.\n"
             + "\n".join(rows))
