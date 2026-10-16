@@ -182,7 +182,9 @@ Examples:
         if not license_gate.ensure_accepted(Console()):
             return license_gate.EXIT_DECLINED
 
-    if args.acp:
+    # An editor's terminal login runs the agent's own command with the auth method's args added (`clyde --acp login`):
+    # a subcommand wins, so that runs the login instead of starting the protocol server and waiting forever.
+    if args.acp and args.command is None:
         from src import acp
         return acp.main(model=args.model)
 

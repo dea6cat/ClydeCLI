@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- The editor's "Connect a provider" button now runs `clyde login`. Zed adds the login argument to the agent's own `--acp` command, and `--acp` used to win, so the terminal showed the protocol server's banner and Zed kept waiting on "Authenticating to Clyde…".
+
 ## [0.5.7] - 2026-10-15
 
 ### Added
