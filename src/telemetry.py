@@ -31,6 +31,13 @@ SIZES = {"<=2B", "2-4B", "4-9B", "9-30B", ">30B", "unknown"}
 KINDS = {"local", "hosted", "custom", "mixed", "none"}
 
 
+# What a Bonnie user did: one word per action, counted only when it succeeded. src/bonnie/server.py maps each route to one of these.
+BONNIE_FEATURES = {"prompt", "steer", "stop", "permission", "vote", "feedback", "theme", "theme_image", "theme_image_remove",
+                   "artifact_reveal", "session_new", "session_open", "session_delete", "session_restore", "session_pin", "mode", "model",
+                   "project", "dir_create", "attachment", "provider_connect", "provider_disconnect", "provider_custom",
+                   "automation_create", "automation_pause", "automation_resume", "automation_delete", "automation_run"}
+
+
 def _provider(value: Any) -> bool:
     from src.providers.keys import PROVIDER_KEY_ENV
     return value == "custom" or value in PROVIDER_KEY_ENV or value == "cardShuffle"
@@ -45,6 +52,7 @@ SCHEMA: dict[str, dict[str, Any]] = {
                                                      "http_5xx", "timeout", "connection", "ssl", "stalled", "other"}},
     "tune": {"outcome": {"kept", "applied", "declined", "failed"}, "memory_saved_pct": {"0", "1-5", "5-15", ">15"}},
     "bonnie_start": {},
+    "bonnie_use": {"feature": BONNIE_FEATURES},
 }
 _surface = "repl"
 
