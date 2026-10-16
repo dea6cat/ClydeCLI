@@ -509,9 +509,9 @@ uv pip install -r requirements.txt
 
 ### Configure
 
-> **Where to get an API key** for each provider, and a one-minute tutorial for adding it: [dea6cat.github.io/ClydeCLI/keys.html](https://dea6cat.github.io/ClydeCLI/keys.html).
+> **Where to get an API key** for each provider, and a one-minute tutorial for adding it: [dea6cat.github.io/ClydeCLI/keys.html](https://dea6cat.github.io/ClydeCLI/keys.html?ref=github-readme).
 >
-> **Every feature** with recordings, including **tuning a local model** (`clyde tune`: what it tries, the checks a setting must pass, real results): [dea6cat.github.io/ClydeCLI/features.html](https://dea6cat.github.io/ClydeCLI/features.html)
+> **Every feature** with recordings, including **tuning a local model** (`clyde tune`: what it tries, the checks a setting must pass, real results): [dea6cat.github.io/ClydeCLI/features.html](https://dea6cat.github.io/ClydeCLI/features.html?ref=github-readme)
 
 #### Option 1: Just export a key (no login needed)
 
@@ -1015,6 +1015,20 @@ A plugin is a folder that bundles extensions; Claude Code plugins mostly work as
   leaves the machine, and none is set by default
 - `tools/telemetry_receiver.py` is a reference receiver that re-checks every event against the schema; run it to try this
   out or to host your own
+
+#### This website
+
+- `site/analytics.js` counts visits without cookies, accounts or any stored identifier: which page was opened, which tab,
+  screenshot tab, copy button or link to another site was clicked, and where the visitor came from as a host name
+  (`github.com`), as the label a link carries in `?ref=` (the README's links carry `?ref=github-readme`), as `internal` for a move
+  between the site's own pages, or `direct`. Do Not Track and Global Privacy Control switch it off, and `privacy.html` has a switch
+  for one browser
+- It sends nothing until a counter is set: put its address in `ENDPOINT` at the top of `site/analytics.js`. The beacon is
+  GoatCounter's `GET /count` (`p`, `e`, `r`, `t`, `b`), so a GoatCounter site works
+  (`https://CODE.goatcounter.com/count`), and so does `python3 tools/telemetry_receiver.py 8787 events.jsonl site-counts.json`
+  behind https. The receiver counts per day, tells visitors apart with a salted hash that changes daily and is never saved, and
+  `python3 tools/telemetry_receiver.py report site-counts.json` prints the pages, clicks and where visitors came from
+- To tell the repository's own link apart too, set the repository's website to `https://dea6cat.github.io/ClydeCLI/?ref=github-about`
 
 ***
 

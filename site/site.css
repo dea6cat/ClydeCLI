@@ -118,6 +118,7 @@
   .shots { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 0; }
   .shots button { --c: 8px; font: 600 13px "JetBrains Mono", monospace; color: var(--text); cursor: pointer; border: 0; padding: 9px 18px; }
   .shots button[aria-pressed="true"] { --edge: var(--text); --fill: var(--text); color: var(--bg); }
+  #analytics-optout { --c: 8px; font: 600 13px "JetBrains Mono", monospace; color: var(--text); cursor: pointer; border: 0; padding: 9px 18px; margin: 0 8px 8px 0; display: block; }
   .spotcap { margin: 12px 0 0; max-width: none; }
   @media (hover: none) { .spot { cursor: default; } }
   h1 .bmark { display: inline-block; height: .82em; width: auto; margin-right: .22em; vertical-align: -.04em; }
