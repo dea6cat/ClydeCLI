@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import email.utils
 import http.client
+import codecs
 import json
 import threading
 import time as _time
@@ -191,11 +192,21 @@ def _http_error(e: urllib.error.HTTPError, provider: str) -> ProviderError:
                          retry_after=parse_retry_after(e.headers.get("Retry-After") if e.headers else None))
 
 
+def _replace_unencodable(error: UnicodeError) -> tuple[bytes, int]:
+    return "\ufffd".encode("utf-8"), error.end   # bytes: the UTF-8 encoder only takes an ASCII str as a replacement
+
+
+# A lone surrogate (half of an emoji cut in two, bytes decoded badly) cannot be UTF-8. json.dumps used to turn it into a
+# \ud83d escape that some APIs reject with a 400 (NVIDIA's did, checked live); and as it stays in the history, every later
+# request would fail too. It is sent as U+FFFD, the standard replacement character.
+codecs.register_error("clyde_replace", _replace_unencodable)
+
+
 def _request(url: str, payload: dict, headers: dict | None) -> urllib.request.Request:
     hdrs = {"Content-Type": "application/json", "User-Agent": _USER_AGENT}
     if headers:
         hdrs.update(headers)
-    return urllib.request.Request(url, data=json.dumps(payload).encode(), headers=hdrs, method="POST")
+    return urllib.request.Request(url, data=json.dumps(payload, ensure_ascii=False).encode("utf-8", "clyde_replace"), headers=hdrs, method="POST")
 
 
 # A remote stream that sends nothing for this long has stalled: give up instead of holding the turn
