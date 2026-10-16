@@ -96,5 +96,19 @@ class TestReplCronRun(unittest.TestCase):
         self.assertEqual(repl.tool_context.crons, {})
 
 
+class TestCronGuidanceForModels(unittest.TestCase):
+    """A small model guessed `10m` or put the interval in the wrong field when the schema said nothing about the format."""
+
+    def test_the_cron_field_names_the_five_fields_and_shows_the_every_ten_minutes_example(self):
+        text = CronCreateTool().spec().input_schema["properties"]["cron"]["description"]
+        self.assertIn("minute hour day-of-month month day-of-week", text)
+        self.assertIn("*/10 * * * *", text)
+
+    def test_a_wrong_field_count_comes_back_with_a_working_example(self):
+        with self.assertRaises(ToolInputError) as caught:
+            CronCreateTool().run({"cron": "*/10", "prompt": "x"}, ToolContext(workspace_root=Path(".")))
+        self.assertIn("*/10 * * * *", str(caught.exception))
+
+
 if __name__ == "__main__":
     unittest.main()
