@@ -62,6 +62,8 @@ class RunTests(unittest.TestCase):
                 patch.object(tune, "local", return_value=MagicMock(is_available=lambda: False)), \
                 patch.object(tune, "OllamaProvider", _Private), \
                 patch.object(tune, "_generate"), \
+                patch.object(tune, "can_apply", return_value=False), \
+                patch.object(tune, "owns_server", return_value=False), \
                 patch.object(tune, "measure", side_effect=list(perfs)), \
                 patch.object(tune, "grade", side_effect=list(qualities)):
             return tune.run(self.console, serve=_fake_serve, **kwargs)
@@ -73,6 +75,38 @@ class RunTests(unittest.TestCase):
         saved = json.loads((self.home / "tune.json").read_text())
         self.assertEqual(saved["result"]["env"]["OLLAMA_KV_CACHE_TYPE"], "q8_0")
         self.assertEqual(saved["result"]["model"], "m:1")
+
+    def test_a_yes_to_apply_hands_the_chosen_setting_to_the_server_the_run_can_configure(self):
+        perfs = [Result(4 * GB, 500, 40), Result(4 * GB, 500, 40), Result(int(3.4 * GB), 500, 40)]
+        with patch.object(tune.Confirm, "ask", return_value=True), patch.object(tune, "apply_to_clyde_server", return_value=True) as apply:
+            self._run_with_apply(perfs)
+        apply.assert_called_once()
+        self.assertEqual(apply.call_args.args[1]["OLLAMA_KV_CACHE_TYPE"], "q8_0")
+        self.assertIn("Applied", self.out.getvalue())
+
+    def test_a_no_to_apply_prints_how_to_do_it_by_hand(self):
+        perfs = [Result(4 * GB, 500, 40), Result(4 * GB, 500, 40), Result(int(3.4 * GB), 500, 40)]
+        with patch.object(tune.Confirm, "ask", return_value=False), patch.object(tune, "apply_to_clyde_server") as apply:
+            self._run_with_apply(perfs)
+        apply.assert_not_called()
+        self.assertIn("OLLAMA_KV_CACHE_TYPE", self.out.getvalue())
+
+    def _run_with_apply(self, perfs):
+        """_run, but on a machine where Clyde starts the server itself (a Mac with the ollama CLI and no app)."""
+        with patch.object(tune, "owns_server", return_value=True):
+            return self._run_keep_owner(perfs)
+
+    def _run_keep_owner(self, perfs):
+        with patch.object(tune.shutil, "which", return_value="/usr/bin/ollama"), \
+                patch.object(tune_profile, "clyde_home", return_value=self.home), \
+                patch.object(tune_profile, "load", return_value=CODING), \
+                patch.object(tune, "local", return_value=MagicMock(is_available=lambda: False)), \
+                patch.object(tune, "OllamaProvider", _Private), \
+                patch.object(tune, "_generate"), \
+                patch.object(tune, "can_apply", return_value=False), \
+                patch.object(tune, "measure", side_effect=list(perfs)), \
+                patch.object(tune, "grade", side_effect=[SAME] * len(perfs)):
+            return tune.run(self.console, serve=_fake_serve)
 
     def test_keeps_the_current_setup_when_nothing_is_a_real_gain(self):
         code = self._run([Result(4 * GB, 500, 40), Result(4 * GB, 500, 40), Result(int(3.95 * GB), 500, 40)])
