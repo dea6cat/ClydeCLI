@@ -188,6 +188,31 @@ class TestLocalToolRouting(unittest.TestCase):
         self.assertNotIn("things", index)   # names only: no descriptions for a small model
 
 
+class TestHiddenToolRouting(unittest.TestCase):
+    """A small model never asks ToolSearch for a tool it was not given, so the prompt that names the job sends the tool."""
+    CASES = (
+        ("Ask me which framework to use. Give me those two options to pick from.", "askuserquestion"),
+        ("Remember that I prefer tabs over spaces in this project.", "remember"),
+        ("Profile the data file sales.csv: columns and types.", "data"),
+        ("Show me the code map: which symbols call which.", "map"),
+        ("Remind me every 10 minutes to run the tests.", "croncreate"),
+        ("Make a todo list for this work.", "todowrite"),
+        ("Enter plan mode, I want a plan before any change.", "enterplanmode"),
+    )
+
+    def test_each_job_gets_its_tool(self):
+        from src.tool_system.deferral import local_tools
+        for prompt, tool in self.CASES:
+            with self.subTest(tool=tool):
+                self.assertIn(tool, local_tools(prompt))
+
+    def test_a_plain_prompt_gets_only_the_base_tools(self):
+        from src.tool_system.deferral import LOCAL_BASE, local_tools
+        for prompt in ("hi", "What is 2 plus 2?", "explain this function", "Read README.md and tell me its first heading."):
+            with self.subTest(prompt=prompt):
+                self.assertEqual(local_tools(prompt), LOCAL_BASE)
+
+
 class TestLoopHelpers(unittest.TestCase):
     def test_only_local_providers_get_the_small_tool_set(self):
         from types import SimpleNamespace as NS

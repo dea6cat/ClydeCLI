@@ -28,6 +28,14 @@ _INTENTS = (
     (re.compile(r"\b(edit|change|fix|write|create|add|implement|refactor|rename|update|delete|remove|rewrite|replace|patch|migrate)\b", re.I), ("edit", "write")),
     (re.compile(r"\b(run|runs|running|test|tests|build|install|execute|compile|git|commit|lint|format|script|command|terminal|shell|npm|pip|uv|flutter|dart)\b", re.I), ("bash",)),
     (re.compile(r"https?://|\b(web|website|online|internet|latest|documentation|docs)\b", re.I), ("webfetch", "websearch")),
+    # The tools a small model never asks ToolSearch for (0 of about 70 trials on two models): when the prompt names the job, send the tool.
+    (re.compile(r"\b(remember|memorize|keep in mind|from now on|note that)\b", re.I), ("remember",)),
+    (re.compile(r"\b(todos?|to-do|task list|checklist)\b", re.I), ("todowrite",)),
+    (re.compile(r"\bplan mode\b|\b(make|give|write|draft) (me )?a plan\b|\bplan before\b", re.I), ("enterplanmode", "exitplanmode")),
+    (re.compile(r"\b(remind|reminders?|schedule|scheduled|cron|recurring|every \d+ (seconds?|minutes?|hours?|days?))\b", re.I), ("croncreate", "cronlist", "crondelete")),
+    (re.compile(r"\b(ask me|let me (choose|pick)|options to pick|multiple.?choice)\b", re.I), ("askuserquestion",)),
+    (re.compile(r"\b(csv|tsv|parquet|xlsx|dataset|data file)\b", re.I), ("data",)),
+    (re.compile(r"\b(code ?map|call graph|callers?|callees?|who calls)\b", re.I), ("map",)),
 )
 VERIFY_PROMPT = """## Check code before you present it
 When you write or change code that uses a library, API or version you are not sure of, check it first:
