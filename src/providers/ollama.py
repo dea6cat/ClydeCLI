@@ -31,6 +31,10 @@ CTX_FLOOR = 2048         # never pin below this
 CTX_ROUND = 1024         # round the computed window down to a clean multiple
 KV_RESERVE_BYTES = 3 * 1024 ** 3   # RAM kept free for OS + app + compute buffers
 KV_USE_FRACTION = 0.75             # of the RAM left after weights+reserve, give this to KV
+# Weights and KV cache together never take more than this share of RAM. Ollama allocates the whole cache for num_ctx up
+# front and Metal wires it: a 68,608-token window (9.4 GB of cache plus 2.3 GB of weights) on an 18 GB Mac starved the
+# system until the watchdog panicked it. The reserve above ignores what other apps already hold; this cap does not need to know.
+MODEL_RAM_FRACTION = 0.35
 
 _THINK_STRING_MODELS = ("gpt-oss",)   # accept think:"low|medium|high"; other thinking models are boolean
 
@@ -158,7 +162,7 @@ class OllamaProvider:
         weights = self._weight_bytes(model)
         if not (trained and per_tok and ram and weights):
             return min(trained, CTX_FALLBACK) if trained else CTX_FALLBACK
-        avail = max(0.0, ram - weights - KV_RESERVE_BYTES) * KV_USE_FRACTION
+        avail = min(max(0.0, ram - weights - KV_RESERVE_BYTES) * KV_USE_FRACTION, max(0.0, ram * MODEL_RAM_FRACTION - weights))
         eff = min(trained, int(avail / per_tok))
         eff = max(CTX_FLOOR, (eff // CTX_ROUND) * CTX_ROUND)
         return min(eff, trained)
