@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy · ClydeCLI</title>
+<meta name="description" content="What this website counts, what Clyde and Bonnie can report when you opt in, and how to switch both off.">
+<meta name="theme-color" content="#e8e5dd" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f1a14" media="(prefers-color-scheme: dark)">
+<link rel="icon" type="image/svg+xml" href="brand/clyde-mark.svg">
+<script>document.documentElement.className = "js";</script>
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<div class="glow" aria-hidden="true"></div>
+<div class="frame">
+<header>
+  <b><img src="brand/clyde-mark.svg" alt="" width="24" height="24">ClydeCLI</b>
+  <nav><a href="./">Home</a><a href="features.html">Features</a><a href="bonnie.html">Bonnie</a><a href="keys.html">API keys</a><a href="https://github.com/dea6cat/ClydeCLI">Source</a><a href="https://github.com/dea6cat/ClydeCLI/blob/main/CHANGELOG.md">Changelog</a></nav>
+</header>
+<main>
+  <h1 class="enter" style="--i:0">Privacy</h1>
+  <p class="enter lead" style="--i:1">This site counts visits, and Clyde can count how it is used if you ask it to. Both are counts only: no cookies, no accounts, nothing that identifies you.</p>
+  <h2>This website</h2>
+  <dl class="grid">
+    <div class="cut"><dt>What it counts</dt><dd>Which page was opened, which tab, screenshot tab, copy button or link to another site was clicked, and the site you came from, as a host name such as <code>github.com</code> (or a label like <code>github-readme</code> that a link carries in <code>?ref=</code>).</dd></div>
+    <div class="cut"><dt>What it does not</dt><dd>No cookie, no stored identifier, no fingerprint, no search or page text, and nothing from the address after the page name. The counter sees your IP address, as any web server does; the reference counter in <code>tools/telemetry_receiver.py</code> uses it only to tell visitors apart within one day, with a hash that changes daily and is never saved.</dd></div>
+    <div class="cut"><dt>Do Not Track</dt><dd>If your browser sends Do Not Track or Global Privacy Control, nothing is sent. Automated browsers are flagged so they are not counted.</dd></div>
+    <div class="cut"><dt>Switch it off</dt><dd><button type="button" id="analytics-optout" class="cut">Turn counting off in this browser</button> It sets one flag in this browser's local storage; nothing is sent about it.</dd></div>
+  </dl>
+  <p class="dim">The script is <a href="analytics.js">analytics.js</a>, about a hundred lines. It sends nothing until a counter has been set up for the site, and the counter is run by the project: a counting service, or the receiver above. A service's own privacy policy applies to what it receives.</p>
+  <h2>Clyde and Bonnie</h2>
+  <dl class="grid">
+    <div class="cut"><dt>Off by default</dt><dd>Nothing is recorded until you run <code>clyde telemetry on</code>. <code>CLYDE_TELEMETRY=off</code> and <code>DO_NOT_TRACK=1</code> always win.</dd></div>
+    <div class="cut"><dt>Counts only</dt><dd>How many tool calls failed, which size of model, which kind of provider error, how a tuning run ended. Never prompts, files, paths, model names or error text; every field is a number or a word from a fixed list.</dd></div>
+    <div class="cut"><dt>See it first</dt><dd><code>clyde telemetry show</code> prints exactly what is queued and everything that can be recorded. <code>clyde telemetry off</code> stops it and deletes the queue.</dd></div>
+    <div class="cut"><dt>Nowhere by default</dt><dd>Events leave your machine only to an https address that has been set, and none is set by default.</dd></div>
+  </dl>
+</main>
+<footer><a href="https://github.com/dea6cat/ClydeCLI/blob/main/LICENSE">PolyForm Noncommercial 1.0.0</a> · <a href="https://github.com/dea6cat/ClydeCLI">github.com/dea6cat/ClydeCLI</a> · <a href="privacy.html">Privacy</a></footer>
+</div>
+<script src="site.js" defer></script>
+<script src="analytics.js" defer></script>
+</body>
+</html>
