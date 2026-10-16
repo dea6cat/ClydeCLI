@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Over `--acp`, editors also get the `/settings` toggles (auto-save sessions, trace requests, terse replies, max history, context window, update channel) as options on the thread, and a change is saved to `~/.clyde/config.json` like `/settings` does.
 - `clyde tune` can apply the setting it recommends. With the Ollama app on a Mac it sets the variables and restarts the app. With only the `ollama` command, it keeps the setting in `~/.clyde/tune.json` and starts `ollama serve` with it whenever Clyde needs a server; if an Ollama is already running it asks before stopping it (through `brew services` when Homebrew runs it) and never touches a server on another machine. Elsewhere it prints the steps as before.
 - A small local model is sent the tool a request names on its first turn, so it does not have to ask for it: `Remember` for "remember that…", `TodoWrite` for a to-do list, plan mode, `CronCreate` for reminders and schedules, `AskUserQuestion` for "ask me" options, `Data` for CSV and similar files, `Map` for the code map. On Qwen2.5-Coder 3B it picked the right tool in 30 of 35 trials, up from 1 of 35 when it had to find the tool itself.
 
