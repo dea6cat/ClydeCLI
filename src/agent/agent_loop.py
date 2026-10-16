@@ -18,6 +18,7 @@ from ..tool_system.plan_file import PLAN_SHAPE, plan_prompt, read_plan
 from ..context_system.microcompact import trim_old_tool_results
 from ..tool_system.deferral import VERIFY_PROMPT, advertised, index_prompt, is_deferred, local_tools
 from .cloud_review import review_reply
+from .repeat_guard import RepeatedCall, RepeatGuard
 from .conversation import Conversation
 from ..context_system import build_context_prompt, instruction_filter
 from ..output_styles import resolve_output_style
@@ -324,6 +325,7 @@ def run_agent_loop(
     text_handler = on_text_chunk if (stream and on_text_chunk is not None) else _discard
 
     last_user_visible_message: str | None = None
+    repeat_guard = RepeatGuard()
     total_usage: dict[str, int] = {"input_tokens": 0, "output_tokens": 0}
     turn_count = 0
 
@@ -382,6 +384,8 @@ def run_agent_loop(
                     ToolEvent(kind="tool_use", tool_name=tool_name, tool_input=tool_input, tool_use_id=tool_id),
                 )
                 from ..tool_system.protocol import ToolCall
+                if (refusal := repeat_guard.refusal(tool_name, tool_input)) is not None:
+                    raise RepeatedCall(refusal)
                 edit_check = edit_check_for(tool_name, tool_input, tool_context.workspace_root)
                 result = tool_registry.dispatch(ToolCall(name=tool_name, input=tool_input, tool_use_id=tool_id),
                                                 tool_context)
@@ -415,8 +419,11 @@ def run_agent_loop(
                               tool_use_id=tool_id, is_error=result.is_error),
                 )
                 conversation.add_tool_result_message(tool_id, result_output, is_error=result.is_error)
+                repeat_guard.record(tool_name, tool_input, result_output)
             except Exception as e:
                 error_str = f"Error: {e}"
+                if not isinstance(e, RepeatedCall):
+                    repeat_guard.record(tool_name, tool_input, error_str)
                 _trace_tool(tool_name, tool_input, started, True, error_str)
                 if verbose:
                     print(f"[Tool Error] {error_str}")
@@ -426,6 +433,9 @@ def run_agent_loop(
                               tool_use_id=tool_id, is_error=True, error=error_str),
                 )
                 conversation.add_tool_result_message(tool_id, error_str, is_error=True)
+
+        if repeat_guard.stuck:
+            return AgentLoopResult(response_text=repeat_guard.stop_reply(), usage=_usage_or_none(), num_turns=turn_count)
 
     return AgentLoopResult(
         response_text=MAX_TURNS_REPLY,
