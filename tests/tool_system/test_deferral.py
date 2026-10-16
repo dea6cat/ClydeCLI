@@ -182,8 +182,10 @@ class TestLocalToolRouting(unittest.TestCase):
         self.assertEqual([s.name for s in advertised(specs, set(), only)], ["Read", "ToolSearch"])
         self.assertEqual([s.name for s in advertised(specs, {"edit"}, only)], ["Read", "Edit", "ToolSearch"])
         index = index_prompt(specs, only)
-        self.assertIn("- Edit:", index)
-        self.assertNotIn("- Read:", index)
+        self.assertIn("Edit", index)
+        self.assertIn("Bash", index)
+        self.assertNotIn("Read", index.split("save tokens:")[1])
+        self.assertNotIn("things", index)   # names only: no descriptions for a small model
 
 
 class TestLoopHelpers(unittest.TestCase):
