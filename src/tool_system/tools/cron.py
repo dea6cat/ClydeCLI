@@ -37,7 +37,7 @@ def parse_cron(expr: str) -> tuple[list[set[int]], bool]:
     day-of-week are both restricted (cron then matches either, not both)."""
     fields = expr.split()
     if len(fields) != 5:
-        raise ValueError("cron must have 5 fields: minute hour day-of-month month day-of-week")
+        raise ValueError("cron must have 5 fields: minute hour day-of-month month day-of-week (every 10 minutes is `*/10 * * * *`)")
     sets = [_parse_field(spec, lo, hi) for spec, (lo, hi) in zip(fields, _FIELD_BOUNDS)]
     if 7 in sets[4]:
         sets[4].add(0)
@@ -75,8 +75,10 @@ class CronCreateTool:
                 "type": "object",
                 "additionalProperties": False,
                 "properties": {
-                    "cron": {"type": "string"},
-                    "prompt": {"type": "string"},
+                    "cron": {"type": "string", "description": (
+                        "Five fields in local time: minute hour day-of-month month day-of-week. Every 10 minutes is `*/10 * * * *`, "
+                        "every hour on the hour `0 * * * *`, weekdays at 9:30 `30 9 * * 1-5`. Intervals such as `10m` are not cron.")},
+                    "prompt": {"type": "string", "description": "What to run each time the schedule fires."},
                     "recurring": {"type": "boolean"},
                     "durable": {"type": "boolean"},
                 },
