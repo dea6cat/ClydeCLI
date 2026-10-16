@@ -1006,7 +1006,8 @@ A plugin is a folder that bundles extensions; Claude Code plugins mostly work as
     a size bucket for the model
   - `provider_error`: a built-in provider's name (else "custom") and the kind of failure (HTTP 429, timeout, SSL…)
   - `tune`: how `clyde tune` ended and a bucket for the memory it saved
-  - `bonnie_start`
+  - `bonnie_start`, and `bonnie_use` for each Bonnie action that succeeded: one word for the feature (`prompt`, `mode`,
+    `session_new`, `automation_run`, `provider_connect`…), never what was said
   - every event also carries Clyde's version, a random install id, the OS, CPU, Python version, a RAM bucket and the date
 - Events wait in `~/.clyde/telemetry/queue.jsonl`; `clyde telemetry show` prints exactly that and the schema, and
   `clyde telemetry off` stops it and deletes the queue. `clyde telemetry reset-id` gives a new install id
