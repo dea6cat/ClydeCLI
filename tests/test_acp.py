@@ -139,6 +139,14 @@ class TestAcp(unittest.TestCase):
         self.call(5, "session/set_config_option", {"sessionId": sid, "configId": "setting_context_window_local_models", "value": "None"})
         self.assertIsNone(next(s for s in settings() if s.label.startswith("Context window")).value())
 
+    def test_none_is_refused_for_a_setting_that_has_no_default_to_fall_back_to(self):
+        from src.ui.settings_screen import settings
+        sid = self.call(2, "session/new", {"cwd": str(self.ws), "mcpServers": []})["result"]["sessionId"]
+        before = next(s for s in settings() if s.label == "Terse replies").value()
+        error = self.call(3, "session/set_config_option", {"sessionId": sid, "configId": "setting_terse_replies", "value": "None"})["error"]
+        self.assertEqual(error["code"], -32603)
+        self.assertEqual(next(s for s in settings() if s.label == "Terse replies").value(), before)
+
     def test_a_setting_that_does_not_exist_or_a_value_it_cannot_take_is_refused(self):
         sid = self.call(2, "session/new", {"cwd": str(self.ws), "mcpServers": []})["result"]["sessionId"]
         for config_id, value in (("setting_nope", "1"), ("setting_max_history", "7")):

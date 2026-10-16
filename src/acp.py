@@ -180,8 +180,9 @@ class Server:
         setting = next((s for s in settings() if _setting_id(s) == config_id), None)
         if setting is None:
             raise ValueError(f"unknown option: {config_id}")
-        choice = next((c for c in setting.choices if str(c) == value), None)
-        if choice is None and value != "None":
+        missing = object()   # None is a real choice for some settings (the context window's default), so it can't mean "not found"
+        choice = next((c for c in setting.choices if str(c) == value), missing)
+        if choice is missing:
             raise ValueError(f"{setting.label} can't be {value}")
         setting.write(choice)
         return {"configOptions": _config_options(repl)}
