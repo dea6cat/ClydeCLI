@@ -1002,8 +1002,8 @@ A plugin is a folder that bundles extensions; Claude Code plugins mostly work as
 - What it can record is fixed in `SCHEMA` in `src/telemetry.py` and checked on every event: counts, flags and words from
   fixed sets, so a prompt, a path, a model's name or an error message cannot be sent even by mistake:
   - `run` (after each agent run): the surface (terminal, `-p`, Bonnie, editor), how it ended, turns, tool calls, tool errors,
-    repeated calls refused, a bucket for the first request's size, which tool list the model got, the kind of provider and
-    a size bucket for the model
+    repeated calls refused, a bucket for the first request's size, which tool list the model got, the kind of provider, which
+    built-in provider it was (a provider you added yourself is just "custom") and a size bucket for the model
   - `provider_error`: a built-in provider's name (else "custom") and the kind of failure (HTTP 429, timeout, SSL…)
   - `tune`: how `clyde tune` ended and a bucket for the memory it saved
   - `bonnie_start`, and `bonnie_use` for each Bonnie action that succeeded: one word for the feature (`prompt`, `mode`,

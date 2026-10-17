@@ -103,6 +103,16 @@ class TestSchema(_Home):
             self.assertNotIn("acme-private-llm", telemetry.schema_json()["provider_error"]["provider"])
         self.assertEqual([e["provider"] for e in telemetry.queued()], ["custom"])
 
+    def test_a_run_names_a_built_in_provider_and_a_custom_one_is_just_custom(self):
+        class Named:
+            def __init__(self, name):
+                self.name = name
+        self.assertEqual([telemetry.provider_word(Named(n)) for n in ("openai", "cardShuffle", "acme-private-llm", "")],
+                         ["openai", "cardShuffle", "custom", "custom"])
+        telemetry.turn_on()
+        self.assertTrue(telemetry.record("run", **{**RUN, "provider": "openai"}))
+        self.assertFalse(telemetry.record("run", **{**RUN, "provider": "acme-private-llm"}))
+
     def test_error_kinds(self):
         for error, kind in ((ProviderError("a", "x", status=503), "http_5xx"), (ProviderError("a", "no response for 180 s"), "stalled"),
                             (ProviderError("a", "connection failed: [SSL: CERTIFICATE_VERIFY_FAILED]"), "ssl"), (ProviderError("a", "boom"), "other")):
@@ -210,8 +220,8 @@ class TestAgentLoopRecordsARun(_Home):
         run_agent_loop(conversation=conversation, provider=provider, model="qwen-3b", tool_registry=build_default_registry(),
                        tool_context=ToolContext(workspace_root=Path(self.tmp.name)), verbose=False)
         run = telemetry.queued()[0]
-        self.assertEqual((run["outcome"], run["tool_calls"], run["tool_errors"], run["first_input_tokens"], run["provider_kind"], run["index"]),
-                         ("done", 1, 1, "1-2k", "local", "names"))
+        self.assertEqual((run["outcome"], run["tool_calls"], run["tool_errors"], run["first_input_tokens"], run["provider_kind"], run["index"], run["provider"]),
+                         ("done", 1, 1, "1-2k", "local", "names", "ollama"))
         self.assertNotIn("qwen", json.dumps(run))   # the model's name never appears
 
     def test_nothing_is_queued_when_it_is_off(self):

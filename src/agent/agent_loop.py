@@ -336,7 +336,8 @@ def run_agent_loop(
         if not telemetry.enabled():
             return
         kind, model_class = telemetry.describe(provider, model)
-        telemetry.record("run", surface=telemetry.surface(), outcome=outcome, turns=turns, tool_calls=run_stats["tool_calls"],
+        telemetry.record("run", surface=telemetry.surface(), outcome=outcome, provider=telemetry.provider_word(provider), turns=turns,
+                         tool_calls=run_stats["tool_calls"],
                          tool_errors=run_stats["tool_errors"], repeats_refused=run_stats["repeats_refused"],
                          first_input_tokens=telemetry.token_bucket(run_stats["first_input_tokens"]),
                          index="none" if not index else "names" if names_only else "full", provider_kind=kind, model_size=model_class)
