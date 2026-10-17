@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `CLYDE_SKILL_SCAN=closed` holds back any skill, plugin, agent or MCP server whose SkillSpector scan failed, instead of loading it. The default is unchanged (a failed scan loads, so a broken scanner never locks anyone out), but it is no longer silent: each failure now says so once on stderr with the reason ("loaded WITHOUT a scan") and is recorded as a `scan_failed` trace event.
+
+### Fixed
+
+- A failed scan of an MCP server's tool list was cached as a verdict, so one scanner hiccup kept the result until the tool list changed. It is now not kept (as for skills), so the next connect scans again.
+
 ## [0.5.9] - 2026-10-16
 
 ### Changed

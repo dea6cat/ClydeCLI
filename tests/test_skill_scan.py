@@ -204,5 +204,72 @@ class TestReport(unittest.TestCase):
                          ["partial scan: A security-relevant expression exceeded a bounded static parser's span limit."])
 
 
+class TestScanFailures(unittest.TestCase):
+    """A scan that fails is announced and traced; CLYDE_SKILL_SCAN=closed holds the item back instead of loading it."""
+
+    def setUp(self):
+        self.home = Path(tempfile.mkdtemp())
+        self.failing = lambda path, *, recursive=False, env=None: [Verdict(Path(path).name, ERROR, findings=["scan failed: TimeoutExpired"])]
+        for p in (patch.object(Path, "home", return_value=self.home), patch.object(skill_scan, "scan", self.failing),
+                  patch.object(skill_scan, "_announced", set())):
+            p.start()
+            self.addCleanup(p.stop)
+
+    def _check(self, mode: str, name: str = "tidy"):
+        import contextlib
+        import io
+        folder = self.home / name
+        if not folder.exists():
+            _skill(self.home, name, "sort imports")
+        err = io.StringIO()
+        with patch.dict(os.environ, {"CLYDE_SKILL_SCAN": mode}), patch("src.agent.trace.record") as record, contextlib.redirect_stderr(err):
+            verdict = skill_scan.check("skill", name, folder)
+            again = skill_scan.check("skill", name, folder)
+            blocked = (verdict.blocked, again.blocked)   # read while the mode is set: `blocked` looks at the environment when asked
+        return verdict, blocked, err.getvalue(), record
+
+    def test_by_default_it_loads_but_says_so_once_and_traces_it(self):
+        verdict, blocked, said, record = self._check("on")
+        self.assertEqual((verdict.recommendation, *blocked), (ERROR, False, False))
+        self.assertEqual(said.count("could not scan skill tidy"), 1)   # once, though it was checked twice
+        self.assertIn("WITHOUT a scan", said)
+        self.assertIn("TimeoutExpired", said)
+        record.assert_called_once_with("scan_failed", kind="skill", name="tidy", reason="scan failed: TimeoutExpired", closed=False)
+
+    def test_closed_holds_the_item_back_and_says_why(self):
+        verdict, blocked, said, record = self._check("closed")
+        self.assertEqual((verdict.recommendation, *blocked), (ERROR, True, True))
+        self.assertIn("held back", said)
+        self.assertIn("CLYDE_SKILL_SCAN", said)
+        self.assertTrue(record.call_args.kwargs["closed"])
+
+    def test_closed_only_changes_what_happens_to_a_failed_scan(self):
+        with patch.dict(os.environ, {"CLYDE_SKILL_SCAN": "closed"}):
+            self.assertTrue(skill_scan.enabled() and skill_scan.closed())
+            self.assertEqual([Verdict("x", r).blocked for r in (SAFE, CAUTION, BLOCK, ERROR)], [False, False, True, True])
+            self.assertFalse(Verdict("x", BLOCK, approved=True).blocked)   # an allowed item stays allowed
+        with patch.dict(os.environ, {"CLYDE_SKILL_SCAN": "on"}):
+            self.assertEqual([Verdict("x", r).blocked for r in (SAFE, CAUTION, BLOCK, ERROR)], [False, False, True, False])
+
+    def test_off_scans_nothing_and_says_nothing(self):
+        verdict, blocked, said, record = self._check("off")
+        self.assertEqual((verdict.recommendation, *blocked, said), (SAFE, False, False, ""))
+        record.assert_not_called()
+
+    def test_a_failed_mcp_scan_is_announced_but_not_kept_so_the_next_connect_retries(self):
+        import contextlib
+        import io
+        tools = [{"name": "t", "description": "d", "inputSchema": {"type": "object", "properties": {}}}]
+        err = io.StringIO()
+        with patch.dict(os.environ, {"CLYDE_SKILL_SCAN": "closed"}), patch("src.agent.trace.record"), contextlib.redirect_stderr(err):
+            failed = skill_scan.check_mcp("srv", tools)
+            failed_blocked = failed.blocked
+        self.assertEqual((failed.recommendation, failed_blocked), (ERROR, True))
+        self.assertIn("could not scan mcp srv", err.getvalue())
+        self.assertNotIn("mcp:srv", skill_scan.cached_verdicts())     # no verdict kept for a scan that proved nothing
+        with patch.dict(os.environ, {"CLYDE_SKILL_SCAN": "closed"}), patch.object(skill_scan, "scan", _Scanner()):
+            self.assertEqual(skill_scan.check_mcp("srv", tools).recommendation, SAFE)   # the scanner recovered, so the server is let in
+
+
 if __name__ == "__main__":
     unittest.main()

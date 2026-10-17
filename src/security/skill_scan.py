@@ -9,8 +9,10 @@ flagged, and /skills scan. It can take minutes, so it never runs at startup.
 
 Verdicts are cached by content hash in ~/.clyde/skill_scans.json, so only new or changed items are
 scanned. DO_NOT_INSTALL keeps an item away from the model until the user approves that exact
-content (/skills allow); CAUTION loads with a warning. A scanner that fails warns and loads: a
-broken scanner must not lock the user out of their own tools.
+content (/skills allow); CAUTION loads with a warning. A scanner that fails warns loudly (once per item, on
+stderr and as a `scan_failed` trace event) and loads: a broken scanner must not lock the user out of their
+own tools. CLYDE_SKILL_SCAN=closed turns that around for people who would rather have nothing than something
+unscanned: an item whose scan failed is held back (CLYDE_SKILL_SCAN=off loads everything unscanned).
 
 An MCP server's code isn't local, so its tool list is scanned instead: each tool becomes a SKILL.md
 whose description and parameters SkillSpector's tool-poisoning checks read. The server process has
@@ -52,11 +54,18 @@ class Verdict:
 
     @property
     def blocked(self) -> bool:
-        return self.recommendation == BLOCK and not self.approved
+        """Kept from the model: a DO_NOT_INSTALL verdict nobody allowed, or, with CLYDE_SKILL_SCAN=closed, a scan that failed."""
+        return not self.approved and (self.recommendation == BLOCK or (self.recommendation == ERROR and closed()))
 
 
 def enabled() -> bool:
     return os.environ.get("CLYDE_SKILL_SCAN", "").lower() not in ("off", "0", "false")
+
+
+def closed() -> bool:
+    """CLYDE_SKILL_SCAN=closed: an item whose scan failed is held back instead of loaded. The default is open (warn and load), so a
+    broken scanner never locks anyone out of their own tools."""
+    return os.environ.get("CLYDE_SKILL_SCAN", "").lower() == "closed"
 
 
 def cache_path() -> Path:
@@ -259,7 +268,30 @@ def _scan_chunked(name: str, path: Path, env: dict[str, str] | None) -> Verdict:
     return _worst(name, parts)
 
 
+_announced: set[str] = set()
+
+
+def _announce_failure(kind: str, name: str, verdict: Verdict) -> None:
+    """A scan that failed says so, once per item per process: on stderr (loud, with the reason), and in the trace as `scan_failed`.
+    Without this an item whose scan failed loaded unscanned and nobody was told."""
+    if verdict.recommendation != ERROR or f"{kind}:{name}" in _announced:
+        return
+    _announced.add(f"{kind}:{name}")
+    reason = "; ".join(verdict.findings)[:160] or "no reason given"
+    from src.agent import trace
+    trace.record("scan_failed", kind=kind, name=name, reason=reason, closed=closed())
+    outcome = ("held back, because CLYDE_SKILL_SCAN=closed (set it to off to load it anyway)" if closed()
+               else "loaded WITHOUT a scan (CLYDE_SKILL_SCAN=closed holds such items back)")
+    print(f"\x1b[33m⚠ SkillSpector could not scan {kind} {name}: {reason}. It is {outcome}.\x1b[0m", file=sys.stderr, flush=True)
+
+
 def _check(kind: str, name: str, path: Path, env: dict[str, str] | None, rescan: bool) -> Verdict:
+    verdict = _check_cached_or_scan(kind, name, path, env, rescan)
+    _announce_failure(kind, name, verdict)
+    return verdict
+
+
+def _check_cached_or_scan(kind: str, name: str, path: Path, env: dict[str, str] | None, rescan: bool) -> Verdict:
     if not enabled():
         return Verdict(name, SAFE)
     where = str(path) if kind == "skill" else ""
@@ -346,5 +378,7 @@ def check_mcp(server: str, tools: list[dict[str, Any]], *, env: dict[str, str] |
     worst = max(verdicts, key=lambda v: (rank.get(v.recommendation, 1), v.score))
     verdict = Verdict(server, worst.recommendation, worst.score, worst.severity,
                       [f"{v.name}: {f}" for v in verdicts for f in v.findings], any(v.llm for v in verdicts))
-    _store(key, {"hash": content, "verdict": asdict(verdict)})
+    if verdict.recommendation != ERROR:   # a failed scan says nothing about the content, so keep no verdict: the next connect tries again
+        _store(key, {"hash": content, "verdict": asdict(verdict)})
+    _announce_failure("mcp", server, verdict)
     return verdict
