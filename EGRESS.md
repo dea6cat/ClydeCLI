@@ -34,7 +34,7 @@ any web request; the Worker never reads it. See [the privacy page](https://dea6c
 
 | Tool | Goes to | Sent | Asks first? | Turn it off |
 |---|---|---|---|---|
-| WebSearch | `html.duckduckgo.com` | the search query the model wrote | **No.** It runs without a prompt, and the query is whatever the model chose | add `"WebSearch"` to `permissions.deny` in `~/.clyde/settings.json` |
+| WebSearch | `html.duckduckgo.com` | the search query the model wrote | Yes, before every search, showing the whole query; "don't ask again" saves a `WebSearch` allow rule. (Before 0.5.10 it did not ask.) In `clyde -p`, which cannot ask, it is denied unless that rule exists or you pass `--mode all_in` | answer no, or add `"WebSearch"` to `permissions.deny` in `~/.clyde/settings.json` |
 | WebFetch | the URL the model chose | the request for that URL (a key can ride in a query string, so the whole URL is shown) | Yes, before every URL; a `WebFetch(domain:...)` rule skips the question for that domain | answer no, or deny it the same way |
 | MCP servers you configured | the server's own address (remote ones) | the model's tool calls and their results; sign-in goes to that server's auth service | you chose to add the server | remove it from your MCP settings. A local (stdio) server is just a process on your machine, and what it does on the network is its own |
 | Bash and hooks | wherever the command or script goes | whatever it sends | Bash asks for any command that is not read-only | decline the command |

@@ -14,6 +14,7 @@ from src.tool_system.protocol import ToolCall
 from src.tool_system.registry import ToolRegistry
 from src.tool_system.tools.bash import BashTool
 from src.tool_system.tools.web_fetch import WebFetchTool
+from src.tool_system.tools.web_search import WebSearchTool
 from src.tool_system.tools.write import FileWriteTool
 
 
@@ -92,7 +93,7 @@ class TestPathAndDomainRules(_Case):
 class TestDispatchWithRules(_Case):
     def setUp(self) -> None:
         super().setUp()
-        self.registry = ToolRegistry([BashTool(), FileWriteTool(), WebFetchTool()])
+        self.registry = ToolRegistry([BashTool(), FileWriteTool(), WebFetchTool(), WebSearchTool()])
 
     def test_allow_rule_skips_prompt(self) -> None:
         self.rules(allow=["Bash(touch:*)"])
@@ -126,6 +127,49 @@ class TestDispatchWithRules(_Case):
         result = self.registry.dispatch(ToolCall(name="WebFetch", input={"url": "https://example.com/"}), self.ctx)
         self.assertTrue(result.is_error)
         self.assertEqual(self.asked[0][2], "WebFetch(domain:example.com)")
+
+    def _search(self, query: str = "why does my build fail with ERR_SECRET_TOKEN=abc123"):
+        from src.tool_system.protocol import ToolResult
+        ran = {"n": 0}
+
+        def fake_run(_self, tool_input, context):
+            ran["n"] += 1
+            return ToolResult(name="WebSearch", output={"results": []})
+        with patch.object(WebSearchTool, "run", fake_run):
+            result = self.registry.dispatch(ToolCall(name="WebSearch", input={"query": query}), self.ctx)
+        return result, ran["n"]
+
+    def test_websearch_asks_with_the_whole_query_and_a_no_sends_nothing(self) -> None:
+        self.ctx.permission_handler = lambda *args: (self.asked.append(args), (False, False))[1]
+        result, ran = self._search()
+        self.assertTrue(result.is_error)
+        self.assertEqual(ran, 0)                                   # a no means no search, so nothing reaches DuckDuckGo
+        tool, message, rule = self.asked[0]
+        self.assertEqual(tool, "WebSearch")
+        self.assertIn("DuckDuckGo", message)
+        self.assertIn("ERR_SECRET_TOKEN=abc123", message)          # the user sees exactly what would be sent
+        self.assertEqual(rule, "WebSearch")                        # what "don't ask again" would save
+
+    def test_websearch_runs_after_a_yes(self) -> None:
+        result, ran = self._search()
+        self.assertFalse(result.is_error)
+        self.assertEqual((len(self.asked), ran), (1, 1))
+
+    def test_a_websearch_allow_rule_skips_the_question_and_a_deny_rule_blocks_it(self) -> None:
+        self.rules(allow=["WebSearch"])
+        result, ran = self._search()
+        self.assertEqual((result.is_error, self.asked, ran), (False, [], 1))
+        self.rules(deny=["WebSearch"])
+        result, ran = self._search()
+        self.assertTrue(result.is_error)
+        self.assertIn("deny rule", result.output["error"])
+        self.assertEqual((self.asked, ran), ([], 0))
+
+    def test_a_very_long_search_query_is_shown_shortened(self) -> None:
+        message = WebSearchTool().check_permissions({"query": "x" * 500}, self.ctx).message
+        self.assertIn("200 more characters", message)
+        self.assertNotIn("x" * 400, message)
+        self.assertEqual(WebSearchTool().check_permissions({"query": "  "}, self.ctx).behavior.value, "allow")   # run() rejects it
 
 
 class TestSettingsFile(unittest.TestCase):

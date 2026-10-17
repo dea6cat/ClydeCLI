@@ -8,6 +8,7 @@ from typing import Any
 
 from ..context import ToolContext
 from ..errors import ToolExecutionError, ToolInputError
+from ..permission_handler import PermissionResult
 from ..protocol import ToolResult
 from ..registry import ToolSpec
 
@@ -57,6 +58,15 @@ class WebSearchTool:
             is_read_only=True,
             max_result_size_chars=50_000,
         )
+
+    def check_permissions(self, tool_input: dict[str, Any], context: ToolContext) -> PermissionResult:
+        """Ask before every search, showing the whole query: it goes to DuckDuckGo, and whatever the model wrote rides in it (WebFetch
+        asks for the same reason). A `WebSearch` allow rule, which "don't ask again" saves, skips the question."""
+        query = tool_input.get("query")
+        if not isinstance(query, str) or not query.strip():
+            return PermissionResult.allow()  # Input validation happens in run()
+        shown = query if len(query) <= 300 else f"{query[:300]}… (+{len(query) - 300} more characters)"
+        return PermissionResult.ask(message=f"Search the web (DuckDuckGo) for: {shown}")
 
     def run(self, tool_input: dict[str, Any], context: ToolContext) -> ToolResult:
         query = tool_input["query"]
