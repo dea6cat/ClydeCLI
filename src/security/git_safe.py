@@ -1,6 +1,6 @@
 """git for a repository the model can write to: its own config and hooks must never run code.
 
-Clyde runs git in the workspace outside the shell sandbox (context, /review, worktrees, the map). A model that can
+Clyde runs git in the workspace on its own (context, /review, worktrees, the map). A model that can
 write .git/config could otherwise plant core.fsmonitor, a hooks path or an external diff and have the next git call
 run it as the user. Every workspace git call goes through here; the flags turn those hooks off for that one process.
 """

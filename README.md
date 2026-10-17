@@ -22,7 +22,7 @@ Bring any LLM; Clyde turns it into an agent.
 
 Name's Clyde. I live in your terminal. I read your files, run your commands, pull what I need off the web, and keep at it until the thing works. No speeches. I just fix it.
 
-Strictly, I'm the harness: the agent loop, the tools, the permissions, the sandbox, the sessions.
+Strictly, I'm the harness: the agent loop, the tools, the permissions, the sessions.
 The brains are whatever LLM you plug in, cloud or local, and with cardShuffle a different one can
 play every turn. Model plus harness makes the agent.
 
@@ -423,7 +423,7 @@ to do. The session is saved, so `clyde -c` picks the conversation up interactive
 | Skill System | ✅ | SKILL.md slash-command skills with args + tool limits |
 | Context Building | ✅ | Workspace snapshot, git status, a README excerpt, entry points, the code map and memory files go into the prompt: `~/.clyde/CLYDE.md` (user), `CLYDE.md` (project, shared) and `CLYDE.local.md` (project, personal, keep it gitignored). Files written for other agents are read too: `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, `.cursorrules`, `.github/copilot-instructions.md` (one per folder, first found wins) |
 | Permissions | ✅ | Bash asks for any command that is not read-only (dangerous patterns are refused), Write/Edit/NotebookEdit ask before every change in hold mode, Config asks before a change, WebFetch asks per domain and WebSearch asks before each search (showing the query). Answer "don't ask again" or add `permissions.allow` / `deny` rules (Claude Code syntax) to `~/.clyde/settings.json` |
-| Sandbox | ✅ | Shell commands write only to the project, temp and package caches (macOS `sandbox-exec`, Linux `bwrap`); `unsandboxed: true` always asks |
+| Shell asks | ✅ | Commands that are not read-only ask; so does any command that names a folder outside the project, even in all-in mode. No OS sandbox |
 | Sessions | ✅ | Auto-saved after each turn; `/resume` picker per workspace, `clyde -c` / `clyde --resume [id]` |
 | Checkpoints | ✅ | `/rewind` undoes the model's file edits and/or the conversation back to before any of your messages; saved per session, so they survive `/resume` |
 | Cost Tracking | ✅ | `/cost` shows input, output and cache tokens per model with an estimated $ total from catalog prices |
@@ -446,7 +446,7 @@ to do. The session is saved, so `clyde -c` picks the conversation up interactive
 |----------|-------|--------|
 | Files | Read, Write, Edit, NotebookEdit, Glob, Grep | ✅ Working; Edit also lands a unique match that is off only by trailing whitespace or indentation, and says so in its result, in the one-line summary and in the trace |
 | Data | Data | ✅ Profile CSV, TSV, Parquet, JSON and SQLite files (types, nulls, distinct counts, min/max, samples) and run read-only SQL across them with DuckDB, sandboxed to the workspace |
-| System | Bash | ✅ Working; asks before commands that are not read-only, and runs in the OS sandbox |
+| System | Bash | ✅ Working; asks before commands that are not read-only or that name a folder outside the project |
 | Web | WebFetch, WebSearch | ✅ Working |
 | Interaction | AskUserQuestion, SendUserMessage | ✅ Working |
 | Tasks | TodoWrite, TaskCreate/Get/List/Update/Output/Stop | ✅ Working |
@@ -937,25 +937,18 @@ list vision), pasting says so, and sending drops the image with a note instead o
 the catalog doesn't know get the image. Clipboard images use `osascript` on macOS and `wl-paste` or
 `xclip` on Linux.
 
-### Sandbox
+### Shell commands and folders
 
 *You can look at the whole table. You only touch your own chips.*
 
-Every shell command the model runs goes through an OS sandbox: it can read anything and use the
-network, but it can **write only** inside the project (and extra working directories), temp folders
-and package caches (`~/.cache`, `~/Library/Caches`, npm, pnpm, yarn, bun, cargo, gradle, maven, Go,
-Dart/Flutter pub). macOS uses the built-in `sandbox-exec`; Linux uses `bwrap` (install bubblewrap);
-elsewhere commands run unsandboxed and `/doctor` says so. Your hooks aren't sandboxed: they're yours.
+Clyde asks before it changes anything. Every shell command that is not read-only asks first, and so does any command (even a
+read-only one) that names a file or folder outside the project and its extra working directories: an absolute path, `~`, `$HOME`
+or `..`. Temp folders don't count. Those asks stay on in all-in mode, and so does the ask before touching `.git/config` or
+`.git/hooks`. Write and Edit are limited to the project; Read and Grep of a key or `.env` file ask too (`clyde -p` denies every ask).
 
-A blocked write fails with "Operation not permitted" plus a hint, so the model knows why. A command
-that really has to write elsewhere (a global install, a dotfile) can ask to run with
-`unsandboxed: true`, and that **always asks you**, even in all-in mode (`clyde -p` denies it).
-
-```json
-{"sandbox": {"enabled": true, "network": true, "allow_write": ["~/.local/bin"]}}
-```
-
-`network: false` blocks everything but localhost; `allow_write` adds folders; `enabled: false` turns it off.
+There is no OS sandbox. Clyde used to run shell commands under macOS `sandbox-exec`, which Apple has deprecated; one macOS release
+could have broken every command, so the permission prompt is the guard instead. The catch: once you approve a command, it can write
+anywhere you can. Read what it says before you press yes.
 
 ### Permission Rules
 

@@ -91,9 +91,10 @@ def _is_major(spec: ToolSpec, tool_input: dict[str, Any], context: ToolContext) 
     """What "all in" mode still asks about: hard to undo, outside the project, or touching secrets."""
     name = spec.name.lower()
     if name == "bash":
-        from .tools.bash import is_major_command
-        # Leaving the sandbox is always worth a yes, even when everything else plays without asking.
-        return tool_input.get("unsandboxed") is True or is_major_command(str(tool_input.get("command", ""))) or _reads_secret(spec, tool_input)
+        from .tools.bash import is_major_command, reaches_outside_project
+        # Reaching outside the project is always worth a yes, even when everything else plays without asking.
+        command = str(tool_input.get("command", ""))
+        return is_major_command(command) or reaches_outside_project(command, context) or _reads_secret(spec, tool_input)
     path = tool_input.get("file_path") or tool_input.get("notebook_path") or (tool_input.get("path") if name == "grep" else None)
     if isinstance(path, str) and path:
         from pathlib import Path
@@ -103,7 +104,7 @@ def _is_major(spec: ToolSpec, tool_input: dict[str, Any], context: ToolContext) 
         except ValueError:
             return True
         from .secret_paths import is_secret_path
-        # Git runs a repository's config and hooks outside the sandbox: writing them is never routine.
+        # Git runs a repository's config and hooks as the user: writing them is never routine.
         if ".git" in target.relative_to(context.workspace_root).parts[:-1] or target.name == ".git":
             return True
         return is_secret_path(target.as_posix())

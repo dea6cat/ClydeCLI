@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClydeCLI · a coding-agent harness for any LLM</title>
-<meta name="description" content="ClydeCLI is a source-available coding-agent harness for the terminal, written in Python, free for noncommercial use. Bring any LLM; Clyde gives it tools, permissions, a sandbox, undo and sessions.">
+<meta name="description" content="ClydeCLI is a source-available coding-agent harness for the terminal, written in Python, free for noncommercial use. Bring any LLM; Clyde gives it tools, permissions, undo and sessions.">
 <meta property="og:title" content="ClydeCLI">
 <meta property="og:description" content="A coding-agent harness for the terminal, written in Python. Bring any LLM.">
 <meta name="theme-color" content="#e8e5dd" media="(prefers-color-scheme: light)">
@@ -25,7 +25,7 @@
   <section class="hero">
     <div>
       <h1 class="enter" style="--i:0">ClydeCLI</h1>
-  <p class="enter lead" style="--i:1">A coding-agent harness for the terminal. Bring any LLM; Clyde gives it tools, permissions, a sandbox, undo and sessions.</p>
+  <p class="enter lead" style="--i:1">A coding-agent harness for the terminal. Bring any LLM; Clyde gives it tools, permissions, undo and sessions.</p>
   <div class="install enter" style="--i:2"><code id="cmd" tabindex="0" role="region" aria-label="Install command">curl -fsSL https://raw.githubusercontent.com/dea6cat/ClydeCLI/main/install.sh | sh</code><button type="button" id="copy" class="cut" data-copy="cmd">Copy</button></div>
   <p class="enter" style="--i:3">The model can be one of 13 providers, a local model through Ollama or LM Studio, or any OpenAI- or Anthropic-compatible endpoint. Written in Python, free for noncommercial use. <a href="bonnie.html">Bonnie</a>, the same engine in a browser page, comes in the same install. Prefer pipx? <code>pipx install --python python3.14 git+https://github.com/dea6cat/ClydeCLI</code> (needs Python 3.14) works too.</p>
     </div>
@@ -100,14 +100,14 @@ c = code and conversation, f = files only, m = conversation only <span style="co
 
 
   <h2>And more</h2>
-  <p>Tune a local model's memory and window, deal a model each turn and re-deal when one fails, check which models really work, ask four at once, sandbox every command, connect MCP servers and sub-agents. <a href="features.html">See every feature, with recordings and real results</a>.</p>
+  <p>Tune a local model's memory and window, deal a model each turn and re-deal when one fails, check which models really work, ask four at once, ask before risky commands, connect MCP servers and sub-agents. <a href="features.html">See every feature, with recordings and real results</a>.</p>
 
   <h2>Limits</h2>
   <ul>
     <li>Source-available, not open source: free for noncommercial use under the PolyForm Noncommercial License 1.0.0. Commercial use needs written permission. The first run asks you to type "I accept".</li>
     <li>One maintainer, and few users so far. Expect rough edges.</li>
     <li>Needs Python 3.12 to 3.14 on macOS or Linux. The install is about 180 MB; the optional Laya model adds about 640 MB of packages (mostly PyTorch) and an 800 MB download.</li>
-    <li>Not tried in the wild yet: editor support over ACP (Android Studio doesn't support ACP agents) and the Linux sandbox (bubblewrap), which has only been tested through its arguments.</li>
+    <li>Not tried in the wild yet: editor support over ACP (Android Studio doesn't support ACP agents).</li>
     <li>Some providers don't report token usage, so cost tracking can't count them.</li>
   </ul>
 </main>

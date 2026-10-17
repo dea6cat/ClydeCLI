@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- A shell command that names a file or folder outside the project (an absolute path, `~`, `$HOME` or `..`; temp folders do not count) now asks, even
+  a read-only one and even in all-in mode, and so does one that names `.git/config` or `.git/hooks`. This replaces what the sandbox used to enforce.
+
+### Removed
+
+- The shell sandbox (macOS `sandbox-exec`, Linux `bwrap`), the `unsandboxed` option on the Bash tool, the `sandbox` block in `~/.clyde/settings.json`
+  (now ignored) and the sandbox line in `/doctor`. **Why:** Apple has deprecated `sandbox-exec`, so a future macOS release could remove it and
+  break every shell command; Clyde should not depend on that. The guard is now the permission prompt alone, so a command you approve can write
+  anywhere you can: read the command before you say yes. Hosted previews in Bonnie and the DuckDB data tool keep their own, unrelated isolation.
+
 ## [0.5.10] - 2026-10-17
 
 ### Added

@@ -15,7 +15,7 @@ the next release, and the newest release is the only one that gets them.
 ## What counts
 
 - Getting past a permission prompt or a `deny` rule (Bash, Edit, Write, WebFetch, WebSearch, MCP tools).
-- Escaping the sandbox (`sandbox-exec` on macOS, `bwrap` on Linux).
+- A shell command that names a folder outside the project (an absolute path, `~`, `$HOME`, `..`) running without asking.
 - Making Clyde send file contents, keys or prompts anywhere other than the model provider you chose. [EGRESS.md](EGRESS.md) lists every
   destination; one it does not list is a bug.
 - A skill, plugin or MCP server getting past SkillSpector's `DO_NOT_INSTALL` hold-back.
@@ -29,5 +29,6 @@ the next release, and the newest release is the only one that gets them.
 
 ## Known limits
 
-Stated in the open so you do not have to find them: `/rewind` does not undo changes made by shell commands, and the macOS sandbox is built on
-`sandbox-exec`, which Apple has deprecated. A failed SkillSpector scan loads the item with a warning unless you set `CLYDE_SKILL_SCAN=closed`.
+Stated in the open so you do not have to find them: `/rewind` does not undo changes made by shell commands, and there is no OS sandbox: shell commands
+are guarded by the permission prompt alone, so an approved command can write anywhere you can. (Clyde dropped `sandbox-exec` because
+Apple has deprecated it and a macOS release could break every command.) A failed SkillSpector scan loads the item with a warning unless you set `CLYDE_SKILL_SCAN=closed`.
