@@ -118,6 +118,21 @@ class TestLayersSetThePhrase(unittest.TestCase):
         self.assertEqual(seen, [f"waiting up to {LAYA_WAIT}s for Laya to load", "asking Laya how hard this is"])
         self.assertEqual(activity.get(), "waiting for fake:m")
 
+    def test_cardshuffle_only_talks_about_laya_when_laya_can_answer(self):
+        from src.providers import laya_client
+        # Laya's real status decides what the status line says: never a wait that returns at once, never a question nobody can answer.
+        cases = {"not installed": [], "not downloaded": [], "failed to load: boom": [], "ready": ["ask"],
+                 "loading": ["wait", "ask"], "not started": ["wait", "ask"]}
+        for status, expected in cases.items():
+            seen: list[str] = []
+            real_set = activity.set
+            evals = {"fake:m": {"passed": True, "strength": 4}}
+            with patch("src.providers.card_shuffle.load_results", return_value=evals), patch.object(laya_client, "status", return_value=status), \
+                    patch.object(laya_client, "wait_ready", return_value=True), patch.object(activity, "set", lambda text: (seen.append(text), real_set(text))):
+                CardShuffle({"fake": FakeProvider(name="fake")}, verdict=Verdict([])).shuffle("house", "make this rhyme")
+            said = [("wait" if "waiting up to" in s else "ask") for s in seen if "Laya" in s]
+            self.assertEqual(said, expected, f"{status}: {seen}")
+
     def test_the_agent_loop_names_the_model_it_waits_for_and_the_tool_it_runs(self):
         seen: list[str] = []
 
