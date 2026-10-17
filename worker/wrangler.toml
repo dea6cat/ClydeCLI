@@ -6,6 +6,6 @@ workers_dev = true
 [[d1_databases]]
 binding = "DB"
 database_name = "clyde-telemetry"
-database_id = "REPLACE_WITH_ID_FROM_wrangler_d1_create"
+database_id = "bf1df86c-e9fd-4a2d-a6c4-0fd211b0a970"
 
 # The salt is a secret, not a setting: `npx wrangler secret put SALT`.

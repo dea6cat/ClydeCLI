@@ -1011,11 +1011,13 @@ A plugin is a folder that bundles extensions; Claude Code plugins mostly work as
   - every event also carries Clyde's version, a random install id, the OS, CPU, Python version, a RAM bucket and the date
 - Events wait in `~/.clyde/telemetry/queue.jsonl`; `clyde telemetry show` prints exactly that and the schema, and
   `clyde telemetry off` stops it and deletes the queue. `clyde telemetry reset-id` gives a new install id
-- They go out in one batch when Clyde exits, or on `clyde telemetry send`, to the endpoint set with
-  `clyde telemetry endpoint https://…` (or `CLYDE_TELEMETRY_URL`), and only to https (or localhost). With no endpoint nothing
-  leaves the machine, and none is set by default
-- `tools/telemetry_receiver.py` is a reference receiver that re-checks every event against the schema; run it to try this
-  out or to host your own
+- They go out in one batch when Clyde exits, or on `clyde telemetry send`, and only if you turned telemetry on. The default
+  receiver is a Cloudflare Worker (`worker/` in this repo, so you can read exactly what it does). It re-checks every event
+  against the same schema, refuses a whole batch if one event is off it, and keeps only daily counters in a database: no event,
+  no install id and no address is stored (an install is counted once a day through a salted hash that is deleted after about
+  three days). Cloudflare itself sees the sender's IP address at its edge, as with any web request; the Worker never reads it
+- To send somewhere else use `clyde telemetry endpoint https://…` (or `CLYDE_TELEMETRY_URL`); only https (or localhost) is accepted
+- `tools/telemetry_receiver.py` is a reference receiver you can run yourself; `worker/README.md` shows how to deploy your own Worker
 
 #### This website
 

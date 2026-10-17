@@ -75,6 +75,9 @@ credentials.json
 .claude/
 CLAUDE.md
 
+# Wrangler's local state for worker/
+worker/.wrangler/
+
 # Session data
 sessions/
 .transcripts/
