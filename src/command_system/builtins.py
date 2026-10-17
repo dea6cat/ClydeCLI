@@ -615,14 +615,17 @@ def doctor_command_call(args: str, context: CommandContext) -> LocalCommandResul
     else:
         lines.append(_check(True, f"Python {running}" + (f" (requires {spec}, not checked)" if spec else "")))
 
-    for dep in ("rich", "prompt-toolkit", "tiktoken", "laya", "skillspector"):
+    for dep in ("rich", "prompt-toolkit", "tiktoken", "skillspector"):
         try:
             lines.append(_check(True, f"{dep} {version(dep)}"))
         except PackageNotFoundError:
             lines.append(_check(False, f"{dep} not installed", f"pip install {dep}"))
     from ..providers import laya_client
-    lines.append(_check(laya_client.cached(), f"Laya model {'downloaded' if laya_client.cached() else 'not downloaded'} "
-                        f"({laya_client.status()})", "run clyde setup to download it"))
+    if laya_client.installed():
+        lines.append(_check(laya_client.cached(), f"Laya model {'downloaded' if laya_client.cached() else 'not downloaded'} "
+                            f"({laya_client.status()})", "run clyde setup to download it"))
+    else:
+        lines.append(_check(True, "Laya (optional, spots a stuck model) is not installed; `clyde setup` adds it"))
     from ..tool_system import sandbox
     lines.append(_check(sandbox.engine() is not None, f"Sandbox: {sandbox.describe()}",
                         "install bubblewrap (Linux), or set sandbox.enabled in ~/.clyde/settings.json"))

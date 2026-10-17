@@ -59,7 +59,7 @@
 | Local models | ✅ | `/models local [ollama\|hf\|mlx]`: models that fit this machine, rated relax / balance / hard, confirmed with their cost before downloading through Ollama or LM Studio |
 | Bonnie (`clyde luv bonnie`; `bonnie luv clyde` goes back to the terminal) | ✅ | Clyde's luv accomplice, on localhost with her own persona: queue / steer / stop, sessions (pin, delete with Undo), permission cards, attachments, Artifacts, Customize, Automations on a schedule (read-only unless allowed), a project folder chooser, Providers (connect model keys with a guided, tested flow), council votes, over a token-guarded local API |
 | cardShuffle council | ✅ | `cardShuffle:<tier> council`: the tier's top four models answer at once with tools off, Laya rates the answers, the best is shown; `/council` lists all with scores and takes up/down votes kept in `~/.clyde/council_votes.jsonl` |
-| Laya (bundled) | ✅ | Local decision model: stops stuck cardShuffle turns; scores every turn's difficulty and steers `house` once the evidence promotes it; `/laya` shows the evidence and the verdict |
+| Laya (optional extra) | ✅ | Local decision model: stops stuck cardShuffle turns; scores every turn's difficulty and steers `house` once the evidence promotes it; `/laya` shows the evidence and the verdict |
 | SkillSpector (bundled) | ✅ | Scans skills, plugins, agents and MCP tool lists from other tools; `DO_NOT_INSTALL` items held back until `/skills allow` |
 | Pasting | ✅ | Ctrl+V images, image paths, long text folded to `[Pasted text #N +X lines]`; text-only models warned; images over 5 MB shrunk |
 

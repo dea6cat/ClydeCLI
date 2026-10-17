@@ -181,7 +181,6 @@ version = "0.5.8"
 source = { editable = "." }
 dependencies = [
     { name = "duckdb" },
-    { name = "laya" },
     { name = "prompt-toolkit" },
     { name = "rich" },
     { name = "skillspector" },
@@ -195,12 +194,15 @@ dev = [
     { name = "pytest" },
     { name = "twine" },
 ]
+laya = [
+    { name = "laya" },
+]
 
 [package.metadata]
 requires-dist = [
     { name = "build", marker = "extra == 'dev'", specifier = ">=1.0.0" },
     { name = "duckdb", specifier = ">=1.5,<2" },
-    { name = "laya", specifier = "==0.3.23" },
+    { name = "laya", marker = "extra == 'laya'", specifier = "==0.3.23" },
     { name = "prompt-toolkit" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
     { name = "rich" },
@@ -209,7 +211,7 @@ requires-dist = [
     { name = "twine", marker = "extra == 'dev'", specifier = ">=5.0.0" },
     { name = "whichllm", git = "https://github.com/dea6cat/whichLocalLLM?rev=clyde-2" },
 ]
-provides-extras = ["dev"]
+provides-extras = ["laya", "dev"]
 
 [[package]]
 name = "colorama"

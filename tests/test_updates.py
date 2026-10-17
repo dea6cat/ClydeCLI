@@ -49,6 +49,26 @@ class TestCompare(unittest.TestCase):
         self.assertIn("--upgrade", updates.update_command(make("pip")))
         self.assertIsNone(updates.update_command(make("editable")))
 
+    def test_an_update_keeps_laya_for_an_install_that_has_it_and_stays_light_for_one_that_does_not(self):
+        make = lambda m: ii.Install(method=m, version="0", location="/x")
+        spec = lambda command: command[-1]
+        self.assertTrue(spec(updates.update_command(make("uv-tool"), STABLE, with_laya=True)).startswith("clyde-cli[laya] @ git+"))
+        self.assertTrue(spec(updates.update_command(make("uv-tool"), STABLE, with_laya=False)).startswith("git+"))
+        for method in ("uv-tool", "pipx", "pip"):   # every method carries the extra, or an update would remove Laya
+            self.assertIn("[laya]", spec(updates.update_command(make(method), LATEST, with_laya=True)))
+        with patch("importlib.util.find_spec", return_value=object()):       # no flag: it looks at what is installed
+            self.assertIn("[laya]", spec(updates.update_command(make("uv-tool"), STABLE)))
+        with patch("importlib.util.find_spec", return_value=None):
+            self.assertNotIn("[laya]", spec(updates.update_command(make("uv-tool"), STABLE)))
+
+    def test_adding_laya_keeps_the_installed_version(self):
+        pinned = ii.Install("uv-tool", "0.5.8", "/x", commit="abc1234")
+        command = updates.laya_install_command(pinned)
+        self.assertEqual(command[:3], ["uv", "tool", "install"])
+        self.assertTrue(command[-1].startswith("clyde-cli[laya] @ git+") and command[-1].endswith("ClydeCLI@abc1234"))
+        self.assertTrue(updates.laya_install_command(ii.Install("pip", "0", "/x"))[-1].endswith("ClydeCLI"))   # no commit recorded
+        self.assertIsNone(updates.laya_install_command(ii.Install("editable", "0", "/x")))
+
 
 class TestFetch(unittest.TestCase):
     def _fetch(self, body: bytes | Exception):
