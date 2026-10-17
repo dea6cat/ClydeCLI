@@ -33,6 +33,15 @@ Under the hood it's a Python rebuild of the Claude Code architecture. Rebuilt a 
 - **Built to study and extend.** The code is readable and tested, and you add new skills by writing Markdown.
 - **No surprises on the wire.** [What leaves your machine](EGRESS.md) lists every network call, what it sends, and how to turn it off. Your prompts and files go to the model provider you chose and nowhere else.
 
+### ⚡ Quickstart
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/dea6cat/ClydeCLI/main/install.sh | sh   # installs uv and Clyde, then walks you through setup
+cd your-project && clyde                                                              # type a task; Clyde asks before it edits a file or runs a command
+```
+
+Setup connects a model: any of 13 providers with your key, or one running on your machine (Ollama, LM Studio). The first run asks you to accept the licence. More install options are [below](#install).
+
 ***
 
 ## ✨ Features
