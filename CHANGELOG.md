@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.10] - 2026-10-17
+
 ### Added
 
 - `CLYDE_SKILL_SCAN=closed` holds back any skill, plugin, agent or MCP server whose SkillSpector scan failed, instead of loading it. The default is unchanged (a failed scan loads, so a broken scanner never locks anyone out), but it is no longer silent: each failure now says so once on stderr with the reason ("loaded WITHOUT a scan") and is recorded as a `scan_failed` trace event.
@@ -700,6 +702,7 @@ The focus was on building a solid foundation with clean architecture, comprehens
 
 ---
 
+[0.5.10]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.5.10
 [0.5.9]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.5.9
 [0.5.8]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.5.8
 [0.5.7]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.5.7
