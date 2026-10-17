@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
-from pathlib import Path
+from pathlib import Path, PurePath
 from unittest.mock import patch
 
 from src.tool_system.context import ToolContext
@@ -157,6 +157,39 @@ class TestSettingsFile(unittest.TestCase):
         self.assertEqual(load_rules(), {"allow": [], "deny": []})
         with self.assertRaises(ValueError):
             save_allow_rule("Bash")
+
+
+class TestPathGlobOnEveryPython(unittest.TestCase):
+    """PurePath.full_match exists only from Python 3.13; the fallback must give the same answers on 3.12."""
+
+    # (path, pattern, expected), measured with PurePath.full_match on Python 3.13
+    KNOWN = [
+        ("/w/docs/a.md", "/w/docs/**", True), ("/w/docs", "/w/docs/**", False), ("/w/a/b/c.md", "/w/**/c.md", True),
+        ("/w/c.md", "/w/**/c.md", True), ("/w/docs/a.md", "/w/docs/*.md", True), ("/w/docs/x/a.md", "/w/docs/*.md", False),
+        ("/w/.env", "/w/*", True), ("/w/a.md", "/w/?.md", True), ("/w/ab.md", "/w/?.md", False), ("/w/a.md", "/w/[ab].md", True),
+        ("/w/c.md", "/w/[!ab].md", True), ("/w/a.md", "/w/[!ab].md", False), ("/w/a/b", "/w/a", False), ("/w/a", "/w/a/**", False),
+        ("/w/a/b", "/w/**", True), ("/w", "/w/**", False), ("/z", "/**/z", True), ("/w/x/y/z", "/**/z", True), ("A/b", "a/*", False),
+        ("/w/a/b/c", "/w/**/b/**", True), ("/w/a/b", "/w/**/b/**", False), ("/w/ab", "/w/a**", True), ("/w/a/b", "/w/a**", False),
+        ("/w/a]", "/w/a[]]", True), ("/w/-", "/w/[a-]", True), ("/w/a", "/w/[a-c]", True),
+    ]
+
+    def test_the_fallback_gives_the_measured_answers(self):
+        from src.tool_system.permission_rules import _glob_regex
+        for path, pattern, expected in self.KNOWN:
+            self.assertEqual(_glob_regex(pattern).fullmatch(path) is not None, expected, f"{path} ~ {pattern}")
+
+    @unittest.skipUnless(hasattr(PurePath, "full_match"), "needs Python 3.13+ to compare against")
+    def test_the_fallback_agrees_with_full_match_on_generated_cases(self):
+        import itertools
+        from src.tool_system.permission_rules import _glob_regex
+        names = ["a", "b", "ab", ".env", "a.md"]
+        patterns_pieces = ["a", "b", "*", "**", "?", "[ab]", "[!a]", "*.md", "a**", ".env", "a*", "[a-b]*"]
+        paths = ["/" + "/".join(c) for n in (1, 2, 3) for c in itertools.product(names, repeat=n)]
+        patterns = ["/" + "/".join(c) for n in (1, 2, 3) for c in itertools.product(patterns_pieces, repeat=n)]
+        for pattern in patterns:
+            regex = _glob_regex(pattern)
+            for path in paths:
+                self.assertEqual(regex.fullmatch(path) is not None, PurePath(path).full_match(pattern), f"{path} ~ {pattern}")
 
 
 if __name__ == "__main__":

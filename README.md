@@ -12,7 +12,7 @@ Bring any LLM; Clyde turns it into an agent.
 
 [![GitHub stars](https://img.shields.io/github/stars/dea6cat/ClydeCLI?style=for-the-badge&logo=github&color=yellow)](https://github.com/dea6cat/ClydeCLI/stargazers)
 [![License: PolyForm Noncommercial](https://img.shields.io/badge/License-PolyForm%20Noncommercial-blue.svg?style=for-the-badge)](https://polyformproject.org/licenses/noncommercial/1.0.0)
-[![Python 3.14+](https://img.shields.io/badge/python-3.14+-blue.svg?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/downloads/)
+[![Python 3.12 to 3.14](https://img.shields.io/badge/python-3.12%20to%203.14-blue.svg?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/downloads/)
 
 </div>
 
@@ -476,10 +476,11 @@ curl -fsSL https://raw.githubusercontent.com/dea6cat/ClydeCLI/main/install.sh | 
 curl -fsSL https://raw.githubusercontent.com/dea6cat/ClydeCLI/main/install.sh | CLYDE_REF=v0.2.5 sh
 ```
 
-Or with pipx (needs Python 3.14; add `--backend pip` if pipx complains about an older `uv`):
+Or with pipx (needs Python 3.12 to 3.14, so name one if your default is older or newer; add `--backend pip` if pipx complains about an older `uv`).
+Python 3.11 is not supported: the bundled skill scanner, SkillSpector, needs 3.12.
 
 ```bash
-pipx install --python python3.14 git+https://github.com/dea6cat/ClydeCLI
+pipx install --python python3.13 git+https://github.com/dea6cat/ClydeCLI
 # pin a release: ...ClydeCLI@v0.2.5
 ```
 
