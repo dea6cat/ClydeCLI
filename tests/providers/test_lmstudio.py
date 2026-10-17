@@ -51,7 +51,9 @@ class TestLMStudio(unittest.TestCase):
         load.assert_called_once_with("m")
         parent.assert_called_once()
 
-    def test_a_missing_daemon_is_installed_before_anything_starts(self):
+    def test_a_missing_daemon_is_installed_after_a_yes_and_before_anything_starts(self):
+        asked = []
+        self.provider.confirm_install = lambda: asked.append(1) or True
         with patch.object(lmstudio, "_lms", return_value="/bin/lms"), \
              patch.object(lmstudio, "_llmster_installed", return_value=False), \
              patch.object(lmstudio, "_install_llmster", return_value="/bin/lms") as install, \
@@ -59,9 +61,37 @@ class TestLMStudio(unittest.TestCase):
              patch("subprocess.run", return_value=_done()) as run:
             self.provider._ensure_server()
         install.assert_called_once()
+        self.assertEqual(asked, [1])
+        self.assertEqual(run.call_args_list[0].args[0], ["/bin/lms", "daemon", "up"])
+
+    def test_without_a_yes_the_installer_is_never_downloaded_or_run(self):
+        asked = []
+        for hook in (None, lambda: asked.append(1) or False):    # nobody to ask (editor, script, Bonnie), and a no
+            self.provider.confirm_install = hook
+            with patch.object(lmstudio, "_lms", return_value="/bin/lms"), \
+                 patch.object(lmstudio, "_llmster_installed", return_value=False), \
+                 patch.object(lmstudio, "_install_llmster") as install, \
+                 patch.object(self.provider, "_server_up", return_value=False), \
+                 patch("subprocess.run") as run:
+                with self.assertRaisesRegex(ProviderError, "isn't installed") as caught:
+                    self.provider._ensure_server()
+            install.assert_not_called()
+            run.assert_not_called()                      # and the LM Studio app is not launched as a fallback either
+            self.assertIn("lmstudio.ai/install.sh", str(caught.exception))    # the way to do it by hand
+            self.assertIn("start LM Studio's server yourself", str(caught.exception))
+        self.assertEqual(asked, [1])
+
+    def test_an_installed_daemon_is_started_without_asking_anything(self):
+        self.provider.confirm_install = lambda: self.fail("must not ask when the daemon is already installed")
+        with patch.object(lmstudio, "_lms", return_value="/bin/lms"), \
+             patch.object(lmstudio, "_llmster_installed", return_value=True), \
+             patch.object(self.provider, "_server_up", side_effect=[False, True]), \
+             patch("subprocess.run", return_value=_done()) as run:
+            self.provider._ensure_server()
         self.assertEqual(run.call_args_list[0].args[0], ["/bin/lms", "daemon", "up"])
 
     def test_a_failed_install_never_falls_back_to_launching_the_app(self):
+        self.provider.confirm_install = lambda: True
         with patch.object(lmstudio, "_lms", return_value="/bin/lms"), \
              patch.object(lmstudio, "_llmster_installed", return_value=False), \
              patch.object(lmstudio, "_install_llmster", return_value=None), \

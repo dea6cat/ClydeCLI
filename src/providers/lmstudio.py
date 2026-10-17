@@ -82,6 +82,8 @@ class LMStudioProvider(OpenAICompatProvider):
                          dynamic_models=True, stream_usage=True)
         # Set by the REPL: (model, loaded, planned) -> may Clyde reload a model it didn't load? None never reloads.
         self.confirm_reload: Callable[[str, int, int], bool] | None = None
+        # Set by the REPL: () -> may Clyde download and run LM Studio's installer? None never installs (editors, scripts, Bonnie).
+        self.confirm_install: Callable[[], bool] | None = None
 
     @property
     def api_key(self) -> str:
@@ -253,9 +255,13 @@ class LMStudioProvider(OpenAICompatProvider):
             raise ProviderError(self.name, f"LM Studio's server isn't running at {self.base_url}; start it in LM Studio")
         try:
             if not _llmster_installed():
+                by_hand = f"install it with `curl -fsSL {INSTALL_URL} | sh`, or start LM Studio's server yourself"
+                # Downloading and running an installer needs a yes; where nobody can be asked (confirm_install is None) it never happens.
+                if self.confirm_install is None or not self.confirm_install():
+                    raise ProviderError(self.name, f"LM Studio's headless daemon isn't installed, so its server can't start here; {by_hand}")
                 exe = _install_llmster()
                 if exe is None:
-                    raise ProviderError(self.name, "couldn't install LM Studio's headless daemon; install it with `curl -fsSL https://lmstudio.ai/install.sh | sh`")
+                    raise ProviderError(self.name, f"couldn't install LM Studio's headless daemon; {by_hand}")
             subprocess.run([exe, "daemon", "up"], capture_output=True, text=True, timeout=60)
             subprocess.run([exe, "server", "start"], capture_output=True, text=True, timeout=60)
         except (OSError, subprocess.TimeoutExpired) as e:

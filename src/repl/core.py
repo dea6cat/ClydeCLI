@@ -387,6 +387,7 @@ class ClydeREPL:
         self.registry = build_registry()
         if (lmstudio := self.registry.get("lmstudio")) is not None:
             lmstudio.confirm_reload = self._confirm_reload
+            lmstudio.confirm_install = self._confirm_install_llmster
         resolved = self._startup_model(model)
         if resolved is None:
             sys.exit(1)
@@ -615,6 +616,14 @@ class ClydeREPL:
         self.console.print(Text(f"  {model} is loaded with a {loaded:,}-token context; Clyde would load it with {planned:,}.", style=_CARD_TEXT))
         self.console.print(Text("  Reloading unloads it first (a few seconds); the conversation is kept.", style=_CARD_DIM))
         return input("  Reload it? [y/N]: ").strip().lower() in ("y", "yes")
+
+    def _confirm_install_llmster(self) -> bool:
+        """Ask before downloading and running LM Studio's installer, the one download-and-run Clyde would otherwise do unasked."""
+        from src.providers.lmstudio import INSTALL_URL
+        self.console.print(Text("  LM Studio's server isn't running, and its headless daemon isn't installed.", style=_CARD_TEXT))
+        self.console.print(Text(f"  Clyde would run LM Studio's own installer: curl -fsSL {INSTALL_URL} | sh (your shell files are left alone).",
+                                style=_CARD_DIM))
+        return input("  Install it? [y/N]: ").strip().lower() in ("y", "yes")
 
     def _add_rule_under_input(self) -> None:
         """Draw a line right under the input, hidden while the completion menu is open so the menu

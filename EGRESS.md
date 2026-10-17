@@ -51,12 +51,13 @@ any web request; the Worker never reads it. See [the privacy page](https://dea6c
 | `clyde update`, `clyde plugin install <git url>` | GitHub, or the git address you gave | nothing of yours | do not run them |
 | Running tasks against models (`/eval`, council) | the providers you connected | the task prompts | do not run them |
 
-### One that installs without asking
+### Nothing downloads and runs without a yes
 
-If you use the LM Studio provider, its `lms` command is installed, and its server is not running, Clyde installs LM Studio's headless
-daemon by running LM Studio's own installer (`curl -fsSL https://lmstudio.ai/install.sh | sh`, with your shell files left alone)
-**without a prompt**. It only happens when LM Studio is the provider in use, and it is the one download-and-run that does not ask.
-Avoid it by starting LM Studio's server yourself first.
+If you use the LM Studio provider, its `lms` command is installed, and its server is not running, Clyde needs LM Studio's headless
+daemon. In the terminal UI it asks first ("Install it? [y/N]") and, on a yes, runs LM Studio's own installer
+(`curl -fsSL https://lmstudio.ai/install.sh | sh`, with your shell files left alone). Where nobody can be asked (an editor over ACP,
+`clyde -p`, Bonnie) it never installs: it stops with the command to run by hand, or you can start LM Studio's server yourself.
+(Before 0.5.10 it installed the daemon without asking.)
 
 ## 5. What does not leave
 
