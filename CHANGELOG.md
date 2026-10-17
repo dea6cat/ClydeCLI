@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.11] - 2026-10-17
+
 ### Changed
 
 - A shell command that names a file or folder outside the project (an absolute path, `~`, `$HOME` or `..`; temp folders do not count) now asks, even
@@ -716,6 +718,7 @@ The focus was on building a solid foundation with clean architecture, comprehens
 
 ---
 
+[0.5.11]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.5.11
 [0.5.10]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.5.10
 [0.5.9]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.5.9
 [0.5.8]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.5.8
