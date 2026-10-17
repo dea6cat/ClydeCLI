@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `EGRESS.md`, linked from the first screen of the README and from the privacy page: every way Clyde can use the network, what it sends, when, and how to turn it off (your model provider, the update check, telemetry, WebSearch and WebFetch, MCP servers, cloud review, SkillSpector's LLM review, local-model search, setup downloads). A test fails whenever the code names a host the document does not, and when the document promises an off switch the code never reads.
+
 ## [0.5.9] - 2026-10-16
 
 ### Changed

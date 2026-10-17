@@ -31,6 +31,7 @@ Under the hood it's a Python rebuild of the Claude Code architecture. Rebuilt a 
 - **A real agent loop.** It calls tools, streams its replies, remembers the session, and works over many turns.
 - **A faithful port.** It keeps the proven architecture, rewritten in idiomatic Python.
 - **Built to study and extend.** The code is readable and tested, and you add new skills by writing Markdown.
+- **No surprises on the wire.** [What leaves your machine](EGRESS.md) lists every network call, what it sends, and how to turn it off. Your prompts and files go to the model provider you chose and nowhere else.
 
 ***
 
