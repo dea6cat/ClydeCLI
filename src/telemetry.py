@@ -208,6 +208,27 @@ def _valid(event: str, fields: dict) -> bool:
     return True
 
 
+def schema_json() -> dict:
+    """SCHEMA as plain data (words as sorted lists, counts as "int", flags as "bool"), for the Worker that re-checks every event.
+
+    `_common` lists the fields every event carries; worker/schema.json is this output and a test keeps the two equal.
+    """
+    from src.providers.keys import PROVIDER_KEY_ENV
+
+    def rule(r: Any) -> Any:
+        if isinstance(r, set):
+            return sorted(r)
+        if r in (int, bool):
+            return r.__name__
+        if r is _provider:
+            return sorted({*PROVIDER_KEY_ENV, "custom", "cardShuffle"})
+        raise ValueError(f"no plain-data form for {r!r}")
+
+    common = {"os": ["darwin", "linux", "other", "win32"], "arch": ["aarch64", "amd64", "arm64", "other", "x86_64"],
+              "ram_gb": [0, 4, 8, 16, 32, 64, 128, 256]}
+    return {"_common": common, **{event: {field: rule(r) for field, r in fields.items()} for event, fields in SCHEMA.items()}}
+
+
 def record(event: str, **fields: Any) -> bool:
     """Queue an event when telemetry is on and the event fits SCHEMA. True when it was queued. Never raises."""
     try:

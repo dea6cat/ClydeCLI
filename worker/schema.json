@@ -1,0 +1,152 @@
+{
+  "_common": {
+    "arch": [
+      "aarch64",
+      "amd64",
+      "arm64",
+      "other",
+      "x86_64"
+    ],
+    "os": [
+      "darwin",
+      "linux",
+      "other",
+      "win32"
+    ],
+    "ram_gb": [
+      0,
+      4,
+      8,
+      16,
+      32,
+      64,
+      128,
+      256
+    ]
+  },
+  "bonnie_start": {},
+  "bonnie_use": {
+    "feature": [
+      "artifact_reveal",
+      "attachment",
+      "automation_create",
+      "automation_delete",
+      "automation_pause",
+      "automation_resume",
+      "automation_run",
+      "dir_create",
+      "feedback",
+      "mode",
+      "model",
+      "permission",
+      "project",
+      "prompt",
+      "provider_connect",
+      "provider_custom",
+      "provider_disconnect",
+      "session_delete",
+      "session_new",
+      "session_open",
+      "session_pin",
+      "session_restore",
+      "steer",
+      "stop",
+      "theme",
+      "theme_image",
+      "theme_image_remove",
+      "vote"
+    ]
+  },
+  "provider_error": {
+    "kind": [
+      "connection",
+      "http_400",
+      "http_401",
+      "http_402",
+      "http_403",
+      "http_404",
+      "http_429",
+      "http_5xx",
+      "other",
+      "ssl",
+      "stalled",
+      "timeout"
+    ],
+    "provider": [
+      "anthropic",
+      "cardShuffle",
+      "cerebras",
+      "cloudflare",
+      "custom",
+      "deepseek",
+      "glm",
+      "google",
+      "minimax",
+      "mistral",
+      "nvidia",
+      "ollama",
+      "openai",
+      "openrouter",
+      "pollinations"
+    ]
+  },
+  "run": {
+    "first_input_tokens": [
+      "1-2k",
+      "2-4k",
+      "4-8k",
+      "8-16k",
+      "<1k",
+      ">16k"
+    ],
+    "index": [
+      "full",
+      "names",
+      "none"
+    ],
+    "model_size": [
+      "2-4B",
+      "4-9B",
+      "9-30B",
+      "<=2B",
+      ">30B",
+      "unknown"
+    ],
+    "outcome": [
+      "done",
+      "max_turns",
+      "stuck"
+    ],
+    "provider_kind": [
+      "custom",
+      "hosted",
+      "local",
+      "mixed",
+      "none"
+    ],
+    "repeats_refused": "int",
+    "surface": [
+      "acp",
+      "bonnie",
+      "print",
+      "repl"
+    ],
+    "tool_calls": "int",
+    "tool_errors": "int",
+    "turns": "int"
+  },
+  "tune": {
+    "memory_saved_pct": [
+      "0",
+      "1-5",
+      "5-15",
+      ">15"
+    ],
+    "outcome": [
+      "applied",
+      "declined",
+      "failed",
+      "kept"
+    ]
+  }
+}
