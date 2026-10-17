@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - A shell command that names a file or folder outside the project (an absolute path, `~`, `$HOME` or `..`; temp folders do not count) now asks, even
   a read-only one and even in all-in mode, and so does one that names `.git/config` or `.git/hooks`. This replaces what the sandbox used to enforce.
+- Read, Write, Edit, NotebookEdit, Glob, Grep and a Bash `cwd` outside the project now ask instead of being refused. A yes covers that file, or that
+  folder and what is under it, for the rest of the session; a no does not. Headless `-p` still denies (it cannot ask).
 
 ### Removed
 

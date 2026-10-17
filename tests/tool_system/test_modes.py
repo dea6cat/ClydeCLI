@@ -116,12 +116,14 @@ class TestAllIn(ModeCase):
         self.bash("rm -rf build")
         self.bash("git push origin main")
         self.assertEqual(len(self.asked), 2, self.asked)
-        # Writing outside the project is refused outright, in every mode.
-        from src.tool_system.errors import ToolPermissionError
-        outside = Path(tempfile.gettempdir()) / "clyde-all-in-outside.txt"
-        with self.assertRaises(ToolPermissionError):
-            self.registry.dispatch(ToolCall(name="Write", input={"file_path": str(outside), "content": "x"}), self.ctx)
-        self.assertFalse(outside.exists())
+        # Writing outside the project asks, in every mode; it only happens after a yes.
+        with tempfile.TemporaryDirectory() as other:
+            outside = Path(other).resolve() / "clyde-all-in-outside.txt"
+            self.ctx.permission_handler = lambda tool, message, suggestion: (self.asked.append(message) or False, False)
+            self.assertTrue(self.registry.dispatch(ToolCall(name="Write", input={"file_path": str(outside), "content": "x"}), self.ctx).is_error)
+            self.assertEqual(len(self.asked), 3, self.asked)
+            self.assertIn("outside the project", self.asked[-1])
+            self.assertFalse(outside.exists())
 
     def test_deny_rules_still_win(self):
         self.ctx.auto_approve = True

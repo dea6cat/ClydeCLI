@@ -129,9 +129,12 @@ def is_major_command(command: str) -> bool:
 _TEMP_ROOTS = ("/tmp", "/private/tmp", "/var/folders", "/private/var/folders", "/dev")
 
 
-def reaches_outside_project(command: str, context: ToolContext) -> bool:
-    """Whether a shell command names a file or folder outside the project and its extra folders (an absolute path, `~`,
-    `$HOME`, or `..`), or git's config or hooks. Temp folders and /dev do not count."""
+def reaches_outside_project(command: str, context: ToolContext, cwd: Any = None) -> bool:
+    """Whether a shell command, or the folder it is asked to run in, is outside the project and its extra folders and not yet
+    approved. The command counts when it names an absolute path, `~`, `$HOME` or `..`, or git's config or hooks; temp folders
+    and /dev do not count."""
+    if isinstance(cwd, str) and cwd and context.outside_path(cwd) is not None:
+        return True
     roots = [*context.permission_context.allowed_roots(), *map(Path, _TEMP_ROOTS), Path(tempfile.gettempdir()).resolve()]
     lexer = shlex.shlex(command.replace("\n", ";"), posix=True, punctuation_chars=True)
     lexer.whitespace_split = True
@@ -208,7 +211,7 @@ class BashTool:
             return PermissionResult.allow()  # Input validation happens in run()
         if any(pat.search(command) for pat in _DANGEROUS_PATTERNS):
             return PermissionResult.deny("refusing to run potentially dangerous command")
-        if reaches_outside_project(command, context):
+        if reaches_outside_project(command, context, tool_input.get("cwd")):
             return PermissionResult.ask(message=f"Run shell command that reaches outside the project: {command}")
         if is_read_only_command(command):
             return PermissionResult.allow()
@@ -236,6 +239,7 @@ class BashTool:
         cd_target = _try_extract_cd(command)
         if cd_target is not None and command.strip().startswith("cd ") and len(command.strip().splitlines()) == 1:
             next_dir = (cwd / cd_target).expanduser().resolve() if not cd_target.is_absolute() else cd_target.expanduser().resolve()
+            context.grant_path(next_dir)   # run only happens after the ask in check_permissions (reaches_outside_project) was answered
             next_dir = context.ensure_allowed_path(next_dir)
             if not next_dir.exists() or not next_dir.is_dir():
                 return ToolResult(name="Bash", output={"error": f"directory does not exist: {next_dir}"}, is_error=True)

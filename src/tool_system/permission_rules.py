@@ -177,8 +177,10 @@ def check_rules(tool: str, tool_input: dict[str, Any], context: Any) -> str | No
         return "allow"
     if not parts or any(_part_needs_rule(p, rules["allow"], tool_input, context) for p in parts):
         return None
-    if command_reads_secret(command) and not all(any(_matches(r, tool, tool_input, context, w) for r in rules["allow"]) for w in parts):
-        return None   # read-only is not a yes to printing a key: only a rule the user wrote covers that
+    from .tools.bash import reaches_outside_project
+    if (command_reads_secret(command) or reaches_outside_project(command, context, tool_input.get("cwd"))) \
+            and not all(any(_matches(r, tool, tool_input, context, w) for r in rules["allow"]) for w in parts):
+        return None   # read-only is not a yes to printing a key or reading another folder: only a rule the user wrote covers that
     return "allow"
 
 

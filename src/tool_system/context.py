@@ -49,6 +49,9 @@ class ToolContext:
     # Saved allow/deny rules (see permission_rules.py); the REPL loads them from settings.
     # Mutated in place so sub-agents, which get a shallow copy of this context, see new rules.
     permission_rules: dict[str, list[str]] = field(default_factory=lambda: {"allow": [], "deny": []})
+    # Files and folders outside the project that the user approved this session (a folder covers what is under it).
+    # Shared with sub-agents like the rules above, so one yes covers the whole session.
+    granted_paths: set[Path] = field(default_factory=set)
 
     # Permission handler callback: called when a tool needs user consent.
     # Signature: (tool_name: str, message: str, suggestion: str | None)
@@ -89,7 +92,26 @@ class ToolContext:
         if not p.is_absolute():
             base = self.cwd or self.workspace_root
             p = (base / p).resolve()
-        return self.permission_context.ensure_path_allowed(p)
+        try:
+            return self.permission_context.ensure_path_allowed(p)
+        except ToolPermissionError:
+            resolved = p.resolve()
+            if any(resolved == g or g in resolved.parents for g in self.granted_paths):
+                return resolved
+            raise
+
+    def outside_path(self, path: str | Path) -> Path | None:
+        """`path` resolved, when it is outside the project and its extra folders and not yet approved; otherwise None."""
+        try:
+            self.ensure_allowed_path(path)
+            return None
+        except ToolPermissionError:
+            p = Path(path).expanduser()
+            return (p if p.is_absolute() else (self.cwd or self.workspace_root) / p).resolve()
+
+    def grant_path(self, path: Path) -> None:
+        """Remember that the user approved `path` (a file, or a folder and what is under it) for this session."""
+        self.granted_paths.add(path.resolve())
 
     def ensure_tool_allowed(self, tool_name: str) -> None:
         if self.permission_context.blocks_tool(tool_name):
