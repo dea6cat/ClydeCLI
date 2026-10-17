@@ -7,6 +7,9 @@ import tempfile
 # keys, plugins, skills or sessions. Tests that need a specific home still patch Path.home.
 _TEST_HOME = tempfile.mkdtemp(prefix="clyde-test-home-")
 os.environ["HOME"] = _TEST_HOME
+# clyde_home() prefers $XDG_CONFIG_HOME/clyde when it is set (GitHub's Linux runners and many desktops set it), which would send
+# every test to the real config folder. Tests that cover the XDG rules set it themselves.
+os.environ.pop("XDG_CONFIG_HOME", None)
 atexit.register(shutil.rmtree, _TEST_HOME, ignore_errors=True)
 
 # The suite must never reach the real telemetry receiver, whatever a test turns on; telemetry tests that want an endpoint set one.
