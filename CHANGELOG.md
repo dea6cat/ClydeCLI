@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.9] - 2026-10-16
+
 ### Changed
 
 - ClydeCLI now runs on Python 3.12, 3.13 and 3.14 (it needed 3.14). Python 3.11 is not supported because SkillSpector, the bundled skill scanner, needs 3.12, and 3.15 waits for SkillSpector too. The one thing that needed 3.13 was the path-glob matcher for saved permission rules (`Edit(docs/**)`-style rules used `PurePath.full_match`, which would have raised on 3.12); it now falls back to an equivalent that is tested against the real one on every combination tried. A new `Tests` workflow runs the whole suite on 3.12, 3.13 and 3.14.
@@ -682,6 +684,7 @@ The focus was on building a solid foundation with clean architecture, comprehens
 
 ---
 
+[0.5.9]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.5.9
 [0.5.8]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.5.8
 [0.5.7]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.5.7
 [0.5.6]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.5.6
