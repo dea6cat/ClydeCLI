@@ -42,7 +42,8 @@ def summarize_tool_result(name: str, output: Any) -> str:
     if name.lower() == "edit":
         path = output.get("filePath") or output.get("file_path")
         replace_all = output.get("replaceAll")
-        return f"{name} · {path} · replaceAll={replace_all}"
+        loose = f" · matched loosely (ignored {output['matchedLoosely']})" if output.get("matchedLoosely") else ""
+        return f"{name} · {path} · replaceAll={replace_all}{loose}"
     if name.lower() == "read":
         if output.get("type") == "text" and isinstance(output.get("file"), dict):
             f = output["file"]

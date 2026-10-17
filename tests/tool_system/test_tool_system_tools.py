@@ -177,6 +177,32 @@ class TestEditTool(ToolSystemTests):
         out = self._edit(content, "def f(self):\n    return 1", "def f(self):\n    return 2")
         self.assertEqual(out, "class A:\n    def f(self):\n        return 2\n")
 
+    def _edit_output(self, content: str, old: str, new: str) -> dict:
+        p = self.root / "n.py"
+        p.write_text(content, encoding="utf-8")
+        FileReadTool().run({"file_path": str(p)}, self.ctx)
+        return FileEditTool().run({"file_path": str(p), "old_string": old, "new_string": new}, self.ctx).output
+
+    def test_an_exact_match_carries_no_loose_match_notice(self) -> None:
+        out = self._edit_output("a = 1\nb = 2\n", "b = 2", "b = 3")
+        self.assertNotIn("matchedLoosely", out)
+        self.assertNotIn("note", out)
+
+    def test_a_loose_match_says_what_it_ignored_to_the_model_the_user_and_the_trace(self) -> None:
+        from unittest.mock import patch
+        from src.agent.agent_loop import summarize_tool_result
+        for content, old, new, ignored in (("def f():   \n    return 1\n", "def f():\n    return 1\n", "def f():\n    return 2\n", "trailing whitespace"),
+                                           ("class A:\n    def f(self):\n        return 1\n", "def f(self):\n    return 1", "def f(self):\n    return 2", "indentation")):
+            with patch("src.tool_system.tools.edit.trace.record") as record:
+                out = self._edit_output(content, old, new)
+            self.assertEqual(out["matchedLoosely"], ignored)
+            self.assertIn(ignored, out["note"])
+            self.assertIn("structuredPatch", out["note"])
+            self.assertIn(f"matched loosely (ignored {ignored})", summarize_tool_result("Edit", out))
+            record.assert_called_once()
+            self.assertEqual(record.call_args.args[0], "edit_loose_match")
+            self.assertEqual(record.call_args.kwargs["ignored"], ignored)
+
     def test_edit_ignores_stray_trailing_blank_line(self) -> None:
         out = self._edit("a\nb\nc\n", "b\n\n", "B\n")
         self.assertEqual(out, "a\nB\nc\n")
