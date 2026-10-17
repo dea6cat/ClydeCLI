@@ -325,10 +325,13 @@ on `/skills scan`. Ctrl+C skips it.
 
 `DO_NOT_INSTALL` keeps an item away from the model until you allow that exact content (`/skills allow
 <name>`, or `mcp:<server>`; a change brings the check back). `CAUTION` loads with a warning, and a scan
-that fails warns and loads, so a broken scanner never locks you out of your own tools. `/skills scan`
+that fails warns (once per item, on stderr and as a `scan_failed` event in the trace) and loads, so a broken scanner never locks you
+out of your own tools. If you would rather have nothing than something unscanned, set `CLYDE_SKILL_SCAN=closed`: an item whose scan
+failed is then held back. `/skills scan`
 rescans everything and shows each verdict with its findings; `/doctor` shows how many are held back.
 An MCP server has already started by the time its tools are scanned: the scan decides whether the model
-sees them. Turn scanning off with `CLYDE_SKILL_SCAN=off`.
+sees them. Turn scanning off with `CLYDE_SKILL_SCAN=off` (everything then loads unscanned, which is also how to let in an item that
+`closed` holds back because the scanner keeps failing on it).
 
 ### Interactive REPL
 
