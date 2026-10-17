@@ -7,16 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
-
-- With the LM Studio provider, Clyde no longer downloads and runs LM Studio's installer (`curl ... | sh`) on its own when the headless daemon is missing. The terminal UI asks first (default No); in an editor over ACP, in `clyde -p` and in Bonnie, where nobody can be asked, it stops with the command to run by hand. Before, that was the one download-and-run Clyde did without a yes.
-- WebSearch now asks before each search, showing the whole query, the way WebFetch asks before each URL: whatever the model wrote goes to DuckDuckGo, and a key or a snippet of your code can ride in it. "Don't ask again" saves a `WebSearch` allow rule. In `clyde -p`, which cannot ask, a search is now denied unless that rule exists (`permissions.allow` in `~/.clyde/settings.json`) or you pass `--mode all_in`. Bonnie's own search box is unchanged, because you type that query yourself.
-
 ### Added
+
+- `CLYDE_SKILL_SCAN=closed` holds back any skill, plugin, agent or MCP server whose SkillSpector scan failed, instead of loading it. The default is unchanged (a failed scan loads, so a broken scanner never locks anyone out), but it is no longer silent: each failure now says so once on stderr with the reason ("loaded WITHOUT a scan") and is recorded as a `scan_failed` trace event.
+- `EGRESS.md`, linked from the first screen of the README and from the privacy page: every way Clyde can use the network, what it sends, when, and how to turn it off (your model provider, the update check, telemetry, WebSearch and WebFetch, MCP servers, cloud review, SkillSpector's LLM review, local-model search, setup downloads). A test fails whenever the code names a host the document does not, and when the document promises an off switch the code never reads.
 
 ### Changed
 
 - When Edit lands a match that was not exact (it ignored trailing whitespace or indentation), it now says so: the result tells the model what was ignored and to check the patch, the one-line summary shows `matched loosely (ignored indentation)`, and the trace records an `edit_loose_match` event. An exact match is unchanged.
+- WebSearch now asks before each search, showing the whole query, the way WebFetch asks before each URL: whatever the model wrote goes to DuckDuckGo, and a key or a snippet of your code can ride in it. "Don't ask again" saves a `WebSearch` allow rule. In `clyde -p`, which cannot ask, a search is now denied unless that rule exists (`permissions.allow` in `~/.clyde/settings.json`) or you pass `--mode all_in`. Bonnie's own search box is unchanged, because you type that query yourself.
+- With the LM Studio provider, Clyde no longer downloads and runs LM Studio's installer (`curl ... | sh`) on its own when the headless daemon is missing. The terminal UI asks first (default No); in an editor over ACP, in `clyde -p` and in Bonnie, where nobody can be asked, it stops with the command to run by hand. Before, that was the one download-and-run Clyde did without a yes.
 
 ### Fixed
 
