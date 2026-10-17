@@ -232,7 +232,7 @@ Examples:
         from src.install import install_info
         print("ClydeCLI install:")
         print("\n".join(install_info.report_lines()))
-        print("\nFor the full environment check (keys, providers, sandbox, config) run /doctor inside clyde.")
+        print("\nFor the full environment check (keys, providers, config) run /doctor inside clyde.")
         return 1 if any(line.lstrip().startswith("✗") for line in install_info.report_lines()) else 0
 
     if args.command == 'update':

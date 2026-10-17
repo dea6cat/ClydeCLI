@@ -10,10 +10,10 @@ from pathlib import Path
 from unittest.mock import patch
 
 from src.context_system.git_context import collect_git_context
-from src.tool_system import sandbox
 from src.tool_system.context import ToolContext
 from src.tool_system.protocol import ToolCall, ToolResult
 from src.tool_system.registry import ToolRegistry, _is_major
+from src.tool_system.tools.bash import BashTool, reaches_outside_project
 from src.tool_system.tools.write import FileWriteTool
 
 
@@ -63,16 +63,11 @@ class TestGitControlFilesAreProtected(unittest.TestCase):
             self.assertTrue(_is_major(spec, {"file_path": str(self.root / rel)}, self.ctx), rel)
         self.assertFalse(_is_major(spec, {"file_path": str(self.root / "a.txt")}, self.ctx))
 
-    def test_the_sandbox_cannot_write_them(self):
-        protected = sandbox.protected_paths(self.ctx)
-        self.assertIn((self.root / ".git" / "config").resolve(), protected)
-        self.assertIn((self.root / ".git" / "hooks").resolve(), protected)
-        profile = sandbox.macos_profile([self.root], True, protected)
-        self.assertIn(str(self.root / ".git" / "config"), profile)
-        self.assertLess(profile.index("allow file-write*"), profile.rindex("deny file-write*"))
-        args = sandbox.bwrap_args([self.root], True, protected)
-        self.assertIn(str(self.root / ".git" / "config"), args)
-        self.assertEqual(args[args.index(str(self.root / ".git" / "config")) - 1], "--ro-bind")
+    def test_a_shell_command_that_names_git_config_or_hooks_asks_even_all_in(self):
+        for command in ("echo x >> .git/config", "cp h .git/hooks/pre-commit", f"echo x > {self.root}/.git/hooks/post-merge"):
+            self.assertTrue(_is_major(BashTool().spec(), {"command": command}, self.ctx), command)
+            self.assertTrue(reaches_outside_project(command, self.ctx), command)
+        self.assertFalse(reaches_outside_project("git status && ls a.txt", self.ctx))
 
 
 if __name__ == "__main__":

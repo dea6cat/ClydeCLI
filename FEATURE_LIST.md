@@ -53,7 +53,7 @@
 | Tracing / `/debug` | ✅ | Per-session JSONL traces with redaction, `/debug` for the last turn, `clyde --debug` live |
 | Headless mode | ✅ | `clyde -p "<prompt>"`: piped stdin added, permission asks denied and listed, JSON output, exit 0/1/2, never hangs on an open stdin pipe |
 | Edit checkpoints | ✅ | Every message opens a checkpoint; `/rewind` puts files (and/or the conversation) back to before it; survives `/resume`; shell-command changes aren't captured |
-| Shell sandbox | ✅ | macOS `sandbox-exec` / Linux `bwrap`: the model's commands write only to the project, temp and package caches; `unsandboxed: true` always asks |
+| Shell asks | ✅ | Commands that are not read-only ask; so does any command that names a folder outside the project, even in all-in mode. No OS sandbox (removed: `sandbox-exec` is deprecated by Apple) |
 | cardShuffle | ✅ | A model that deals each turn to an `/eval`-ranked real model (high-roller, house, free, small); re-deals on errors, max tool turns and Laya-detected loops |
 | Model evaluation | ✅ | `/eval`: a tool-call check, then an 11-task graded hand calibrated on live models; provider errors mid-hand don't count against a model |
 | Local models | ✅ | `/models local [ollama\|hf\|mlx]`: models that fit this machine, rated relax / balance / hard, confirmed with their cost before downloading through Ollama or LM Studio |
@@ -92,7 +92,7 @@
 | File operations | GlobTool | `glob.py` | ✅ Implemented |
 | File operations | GrepTool | `grep.py` | ✅ Implemented |
 | Data | DataTool | `data.py` | ✅ Profile and read-only SQL over CSV, TSV, Parquet, JSON and SQLite (sandboxed DuckDB) |
-| System operations | BashTool | `bash.py` | ✅ Runs in the OS sandbox (`sandbox.py`); `unsandboxed: true` always asks |
+| System operations | BashTool | `bash.py` | ✅ Asks before commands that are not read-only or that name a folder outside the project |
 | Web tools | WebFetchTool | `web_fetch.py` | ✅ Implemented |
 | Web tools | WebSearchTool | `web_search.py` | ✅ Implemented |
 | Interaction tools | AskUserQuestionTool | `ask_user_question.py` | ✅ Implemented |
@@ -131,7 +131,7 @@
 | Output Styles | ✅ | Output style loading system implemented |
 | Session Persistence | ✅ | Session save/load available |
 | Context Engine | ✅ | Context-building pipeline: workspace, git, README excerpt / entry points, code map, and `CLYDE.md` memory (reads `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, Cursor and Copilot files too) |
-| Permission Engine | ✅ | Bash, Write/Edit, Config set and WebFetch ask; allow/deny rules from `~/.clyde/settings.json`; shell commands also run in the OS sandbox; no project-level rules yet |
+| Permission Engine | ✅ | Bash, Write/Edit, Config set and WebFetch ask; allow/deny rules from `~/.clyde/settings.json`; no project-level rules yet |
 | Compaction Engine | ✅ | Manual `/compact` and automatic at 80% of the context window |
 | Hook Runtime | ✅ | Matching hooks run around every tool dispatch; exit 2 blocks (pre) or feeds stderr back (post) |
 | MCP Runtime | ✅ | Stdlib JSON-RPC over stdio, Streamable HTTP and HTTP+SSE (with fallback); OAuth (discovery, client registration, PKCE, refresh); project `.mcp.json` behind a per-entry yes; tool lists scanned by SkillSpector |
@@ -242,7 +242,6 @@ Goal: build features unique to the Python rewrite.
 
 ### P2: Filling in key Claude Code experiences
 
-- Linux sandbox testing on a machine with `bwrap`
 - Performance monitoring and tuning
 
 ### P3: Python version highlights

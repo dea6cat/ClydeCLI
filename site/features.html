@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Features · ClydeCLI</title>
-<meta name="description" content="Everything ClydeCLI does beyond the basics: tuning a local model, dealing a model each turn, checking which models work, council, sandbox, MCP, sub-agents and more.">
+<meta name="description" content="Everything ClydeCLI does beyond the basics: tuning a local model, dealing a model each turn, checking which models work, council, MCP, sub-agents and more.">
 <meta name="theme-color" content="#e8e5dd" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0f1a14" media="(prefers-color-scheme: dark)">
 <link rel="icon" type="image/svg+xml" href="brand/clyde-mark.svg">
@@ -28,7 +28,7 @@
   <dl class="grid">
     <div class="cut"><dt>Council</dt><dd><code>cardShuffle:high-roller council</code> asks the top four models at once with tools off, and Laya rates the answers.</dd></div>
     <div class="cut"><dt>Scripts and CI</dt><dd><code>clyde -p</code> runs one turn with JSON output and exit codes.</dd></div>
-    <div class="cut"><dt>Sandbox</dt><dd>Shell commands write only inside the project. Reading a <code>.env</code> or key file asks first.</dd></div>
+    <div class="cut"><dt>Asks first</dt><dd>Shell commands that are not read-only, or that reach outside the project, ask. Reading a <code>.env</code> or key file asks too.</dd></div>
     <div class="cut"><dt>MCP</dt><dd>Servers work over stdio, HTTP and SSE, with OAuth sign-in.</dd></div>
     <div class="cut"><dt>Sub-agents</dt><dd>Agents and teams run in parallel, in the background if you like.</dd></div>
     <div class="cut"><dt>Your existing setup</dt><dd>Reads the memory files, skills, hooks and MCP servers you set up for Claude Code, Codex, Cursor or Gemini CLI.</dd></div>

@@ -626,9 +626,6 @@ def doctor_command_call(args: str, context: CommandContext) -> LocalCommandResul
                             f"({laya_client.status()})", "run clyde setup to download it"))
     else:
         lines.append(_check(True, "Laya (optional, spots a stuck model) is not installed; `clyde setup` adds it"))
-    from ..tool_system import sandbox
-    lines.append(_check(sandbox.engine() is not None, f"Sandbox: {sandbox.describe()}",
-                        "install bubblewrap (Linux), or set sandbox.enabled in ~/.clyde/settings.json"))
     from ..security import skill_scan
     held = [k for k, v in skill_scan.cached_verdicts().items() if v.blocked]
     caution = [k for k, v in skill_scan.cached_verdicts().items() if v.recommendation == skill_scan.CAUTION]
