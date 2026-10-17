@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- WebSearch now asks before each search, showing the whole query, the way WebFetch asks before each URL: whatever the model wrote goes to DuckDuckGo, and a key or a snippet of your code can ride in it. "Don't ask again" saves a `WebSearch` allow rule. In `clyde -p`, which cannot ask, a search is now denied unless that rule exists (`permissions.allow` in `~/.clyde/settings.json`) or you pass `--mode all_in`. Bonnie's own search box is unchanged, because you type that query yourself.
+
 ### Added
 
 ### Changed
