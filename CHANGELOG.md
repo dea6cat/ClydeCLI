@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- ClydeCLI now runs on Python 3.12, 3.13 and 3.14 (it needed 3.14). Python 3.11 is not supported because SkillSpector, the bundled skill scanner, needs 3.12, and 3.15 waits for SkillSpector too. The one thing that needed 3.13 was the path-glob matcher for saved permission rules (`Edit(docs/**)`-style rules used `PurePath.full_match`, which would have raised on 3.12); it now falls back to an equivalent that is tested against the real one on every combination tried. A new `Tests` workflow runs the whole suite on 3.12, 3.13 and 3.14.
 - Laya, the local model that spots a stuck cardShuffle turn, is now an optional extra (`clyde-cli[laya]`) instead of a required dependency, because it pulls in PyTorch: a new install drops from about 790 MB to about 180 MB, and Laya adds about 640 MB of packages plus its 800 MB model. `clyde setup` offers to add it (default No, never with `--yes`) and keeps your installed version; `clyde update` keeps Laya for anyone who already has it, so an update does not remove it. Without Laya everything else works and cardShuffle has no stuck check; `/laya` and `/doctor` say "not installed" instead of treating it as a failure.
 
 ## [0.5.8] - 2026-10-16

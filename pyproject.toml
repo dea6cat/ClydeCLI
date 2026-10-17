@@ -8,7 +8,8 @@ version = "0.5.8"
 description = "A coding-agent harness for your terminal: bring any LLM, cloud or local, and Clyde turns it into an agent"
 readme = "README.md"
 license = {text = "PolyForm-Noncommercial-1.0.0 (portions MIT); see LICENSE"}
-requires-python = ">=3.14"
+# 3.12 is SkillSpector's floor and 3.14 its ceiling (v2.12.0 declares >=3.12,<3.15); raise the ceiling when it does.
+requires-python = ">=3.12,<3.15"
 authors = [
     {name = "dea6cat", email = "notalexander24@gmail.com"}
 ]
@@ -18,6 +19,8 @@ classifiers = [
     "Intended Audience :: Developers",
     "License :: Other/Proprietary License",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
 ]
 

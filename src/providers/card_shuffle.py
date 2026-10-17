@@ -235,11 +235,21 @@ class CardShuffle:
             self._verdict = difficulty_verdict(_traced_lines())
         return self._verdict
 
+    def _laya_loads(self) -> bool:
+        """Whether a wait for Laya is real: it is loading or about to. False when it is not installed, not downloaded, failed to load,
+        or already ready, so the status line never promises a wait that returns at once. An injected `ask` always counts."""
+        return self.ask is not laya_client.ask or laya_client.status() in ("loading", "not started")
+
+    def _laya_answers(self) -> bool:
+        """Whether Laya can answer now or after its load; False when it cannot (not installed, not downloaded, failed)."""
+        return self.ask is not laya_client.ask or laya_client.status() in ("ready", "loading", "not started")
+
     def _await_laya(self) -> None:
         """The first Laya question of a session waits for its cold load, so Laya actually gets to answer."""
         if not self._waited:
             self._waited = True
-            activity.set(f"waiting up to {LAYA_WAIT}s for Laya to load")
+            if self._laya_loads():
+                activity.set(f"waiting up to {LAYA_WAIT}s for Laya to load")
             self.wait(LAYA_WAIT)
 
     def _difficulty(self, request: str) -> float | None:
@@ -248,7 +258,8 @@ class CardShuffle:
         if not request.strip():
             return None
         self._await_laya()
-        activity.set("asking Laya how hard this is")
+        if self._laya_answers():
+            activity.set("asking Laya how hard this is")
         answers = self.ask({"request": request[-4000:], "mode": self.mode}, {"difficulty": _DIFFICULTY})
         return float(answers["difficulty"]["score"]) if answers else None
 
@@ -329,9 +340,11 @@ class CardShuffle:
         if not answers:
             raise ProviderError(NAME, "council: no model answered (" + "; ".join(f"{r}: {why}" for r, why in failed.items()) + ")")
         order = [r for r in roster if r in answers]
-        activity.set(f"waiting up to {COUNCIL_LAYA_WAIT_S}s for Laya to load")
+        if self._laya_loads():
+            activity.set(f"waiting up to {COUNCIL_LAYA_WAIT_S}s for Laya to load")
         self.wait(COUNCIL_LAYA_WAIT_S)
-        activity.set("asking Laya which answer is best")
+        if self._laya_answers():
+            activity.set("asking Laya which answer is best")
         chances = rank(self.ask, request, {r: answers[r].message.text for r in order}) if len(order) > 1 else None
         winner = max(order, key=lambda r: chances[r]) if chances else order[0]
         self.last_council = {"tier": tier, "request": request, "ranked": chances is not None, "failed": failed,

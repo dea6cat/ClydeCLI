@@ -20,7 +20,7 @@ This project follows the [Contributor Covenant Code of Conduct](https://www.cont
 
 ### Prerequisites
 
-- Python 3.14 or higher
+- Python 3.12 to 3.14 (CI runs all three; the SkillSpector scanner needs 3.12, and it does not support 3.15 yet)
 - `uv` (recommended) or `pip`
 - git
 - An API key for at least one provider, or a local Ollama install (tests need neither)

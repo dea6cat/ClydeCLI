@@ -16,6 +16,7 @@ import json
 import re
 import shlex
 import urllib.parse
+from functools import lru_cache
 from pathlib import Path, PurePath
 from typing import Any
 
@@ -83,6 +84,53 @@ def _domain(tool_input: dict[str, Any]) -> str | None:
     return (urllib.parse.urlparse(url).hostname or None) if isinstance(url, str) else None
 
 
+def _segment_regex(segment: str) -> str:
+    """One path segment of a glob as a regex: `*` and `?` stay inside the segment, `[abc]` and `[!abc]` are classes."""
+    out, i = [], 0
+    while i < len(segment):
+        c = segment[i]
+        if c == "*":
+            out.append("[^/]*")
+        elif c == "?":
+            out.append("[^/]")
+        elif c == "[":
+            j = i + 1 + (segment[i + 1:i + 2] == "!")
+            j += segment[j:j + 1] == "]"      # a ] right after the opening is a member, not the end
+            j = segment.find("]", j)
+            if j == -1:
+                out.append(r"\[")
+            else:
+                body = segment[i + 1:j]
+                negate, body = (True, body[1:]) if body.startswith("!") else (False, body)
+                out.append("[" + ("^" if negate else "") + re.sub(r"([\\\[&~|^])", r"\\\1", body) + "]")
+                i = j
+        else:
+            out.append(re.escape(c))
+        i += 1
+    return "".join(out)
+
+
+@lru_cache(maxsize=256)
+def _glob_regex(pattern: str) -> re.Pattern[str]:
+    segments = pattern.split("/")
+    out = []
+    for i, segment in enumerate(segments):
+        last = i == len(segments) - 1
+        if segment == "**":   # whole-segment ** is any number of segments; as the last one it needs at least one
+            out.append("(?:[^/]+/)*[^/]+" if last else "(?:[^/]+/)*")
+        else:
+            out.append(_segment_regex(segment) + ("" if last else "/"))
+    return re.compile("".join(out), re.S)
+
+
+def _full_match(path: PurePath, pattern: str) -> bool:
+    """PurePath.full_match (Python 3.13+) on any supported Python: the whole path against a glob. Where full_match exists it is used;
+    the fallback copies its rules (tests/tool_system/test_permission_rules.py compares the two on every combination they try)."""
+    if hasattr(path, "full_match"):
+        return path.full_match(pattern)
+    return _glob_regex(pattern).fullmatch(path.as_posix()) is not None
+
+
 def _matches(rule: str, tool: str, tool_input: dict[str, Any], context: Any, bash_words: list[str] | None) -> bool:
     m = _RULE_RE.match(rule.strip())
     if not m or m.group(1).lower() != tool.lower():
@@ -96,7 +144,7 @@ def _matches(rule: str, tool: str, tool_input: dict[str, Any], context: Any, bas
         path = _file_path(tool_input, context)
         pattern = Path(spec).expanduser()
         pattern = pattern if pattern.is_absolute() else Path(context.workspace_root) / pattern
-        return path is not None and PurePath(path).full_match(str(pattern))
+        return path is not None and _full_match(PurePath(path), str(pattern))
     if tool == "WebFetch" and spec.startswith("domain:"):
         return _domain(tool_input) == spec[len("domain:"):].lower()
     return False
