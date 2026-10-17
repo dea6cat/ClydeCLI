@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.8] - 2026-10-16
+
 ### Added
 
 - Over `--acp`, editors also get the `/settings` toggles (auto-save sessions, trace requests, terse replies, max history, context window, update channel) as options on the thread, and a change is saved to `~/.clyde/config.json` like `/settings` does.
@@ -675,6 +677,7 @@ The focus was on building a solid foundation with clean architecture, comprehens
 
 ---
 
+[0.5.8]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.5.8
 [0.5.7]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.5.7
 [0.5.6]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.5.6
 [0.5.5]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.5.5
