@@ -210,6 +210,68 @@ class TestFirstRunQuestion(_Home):
             self.assertEqual(self._ask(True), [])
 
 
+class TestFirstRun(_Home):
+    """A new install is on with a notice; someone who updates is asked once and stays off unless they say yes."""
+
+    def setUp(self):
+        super().setUp()
+        telemetry.set_endpoint("https://t.example.com/in")
+        self.printed, self.asked = [], []
+        self.console = type("C", (), {"print": staticmethod(lambda text, *a, **k: self.printed.append(text))})()
+        for p in (patch("src.telemetry._interactive", return_value=True),):
+            p.start()
+            self.addCleanup(p.stop)
+
+    def _run(self, new_install, answer=False):
+        telemetry.first_run(self.console, new_install, lambda *a, **k: self.asked.append(k.get("default")) or answer)
+
+    def test_a_new_install_is_on_with_a_notice_that_says_how_to_turn_it_off(self):
+        self._run(new_install=True)
+        self.assertTrue(telemetry.enabled())
+        self.assertEqual(self.asked, [])   # not a question: it is on, and told
+        self.assertIn("telemetry off", self.printed[0])
+        self.assertIn("DO_NOT_TRACK", self.printed[0])
+
+    def test_it_says_so_once_and_does_not_come_back(self):
+        self._run(new_install=True)
+        self._run(new_install=True)
+        self.assertEqual(len(self.printed), 1)
+
+    def test_off_after_the_automatic_on_sticks_and_deletes_the_queue(self):
+        self._run(new_install=True)
+        telemetry.record("bonnie_start")
+        telemetry.turn_off()
+        self._run(new_install=True)
+        self.assertFalse(telemetry.enabled())
+        self.assertEqual(telemetry.queued(), [])
+
+    def test_someone_who_updates_is_asked_with_no_as_the_default_and_a_no_keeps_it_off(self):
+        self._run(new_install=False, answer=False)
+        self.assertEqual(self.asked, [False])
+        self.assertFalse(telemetry.enabled())
+        self._run(new_install=False, answer=True)
+        self.assertEqual(self.asked, [False])   # not asked again
+        self.assertFalse(telemetry.enabled())
+
+    def test_someone_who_updates_can_say_yes(self):
+        self._run(new_install=False, answer=True)
+        self.assertTrue(telemetry.enabled())
+
+    def test_nothing_happens_without_a_terminal(self):
+        with patch("src.telemetry._interactive", return_value=False):
+            self._run(new_install=True)
+            self._run(new_install=False, answer=True)
+        self.assertFalse(telemetry.enabled())
+        self.assertEqual((self.printed, self.asked), ([], []))
+
+    def test_the_environment_wins(self):
+        for variable in ({"DO_NOT_TRACK": "1"}, {"CLYDE_TELEMETRY": "off"}):
+            with patch.dict(os.environ, variable):
+                self._run(new_install=True)
+            self.assertFalse(telemetry.enabled())
+            self.assertEqual(self.printed, [])
+
+
 class TestAgentLoopRecordsARun(_Home):
     def test_a_finished_run_is_queued_with_its_counts_when_opted_in(self):
         telemetry.turn_on()

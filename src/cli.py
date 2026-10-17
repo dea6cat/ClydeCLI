@@ -90,7 +90,7 @@ Examples:
   clyde update [--check] [--channel latest|stable]  Move Clyde to the newest version of its channel, the way it was installed
   clyde uninstall [--purge] [-y]      Remove Clyde the way it was installed; --purge also deletes ~/.clyde
   clyde tune [--ask]                  Find the best Ollama setup for how you use it, keeping quality (memory, speed, context)
-  clyde telemetry [on|off|show|send]  Anonymous usage counters: off until you turn them on; `show` prints exactly what is queued
+  clyde telemetry [on|off|show|send]  Anonymous usage counters: on for a new install, `off` stops them; `show` prints exactly what is queued
   clyde doctor                        How Clyde is installed: method, version, PATH, other installs, Claude Code
   clyde license [accept]              Show the licence terms and whether you accepted them; accept records it
   clyde -p "<prompt>"                 One turn without the prompt, answer on stdout (scripts, CI); also --mode,
@@ -158,7 +158,7 @@ Examples:
     tune_parser.add_argument('--ask', dest='tune_ask', action='store_true', help='answer the questions again (what you use the model for)')
     tune_parser.add_argument('--model', dest='tune_model', metavar='NAME', help='installed Ollama model to test (default: the smallest)')
     tune_parser.add_argument('--ctx', type=int, metavar='TOKENS', help="context window to test at (default: the one Clyde pins for the model)")
-    telemetry_parser = subparsers.add_parser('telemetry', help='Anonymous usage counters: off until you turn them on')
+    telemetry_parser = subparsers.add_parser('telemetry', help='Anonymous usage counters: on for a new install; `off` stops them')
     telemetry_parser.add_argument('action', nargs='?', default='status', choices=['status', 'on', 'off', 'show', 'send', 'endpoint', 'reset-id'])
     telemetry_parser.add_argument('value', nargs='?', help='endpoint: the https URL to send to')
     subparsers.add_parser('doctor', help='How Clyde is installed: method, version, PATH, other installs, Claude Code, licence')
@@ -182,9 +182,13 @@ Examples:
     # These never run the agent: doctor reports the licence status itself, and someone who declined the terms must be able to
     # uninstall (or update to terms they accept).
     if not args.version and args.command not in ('doctor', 'uninstall', 'update'):
+        from rich.prompt import Confirm
+        from src import telemetry
         from src.install import license_gate
+        first_ever_run = not license_gate.is_accepted()
         if not license_gate.ensure_accepted(Console()):
             return license_gate.EXIT_DECLINED
+        telemetry.first_run(Console(), first_ever_run and license_gate.is_accepted(), Confirm.ask)   # recorded just now, not "accepted for this run"
 
     # An editor's terminal login runs the agent's own command with the auth method's args added (`clyde --acp login`):
     # a subcommand wins, so that runs the login instead of starting the protocol server and waiting forever.

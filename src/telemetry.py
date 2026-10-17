@@ -1,6 +1,7 @@
-"""Opt-in, anonymous usage counters.
+"""Anonymous usage counters.
 
-Off until the user turns it on (`clyde telemetry on`). Every event is checked against SCHEMA before it is written: a
+On for a new install (with a notice, see first_run), asked once for someone who already had Clyde, and always one command from off
+(`clyde telemetry off`). Every event is checked against SCHEMA before it is written: a
 field is a count, a flag or one of a fixed set of words, so a prompt, a path, a model's name or an error message cannot
 be sent even by mistake. Events wait in a local file (`clyde telemetry show` prints exactly that file) and go out in one
 batch to an HTTPS endpoint (DEFAULT_ENDPOINT, the Worker in worker/, unless the user set another), and only while telemetry is on. `off` deletes the queue.
@@ -135,6 +136,30 @@ def ask_once(console: Any, confirm: Callable[..., bool]) -> None:
     if confirm("Share them to help improve Clyde?", default=False):
         turn_on()
     _write_state({"asked": True})
+
+
+NEW_INSTALL_NOTICE = ("\n[bold]Anonymous usage counters are on for this new install[/bold]: counts and fixed words only (how many tool calls "
+                      "failed, which built-in provider and size of model, which Bonnie features get used), never prompts, paths, model names "
+                      "or error text. `clyde telemetry show` prints exactly what is queued; [bold]`clyde telemetry off`[/bold] stops it and "
+                      "deletes the queue. DO_NOT_TRACK=1 or CLYDE_TELEMETRY=off also turn it off.\n")
+
+
+def _interactive() -> bool:
+    return sys.stdin.isatty() and sys.stdout.isatty()
+
+
+def first_run(console: Any, new_install: bool, confirm: Callable[..., bool]) -> None:
+    """Called once the licence is settled. A brand-new install gets telemetry on, with a visible notice saying how to turn it off.
+    Someone who already had Clyde is asked once (default No) and stays off unless they say yes; nobody is switched on silently.
+    Never in editors, scripts or CI (no terminal), and never when the environment or a past answer already decided."""
+    if asked() or overridden() or not endpoint() or not _interactive():
+        return
+    if not new_install:
+        ask_once(console, confirm)
+        return
+    turn_on()
+    _write_state({"asked": True})
+    console.print(NEW_INSTALL_NOTICE)
 
 
 def turn_off() -> None:

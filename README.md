@@ -998,7 +998,9 @@ A plugin is a folder that bundles extensions; Claude Code plugins mostly work as
 
 ### Telemetry
 
-- Off until you turn it on with `clyde telemetry on`. `CLYDE_TELEMETRY=off` and `DO_NOT_TRACK=1` always win
+- On for a new install, with a notice the first time you run Clyde in a terminal. If you already had Clyde, an update asks once
+  (default No) and stays off unless you say yes. `clyde telemetry off` stops it and deletes the queue; `clyde telemetry on` turns it
+  on. It is never switched on by itself in an editor, a script or CI. `CLYDE_TELEMETRY=off` and `DO_NOT_TRACK=1` always win
 - What it can record is fixed in `SCHEMA` in `src/telemetry.py` and checked on every event: counts, flags and words from
   fixed sets, so a prompt, a path, a model's name or an error message cannot be sent even by mistake:
   - `run` (after each agent run): the surface (terminal, `-p`, Bonnie, editor), how it ended, turns, tool calls, tool errors,
@@ -1011,7 +1013,7 @@ A plugin is a folder that bundles extensions; Claude Code plugins mostly work as
   - every event also carries Clyde's version, a random install id, the OS, CPU, Python version, a RAM bucket and the date
 - Events wait in `~/.clyde/telemetry/queue.jsonl`; `clyde telemetry show` prints exactly that and the schema, and
   `clyde telemetry off` stops it and deletes the queue. `clyde telemetry reset-id` gives a new install id
-- They go out in one batch when Clyde exits, or on `clyde telemetry send`, and only if you turned telemetry on. The default
+- They go out in one batch when Clyde exits, or on `clyde telemetry send`, and only while telemetry is on. The default
   receiver is a Cloudflare Worker (`worker/` in this repo, so you can read exactly what it does). It re-checks every event
   against the same schema, refuses a whole batch if one event is off it, and keeps only daily counters in a database: no event,
   no install id and no address is stored (an install is counted once a day through a salted hash that is deleted after about
