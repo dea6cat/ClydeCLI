@@ -247,9 +247,10 @@ they are running. Services that can't check a key without sending a message are 
 
 *I read the table, not just the cards.*
 
-ClydeCLI ships with [Laya](https://github.com/NandhaKishorM/laya), an open-weight (Apache 2.0) decision
+ClydeCLI works with [Laya](https://github.com/NandhaKishorM/laya), an open-weight (Apache 2.0) decision
 model that runs on your machine: no key, no network, typed answers with probabilities instead of
-prose. It's a required dependency, pinned to a release that pins its own weights. Its answers are
+prose. It's an optional extra (`clyde setup` offers it, or install `clyde-cli[laya]`), pinned to a release that pins its own weights;
+without it everything else works and cardShuffle simply has no stuck-model check. Its answers are
 inputs to rules in Clyde's code, never the rules themselves, and it never decides permissions.
 
 | Judgment | Type | What Clyde does with it |
@@ -257,7 +258,7 @@ inputs to rules in Clyde's code, never the rules themselves, and it never decide
 | Is the dealt model repeating the same tool calls without progress? | yes/no | Acts: from the 6th tool call, every 3rd round; at 0.8 or above, cardShuffle hands the turn to the next card |
 | How hard is this request? | score 0-3 | Scored on every cardShuffle turn and shown on the `♠ dealt` line. Starts in shadow mode (traced, not acted on); once the evidence below promotes it, `house` starts harder requests on stronger cards and easier ones on faster cards |
 
-Laya's model is about 800 MB: `clyde setup` asks before downloading it, and Clyde itself only ever
+Laya costs about 640 MB of packages (mostly PyTorch) and then about 800 MB for its model: `clyde setup` asks before adding either, and Clyde itself only ever
 loads it from the local cache, in the background, when a cardShuffle model is in use (about 15 s).
 The first cardShuffle turn of a session waits for that load (up to 30 s, once), so Laya answers from
 the first turn on, in `clyde -p` too. Each judgment then takes about 0.1 s. `/doctor` shows whether it's
@@ -422,7 +423,7 @@ to do. The session is saved, so `clyde -c` picks the conversation up interactive
 | Local models | ✅ | `/models local` finds ollama.com, Hugging Face GGUF and MLX models that fit this machine, rated relax / balance / hard, confirmed before download through Ollama or LM Studio |
 | whichllm | ✅ | Bundled benchmark ranking of local models in `/models local`: the best models that fit this machine, with quality, speed range and license in the download confirmation |
 | SkillSpector | ✅ | Bundled scanner for skills, plugins and MCP servers from other agents: static always, LLM review when a usable model is connected; `DO_NOT_INSTALL` items held back until `/skills allow` |
-| Laya | ✅ | Bundled local decision model: hands a stuck cardShuffle turn to the next card; scores every turn's difficulty and steers `house` once `/laya`'s evidence shows it separates easy turns from hard ones |
+| Laya | ✅ | Optional local decision model (`clyde-cli[laya]`): hands a stuck cardShuffle turn to the next card; scores every turn's difficulty and steers `house` once `/laya`'s evidence shows it separates easy turns from hard ones |
 | IDE integration | ✅ | `clyde --acp` speaks the Agent Client Protocol, so editors that support it (Zed, JetBrains through an ACP adapter) run Clyde as their agent: streamed replies, tool calls and permission asks in the editor |
 | Pasting | ✅ | Ctrl+V pastes a copied image, a copied image path becomes the image, long pastes fold to `[Pasted text #N +X lines]` |
 
@@ -484,10 +485,10 @@ pipx install --python python3.14 git+https://github.com/dea6cat/ClydeCLI
 
 Both give you `clyde` and `bonnie`, and `clyde update` and `clyde uninstall` use the tool that installed Clyde.
 
-It includes Laya, the bundled decision model, and SkillSpector, the bundled skill scanner, so the
-install is about 850 MB (mostly PyTorch).
-`clyde setup` connects a provider and picks a default model, asks before downloading Laya's model
-(about 800 MB), lists the hooks, MCP servers and plugins you
+It includes SkillSpector, the bundled skill scanner, and the install is about 180 MB. Laya, the local
+decision model, is an optional extra (about 640 MB of packages, mostly PyTorch, plus its 800 MB model); an update keeps it
+if you already have it.
+`clyde setup` connects a provider and picks a default model, asks before adding Laya and downloading its model, lists the hooks, MCP servers and plugins you
 already set up for other agents (Claude Code, Cursor, Gemini CLI, Codex, Copilot CLI) and imports
 them only if you say yes, and offers to
 put `clyde` on your PATH. Pass `--yes` for no prompts (hooks, MCP servers and plugins are never imported that way). Run it

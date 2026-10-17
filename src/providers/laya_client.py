@@ -1,5 +1,5 @@
-"""Laya, ClydeCLI's bundled local decision model (github.com/NandhaKishorM/laya): typed choice,
-score and noul judgments computed on this machine, no key, no network.
+"""Laya, ClydeCLI's optional local decision model (the `clyde-cli[laya]` extra, github.com/NandhaKishorM/laya): typed choice,
+score and noul judgments computed on this machine, no key, no network. Without the extra every entry point answers None or False.
 
 Laya's answers are inputs to policy that lives in Clyde's code, never the policy itself. Only a
 judgment measured to separate cleanly acts: the stuck check (a noul) re-deals a cardShuffle turn.
@@ -13,6 +13,7 @@ Every entry point returns None or False instead of raising.
 """
 from __future__ import annotations
 
+import importlib.util
 import os
 import threading
 import warnings
@@ -27,12 +28,18 @@ warnings.filterwarnings("ignore", module=r"laya(\.|$)")
 
 REPO = "convaiinnovations/laya"
 DOWNLOAD_SIZE = "about 800 MB"
+PACKAGES_SIZE = "about 640 MB"   # torch, transformers and the rest of the `clyde-cli[laya]` extra (macOS arm64, measured from the lock)
 _WARMUP = ({"request": "hello"}, {"warmup": {"type": "noul", "instructions": "Is `request` a greeting?"}})
 
 _lock = threading.Lock()
 _thread: threading.Thread | None = None
 _router: Any = None
 _error = ""
+
+
+def installed() -> bool:
+    """Whether the optional `laya` package (the `clyde-cli[laya]` extra) is installed; checked without importing torch."""
+    return importlib.util.find_spec("laya") is not None
 
 
 def cached() -> bool:
@@ -80,9 +87,11 @@ def wait_ready(timeout: float) -> bool:
 
 
 def status() -> str:
-    """ready, loading, not started, not downloaded, or the load error."""
+    """ready, loading, not started, not downloaded, not installed, or the load error."""
     if _router is not None:
         return "ready"
+    if not installed():
+        return "not installed"
     if _error:
         return f"failed to load: {_error}"
     if _thread is not None:

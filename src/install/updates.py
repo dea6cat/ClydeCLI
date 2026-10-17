@@ -10,6 +10,7 @@ Nothing is installed without the user running `clyde update`.
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import re
@@ -148,17 +149,31 @@ def compare(info: install_info.Install, target: Target | None) -> Status:
     return Status("current" if target.commit.startswith(info.commit) else "behind", info.commit, target.commit[:7])
 
 
-def update_command(info: install_info.Install, target: Target | None = None) -> list[str] | None:
+def update_command(info: install_info.Install, target: Target | None = None, with_laya: bool | None = None) -> list[str] | None:
     """The command that moves this install to the target (newest main when none is given), or None for a source checkout
-    (update it with git)."""
+    (update it with git). An install that has Laya keeps it: `--force` rebuilds the environment from the package's own
+    requirements, and Laya is an optional extra, so without the extra an update would silently remove it."""
     # Pin to what was checked: the tag for stable, the exact commit for latest, so the install cannot differ from the report
     # even if main moves in between. Without a target (GitHub unreachable) the newest main is installed.
     pin = (target.ref or target.commit) if target else None
     url = REPO_URL + (f"@{pin}" if pin else "")
+    if with_laya is None:
+        with_laya = importlib.util.find_spec("laya") is not None
+    return _install_command(info, url, with_laya)
+
+
+def laya_install_command(info: install_info.Install) -> list[str] | None:
+    """The command that adds the Laya extra to this install without changing its version (pinned to the commit it was installed
+    from; the newest main when pip did not record one). None for a source checkout: `pip install -e '.[laya]'` there."""
+    return _install_command(info, REPO_URL + (f"@{info.commit}" if info.commit else ""), True)
+
+
+def _install_command(info: install_info.Install, url: str, with_laya: bool) -> list[str] | None:
+    spec = f"{install_info.PACKAGE}[laya] @ {url}" if with_laya else url
     return {
-        "uv-tool": ["uv", "tool", "install", "--force", "--python", "3.14", url],
-        "pipx": ["pipx", "install", "--force", url],
-        "pip": [sys.executable, "-m", "pip", "install", "--upgrade", url],
+        "uv-tool": ["uv", "tool", "install", "--force", "--python", "3.14", spec],
+        "pipx": ["pipx", "install", "--force", spec],
+        "pip": [sys.executable, "-m", "pip", "install", "--upgrade", spec],
     }.get(info.method)
 
 

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Laya, the local model that spots a stuck cardShuffle turn, is now an optional extra (`clyde-cli[laya]`) instead of a required dependency, because it pulls in PyTorch: a new install drops from about 790 MB to about 180 MB, and Laya adds about 640 MB of packages plus its 800 MB model. `clyde setup` offers to add it (default No, never with `--yes`) and keeps your installed version; `clyde update` keeps Laya for anyone who already has it, so an update does not remove it. Without Laya everything else works and cardShuffle has no stuck check; `/laya` and `/doctor` say "not installed" instead of treating it as a failure.
+
 ## [0.5.8] - 2026-10-16
 
 ### Added

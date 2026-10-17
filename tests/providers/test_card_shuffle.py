@@ -319,11 +319,22 @@ class TestLayaClient(unittest.TestCase):
             self.assertFalse(laya_client.wait_ready(30))
 
     def test_nothing_loads_when_the_weights_are_not_downloaded(self):
-        with patch.object(laya_client, "cached", return_value=False), patch.object(laya_client, "_thread", None), \
-                patch.object(laya_client, "_router", None), patch.object(laya_client, "_error", ""):
+        with patch.object(laya_client, "installed", return_value=True), patch.object(laya_client, "cached", return_value=False), \
+                patch.object(laya_client, "_thread", None), patch.object(laya_client, "_router", None), patch.object(laya_client, "_error", ""):
             laya_client.warm()
             self.assertIsNone(laya_client._thread)
             self.assertEqual(laya_client.status(), "not downloaded")
+
+    def test_without_the_laya_extra_everything_answers_quietly_and_says_not_installed(self):
+        with patch("importlib.util.find_spec", return_value=None), patch.object(laya_client, "_thread", None), \
+                patch.object(laya_client, "_router", None), patch.object(laya_client, "_error", ""):
+            self.assertFalse(laya_client.installed())
+            self.assertFalse(laya_client.cached())
+            laya_client.warm()
+            self.assertIsNone(laya_client._thread)
+            self.assertFalse(laya_client.wait_ready(0))
+            self.assertIsNone(laya_client.ask({"request": "x"}, {"q": {"type": "noul", "instructions": "?"}}))
+            self.assertEqual(laya_client.status(), "not installed")
 
 
 if __name__ == "__main__":

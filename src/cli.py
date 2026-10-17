@@ -504,9 +504,22 @@ def handle_setup(console: Console, assume_yes: bool = False) -> int:
     else:
         console.print("• Install the code map builder later for the Map tool: [bold]uv tool install graphifyy[/bold].")
 
-    # 7) Laya's weights: a large download, so only after a yes (never with --yes)
+    # 7) Laya: an optional extra (torch and transformers) and then its weights; both are large, so only after a yes (never with --yes)
     from src.providers import laya_client
-    if laya_client.cached():
+    if not laya_client.installed():
+        from src.install import install_info, updates
+        command = updates.laya_install_command(install_info.detect())
+        if command is None:
+            console.print("• Laya (optional, spots a stuck model) isn't installed; in a source checkout run [bold]pip install -e '.[laya]'[/bold].")
+        elif not assume_yes and Confirm.ask(
+                f"Add Laya (about {laya_client.PACKAGES_SIZE} of packages, then {laya_client.DOWNLOAD_SIZE} of model) so cardShuffle can spot a stuck model?",
+                default=False):
+            done = subprocess.run(command, check=False)
+            console.print("✓ Laya installed. Run [bold]clyde setup[/bold] again to download its model." if done.returncode == 0
+                          else "[yellow]Laya's install didn't finish; run clyde setup again to retry.[/yellow]")
+        else:
+            console.print("• Laya (optional, spots a stuck model) isn't installed; run [bold]clyde setup[/bold] to add it.")
+    elif laya_client.cached():
         console.print("✓ Laya (the bundled decision model) is downloaded.")
     elif not assume_yes and Confirm.ask(
             f"Download Laya's model ({laya_client.DOWNLOAD_SIZE}) so cardShuffle can spot a stuck model?", default=True):
