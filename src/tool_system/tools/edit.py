@@ -3,6 +3,7 @@ from __future__ import annotations
 import difflib
 from typing import Any
 
+from ...agent import trace
 from ..context import ToolContext
 from ..errors import ToolInputError, ToolPermissionError
 from ..permission_handler import PermissionResult
@@ -44,13 +45,14 @@ def _resolve_edit(content: str, old: str):
     """Find the one region old_string refers to, tolerating the whitespace drift models produce.
 
     Tiers, in order: exact substring; trailing-whitespace-insensitive whole lines; indentation-
-    insensitive whole lines (new_string is re-indented to the file). Returns (start, end, render)
-    for a unique match, ("ambiguous", n) when a tier matches more than once, or None.
+    insensitive whole lines (new_string is re-indented to the file). Returns (start, end, render, how)
+    for a unique match, where `how` is None for an exact match and otherwise names what was ignored,
+    ("ambiguous", n) when a tier matches more than once, or None.
     """
     count = content.count(old)
     if count == 1:
         start = content.index(old)
-        return (start, start + len(old), lambda nt: nt)
+        return (start, start + len(old), lambda nt: nt, None)
     if count > 1:
         return ("ambiguous", count)
 
@@ -67,7 +69,7 @@ def _resolve_edit(content: str, old: str):
         acc += len(ln)
     owns_trailing_nl = old.endswith(("\n", "\r"))
     n = len(old_lines)
-    for normalize, reindent in ((str.rstrip, False), (str.strip, True)):
+    for normalize, reindent, how in ((str.rstrip, False, "trailing whitespace"), (str.strip, True, "indentation")):
         norm_content = [normalize(ln) for ln in content_lines]
         norm_old = [normalize(ln) for ln in old_lines]
         hits = [i for i in range(len(norm_content) - n + 1) if norm_content[i:i + n] == norm_old]
@@ -80,7 +82,7 @@ def _resolve_edit(content: str, old: str):
             if not owns_trailing_nl:  # keep the line break old_string didn't include
                 end -= len(matched) - len(matched.rstrip("\r\n"))
             render = _make_reindenter(content_lines[i], old_lines[0]) if reindent else (lambda nt: nt)
-            return (start, end, render)
+            return (start, end, render, how)
     return None
 
 
@@ -104,8 +106,9 @@ def _nearest_hint(content: str, old: str) -> str:
     )
 
 
-def _apply_single_edit(content: str, old: str, new: str) -> str:
-    """Replace the unique region old_string refers to; raise ToolInputError when none or several match."""
+def _apply_single_edit(content: str, old: str, new: str) -> tuple[str, str | None]:
+    """Replace the unique region old_string refers to; (new content, what the match ignored or None when exact).
+    Raises ToolInputError when none or several match."""
     resolved = _resolve_edit(content, old)
     if resolved is None:
         raise ToolInputError("old_string not found in file" + _nearest_hint(content, old))
@@ -113,12 +116,12 @@ def _apply_single_edit(content: str, old: str, new: str) -> str:
         raise ToolInputError(
             f"old_string matches {resolved[1]} times; provide a larger old_string or set replace_all=true"
         )
-    start, end, render = resolved
+    start, end, render, how = resolved
     rendered = render(new)
     # old_string replaced whole lines but new_string dropped the final newline: don't merge the next line.
     if old.endswith("\n") and rendered and not rendered.endswith("\n") and end < len(content) and content[end] != "\n":
         rendered += "\n"
-    return content[:start] + rendered + content[end:]
+    return content[:start] + rendered + content[end:], how
 
 
 class FileEditTool:
@@ -184,12 +187,13 @@ class FileEditTool:
             raise ToolInputError("refusing to edit: file must be read first and unchanged since last read")
 
         original_file = path.read_text(encoding="utf-8", errors="replace")
+        how = None
         if replace_all:
             if old not in original_file:
                 raise ToolInputError("old_string not found in file" + _nearest_hint(original_file, old))
             updated = original_file.replace(old, new)
         else:
-            updated = _apply_single_edit(original_file, old, new)
+            updated, how = _apply_single_edit(original_file, old, new)
 
         path.write_text(updated, encoding="utf-8")
         context.mark_file_read(path)
@@ -206,15 +210,19 @@ class FileEditTool:
             )
         )
         hunks = unified_diff_hunks(diff_lines)
-        return ToolResult(
-            name="Edit",
-            output={
-                "filePath": str(path),
-                "oldString": old,
-                "newString": new,
-                "originalFile": original_file,
-                "structuredPatch": hunks,
-                "userModified": False,
-                "replaceAll": bool(replace_all),
-            },
-        )
+        output = {
+            "filePath": str(path),
+            "oldString": old,
+            "newString": new,
+            "originalFile": original_file,
+            "structuredPatch": hunks,
+            "userModified": False,
+            "replaceAll": bool(replace_all),
+        }
+        if how:
+            # The match was not exact: say so to the model (it may have misread the file) and to the user and the trace.
+            output["matchedLoosely"] = how
+            output["note"] = (f"old_string did not match exactly; it matched after ignoring {how}, and the edit was made at those lines. "
+                              "Check structuredPatch, and Read the file again before the next edit.")
+            trace.record("edit_loose_match", file=str(path), ignored=how)
+        return ToolResult(name="Edit", output=output)

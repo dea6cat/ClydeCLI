@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- When Edit lands a match that was not exact (it ignored trailing whitespace or indentation), it now says so: the result tells the model what was ignored and to check the patch, the one-line summary shows `matched loosely (ignored indentation)`, and the trace records an `edit_loose_match` event. An exact match is unchanged.
+
 ## [0.5.9] - 2026-10-16
 
 ### Changed

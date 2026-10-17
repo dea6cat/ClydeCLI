@@ -431,7 +431,7 @@ to do. The session is saved, so `clyde -c` picks the conversation up interactive
 
 | Category | Tools | Status |
 |----------|-------|--------|
-| Files | Read, Write, Edit, NotebookEdit, Glob, Grep | ✅ Working; Edit also lands a unique match that is off only by trailing whitespace or indentation |
+| Files | Read, Write, Edit, NotebookEdit, Glob, Grep | ✅ Working; Edit also lands a unique match that is off only by trailing whitespace or indentation, and says so in its result, in the one-line summary and in the trace |
 | Data | Data | ✅ Profile CSV, TSV, Parquet, JSON and SQLite files (types, nulls, distinct counts, min/max, samples) and run read-only SQL across them with DuckDB, sandboxed to the workspace |
 | System | Bash | ✅ Working; asks before commands that are not read-only, and runs in the OS sandbox |
 | Web | WebFetch, WebSearch | ✅ Working |
