@@ -1,0 +1,11 @@
+name = "clyde-telemetry"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+workers_dev = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "clyde-telemetry"
+database_id = "REPLACE_WITH_ID_FROM_wrangler_d1_create"
+
+# The salt is a secret, not a setting: `npx wrangler secret put SALT`.
