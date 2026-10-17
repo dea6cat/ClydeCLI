@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `GOVERNANCE.md` (one maintainer today, how decisions are made, how releases happen, how to become a maintainer), `SECURITY.md` (report a vulnerability privately through GitHub, what counts, the known limits) and a pull request template, which `CONTRIBUTING.md` already told contributors to fill in.
+
 ## [0.5.9] - 2026-10-16
 
 ### Changed
