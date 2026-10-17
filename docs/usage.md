@@ -355,7 +355,9 @@ the catalog doesn't know get the image. Clipboard images use `osascript` on macO
 Clyde asks before it changes anything. Every shell command that is not read-only asks first, and so does any command (even a
 read-only one) that names a file or folder outside the project and its extra working directories: an absolute path, `~`, `$HOME`
 or `..`. Temp folders don't count. Those asks stay on in all-in mode, and so does the ask before touching `.git/config` or
-`.git/hooks`. Write and Edit are limited to the project; Read and Grep of a key or `.env` file ask too (`clyde -p` denies every ask).
+`.git/hooks`. Read, Write, Edit, NotebookEdit, Glob, Grep and a shell's `cwd` ask too when they name a file or folder outside the project:
+one yes covers that file (or that folder and what is under it) for the rest of the session, a no does not. Read and Grep of a key or `.env`
+file ask as well (`clyde -p` denies every ask).
 
 There is no OS sandbox. Clyde used to run shell commands under macOS `sandbox-exec`, which Apple has deprecated; one macOS release
 could have broken every command, so the permission prompt is the guard instead. The catch: once you approve a command, it can write

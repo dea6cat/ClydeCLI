@@ -51,7 +51,7 @@ Setup connects a model: any of 13 providers with your key, or one running on you
 
 - **Any model.** 13 providers with your key, or a model on your machine; `cardShuffle` deals a different one each turn.
 - **Local models that fit.** `/models local` ranks what your RAM can really run, and `clyde tune` sizes the window for it.
-- **Asks first.** Every command that is not read-only asks, and so does any command that reaches outside the project.
+- **Asks first.** Every command that is not read-only asks, and so does anything that reaches outside the project: a command, or a file or folder.
   Allow and deny rules go in `~/.clyde/settings.json`. There is no OS sandbox ([why](CHANGELOG.md)).
 - **Undo.** `/rewind` puts back the files the model edited and the conversation.
 - **Skills, hooks, MCP, plugins, sub-agents.** Write a skill in Markdown; SkillSpector scans what you install.

@@ -80,6 +80,18 @@ def _edit_target(spec: ToolSpec, tool_input: dict[str, Any], context: ToolContex
         return None
 
 
+# Tools that name a file or folder, and the input field that holds it. Outside the project they ask, then remember the answer.
+_PATH_FIELDS = {"read": "file_path", "write": "file_path", "edit": "file_path", "notebookedit": "notebook_path",
+                "glob": "path", "grep": "path", "bash": "cwd"}
+_CHANGES_FILES = {"write", "edit", "notebookedit"}
+
+
+def _outside_target(spec: ToolSpec, tool_input: dict[str, Any], context: ToolContext):
+    """The file or folder this call names when it is outside the project and the user has not approved it yet."""
+    raw = tool_input.get(_PATH_FIELDS.get(spec.name.lower(), ""))
+    return context.outside_path(raw) if isinstance(raw, str) and raw else None
+
+
 def _shown(path, context: ToolContext) -> str:
     try:
         return str(path.relative_to(Path(context.workspace_root).resolve()))
@@ -94,18 +106,20 @@ def _is_major(spec: ToolSpec, tool_input: dict[str, Any], context: ToolContext) 
         from .tools.bash import is_major_command, reaches_outside_project
         # Reaching outside the project is always worth a yes, even when everything else plays without asking.
         command = str(tool_input.get("command", ""))
-        return is_major_command(command) or reaches_outside_project(command, context) or _reads_secret(spec, tool_input)
-    path = tool_input.get("file_path") or tool_input.get("notebook_path") or (tool_input.get("path") if name == "grep" else None)
+        return is_major_command(command) or reaches_outside_project(command, context, tool_input.get("cwd")) or _reads_secret(spec, tool_input)
+    path = tool_input.get("file_path") or tool_input.get("notebook_path") or (tool_input.get("path") if name in ("grep", "glob") else None)
     if isinstance(path, str) and path:
         from pathlib import Path
         target = Path(path).expanduser().resolve()
-        try:
-            target.relative_to(context.workspace_root)
-        except ValueError:
-            return True
         from .secret_paths import is_secret_path
+        if context.outside_path(path) is not None:
+            return True
+        try:
+            inside = target.relative_to(context.workspace_root)
+        except ValueError:
+            return is_secret_path(target.as_posix())   # outside, but the user approved it this session
         # Git runs a repository's config and hooks as the user: writing them is never routine.
-        if ".git" in target.relative_to(context.workspace_root).parts[:-1] or target.name == ".git":
+        if ".git" in inside.parts[:-1] or target.name == ".git":
             return True
         return is_secret_path(target.as_posix())
     return False
@@ -199,6 +213,10 @@ class ToolRegistry:
         if ruling != "allow" and permission_result.behavior.value == "allow" and _reads_secret(spec, call.input):
             # Keys and .env files reach the model only with a yes (or an allow rule); _is_major keeps all-in asking too.
             permission_result = PermissionResult.ask(f"{spec.name} wants to read a secret file: {_read_target(call.input)}")
+        outside = _outside_target(spec, call.input, context)
+        if outside is not None and permission_result.behavior.value == "allow":
+            what = "change a file" if spec.name.lower() in _CHANGES_FILES else "use a folder" if spec.name.lower() == "bash" else "read"
+            permission_result = PermissionResult.ask(f"{spec.name} wants to {what} outside the project: {outside}")
         target = _edit_target(spec, call.input, context) if context.confirm_edits else None
         if target is not None and permission_result.behavior.value == "allow":
             permission_result = PermissionResult.ask(f"{spec.name} wants to change {_shown(target, context)}")   # hold mode
@@ -244,6 +262,8 @@ class ToolRegistry:
                     tool_use_id=call.tool_use_id,
                 )
 
+        if outside is not None:
+            context.grant_path(outside)   # asked and answered yes (or a saved allow rule): the tool's own path check lets it through
         raw_path = call.input.get(_EDIT_PATHS.get(spec.name, ""))
         if context.before_edit is not None and isinstance(raw_path, str):
             try:

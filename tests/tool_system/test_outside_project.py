@@ -9,6 +9,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 from src.tool_system.context import ToolContext
+from src.tool_system.defaults import build_default_registry
+from src.tool_system.protocol import ToolCall
 from src.tool_system.registry import _is_major
 from src.tool_system.tools.bash import BashTool, reaches_outside_project
 
@@ -52,6 +54,88 @@ class TestOutsideProject(unittest.TestCase):
         result = BashTool().run({"command": "cat a.txt"}, self.ctx)
         self.assertNotIn("sandboxed", result.output)
         self.assertEqual(result.output["stdout"].strip(), "x")
+
+
+class TestFilesAndFoldersOutside(unittest.TestCase):
+    """Read, Write, Edit, NotebookEdit, Glob, Grep and a Bash cwd outside the project ask; a yes covers that file or folder for the session."""
+
+    def setUp(self):
+        base = Path(tempfile.mkdtemp()).resolve()
+        self.root, self.other = base / "proj", base / "other"
+        self.root.mkdir()
+        self.other.mkdir()
+        (self.other / "note.txt").write_text("hello\n")
+        self.asked: list[str] = []
+        self.answer = True
+        self.ctx = ToolContext(workspace_root=self.root)
+        self.ctx.permission_handler = lambda tool, message, suggestion: (self.asked.append(message) or self.answer, False)
+        self.registry = build_default_registry()
+
+    def call(self, name, **input):
+        return self.registry.dispatch(ToolCall(name=name, input=input), self.ctx)
+
+    def test_a_yes_lets_the_edit_through_and_covers_that_file_afterwards(self):
+        note = str(self.other / "note.txt")
+        self.call("Read", file_path=note)                              # Edit needs a Read first
+        self.asked.clear()
+        self.assertFalse(self.call("Edit", file_path=note, old_string="hello", new_string="bye").is_error)
+        self.assertEqual((self.other / "note.txt").read_text(), "bye\n")
+        self.assertEqual(len(self.asked), 0)                           # the Read's yes already covered this file
+        self.assertIn("outside the project", self.call("Write", file_path=str(self.other / "new.txt"), content="x") and self.asked[-1])
+        self.assertTrue((self.other / "new.txt").exists())
+
+    def test_a_no_leaves_it_alone_and_asks_again_next_time(self):
+        self.answer = False
+        target = self.other / "new.txt"
+        for _ in range(2):
+            self.assertTrue(self.call("Write", file_path=str(target), content="x").is_error)
+        self.assertFalse(target.exists())
+        self.assertEqual(len(self.asked), 2)
+
+    def test_all_in_mode_asks_the_first_time_only(self):
+        self.ctx.auto_approve = True
+        note = str(self.other / "note.txt")
+        self.call("Read", file_path=note)
+        self.call("Read", file_path=note)
+        self.assertEqual(len(self.asked), 1)
+
+    def test_without_a_way_to_ask_it_is_refused(self):
+        self.ctx.permission_handler = None
+        self.assertTrue(self.call("Write", file_path=str(self.other / "x.txt"), content="x").is_error)
+        self.assertTrue(self.call("Read", file_path=str(self.other / "note.txt")).is_error)
+
+    def test_a_folder_yes_covers_what_is_under_it(self):
+        self.assertFalse(self.call("Grep", pattern="hello", path=str(self.other)).is_error)
+        self.assertEqual(len(self.asked), 1)
+        self.assertFalse(self.call("Read", file_path=str(self.other / "note.txt")).is_error)
+        self.assertEqual(len(self.asked), 1)                           # under the folder already approved
+        self.assertTrue(self.call("Read", file_path=str(self.other.parent / "elsewhere.txt")).is_error)   # a sibling is not covered
+        self.assertEqual(len(self.asked), 2)
+
+    def test_inside_the_project_nothing_new_asks(self):
+        (self.root / "a.txt").write_text("x")
+        self.call("Read", file_path=str(self.root / "a.txt"))
+        self.call("Glob", pattern="*.txt", path=str(self.root))
+        self.assertEqual(self.asked, [])
+
+    def test_a_read_only_command_naming_another_folder_asks_through_dispatch(self):
+        self.assertFalse(self.call("Bash", command="ls /etc").is_error)
+        self.assertEqual(len(self.asked), 1)
+        self.assertIn("outside the project", self.asked[0])
+        self.asked.clear()
+        self.call("Bash", command="ls")
+        self.assertEqual(self.asked, [])
+        self.ctx.permission_rules = {"allow": ["Bash(ls /etc:*)"], "deny": []}   # a rule the user wrote covers it
+        self.call("Bash", command="ls /etc")
+        self.assertEqual(self.asked, [])
+
+    def test_a_shell_in_another_folder_and_cd_ask_then_work(self):
+        self.assertEqual(self.call("Bash", command="ls", cwd=str(self.other)).output["stdout"].strip(), "note.txt")
+        self.assertIn("outside the project", self.asked[0])
+        self.asked.clear()
+        self.assertFalse(self.call("Bash", command="cd /etc").is_error)
+        self.assertEqual(len(self.asked), 1)
+        self.assertEqual(self.ctx.cwd, Path("/etc").resolve())
 
 
 if __name__ == "__main__":
