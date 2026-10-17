@@ -1088,7 +1088,8 @@ pip install -e .[dev]
 python -m pytest tests/ -v
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines, [GOVERNANCE.md](GOVERNANCE.md) for how decisions are made (one maintainer today,
+and how to become a second), and [SECURITY.md](SECURITY.md) to report a vulnerability privately.
 
 ***
 

@@ -1,6 +1,7 @@
 # Contributing to ClydeCLI
 
 Thank you for your interest in contributing to ClydeCLI! This document provides guidelines and instructions for contributing.
+How decisions are made, and how to become a maintainer, is in [GOVERNANCE.md](GOVERNANCE.md); security problems go to [SECURITY.md](SECURITY.md), not a public issue.
 
 ## Table of Contents
 

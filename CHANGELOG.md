@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `CLYDE_SKILL_SCAN=closed` holds back any skill, plugin, agent or MCP server whose SkillSpector scan failed, instead of loading it. The default is unchanged (a failed scan loads, so a broken scanner never locks anyone out), but it is no longer silent: each failure now says so once on stderr with the reason ("loaded WITHOUT a scan") and is recorded as a `scan_failed` trace event.
 - `EGRESS.md`, linked from the first screen of the README and from the privacy page: every way Clyde can use the network, what it sends, when, and how to turn it off (your model provider, the update check, telemetry, WebSearch and WebFetch, MCP servers, cloud review, SkillSpector's LLM review, local-model search, setup downloads). A test fails whenever the code names a host the document does not, and when the document promises an off switch the code never reads.
+- `GOVERNANCE.md` (one maintainer today, how decisions are made, how releases happen, how to become a maintainer), `SECURITY.md` (report a vulnerability privately through GitHub, what counts, the known limits) and a pull request template, which `CONTRIBUTING.md` already told contributors to fill in.
 
 ### Changed
 
