@@ -3,7 +3,7 @@
 Off until the user turns it on (`clyde telemetry on`). Every event is checked against SCHEMA before it is written: a
 field is a count, a flag or one of a fixed set of words, so a prompt, a path, a model's name or an error message cannot
 be sent even by mistake. Events wait in a local file (`clyde telemetry show` prints exactly that file) and go out in one
-batch to an HTTPS endpoint when someone has set one; with none set nothing leaves the machine. `off` deletes the queue.
+batch to an HTTPS endpoint (DEFAULT_ENDPOINT, the Worker in worker/, unless the user set another), and only while telemetry is on. `off` deletes the queue.
 CLYDE_TELEMETRY=off and DO_NOT_TRACK=1 always win. Nothing here can raise into a turn.
 """
 from __future__ import annotations
@@ -22,7 +22,7 @@ from typing import Any, Callable
 
 from src.config import clyde_home
 
-DEFAULT_ENDPOINT = ""   # none is run yet: with this empty, nothing is ever sent
+DEFAULT_ENDPOINT = "https://clyde-telemetry.bonnieclydesub.workers.dev/"   # worker/: a Cloudflare Worker that keeps daily counters only
 QUEUE_LIMIT = 500
 BATCH_TIMEOUT_S = 3
 
@@ -38,9 +38,14 @@ BONNIE_FEATURES = {"prompt", "steer", "stop", "permission", "vote", "feedback", 
                    "automation_create", "automation_pause", "automation_resume", "automation_delete", "automation_run"}
 
 
+def _provider_words() -> set[str]:
+    """Built-in provider names only: PROVIDER_KEY_ENV also holds the names of the user's own custom providers, which must never be sent."""
+    from src.providers.keys import _BUILT_IN
+    return {*_BUILT_IN, "custom", "cardShuffle"}
+
+
 def _provider(value: Any) -> bool:
-    from src.providers.keys import PROVIDER_KEY_ENV
-    return value == "custom" or value in PROVIDER_KEY_ENV or value == "cardShuffle"
+    return value in _provider_words()
 
 
 # event -> field -> a set of allowed words, the type int (a count from 0 to 10 million), bool, or a check function.
@@ -213,15 +218,13 @@ def schema_json() -> dict:
 
     `_common` lists the fields every event carries; worker/schema.json is this output and a test keeps the two equal.
     """
-    from src.providers.keys import PROVIDER_KEY_ENV
-
     def rule(r: Any) -> Any:
         if isinstance(r, set):
             return sorted(r)
         if r in (int, bool):
             return r.__name__
         if r is _provider:
-            return sorted({*PROVIDER_KEY_ENV, "custom", "cardShuffle"})
+            return sorted(_provider_words())
         raise ValueError(f"no plain-data form for {r!r}")
 
     common = {"os": ["darwin", "linux", "other", "win32"], "arch": ["aarch64", "amd64", "arm64", "other", "x86_64"],

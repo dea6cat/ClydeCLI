@@ -26,8 +26,7 @@ class _Home(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
-        for p in (patch("src.telemetry.clyde_home", return_value=Path(self.tmp.name)),
-                  patch.dict(os.environ, {k: v for k, v in os.environ.items() if k not in ("CLYDE_TELEMETRY", "DO_NOT_TRACK", "CLYDE_TELEMETRY_URL")}, clear=True)):
+        for p in (patch("src.telemetry.clyde_home", return_value=Path(self.tmp.name)),                  patch.dict(os.environ, {k: v for k, v in os.environ.items() if k not in ("CLYDE_TELEMETRY", "DO_NOT_TRACK", "CLYDE_TELEMETRY_URL")}, clear=True)):
             p.start()
             self.addCleanup(p.stop)
 
@@ -93,6 +92,16 @@ class TestSchema(_Home):
         telemetry.provider_error(ProviderError("my-private-llm.corp.example", "x", status=400))
         events = telemetry.queued()
         self.assertEqual([(e["provider"], e["kind"]) for e in events], [("openai", "http_429"), ("custom", "http_400")])
+
+    def test_a_registered_custom_provider_is_still_recorded_as_custom(self):
+        # Custom providers are added to PROVIDER_KEY_ENV at runtime; their names are the user's own and must never be sent.
+        from src.providers import keys
+        telemetry.turn_on()
+        with patch.dict(keys.PROVIDER_KEY_ENV, {"acme-private-llm": "ACME_PRIVATE_LLM_API_KEY"}):
+            telemetry.provider_error(ProviderError("acme-private-llm", "x", status=500))
+            self.assertFalse(telemetry.record("provider_error", provider="acme-private-llm", kind="other"))
+            self.assertNotIn("acme-private-llm", telemetry.schema_json()["provider_error"]["provider"])
+        self.assertEqual([e["provider"] for e in telemetry.queued()], ["custom"])
 
     def test_error_kinds(self):
         for error, kind in ((ProviderError("a", "x", status=503), "http_5xx"), (ProviderError("a", "no response for 180 s"), "stalled"),
