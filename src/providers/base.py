@@ -314,7 +314,7 @@ MAX_RETRY_AFTER_WAIT_S = 30.0   # longer asks bench the card instead of stalling
 
 def stream_with_retry(provider, conversation, model, tools, on_text, *, retries=3, cancel=None,
                       reasoning=None, on_thinking=None) -> ProviderResponse:
-    """_stream_with_retry, counting (anonymously, and only if the user opted in) the errors that get out of it."""
+    """_stream_with_retry, counting (anonymously, and only while telemetry is on) the errors that get out of it."""
     try:
         return _stream_with_retry(provider, conversation, model, tools, on_text, retries=retries, cancel=cancel,
                                   reasoning=reasoning, on_thinking=on_thinking)
