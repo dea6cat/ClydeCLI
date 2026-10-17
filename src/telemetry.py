@@ -50,7 +50,7 @@ def _provider(value: Any) -> bool:
 
 # event -> field -> a set of allowed words, the type int (a count from 0 to 10 million), bool, or a check function.
 SCHEMA: dict[str, dict[str, Any]] = {
-    "run": {"surface": {"repl", "print", "bonnie", "acp"}, "outcome": {"done", "max_turns", "stuck"},
+    "run": {"surface": {"repl", "print", "bonnie", "acp"}, "outcome": {"done", "max_turns", "stuck"}, "provider": _provider,
             "turns": int, "tool_calls": int, "tool_errors": int, "repeats_refused": int,
             "first_input_tokens": TOKENS, "index": {"names", "full", "none"}, "provider_kind": KINDS, "model_size": SIZES},
     "provider_error": {"provider": _provider, "kind": {"http_400", "http_401", "http_402", "http_403", "http_404", "http_429",
@@ -165,6 +165,12 @@ def token_bucket(tokens: int) -> str:
 
 def saved_bucket(pct: float) -> str:
     return "0" if pct <= 0 else "1-5" if pct <= 5 else "5-15" if pct <= 15 else ">15"
+
+
+def provider_word(provider: Any) -> str:
+    """The provider's name when it is a built-in one, else "custom": a user's own provider is never named."""
+    name = getattr(provider, "name", "")
+    return name if name in _provider_words() else "custom"
 
 
 def describe(provider: Any, model: str) -> tuple[str, str]:

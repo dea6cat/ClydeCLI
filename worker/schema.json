@@ -117,6 +117,23 @@
       "max_turns",
       "stuck"
     ],
+    "provider": [
+      "anthropic",
+      "cardShuffle",
+      "cerebras",
+      "cloudflare",
+      "custom",
+      "deepseek",
+      "glm",
+      "google",
+      "minimax",
+      "mistral",
+      "nvidia",
+      "ollama",
+      "openai",
+      "openrouter",
+      "pollinations"
+    ],
     "provider_kind": [
       "custom",
       "hosted",
