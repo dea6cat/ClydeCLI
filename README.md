@@ -32,6 +32,7 @@ Under the hood it's a Python rebuild of the Claude Code architecture. Rebuilt a 
 - **A faithful port.** It keeps the proven architecture, rewritten in idiomatic Python.
 - **Built to study and extend.** The code is readable and tested, and you add new skills by writing Markdown.
 - **No surprises on the wire.** [What leaves your machine](EGRESS.md) lists every network call, what it sends, and how to turn it off. Your prompts and files go to the model provider you chose and nowhere else.
+- **The receipts.** The measurements behind the claims are published as dated notes in [docs/research/](docs/research/): local-model runs, small-model fixes, `clyde tune`'s gates, the October security review, the fine-tuning data.
 
 ### ⚡ Quickstart
 
@@ -69,6 +70,7 @@ Setup connects a model: any of 13 providers with your key, or one running on you
 | [Telemetry](docs/telemetry.md) | exactly what is counted, where it goes, how to turn it off |
 | [Project structure](docs/project-structure.md) | where things live in `src/` |
 | [Setup guide](docs/guide/SETUP_GUIDE.md) and [testing guide](docs/guide/TESTING.md) | detailed installation; how the tests run |
+| [Research notes](docs/research/) | the measurements behind the claims: local models, small-model fixes, `clyde tune`, the October security review, the fine-tuning data |
 | [CHANGELOG.md](CHANGELOG.md) | version history |
 
 ## 🔒 Privacy and telemetry
