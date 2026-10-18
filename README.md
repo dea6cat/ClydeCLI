@@ -38,6 +38,7 @@ Under the hood it's a Python rebuild of the Claude Code architecture. Rebuilt a 
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/dea6cat/ClydeCLI/main/install.sh | sh   # installs uv and Clyde, then walks you through setup
+uv tool install --python 3.14 git+https://github.com/dea6cat/ClydeCLI              # already have uv? install straight from git, then `clyde setup`
 cd your-project && clyde                                                              # type a task; Clyde asks before it edits a file or runs a command
 ```
 

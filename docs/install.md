@@ -14,7 +14,16 @@ curl -fsSL https://raw.githubusercontent.com/dea6cat/ClydeCLI/main/install.sh | 
 curl -fsSL https://raw.githubusercontent.com/dea6cat/ClydeCLI/main/install.sh | CLYDE_REF=v0.2.5 sh
 ```
 
-Or with pipx (needs Python 3.12 to 3.14, so name one if your default is older or newer; add `--backend pip` if pipx complains about an older `uv`).
+Or with uv — the engine under the curl line, for when you already have it:
+
+```bash
+uv tool install --python 3.14 git+https://github.com/dea6cat/ClydeCLI
+# pin a release: ...ClydeCLI@v0.5.11
+# or try Clyde without installing:
+uvx --from git+https://github.com/dea6cat/ClydeCLI clyde
+```
+
+Then run `clyde setup` once, as the curl line does. Or with pipx (needs Python 3.12 to 3.14, so name one if your default is older or newer; add `--backend pip` if pipx complains about an older `uv`).
 Python 3.11 is not supported: the bundled skill scanner, SkillSpector, needs 3.12.
 
 ```bash

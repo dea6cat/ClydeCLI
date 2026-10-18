@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `docs/research/`: the measurements behind the README's claims as dated, checkable notes — the 18 GB local-model runs, the small-model routing and tool-selection trials, `clyde tune`'s quality gates, the three vulnerabilities found and fixed in the October security review, and the fine-tuning dataset built from 313K tool calls (nothing trained). Each note states its method and sample size, and the index maps every note to the claim it establishes.
 - A link to the research notes in the README's first screen and a row in the Guides table.
+- The plain uv install path in the README's quickstart and the install guide: `uv tool install` and `uvx` straight from git, for people who already have uv.
 
 ## [0.5.11] - 2026-10-17
 
