@@ -138,7 +138,10 @@ _HOW = ("When the user asks you to remember something (a preference, a fact abou
         "Remember tool: scope \"project\" for things about this codebase, \"user\" for things about them. For a lesson (what to do in a "
         "situation), pass the situation as `cue`, so it is shown when a later request mentions it.")
 _WORD = re.compile(r"[a-z0-9][a-z0-9_.+#-]*[a-z0-9+#]")
-_COMMON = frozenset("the and for with this that when from into your you are not use always never what how have has was".split())
+_COMMON = frozenset(("the and for with this that when from into your you are not use always never what how have has was here there "
+                     "one two then than also only just can will should would could some any all each every per about out its they them "
+                     "their our ours his her who which why where while does did done get got make made need needs like want please "
+                     "now new way thing things very more most much many same other such").split())
 
 
 def _stem(word: str) -> str:
