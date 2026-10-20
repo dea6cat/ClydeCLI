@@ -248,6 +248,12 @@ and about 2,000 characters ride in the prompt, fenced as data: a note is context
 you ask or Clyde's safety rules. Clyde does not learn anything on its own; a note exists only because you or you-approved-the-model
 saved it. The saved session, plan and memory notes together are what carry over from one conversation to the next.
 
+A note can be a lesson: the model passes the situation as a `cue` and the note is saved as "When running the tests: use uv run
+pytest". While the notes fit in those 2,000 characters, all of them are shown on every turn. Past that, your request picks: your own
+notes always, the project notes that share words with what you asked, and every note already shown in this session (so the prompt
+does not change again on a request that picks nothing new). `/memory stale` lists notes neither saved nor picked for a request in
+90 days; Clyde never forgets one on its own, so you decide with `/forget`.
+
 ## Plans
 
 When the model presents a plan with `ExitPlanMode` and you approve it, the plan is saved to

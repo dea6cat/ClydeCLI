@@ -34,6 +34,8 @@ class ToolContext:
     # The tools offered to a small local model so far this session (lowercase names). It only grows, because the tool
     # list sits early in the prompt and a list that shrinks again makes the server re-prefill everything after it.
     local_only: frozenset[str] = frozenset()
+    # Memory notes shown so far this session, once they outgrow the prompt (src/memory.py select). Grows only, for the same reason.
+    memory_shown: set[str] = field(default_factory=set)
     # The user's answer to "send a weak local reply to a cloud model for a check?", asked once per session (cloud_review.py).
     cloud_review_ok: bool | None = None
     output_style_name: str | None = None
