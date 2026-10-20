@@ -133,39 +133,8 @@ class Conversation:
 
     def to_dict(self) -> dict:
         """Serialize conversation."""
-        messages_data = []
-        for msg in self.messages:
-            if isinstance(msg.content, str):
-                content_data = msg.content
-            else:
-                content_data = []
-                for block in msg.content:
-                    if isinstance(block, TextContentBlock):
-                        content_data.append({"type": "text", "text": block.text})
-                    elif isinstance(block, ImageContentBlock):
-                        content_data.append({"type": "image", "media_type": block.media_type, "data": block.data})
-                    elif isinstance(block, ThinkingContentBlock):
-                        content_data.append({"type": "thinking", "thinking": block.thinking})
-                    elif isinstance(block, ToolUseContentBlock):
-                        tool_use = {"type": "tool_use", "id": block.id, "name": block.name, "input": block.input}
-                        if block.signature:
-                            tool_use["signature"] = block.signature
-                        content_data.append(tool_use)
-                    elif isinstance(block, ToolResultContentBlock):
-                        content_data.append({
-                            "type": "tool_result",
-                            "tool_use_id": block.tool_use_id,
-                            "content": block.content,
-                            "is_error": block.is_error
-                        })
-            messages_data.append({
-                "role": msg.role,
-                "content": content_data,
-                "timestamp": msg.timestamp,
-                "_is_internal": getattr(msg, "_is_internal", False),
-            })
         return {
-            "messages": messages_data,
+            "messages": [message_dict(msg) for msg in self.messages],
             "max_history": self.max_history
         }
 
@@ -210,3 +179,36 @@ class Conversation:
                 _is_internal=msg_data.get("_is_internal", False),
             ))
         return conv
+
+
+def message_dict(msg: Message) -> dict:
+    """One message as the session file stores it (and `clyde -p --output-format stream-json` prints it)."""
+    if isinstance(msg.content, str):
+        content_data: Any = msg.content
+    else:
+        content_data = []
+        for block in msg.content:
+            if isinstance(block, TextContentBlock):
+                content_data.append({"type": "text", "text": block.text})
+            elif isinstance(block, ImageContentBlock):
+                content_data.append({"type": "image", "media_type": block.media_type, "data": block.data})
+            elif isinstance(block, ThinkingContentBlock):
+                content_data.append({"type": "thinking", "thinking": block.thinking})
+            elif isinstance(block, ToolUseContentBlock):
+                tool_use = {"type": "tool_use", "id": block.id, "name": block.name, "input": block.input}
+                if block.signature:
+                    tool_use["signature"] = block.signature
+                content_data.append(tool_use)
+            elif isinstance(block, ToolResultContentBlock):
+                content_data.append({
+                    "type": "tool_result",
+                    "tool_use_id": block.tool_use_id,
+                    "content": block.content,
+                    "is_error": block.is_error
+                })
+    return {
+        "role": msg.role,
+        "content": content_data,
+        "timestamp": msg.timestamp,
+        "_is_internal": getattr(msg, "_is_internal", False),
+    }

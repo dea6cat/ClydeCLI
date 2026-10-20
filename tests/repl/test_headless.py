@@ -77,6 +77,35 @@ class TestRun(unittest.TestCase):
         self.assertEqual(data["usage"]["output_tokens"], 1)
         self.assertTrue(data["session_id"])
 
+    def test_stream_json_prints_each_message_then_the_result(self):
+        code, out, _, _ = self._run(reply(tool_calls=[("Glob", {"pattern": "*.py"})]), reply("none here"),
+                                    output_format="stream-json")
+        lines = [json.loads(line) for line in out.splitlines()]
+        self.assertEqual(code, 0)
+        self.assertEqual([line["type"] for line in lines], ["message"] * 4 + ["result"])
+        user, call, results, answer = (line["message"] for line in lines[:4])
+        self.assertEqual((user["role"], user["content"]), ("user", "what is 2+2?"))
+        self.assertEqual([b["type"] for b in call["content"] if b["type"] != "text"], ["tool_use"])
+        self.assertEqual(results["content"][0]["type"], "tool_result")
+        self.assertEqual(answer["role"], "assistant")
+        self.assertEqual((lines[-1]["result"], lines[-1]["is_error"]), ("none here", False))
+
+    def test_stream_json_without_tools_still_has_the_whole_turn(self):
+        _, out, _, _ = self._run(reply("4"), output_format="stream-json")
+        lines = [json.loads(line) for line in out.splitlines()]
+        self.assertEqual([line.get("message", {}).get("role", line["type"]) for line in lines], ["user", "assistant", "result"])
+
+    def test_sigterm_is_an_interrupt_and_the_result_line_says_so(self):
+        import signal
+        before = signal.getsignal(signal.SIGTERM)
+        self.assertNotEqual(before, headless._interrupt)
+        with self.assertRaises(KeyboardInterrupt):
+            headless._interrupt(signal.SIGTERM, None)
+        code, out, _, _ = self._run(KeyboardInterrupt(), output_format="stream-json")
+        last = json.loads(out.splitlines()[-1])
+        self.assertEqual((code, last["type"], last["is_error"], last["error"]), (1, "result", True, "interrupted"))
+        self.assertIs(signal.getsignal(signal.SIGTERM), before)   # put back for whoever runs next
+
     def test_anything_that_would_ask_is_denied_not_prompted(self):
         with patch("rich.prompt.Prompt.ask", side_effect=AssertionError("prompted in -p mode")), \
                 patch("rich.prompt.Confirm.ask", side_effect=AssertionError("prompted in -p mode")):

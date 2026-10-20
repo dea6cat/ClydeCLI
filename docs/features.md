@@ -356,8 +356,9 @@ it can't ask you anything. Options:
 |---|---|
 | `--mode hold\|plan\|all_in` | Permission mode (default `hold`). `all_in` lets edits and commands through but still denies major moves (`rm -r`, `git push`, ...) |
 | `--output-format json` | `{"result", "is_error", "error", "model", "num_turns", "usage", "denied", "session_id"}` |
+| `--output-format stream-json` | One `{"type": "message", "message": {...}}` line per message as the turn runs (the session file's shape: text, thinking, tool calls and their results), then the `json` fields as `{"type": "result", ...}`. A run killed partway keeps every line written before |
 | `--max-turns N` | Tool rounds before giving up (default 20) |
 | `--model provider:model` | As in the REPL; `cardShuffle:house` works too |
 
-Exit status is 0 when it answered, 1 when it failed or ran out of rounds, 2 when there was nothing
-to do. The session is saved, so `clyde -c` picks the conversation up interactively.
+Exit status is 0 when it answered, 1 when it failed, ran out of rounds or got SIGTERM, 2 when there was nothing
+to do. SIGTERM (a cancelled CI job, a harness timeout) stops the command a tool is running, along with whatever it started. The session is saved, so `clyde -c` picks the conversation up interactively.

@@ -5,7 +5,9 @@ so `clyde -p "..." > answer.md` and pipes stay clean. Piped stdin is added to th
 (`git diff | clyde -p "review this"`). Nobody is there to answer a prompt, so anything that would ask
 for permission is denied and reported, and AskUserQuestion fails, telling the model there's no one
 to ask. `--mode` picks the permission mode; `--output-format json` returns the answer with the
-model, token usage, turns and session id. Exit status: 0 answered, 1 failed or ran out of rounds,
+model, token usage, turns and session id; `stream-json` prints each message (the session file's shape) as one JSON
+line while the turn runs, then that result line with `"type": "result"`, so a harness can read the whole trajectory, even
+of a run it had to kill. Exit status: 0 answered, 1 failed or ran out of rounds,
 2 nothing to do. The session is saved like any other, so `clyde -c` can continue it interactively.
 """
 
@@ -14,12 +16,14 @@ from __future__ import annotations
 import io
 import json
 import select
+import signal
 import sys
 from typing import Any, TextIO
 
 from rich.console import Console
 
 from src.agent.agent_loop import MAX_TURNS_REPLY
+from src.agent.conversation import message_dict
 from src.providers import model_ref
 
 MODES = ("hold", "plan", "all_in")
@@ -54,6 +58,10 @@ def build_prompt(prompt: str, stdin: TextIO) -> str:
     return prompt or piped.strip()
 
 
+def _interrupt(_signum: int, _frame: Any) -> None:
+    raise KeyboardInterrupt
+
+
 def run(prompt: str, *, model: str | None = None, mode: str = "hold", output_format: str = "text",
         max_turns: int = 20, stdin: TextIO | None = None, stdout: TextIO | None = None) -> int:
     """Run one headless turn; return the process exit status."""
@@ -78,18 +86,42 @@ def run(prompt: str, *, model: str | None = None, mode: str = "hold", output_for
 
     repl.tool_context.permission_handler = deny
     repl.tool_context.ask_user = None
-    repl.chat(text, max_turns=max_turns)
+    written: set[int] = set()
+
+    def stream_messages(_event: Any = None) -> None:
+        # Called on each tool event: the assistant message with its tool calls is in by then, its results land on the
+        # next call, so a run killed mid-tool loses only that tool's result.
+        for msg in repl.session.conversation.messages:
+            if id(msg) not in written:
+                written.add(id(msg))
+                out.write(json.dumps({"type": "message", "message": message_dict(msg)}, ensure_ascii=False) + "\n")
+                out.flush()
+
+    if output_format == "stream-json":
+        repl.on_event_hook = stream_messages
+    # A CI cancel or a harness timeout sends SIGTERM: as an interrupt it reaches the running command, whose process group is
+    # then killed (src/system/proc.py), and the result line still says what happened.
+    previous = signal.signal(signal.SIGTERM, _interrupt)
+    try:
+        repl.chat(text, max_turns=max_turns)
+    except KeyboardInterrupt:
+        repl.last_error = "interrupted"
+    finally:
+        signal.signal(signal.SIGTERM, previous)
 
     result, error = repl.last_result, repl.last_error
     answer = result.response_text if result is not None else ""
     ran_out = answer == MAX_TURNS_REPLY
     failed = error is not None or result is None or ran_out
-    if output_format == "json":
+    if output_format in ("json", "stream-json"):
         payload: dict[str, Any] = {
             "result": answer, "is_error": failed, "error": error or ("ran out of tool rounds" if ran_out else None),
             "model": model_ref(repl.provider, repl.model), "num_turns": result.num_turns if result else 0,
             "usage": (result.usage if result else None) or {}, "denied": denied, "session_id": repl.session.session_id,
         }
+        if output_format == "stream-json":
+            stream_messages()
+            payload = {"type": "result", **payload}
         out.write(json.dumps(payload, ensure_ascii=False) + "\n")
     elif answer:
         out.write(answer.rstrip() + "\n")
