@@ -94,7 +94,7 @@ Examples:
   clyde doctor                        How Clyde is installed: method, version, PATH, other installs, Claude Code
   clyde license [accept]              Show the licence terms and whether you accepted them; accept records it
   clyde -p "<prompt>"                 One turn without the prompt, answer on stdout (scripts, CI); also --mode,
-                                      --output-format json, --max-turns. Piped input is added: git diff | clyde -p "review"
+                                      --output-format json|stream-json, --max-turns. Piped input is added: git diff | clyde -p "review"
   clyde --acp                         Run as an Agent Client Protocol agent on stdio, for editors (Zed, JetBrains)
   clyde acp install zed [-y]          Add Clyde to Zed's settings as an external agent (shows the change, asks first)
 """
@@ -116,8 +116,9 @@ Examples:
     parser.add_argument('--mode', choices=['hold', 'plan', 'all_in'], default='hold',
                         help="-p: permission mode. hold (default) and plan deny anything that would ask; all_in still "
                              "denies major moves (rm -r, git push, ...)")
-    parser.add_argument('--output-format', choices=['text', 'json'], default='text',
-                        help='-p: plain answer, or JSON with the answer, model, usage, turns and session id')
+    parser.add_argument('--output-format', choices=['text', 'json', 'stream-json'], default='text',
+                        help='-p: plain answer; JSON with the answer, model, usage, turns and session id; or stream-json, '
+                             'one line per message as the turn runs, then that JSON')
     parser.add_argument('--max-turns', type=int, default=20, metavar='N', help='-p: tool rounds before giving up (default 20)')
     parser.add_argument('--acp', action='store_true',
                         help='Speak the Agent Client Protocol on stdio so an editor (Zed, JetBrains) can run Clyde')
