@@ -193,12 +193,17 @@ def scan(path: Path, *, recursive: bool = False, env: dict[str, str] | None = No
 def _run_scan(exe: list[str], path: Path, recursive: bool, env: dict[str, str] | None) -> list[Verdict]:
     with tempfile.TemporaryDirectory() as tmp:
         report = Path(tmp) / "report.json"
-        cmd = [*exe, "scan", str(path), "--format", "json", "--output", str(report)]
+        # SkillSpector refuses a symlinked input, and ~/.claude/skills is often links into ~/.agents/skills. The loader
+        # reads through the link, so the target is exactly what reaches the model.
+        cmd = [*exe, "scan", str(path.resolve()), "--format", "json", "--output", str(report)]
         cmd += ["--recursive"] if recursive else []
         cmd += [] if env else ["--no-llm"]
         try:
-            subprocess.run(cmd, env={**os.environ, **(env or {})}, capture_output=True, text=True,
-                           timeout=_TIMEOUT_LLM if env else _TIMEOUT_STATIC)
+            done = subprocess.run(cmd, env={**os.environ, **(env or {})}, capture_output=True, text=True, check=False,
+                                  timeout=_TIMEOUT_LLM if env else _TIMEOUT_STATIC)
+            if not report.is_file():
+                said = " ".join((done.stderr or done.stdout).split()) or "no report"
+                return [Verdict(path.name, ERROR, findings=[f"skillspector exited {done.returncode}: {said}"[:160]])]
             return _verdicts(json.loads(report.read_text(encoding="utf-8")))
         except (OSError, ValueError, subprocess.SubprocessError) as e:
             return [Verdict(path.name, ERROR, findings=[f"scan failed: {type(e).__name__}: {e}"[:160]])]

@@ -271,5 +271,45 @@ class TestScanFailures(unittest.TestCase):
             self.assertEqual(skill_scan.check_mcp("srv", tools).recommendation, SAFE)   # the scanner recovered, so the server is let in
 
 
+# Behaves like skillspector: refuses a symlinked input with exit 2 and no report, else writes a SAFE report.
+_FAKE_SKILLSPECTOR = """#!/bin/sh
+if [ -L "$2" ]; then echo "Error: Refusing to resolve a symlinked input:" >&2; echo "$2" >&2; exit 2; fi
+printf '{"skill": {"name": "x"}, "risk_assessment": {"recommendation": "SAFE"}}' > "$6"
+"""
+
+
+class TestScannerProcess(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        exe = self.root / "skillspector"
+        exe.write_text(_FAKE_SKILLSPECTOR)
+        exe.chmod(0o755)
+        self.exe = [str(exe)]
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_a_symlinked_skill_is_scanned_through_its_link(self):
+        target = _skill(self.root / "agents", "pack", "body")
+        link = self.root / "claude" / "pack"
+        link.parent.mkdir()
+        link.symlink_to(target)
+
+        verdicts = skill_scan._run_scan(self.exe, link, False, None)
+
+        self.assertEqual([v.recommendation for v in verdicts], [SAFE])
+
+    def test_a_scanner_that_writes_no_report_says_why(self):
+        link = self.root / "link"
+        link.symlink_to(_skill(self.root / "agents", "pack", "body"))
+
+        with patch.object(Path, "resolve", lambda p, strict=False: p):
+            verdict, = skill_scan._run_scan(self.exe, link, False, None)
+
+        self.assertEqual(verdict.recommendation, ERROR)
+        self.assertIn("skillspector exited 2: Error: Refusing to resolve a symlinked input:", verdict.findings[0])
+
+
 if __name__ == "__main__":
     unittest.main()
