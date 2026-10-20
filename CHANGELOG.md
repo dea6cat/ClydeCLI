@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - SkillSpector now scans a skill reached through a symlink (`~/.claude/skills` linking into `~/.agents/skills`): it refuses a symlinked input, so every such skill used to fail its scan and load unscanned, even when the linked original was held back. A scan that writes no report now gives SkillSpector's own reason instead of `FileNotFoundError`.
+- New or changed skills are scanned together at startup instead of one SkillSpector process each (about 1.7 s of every run is SkillSpector starting up), and content already judged, such as a link and its target, is not scanned again. A first launch with 95 skills went from about 5 minutes to 38 s, with the same verdict for every skill.
 
 ## [0.5.11] - 2026-10-17
 

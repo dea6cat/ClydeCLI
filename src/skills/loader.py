@@ -176,10 +176,14 @@ def get_all_skills(
     user_skills_dir: str | Path | None = None,
 ) -> Sequence[PromptSkill]:
     clear_skill_registry()
-    for base, loaded_from, confine_to in all_skill_dirs(project_root=project_root, user_skills_dir=user_skills_dir):
-        for s in load_skills_from_dir(base, loaded_from=loaded_from, confine_to=confine_to):
-            if _cleared(s):
-                _REGISTRY.register(s)
+    loaded = [s for base, loaded_from, confine_to in all_skill_dirs(project_root=project_root, user_skills_dir=user_skills_dir)
+              for s in load_skills_from_dir(base, loaded_from=loaded_from, confine_to=confine_to)]
+    from src.security import skill_scan
+    # New skills are scanned together here, so _cleared mostly reads cached verdicts.
+    skill_scan.prescan([(s.name, Path(s.skill_root)) for s in loaded if s.skill_root])
+    for s in loaded:
+        if _cleared(s):
+            _REGISTRY.register(s)
     return _REGISTRY.list()
 
 
