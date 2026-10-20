@@ -11,11 +11,12 @@ import re
 from pathlib import Path
 
 from .frontmatter import parse_frontmatter
-from .loader import all_skill_dirs
+from .loader import all_skill_dirs, load_skills_from_dir
 
-# A script run from the skill's own folder: `python3 scripts/pack.py` or `${CLAUDE_SKILL_DIR}/scripts/run.sh`.
-# A longer path such as `tools/scripts/x.py` belongs to some repository, not to the skill, and is not checked.
-_SCRIPT_REF = re.compile(r"(?<![\w./-])(?:\$\{?\w+\}?/)?(scripts/[\w./-]+\.(?:py|sh|js|mjs))")
+# A script the skill runs from its own folder: `python3 scripts/pack.py`, `${CLAUDE_SKILL_DIR}/scripts/run.sh`, `./scripts/go.sh`.
+# A bare mention (an example table citing `scripts/eval.ts:8`) or a longer path such as `tools/scripts/x.py` is not a run, and is not checked.
+_SCRIPT_REF = re.compile(r"(?:\b(?:python3?|bash|sh|node|tsx|bun|deno run)\s+(?:\./)?|\$\{?\w+\}?/|(?<![\w./-])\./)"
+                         r"(scripts/[\w./-]+\.(?:py|sh|js|mjs|ts))")
 
 
 def _short(path: Path) -> str:
@@ -60,9 +61,13 @@ def lint_skill_dir(base: Path, confine_to: Path | None = None) -> tuple[int, lis
 
 
 def lint_skills(*, project_root: str | Path | None = None) -> tuple[int, list[str]]:
-    """(skills checked, problems) across every folder get_all_skills reads."""
+    """(skills checked, problems) across every folder get_all_skills reads, plus every skill another of the same name hides. Folders come
+    lowest priority first, so a later skill wins; a copy with the same content (a ~/.claude/skills link to ~/.agents/skills) is not a problem."""
+    from src.security.skill_scan import digest
+
     checked, problems, seen = 0, [], set()
-    for base, _, confine_to in all_skill_dirs(project_root=project_root):
+    winner: dict[str, tuple[Path, str]] = {}   # skill name -> (folder, content hash) of the one loaded so far
+    for base, loaded_from, confine_to in all_skill_dirs(project_root=project_root):
         # Run from the home folder, the project's .clyde/skills is ~/.clyde/skills: check it once.
         if base.resolve() in seen:
             continue
@@ -70,4 +75,10 @@ def lint_skills(*, project_root: str | Path | None = None) -> tuple[int, list[st
         count, found = lint_skill_dir(base, confine_to)
         checked += count
         problems += found
+        for skill in load_skills_from_dir(base, loaded_from=loaded_from, confine_to=confine_to):
+            root = Path(skill.skill_root or base)
+            content = digest(root)
+            if skill.name in winner and winner[skill.name][1] != content:
+                problems.append(f"{_short(winner[skill.name][0])}: hidden by {_short(root)}, a different skill with the same name")
+            winner[skill.name] = (root, content)
     return checked, problems

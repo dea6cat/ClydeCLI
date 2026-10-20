@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
-from src.skills.lint import lint_skill_dir
+from src.skills.lint import lint_skill_dir, lint_skills
 
 
 class TestSkillLint(unittest.TestCase):
@@ -48,6 +50,25 @@ class TestSkillLint(unittest.TestCase):
         self.assertIn("noscript/SKILL.md: runs scripts/run.sh", text)
         self.assertNotIn("other.py", text)
         self.assertEqual(len(problems), 5)
+
+    def test_a_missing_ts_script_is_reported(self):
+        self.skill("tsx", "---\ndescription: x\n---\nRun `npx tsx scripts/build.ts`.\n\n| example | scripts/eval.ts:8 |\n")
+        problems = "\n".join(lint_skill_dir(self.base)[1])
+        self.assertIn("runs scripts/build.ts", problems)
+        self.assertNotIn("eval.ts", problems)   # mentioned in a table, not run
+
+    def test_a_same_named_skill_with_other_content_is_reported_as_hidden(self):
+        home = self.base / "home"
+        for folder, body in ((".agents", "one"), (".claude", "two"), (".codex", "one")):
+            target = home / folder / "skills" / "pack"
+            target.mkdir(parents=True)
+            (target / "SKILL.md").write_text(f"---\ndescription: x\n---\n{body}\n", encoding="utf-8")
+        with patch.object(Path, "home", return_value=home), patch("src.plugins.skill_dirs", return_value=[]), \
+                patch.dict(os.environ, {"CLYDE_SKILLS_DIR": "", "CLAUDE_SKILLS_DIR": "", "CLYDE_MANAGED_SKILLS_DIR": "", "XDG_CONFIG_HOME": ""}):
+            _, problems = lint_skills()
+        hidden = [p for p in problems if "hidden by" in p]
+        # ~/.codex (lowest) and ~/.agents hold the same content: no problem there. ~/.claude wins over both with other content.
+        self.assertEqual(hidden, ["~/.agents/skills/pack: hidden by ~/.claude/skills/pack, a different skill with the same name"])
 
     def test_skill_escaping_the_project_is_reported(self):
         outside = tempfile.TemporaryDirectory()
