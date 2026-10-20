@@ -57,6 +57,14 @@ class TestDoctorCommand(unittest.TestCase):
         self.assertIn("✓ Providers with keys: anthropic", text)
         self.assertNotIn(_SECRET, text)
 
+    def test_skill_problems_are_listed(self):
+        folder = self.home / ".clyde" / "skills" / "nodesc"
+        folder.mkdir(parents=True)
+        (folder / "SKILL.md").write_text("Does a thing.\n", encoding="utf-8")
+        text = self.run_doctor()
+        self.assertIn("✗ Skills: 1 checked, 1 problem(s) — listed below", text)
+        self.assertIn("nodesc/SKILL.md: no `description:`", text)
+
     def test_broken_config_is_reported(self):
         (self.home / ".clyde").mkdir(exist_ok=True)
         (self.home / ".clyde" / "config.json").write_text("{not json")

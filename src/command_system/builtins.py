@@ -632,6 +632,10 @@ def doctor_command_call(args: str, context: CommandContext) -> LocalCommandResul
     lines.append(_check(not held, f"SkillSpector: {len(skill_scan.cached_verdicts())} item(s) scanned, {len(held)} held back"
                         + (f" ({', '.join(held)})" if held else "") + (f", {len(caution)} caution" if caution else ""),
                         "/skills scan shows why; /skills allow <kind:name> lets one in"))
+    from ..skills.lint import lint_skills
+    checked, problems = lint_skills(project_root=context.workspace_root)
+    lines.append(_check(not problems, f"Skills: {checked} checked, {len(problems)} problem(s)", "listed below"))
+    lines += [f"      {p}" for p in problems]
 
     config_path = get_config_path()
     saved_model = None
