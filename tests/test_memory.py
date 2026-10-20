@@ -40,6 +40,16 @@ class TestNotes(_Home):
         self.assertEqual([n for _, n, _ in memory.stale("user", self.root)], ["old fact"])   # dated now, but today
         self.assertNotIn("<!--", memory.memory_prompt(self.root))
 
+    def test_hand_written_lines_that_are_not_notes_survive_add_and_forget(self):
+        path = memory.path_for("user", self.root)
+        path.parent.mkdir(parents=True)
+        path.write_text("# My notes\n\nWritten by hand.\n\n- prefers tabs\n- drop me <!--2026-01-02-->\n", encoding="utf-8")
+        memory.add("user", self.root, "likes dark mode")
+        memory.forget("user", self.root, 2)
+        today = date.today().isoformat()
+        self.assertEqual(path.read_text(encoding="utf-8"),
+                         f"# My notes\n\nWritten by hand.\n\n- prefers tabs <!--{today}-->\n- likes dark mode <!--{today}-->\n")
+
     def test_add_list_and_forget_per_scope(self):
         self.assertEqual(memory.add("user", self.root, "  prefers   tabs "), "prefers tabs")
         memory.add("project", self.root, "tests run with uv run pytest")

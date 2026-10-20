@@ -2,8 +2,9 @@
 
 Two plain markdown files, one bullet per note, which the user can read and edit by hand: `~/.clyde/memory.md` (about the user, in every
 project) and one per project under `~/.clyde/memory/projects/`, so nothing is ever written into a repository. Each turn the notes ride in the
-system prompt, fenced as data; once they outgrow PROMPT_CHARS, the request picks which (select). The model saves a note through the Remember tool (which asks first in hold mode); the user can add, list and
-drop notes with /remember, /memory and /forget. This is separate from the hand-written memory files (CLYDE.md, CLAUDE.md, AGENTS.md), which
+system prompt, fenced as data; once they outgrow PROMPT_CHARS, the request picks which (select). The model saves a note through the
+Remember tool (which asks first in hold mode); the user can add, list and drop notes with /remember, /memory and /forget. Lines that are
+not notes (a heading, a paragraph) are kept as written. This is separate from the hand-written memory files (CLYDE.md, CLAUDE.md, AGENTS.md), which
 Clyde still reads exactly as before.
 """
 
@@ -43,19 +44,23 @@ def path_for(scope: str, workspace_root: Path) -> Path:
 
 def _read(scope: str, workspace_root: Path) -> list[tuple[str, date | None]]:
     """(note, date saved) pairs, oldest first; a note written by hand has no date."""
+    return [pair for line in _lines(scope, workspace_root) if (pair := _note_of(line))]
+
+
+def _lines(scope: str, workspace_root: Path) -> list[str]:
     try:
-        text = path_for(scope, workspace_root).read_text(encoding="utf-8")
+        return path_for(scope, workspace_root).read_text(encoding="utf-8").splitlines()
     except OSError:
         return []
-    pairs = []
-    for line in text.splitlines():
-        if not line.startswith("- "):
-            continue
-        stamp = _STAMP.search(line)
-        note = _STAMP.sub("", line[2:]).strip()
-        if note:
-            pairs.append((note, date.fromisoformat(stamp.group(1)) if stamp else None))
-    return pairs
+
+
+def _note_of(line: str) -> tuple[str, date | None] | None:
+    """(note, date saved) when the line is a note, else None: a heading or a paragraph the user wrote is not one."""
+    if not line.startswith("- "):
+        return None
+    stamp = _STAMP.search(line)
+    note = _STAMP.sub("", line[2:]).strip()
+    return (note, date.fromisoformat(stamp.group(1)) if stamp else None) if note else None
 
 
 def entries(scope: str, workspace_root: Path) -> list[str]:
@@ -103,9 +108,23 @@ def _mark_used(notes: set[str]) -> None:
 
 
 def _write(scope: str, workspace_root: Path, notes: list[tuple[str, date | None]]) -> None:
+    """Save `notes` in place of the file's notes. A note still there keeps its line's place, a dropped one loses its line, a new one goes
+    at the end, and every line that is not a note (a heading, a paragraph the user wrote) stays as it was."""
+    left, out = list(notes), []
+    for line in _lines(scope, workspace_root):
+        pair = _note_of(line)
+        if pair is None:
+            out.append(line)
+        elif (k := next((k for k, (n, _) in enumerate(left) if n == pair[0]), None)) is not None:
+            out.append(_line(*left.pop(k)))
+    out += [_line(n, d) for n, d in left]
     path = path_for(scope, workspace_root)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("".join(f"- {n} <!--{(d or date.today()).isoformat()}-->\n" for n, d in notes), encoding="utf-8")
+    path.write_text("".join(f"{line}\n" for line in out), encoding="utf-8")
+
+
+def _line(note: str, saved: date | None) -> str:
+    return f"- {note} <!--{(saved or date.today()).isoformat()}-->"
 
 
 def add(scope: str, workspace_root: Path, text: str) -> str:
