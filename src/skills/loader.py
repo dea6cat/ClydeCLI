@@ -144,48 +144,42 @@ def _cleared(skill: PromptSkill) -> bool:
     return not skill_scan.check("skill", skill.name, Path(skill.skill_root)).blocked
 
 
-def get_all_skills(
+def all_skill_dirs(
     *,
     project_root: str | Path | None = None,
     user_skills_dir: str | Path | None = None,
-) -> Sequence[PromptSkill]:
-    clear_skill_registry()
+) -> list[tuple[Path, str, Path | None]]:
+    """Every skills folder as (folder, loaded_from, confine_to), lowest priority first: a later skill of the same name wins."""
+    found: list[tuple[Path, str, Path | None]] = []
     if user_skills_dir is not None:
         user_dirs = [Path(user_skills_dir).expanduser().resolve()]
     else:
         user_dirs = _candidate_user_skills_dirs()
         # Enabled plugins' skills sit below every user skill folder.
         from src.plugins import skill_dirs
-        for plugin_dir in skill_dirs():
-            for s in load_skills_from_dir(plugin_dir, loaded_from="plugin"):
-                if _cleared(s):
-                    _REGISTRY.register(s)
-    # Register lowest priority first: a later registration of the same name wins.
-    for user_dir in reversed(user_dirs):
-        for s in load_skills_from_dir(user_dir, loaded_from="user"):
-            if _cleared(s):
-                _REGISTRY.register(s)
+        found += [(plugin_dir, "plugin", None) for plugin_dir in skill_dirs()]
+    found += [(user_dir, "user", None) for user_dir in reversed(user_dirs)]
 
     managed_env = os.environ.get("CLYDE_MANAGED_SKILLS_DIR")
     if managed_env:
-        managed_dir = Path(managed_env).expanduser().resolve()
-        for s in load_skills_from_dir(managed_dir, loaded_from="managed"):
-            if _cleared(s):
-                _REGISTRY.register(s)
+        found.append((Path(managed_env).expanduser().resolve(), "managed", None))
 
     if project_root is not None:
         pr = Path(project_root).expanduser().resolve()
-        proj_dirs = []
-        main_path = pr / ".clyde" / "skills"
-        compat_path = pr / ".claude" / "skills"
-        proj_dirs.append(main_path)
-        if compat_path != main_path:
-            proj_dirs.append(compat_path)
-        for pr_dir in proj_dirs:
-            for s in load_skills_from_dir(pr_dir, loaded_from="project", confine_to=pr):
-                if _cleared(s):
-                    _REGISTRY.register(s)
+        found += [(pr / ".clyde" / "skills", "project", pr), (pr / ".claude" / "skills", "project", pr)]
+    return found
 
+
+def get_all_skills(
+    *,
+    project_root: str | Path | None = None,
+    user_skills_dir: str | Path | None = None,
+) -> Sequence[PromptSkill]:
+    clear_skill_registry()
+    for base, loaded_from, confine_to in all_skill_dirs(project_root=project_root, user_skills_dir=user_skills_dir):
+        for s in load_skills_from_dir(base, loaded_from=loaded_from, confine_to=confine_to):
+            if _cleared(s):
+                _REGISTRY.register(s)
     return _REGISTRY.list()
 
 
