@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The plain uv install path in the README's quickstart and the install guide: `uv tool install` and `uvx` straight from git, for people who already have uv.
 - `/doctor` lists skill problems the loader passes over without a word: a folder with no `SKILL.md`, a skill pointing outside the project, frontmatter never closed, no `description:`, a skill nothing can invoke, and a `scripts/` file a skill runs but does not ship. The rules follow Harness²'s tree validator, adapted to how Clyde loads skills.
 
+### Fixed
+
+- SkillSpector now scans a skill reached through a symlink (`~/.claude/skills` linking into `~/.agents/skills`): it refuses a symlinked input, so every such skill used to fail its scan and load unscanned, even when the linked original was held back. A scan that writes no report now gives SkillSpector's own reason instead of `FileNotFoundError`.
+- New or changed skills are scanned together at startup instead of one SkillSpector process each (about 1.7 s of every run is SkillSpector starting up), and content already judged, such as a link and its target, is not scanned again. A first launch with 95 skills went from about 5 minutes to 38 s, with the same verdict for every skill.
+
 ## [0.5.11] - 2026-10-17
 
 ### Changed

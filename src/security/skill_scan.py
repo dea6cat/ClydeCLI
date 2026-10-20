@@ -191,17 +191,29 @@ def scan(path: Path, *, recursive: bool = False, env: dict[str, str] | None = No
 
 
 def _run_scan(exe: list[str], path: Path, recursive: bool, env: dict[str, str] | None) -> list[Verdict]:
+    report = _run_report(exe, path, recursive, env)
+    return [Verdict(path.name, ERROR, findings=[report[:160]])] if isinstance(report, str) else _verdicts(report)
+
+
+def _run_report(exe: list[str], path: Path, recursive: bool, env: dict[str, str] | None) -> dict[str, Any] | str:
+    """SkillSpector's JSON report for `path`, or why there is none."""
     with tempfile.TemporaryDirectory() as tmp:
         report = Path(tmp) / "report.json"
-        cmd = [*exe, "scan", str(path), "--format", "json", "--output", str(report)]
+        # SkillSpector refuses a symlinked input, and ~/.claude/skills is often links into ~/.agents/skills. The loader
+        # reads through the link, so the target is exactly what reaches the model.
+        cmd = [*exe, "scan", str(path.resolve()), "--format", "json", "--output", str(report)]
         cmd += ["--recursive"] if recursive else []
         cmd += [] if env else ["--no-llm"]
         try:
-            subprocess.run(cmd, env={**os.environ, **(env or {})}, capture_output=True, text=True,
-                           timeout=_TIMEOUT_LLM if env else _TIMEOUT_STATIC)
-            return _verdicts(json.loads(report.read_text(encoding="utf-8")))
+            done = subprocess.run(cmd, env={**os.environ, **(env or {})}, capture_output=True, text=True, check=False,
+                                  timeout=_TIMEOUT_LLM if env else _TIMEOUT_STATIC)
+            if not report.is_file():
+                said = " ".join((done.stderr or done.stdout).split()) or "no report"
+                return f"skillspector exited {done.returncode}: {said}"
+            data = json.loads(report.read_text(encoding="utf-8"))
+            return data if isinstance(data, dict) else "scan failed: the report is not a JSON object"
         except (OSError, ValueError, subprocess.SubprocessError) as e:
-            return [Verdict(path.name, ERROR, findings=[f"scan failed: {type(e).__name__}: {e}"[:160]])]
+            return f"scan failed: {type(e).__name__}: {e}"
 
 
 # What a plugin can make ClydeCLI load (src/plugins.py). The rest of its folder (a repo's packages, tests,
@@ -324,6 +336,79 @@ def _key(kind: str, name: str, where: str, cache: dict[str, Any]) -> str:
     base = f"{kind}:{name}"
     owner = (cache.get(base) or {}).get("path")
     return base if owner in (None, where) else f"{base} ({where})"
+
+
+def prescan(items: list[tuple[str, Path]]) -> None:
+    """Judge every new or changed skill in `items` (name, folder) before check() asks, in a few batched SkillSpector runs
+    instead of one process per skill: about 1.7 s of every run is SkillSpector starting up. Content already judged under
+    another name or folder (a ~/.claude/skills link and its ~/.agents/skills target) takes that verdict, unapproved, without
+    a scan. Whatever a batch leaves out is left to check(), which scans it alone and remembers a failure."""
+    exe = _exe()
+    if not enabled() or exe is None:
+        return
+    cache = _load_cache()
+    judged = {e["hash"]: e["verdict"] for e in cache.values() if isinstance(e, dict) and "hash" in e and "verdict" in e}
+    results: dict[str, dict[str, Any]] = {}
+    pending: dict[str, list[tuple[str, str, str]]] = {}   # content hash -> [(cache key, name, where)]
+    folders: dict[str, Path] = {}
+    for name, path in items:
+        where = str(path)
+        key, content = _key("skill", name, where, cache), digest(path)
+        entry = cache.get(key) or {}
+        cache[key] = {**entry, "path": where}   # claims the key, so a later skill of the same name gets its own as in check()
+        failed = entry.get("failed") or {}
+        if (entry.get("hash") == content and "verdict" in entry) or (
+                failed.get("hash") == content and time.time() - failed.get("at", 0) < _RETRY_AFTER):
+            continue
+        if content in judged:
+            results[key] = {"hash": content, "path": where, "verdict": {**judged[content], "name": name, "approved": False}}
+        elif all(p.parent == path for p in path.rglob("SKILL.md")):   # a folder of nested skills would report several verdicts
+            pending.setdefault(content, []).append((key, name, where))
+            folders.setdefault(content, path)
+    hashes = list(pending)
+    for i, verdict in _scan_batched(exe, [folders[c] for c in hashes]).items():
+        for key, name, where in pending[hashes[i]]:
+            results[key] = {"hash": hashes[i], "path": where, "verdict": {**asdict(verdict), "name": name}}
+    if results:
+        fresh = _load_cache()   # other sessions may have saved while this scanned
+        fresh.update(results)
+        _save_cache(fresh)
+
+
+def _scan_batched(exe: list[str], folders: list[Path]) -> dict[int, Verdict]:
+    """Verdicts by index into `folders`, from recursive scans of copies staged _CHUNK_SKILLS to a batch, _CHUNK_WORKERS at a
+    time. A folder that could not be copied, was left out of the report or failed to scan has no verdict."""
+    if not folders:
+        return {}
+    with tempfile.TemporaryDirectory() as tmp:
+        batches = []
+        for start in range(0, len(folders), _CHUNK_SKILLS):
+            batch = Path(tmp) / f"batch-{start // _CHUNK_SKILLS}"
+            batch.mkdir()
+            for i, folder in enumerate(folders[start:start + _CHUNK_SKILLS], start):
+                try:
+                    shutil.copytree(folder.resolve(), batch / str(i))
+                except OSError:
+                    shutil.rmtree(batch / str(i), ignore_errors=True)   # a partial copy would be judged on part of the skill
+            batches.append(batch)
+        if sys.stderr.isatty():
+            print(f"\x1b[2m♠ SkillSpector is scanning {len(folders)} new or changed skill(s)…\x1b[0m", end="", file=sys.stderr, flush=True)
+        try:
+            with ThreadPoolExecutor(_CHUNK_WORKERS) as pool:
+                reports = list(pool.map(lambda b: _run_report(exe, b, True, None), batches))
+        finally:
+            if sys.stderr.isatty():
+                print("\r\x1b[2K", end="", file=sys.stderr, flush=True)
+    found: dict[int, Verdict] = {}
+    for report in reports:
+        if isinstance(report, str):
+            continue
+        for item, verdict in zip(report.get("skills") or [] if report.get("multi_skill") else [report], _verdicts(report)):
+            skill = item.get("skill") if isinstance(item, dict) else None
+            source = Path(str(skill.get("source") or "")).name if isinstance(skill, dict) else ""
+            if source.isdigit() and int(source) < len(folders) and verdict.recommendation != ERROR:
+                found[int(source)] = verdict
+    return found
 
 
 def approve(kind: str, name: str) -> bool:
