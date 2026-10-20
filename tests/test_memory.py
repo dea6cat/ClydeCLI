@@ -121,6 +121,55 @@ class TestRememberTool(_Home):
         RememberTool().run({"text": "x"}, ToolContext(workspace_root=self.root))
         self.assertEqual(memory.entries("user", self.root), ["x"])
 
+    def test_a_lesson_is_saved_with_its_cue(self):
+        out = RememberTool().run({"text": "use uv run pytest, not pytest", "scope": "project", "cue": " running the tests "},
+                                 ToolContext(workspace_root=self.root)).output
+        self.assertEqual(out["saved"], "When running the tests: use uv run pytest, not pytest")
+
+
+class TestRetrieval(_Home):
+    """Once the notes outgrow PROMPT_CHARS, the request picks which are shown."""
+
+    def setUp(self):
+        super().setUp()
+        memory.add("user", self.root, "answers in Spanish")
+        for i in range(8):
+            memory.add("project", self.root, f"When running the tests: case {i} needs the fixture server up first " + "x" * 200)
+            memory.add("project", self.root, f"When building the docker image: layer {i} must be cached " + "y" * 200)
+
+    def test_notes_that_fit_are_shown_unchanged_whatever_the_request(self):
+        small = self.home / "small"
+        small.mkdir()
+        memory.add("project", small, "tests run with uv")
+        shown: set[str] = set()
+        self.assertEqual(memory.memory_prompt(small, "docker please", shown), memory.memory_prompt(small))
+        self.assertEqual(shown, set())
+        self.assertFalse((self.home / ".clyde" / "memory" / "used.json").exists())
+
+    def test_the_request_picks_project_notes_and_the_users_notes_always_ride(self):
+        text = memory.memory_prompt(self.root, "why do the tests fail?", set())
+        self.assertIn("answers in Spanish", text)
+        self.assertIn("running the tests: case 7", text)
+        self.assertNotIn("docker", text)
+        notes = [line for line in text.splitlines() if line.startswith("- ")]
+        self.assertTrue(all(line.endswith(("x", "Spanish")) for line in notes))   # whole notes, never cut mid-sentence
+
+    def test_picks_only_grow_within_a_session(self):
+        shown: set[str] = set()
+        first = memory.memory_prompt(self.root, "run the tests", shown)
+        second = memory.memory_prompt(self.root, "rebuild the docker image", shown)
+        kept = [line for line in first.splitlines() if line.startswith("- ")]
+        self.assertTrue(all(line in second for line in kept))
+
+    def test_a_note_a_request_named_is_not_stale(self):
+        path = memory.path_for("project", self.root)
+        path.write_text(path.read_text().replace(date.today().isoformat(), "2020-01-01"), encoding="utf-8")
+        memory.memory_prompt(self.root, "why do the tests fail?", set())
+        stale = [n for _, n, _ in memory.stale("project", self.root)]
+        self.assertTrue(stale)
+        self.assertFalse(any("running the tests: case 7" in n for n in stale))
+        self.assertTrue(any("docker" in n for n in stale))
+
     def test_a_refused_note_is_a_tool_input_error_the_model_can_read(self):
         ctx = ToolContext(workspace_root=self.root)
         RememberTool().run({"text": "x"}, ctx)

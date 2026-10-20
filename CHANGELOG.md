@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A link to the research notes in the README's first screen and a row in the Guides table.
 - The plain uv install path in the README's quickstart and the install guide: `uv tool install` and `uvx` straight from git, for people who already have uv.
 - `/doctor` lists skill problems the loader passes over without a word: a folder with no `SKILL.md`, a skill pointing outside the project, frontmatter never closed, no `description:`, a skill nothing can invoke, and a `scripts/` file a skill runs but does not ship. The rules follow Harness²'s tree validator, adapted to how Clyde loads skills.
+- Memory lessons: the Remember tool takes an optional `cue` and saves the note as "When <cue>: <lesson>". Once the notes outgrow the prompt's 2,000 characters, the request picks which are shown: the user's own notes always, project notes that share words with the request, and every note already shown that session, so the prompt only grows and a local model server keeps its cache. Notes that fit are shown exactly as before. `/memory stale` now lists notes neither saved nor picked for a request in 90 days; nothing is forgotten without `/forget`. The ideas come from Harness²'s experience library and HyperSkill's usage-based pruning, with no new dependency.
 
 ### Fixed
 

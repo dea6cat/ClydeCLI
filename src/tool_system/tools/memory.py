@@ -23,6 +23,8 @@ class RememberTool:
                 "properties": {
                     "text": {"type": "string", "description": "The note, one short sentence."},
                     "scope": {"type": "string", "enum": list(SCOPES), "description": "user: about the user. project: about this codebase."},
+                    "cue": {"type": "string", "description": "For a lesson: the situation it applies to (e.g. \"running the tests\"). "
+                                                             "Saved as \"When <cue>: <text>\"."},
                 },
                 "required": ["text"],
             },
@@ -32,8 +34,9 @@ class RememberTool:
 
     def run(self, tool_input: dict[str, Any], context: ToolContext) -> ToolResult:
         scope = tool_input.get("scope", "user")
+        text, cue = tool_input.get("text", ""), str(tool_input.get("cue") or "").strip()
         try:
-            saved = add(scope, context.workspace_root, tool_input.get("text", ""))
+            saved = add(scope, context.workspace_root, f"When {cue}: {text}" if cue else text)
         except ValueError as e:
             raise ToolInputError(str(e)) from e
         return ToolResult(name="Remember", output={"saved": saved, "scope": scope, "notes": len(entries(scope, context.workspace_root))})

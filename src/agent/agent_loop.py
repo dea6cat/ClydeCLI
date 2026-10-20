@@ -140,7 +140,7 @@ def goal_prompt(goal: str | None) -> str:
 
 
 def _build_effective_system_prompt(style_prompt: str, tool_context: ToolContext, compact: bool = False,
-                                   filter_user_file: Callable[[str], str] | None = None) -> str:
+                                   filter_user_file: Callable[[str], str] | None = None, request: str = "") -> str:
     try:
         context_prompt = build_context_prompt(
             tool_context.workspace_root,
@@ -158,7 +158,7 @@ def _build_effective_system_prompt(style_prompt: str, tool_context: ToolContext,
         context_prompt += "\n\n" + section
     if section := goal_prompt(getattr(tool_context, "goal", None)):
         context_prompt += "\n\n" + section
-    context_prompt += "\n\n" + memory_prompt(tool_context.workspace_root)
+    context_prompt += "\n\n" + memory_prompt(tool_context.workspace_root, request, tool_context.memory_shown)
     if not context_prompt.strip():
         return style_prompt
     return f"{style_prompt}\n\n{context_prompt}"
@@ -315,7 +315,8 @@ def run_agent_loop(
     style_prompt = resolve_output_style(style_name, style_dir).prompt
     small = _small_local(provider)
     filter_user_file = instruction_filter.for_project(tool_context.workspace_root, provider, model) if small else None
-    system_prompt = _build_effective_system_prompt(style_prompt, tool_context, compact=small, filter_user_file=filter_user_file)
+    system_prompt = _build_effective_system_prompt(style_prompt, tool_context, compact=small, filter_user_file=filter_user_file,
+                                                   request=_last_prompt(conversation))
     if system_extra:   # a custom sub-agent's own instructions
         system_prompt += "\n\n" + system_extra
     only = local_tools(_last_prompt(conversation)) if _small_local(provider) else None   # the few tools this prompt needs

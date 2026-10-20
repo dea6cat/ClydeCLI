@@ -2476,7 +2476,8 @@ class ClydeREPL:
                                                       settings_screen.skill_footprint(plugins.enabled_plugins())))
 
     def _show_memory(self, stale: bool = False) -> None:
-        """/memory: the notes Clyde keeps between sessions, numbered per scope for /forget. /memory stale: only those saved over 90 days ago."""
+        """/memory: the notes Clyde keeps between sessions, numbered per scope for /forget. /memory stale: only those neither saved nor picked
+        for a request in the last 90 days."""
         from src import memory
         root = self.tool_context.workspace_root
         shown = False
@@ -2489,7 +2490,7 @@ class ClydeREPL:
                 for i, note, age in notes:
                     self.console.print(f"  {i}. {note}{age}", markup=False, highlight=False)
         if not shown:
-            self.console.print(f"No notes older than {memory.STALE_DAYS} days." if stale else
+            self.console.print(f"No notes unused for over {memory.STALE_DAYS} days." if stale else
                                "No notes yet. Save one with /remember TEXT, or ask me to remember something.", markup=False)
 
     def _handle_remember(self, arg: str) -> None:
