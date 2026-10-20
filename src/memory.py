@@ -2,7 +2,7 @@
 
 Two plain markdown files, one bullet per note, which the user can read and edit by hand: `~/.clyde/memory.md` (about the user, in every
 project) and one per project under `~/.clyde/memory/projects/`, so nothing is ever written into a repository. Each turn the notes ride in the
-system prompt, fenced as data. The model saves a note through the Remember tool (which asks first in hold mode); the user can add, list and
+system prompt, fenced as data; once they outgrow PROMPT_CHARS, the request picks which (select). The model saves a note through the Remember tool (which asks first in hold mode); the user can add, list and
 drop notes with /remember, /memory and /forget. This is separate from the hand-written memory files (CLYDE.md, CLAUDE.md, AGENTS.md), which
 Clyde still reads exactly as before.
 """
@@ -21,7 +21,7 @@ SCOPES = ("user", "project")
 MAX_ENTRIES = 40            # per file
 MAX_ENTRY_CHARS = 300
 PROMPT_CHARS = 2_000        # what rides in the prompt each turn
-STALE_DAYS = 90             # /memory stale lists notes older than this
+STALE_DAYS = 90             # /memory stale lists notes neither saved nor picked for a request in this many days
 _BEGIN, _END = "===BEGIN MEMORY DATA===", "===END MEMORY DATA==="
 _STAMP = re.compile(r"\s*<!--(\d{4}-\d{2}-\d{2})-->\s*$")   # a note's save date, kept at the end of its line
 
@@ -157,8 +157,8 @@ def _words(text: str) -> set[str]:
 
 def select(notes: list[tuple[str, str]], request: str, keep: set[str], budget: int) -> list[str]:
     """The (scope, note) notes to show for `request` once they no longer all fit in `budget` characters, in saved order. Notes already shown
-    this session stay (`keep`): the system prompt sits before the whole conversation, so changing a note there makes a local model server
-    process everything after it again. Then the user's own notes, which hold in every project, then project notes that share words with the
+    this session stay (`keep`): the system prompt sits before the whole conversation, so changing it makes a local model server process
+    everything after the change again, and a request that picks nothing new then changes nothing. Then the user's own notes, which hold in every project, then project notes that share words with the
     request, most shared words first, newest first on a tie. A project note no request mentions waits; /memory still lists it."""
     asked = _words(request)
     score = [len(_words(note) & asked) for _, note in notes]
