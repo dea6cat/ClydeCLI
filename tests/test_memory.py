@@ -175,6 +175,21 @@ class TestRetrieval(_Home):
         kept = [line for line in first.splitlines() if line.startswith("- ")]
         self.assertTrue(all(line in second for line in kept))
 
+    def test_the_users_notes_ride_only_up_to_their_cap_so_project_notes_keep_room(self):
+        for i in range(6):
+            memory.add("user", self.root, f"style rule {i}: " + "z" * 240)
+        text = memory.memory_prompt(self.root, "why do the tests fail?", set())
+        self.assertIn("running the tests: case 7", text)
+        self.assertIn("style rule 5", text)
+        self.assertNotIn("style rule 0", text)   # past the cap and not named
+        user = [line for line in text.split("About this project:", maxsplit=1)[0].splitlines() if line.startswith("- ")]
+        self.assertLessEqual(sum(len(line) + 1 for line in user), memory.USER_CHARS)
+
+    def test_a_user_note_past_the_cap_still_rides_when_the_request_names_it(self):
+        for i in range(6):
+            memory.add("user", self.root, f"style rule {i}: " + "z" * 240)
+        self.assertIn("style rule 0", memory.memory_prompt(self.root, "which style rule applies here?", set()))
+
     def test_a_note_a_request_named_is_not_stale(self):
         path = memory.path_for("project", self.root)
         path.write_text(path.read_text().replace(date.today().isoformat(), "2020-01-01"), encoding="utf-8")
@@ -229,6 +244,21 @@ class TestCommands(_Home):
         repl._handle_forget("project 1")
         self.assertEqual(memory.entries("user", self.root), ["prefers tabs"])
         self.assertEqual(memory.entries("project", self.root), [])
+
+    def test_memory_marks_the_notes_not_in_the_prompt_once_they_outgrow_it(self):
+        repl = self._repl()
+        memory.add("project", self.root, "tests need the fixture server " + "x" * 250)
+        repl._show_memory()
+        self.assertNotIn("not in the prompt", self._printed(repl))   # everything fits: nothing to mark
+        for i in range(8):
+            memory.add("project", self.root, f"docker layer {i} must be cached " + "y" * 250)
+        repl.tool_context.memory_shown = set()
+        memory.memory_prompt(self.root, "why do the tests fail?", repl.tool_context.memory_shown)
+        repl.console.reset_mock()
+        repl._show_memory()
+        lines = self._printed(repl).splitlines()
+        self.assertNotIn("not in the prompt", next(line for line in lines if "fixture" in line))
+        self.assertIn("not in the prompt yet", next(line for line in lines if "docker layer 0" in line))
 
     def test_bad_input_is_explained_and_changes_nothing(self):
         repl = self._repl()

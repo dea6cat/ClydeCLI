@@ -22,6 +22,7 @@ SCOPES = ("user", "project")
 MAX_ENTRIES = 40            # per file
 MAX_ENTRY_CHARS = 300
 PROMPT_CHARS = 2_000        # what rides in the prompt each turn
+USER_CHARS = 1_000          # of that, what the user's notes take without a request naming them, so project notes keep room
 STALE_DAYS = 90             # /memory stale lists notes neither saved nor picked for a request in this many days
 _BEGIN, _END = "===BEGIN MEMORY DATA===", "===END MEMORY DATA==="
 _STAMP = re.compile(r"\s*<!--(\d{4}-\d{2}-\d{2})-->\s*$")   # a note's save date, kept at the end of its line
@@ -182,13 +183,19 @@ def _words(text: str) -> set[str]:
 def select(notes: list[tuple[str, str]], request: str, keep: set[str], budget: int) -> list[str]:
     """The (scope, note) notes to show for `request` once they no longer all fit in `budget` characters, in saved order. Notes already shown
     this session stay (`keep`): the system prompt sits before the whole conversation, so changing it makes a local model server process
-    everything after the change again, and a request that picks nothing new then changes nothing. Then the user's own notes, which hold in every project, then project notes that share words with the
-    request, most shared words first, newest first on a tie. A project note no request mentions waits; /memory still lists it."""
+    everything after the change again, and a request that picks nothing new then changes nothing. Then the user's own notes, which hold in every project,
+    newest first up to USER_CHARS, then the notes that share words with the request (project notes and the user's past that cap), most shared
+    words first, newest first on a tie. A note no request mentions waits; /memory still lists it."""
     asked = _words(request)
     score = [len(_words(note) & asked) for _, note in notes]
-    eligible = [i for i, (scope, note) in enumerate(notes) if note in keep or scope == "user" or score[i]]
+    always, room = set(), USER_CHARS
+    for i in reversed(range(len(notes))):
+        if notes[i][0] == "user" and len(notes[i][1]) + 3 <= room:
+            always.add(i)
+            room -= len(notes[i][1]) + 3
+    eligible = [i for i, (_, note) in enumerate(notes) if note in keep or i in always or score[i]]
     # ponytail: the session's first picks keep their place until it ends, so a full budget takes no new notes; evict by score if that bites
-    eligible.sort(key=lambda i: (notes[i][1] not in keep, notes[i][0] != "user", -score[i], -i))
+    eligible.sort(key=lambda i: (notes[i][1] not in keep, i not in always, -score[i], -i))
     chosen, used = set(), 0
     for i in eligible:
         if used + len(notes[i][1]) + 3 <= budget:   # "- " and a newline
@@ -197,8 +204,16 @@ def select(notes: list[tuple[str, str]], request: str, keep: set[str], budget: i
     return [note for i, (_, note) in enumerate(notes) if i in chosen]
 
 
+_LABELS = (("user", "About the user"), ("project", "About this project"))
+
+
 def _body(groups: list[tuple[str, list[str]]]) -> str:
     return "\n".join(f"{label}:\n" + "\n".join(f"- {n}" for n in notes) for label, notes in groups if notes).replace(_BEGIN, "").replace(_END, "")
+
+
+def overflows(workspace_root: Path) -> bool:
+    """Whether the notes outgrow PROMPT_CHARS, so each request shows only some of them (select)."""
+    return len(_body([(label, entries(scope, workspace_root)) for scope, label in _LABELS])) > PROMPT_CHARS
 
 
 def memory_prompt(workspace_root: Path, request: str = "", shown: set[str] | None = None) -> str:
@@ -206,7 +221,7 @@ def memory_prompt(workspace_root: Path, request: str = "", shown: set[str] | Non
     told they never override the user's current request or its safety rules (a note could have been planted by text from a web page).
     While the notes fit in PROMPT_CHARS all of them are shown, unchanged from turn to turn. Past that, select() picks for `request`, and
     `shown` (the session's set, which only grows) keeps earlier picks in place; a note picked because the request named it counts as used."""
-    scoped = [(scope, label, entries(scope, workspace_root)) for scope, label in (("user", "About the user"), ("project", "About this project"))]
+    scoped = [(scope, label, entries(scope, workspace_root)) for scope, label in _LABELS]
     groups = [(label, notes) for _, label, notes in scoped]
     body = _body(groups)
     if len(body) > PROMPT_CHARS:
