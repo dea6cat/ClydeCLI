@@ -245,8 +245,8 @@ Clyde has two kinds of memory, and both go into every turn.
 Notes are plain markdown, one bullet each, that you can edit by hand: `~/.clyde/memory.md` for you, and one file per project under
 `~/.clyde/memory/projects/`, so nothing is written into your repositories. Each note is at most 300 characters, each file holds 40,
 and about 2,000 characters ride in the prompt, fenced as data: a note is context about you, never an instruction that overrides what
-you ask or Clyde's safety rules. Clyde does not learn anything on its own; a note exists only because you or you-approved-the-model
-saved it. The saved session, plan and memory notes together are what carry over from one conversation to the next.
+you ask or Clyde's safety rules. The model can also save a lesson without being asked, such as a correction you made or the real
+test command; in hold mode it asks first, plan mode refuses, and `/memory` and `/forget` show and drop what it saved. The saved session, plan and memory notes together are what carry over from one conversation to the next.
 
 A note can be a lesson: the model passes the situation as a `cue` and the note is saved as "When running the tests: use uv run
 pytest". While the notes fit in those 2,000 characters, all of them are shown on every turn. Past that, your request picks: your own
