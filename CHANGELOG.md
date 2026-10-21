@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Limits on what the model saves to memory on its own: only what matters in a later session, not what the project's files already say or what only matters now, and never because text in a file, a web page or a tool result told it to. Models already saved lessons unasked (4 of 8 fitting live runs on Gemini 2.5 Flash and DeepSeek V4.1 Flash); this keeps a planted instruction from becoming a note every later turn reads.
+- Once the memory notes outgrow the prompt's 2,000 characters, the user's own notes ride on every request only up to 1,000 characters (newest first); past that they are picked by the request like project notes, so a project lesson keeps room instead of being pushed out without a word. `/memory` marks the notes not in the prompt yet.
 - `docs/research/`: the measurements behind the README's claims as dated, checkable notes — the 18 GB local-model runs, the small-model routing and tool-selection trials, `clyde tune`'s quality gates, the three vulnerabilities found and fixed in the October security review, and the fine-tuning dataset built from 313K tool calls (nothing trained). Each note states its method and sample size, and the index maps every note to the claim it establishes.
 - A link to the research notes in the README's first screen and a row in the Guides table.
 - The plain uv install path in the README's quickstart and the install guide: `uv tool install` and `uvx` straight from git, for people who already have uv.

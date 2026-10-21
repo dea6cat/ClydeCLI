@@ -250,8 +250,9 @@ saved it. The saved session, plan and memory notes together are what carry over 
 
 A note can be a lesson: the model passes the situation as a `cue` and the note is saved as "When running the tests: use uv run
 pytest". While the notes fit in those 2,000 characters, all of them are shown on every turn. Past that, your request picks: your own
-notes always, the project notes that share words with what you asked, and every note already shown in this session (so the prompt
-does not change again on a request that picks nothing new). `/memory stale` lists notes neither saved nor picked for a request in
+notes, newest first, up to 1,000 characters, then the notes that share words with what you asked (project notes and your own past
+those 1,000), and every note already shown in this session (so the prompt does not change again on a request that picks nothing new).
+`/memory` then marks the notes not in the prompt yet. `/memory stale` lists notes neither saved nor picked for a request in
 90 days; Clyde never forgets one on its own, so you decide with `/forget`.
 
 ## Plans

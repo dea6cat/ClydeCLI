@@ -2481,9 +2481,11 @@ class ClydeREPL:
         from src import memory
         root = self.tool_context.workspace_root
         shown = False
+        marked = memory.overflows(root)
         for scope, label in (("user", "About you"), ("project", "About this project")):
             notes = [(i, n, f" ({age} days old)") for i, n, age in memory.stale(scope, root)] if stale else \
-                    [(i, n, "") for i, n in enumerate(memory.entries(scope, root), 1)]
+                    [(i, n, " (not in the prompt yet)" if marked and n not in self.tool_context.memory_shown else "")
+                     for i, n in enumerate(memory.entries(scope, root), 1)]
             if notes:
                 shown = True
                 self.console.print(f"{label} ({memory.path_for(scope, root)}):", markup=False)
