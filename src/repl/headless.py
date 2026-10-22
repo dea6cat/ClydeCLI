@@ -22,7 +22,7 @@ from typing import Any, TextIO
 
 from rich.console import Console
 
-from src.agent.agent_loop import MAX_TURNS_REPLY
+from src.agent.agent_loop import MAX_TOKENS_REPLY, MAX_TURNS_REPLY
 from src.agent.conversation import message_dict
 from src.providers import model_ref
 
@@ -62,8 +62,17 @@ def _interrupt(_signum: int, _frame: Any) -> None:
     raise KeyboardInterrupt
 
 
+class _OutOfTime(KeyboardInterrupt):
+    """--time-limit ran out: an interrupt like SIGTERM, told apart in the result line."""
+
+
+def _out_of_time(_signum: int, _frame: Any) -> None:
+    raise _OutOfTime
+
+
 def run(prompt: str, *, model: str | None = None, mode: str = "hold", output_format: str = "text",
-        max_turns: int = 20, stdin: TextIO | None = None, stdout: TextIO | None = None) -> int:
+        max_turns: int = 20, time_limit: float | None = None, max_tokens: int | None = None,
+        stdin: TextIO | None = None, stdout: TextIO | None = None) -> int:
     """Run one headless turn; return the process exit status."""
     from src.repl.core import ClydeREPL
 
@@ -72,6 +81,9 @@ def run(prompt: str, *, model: str | None = None, mode: str = "hold", output_for
     text = build_prompt(prompt, stdin or sys.stdin)
     if not text:
         err.print("[red]Nothing to do:[/red] give a prompt, e.g. clyde -p \"explain src/cli.py\", or pipe input in.")
+        return 2
+    if time_limit and not hasattr(signal, "SIGALRM"):   # Windows has no alarm signal
+        err.print("[red]--time-limit isn't supported on Windows[/red]; use the caller's timeout, which sends an interrupt.")
         return 2
     repl = ClydeREPL(model=model, console=err, headless=True)
     repl._set_mode(mode)
@@ -102,20 +114,30 @@ def run(prompt: str, *, model: str | None = None, mode: str = "hold", output_for
     # A CI cancel or a harness timeout sends SIGTERM: as an interrupt it reaches the running command, whose process group is
     # then killed (src/system/proc.py), and the result line still says what happened.
     previous = signal.signal(signal.SIGTERM, _interrupt)
+    previous_alarm = signal.signal(signal.SIGALRM, _out_of_time) if time_limit else None
+    if time_limit:
+        signal.setitimer(signal.ITIMER_REAL, time_limit)
     try:
-        repl.chat(text, max_turns=max_turns)
+        repl.chat(text, max_turns=max_turns, max_tokens=max_tokens)
+    except _OutOfTime:
+        repl.last_error = f"time limit reached ({time_limit:g}s)"
     except KeyboardInterrupt:
         repl.last_error = "interrupted"
     finally:
+        if time_limit:
+            signal.setitimer(signal.ITIMER_REAL, 0)
+            signal.signal(signal.SIGALRM, previous_alarm)
         signal.signal(signal.SIGTERM, previous)
 
     result, error = repl.last_result, repl.last_error
     answer = result.response_text if result is not None else ""
     ran_out = answer == MAX_TURNS_REPLY
-    failed = error is not None or result is None or ran_out
+    over_budget = answer == MAX_TOKENS_REPLY
+    failed = error is not None or result is None or ran_out or over_budget
     if output_format in ("json", "stream-json"):
         payload: dict[str, Any] = {
-            "result": answer, "is_error": failed, "error": error or ("ran out of tool rounds" if ran_out else None),
+            "result": answer, "is_error": failed,
+            "error": error or ("ran out of tool rounds" if ran_out else f"token budget reached ({max_tokens})" if over_budget else None),
             "model": model_ref(repl.provider, repl.model), "num_turns": result.num_turns if result else 0,
             "usage": (result.usage if result else None) or {}, "denied": denied, "session_id": repl.session.session_id,
         }
