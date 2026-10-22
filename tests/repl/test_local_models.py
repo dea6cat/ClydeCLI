@@ -82,10 +82,10 @@ class TestConfirm(unittest.TestCase):
                 patch.object(local_models.Confirm, "ask", return_value=False), \
                 patch.object(local_models, "_runner", return_value="ollama"), \
                 patch.object(local_models, "_pull_ollama") as pull_ollama, \
-                patch.object(local_models, "_get_lmstudio") as get_lmstudio:
+                patch.object(local_models, "_get_omlx") as get_omlx:
             local_models.show(self.repl, " ollama coder")
         pull_ollama.assert_not_called()
-        get_lmstudio.assert_not_called()
+        get_omlx.assert_not_called()
 
     def _searched(self, arg: str) -> dict[str, str]:
         """Which sources show() searched for `arg`, and with what query."""
@@ -116,19 +116,15 @@ class TestRouting(unittest.TestCase):
     def _runner(self, offer, ollama_up: bool, lms: bool, apple: bool = True):
         repl = _Repl()
         repl.registry = {"ollama": _Ollama(ollama_up), **({"omlx": object()} if apple else {})}
-        with patch.object(local_models, "_lms", return_value="/bin/lms" if lms else None):
-            return local_models._runner(repl, offer)
+        return local_models._runner(repl, offer)
 
     def test_each_model_goes_to_the_app_that_runs_it(self):
         self.assertEqual(self._runner(MLX, ollama_up=False, lms=False), "omlx")      # MLX: oMLX, which installs itself
         self.assertIsNone(self._runner(MLX, ollama_up=True, lms=True, apple=False))  # ... and only on Apple Silicon
         self.assertEqual(self._runner(GGUF, ollama_up=True, lms=True), "ollama")     # GGUF: Ollama first
-        self.assertEqual(self._runner(GGUF, ollama_up=False, lms=True), "lmstudio")  # ... else LM Studio
+        self.assertIsNone(self._runner(GGUF, ollama_up=False, lms=True))             # ... only: LM Studio is gone
         self.assertIsNone(self._runner(HARD, ollama_up=False, lms=True))             # ollama.com: Ollama only
 
-    def test_lm_studio_downloads_exactly_the_rated_variant(self):
-        self.assertEqual(local_models.lms_target(GGUF), ("https://huggingface.co/u/coder@Q4_K_M", "--gguf"))
-        self.assertEqual(local_models.lms_target(MLX), ("https://huggingface.co/mlx-community/Coder-4bit", "--mlx"))
 
 
 if __name__ == "__main__":
@@ -220,7 +216,6 @@ class TestSetUpRunner(unittest.TestCase):
         self.repl.registry = {"ollama": _Ollama(False)}
         self.run = self._patch(local_models.subprocess, "run", return_value=type("Done", (), {"returncode": 0})())
         self._patch(local_models.sys, "platform", "darwin")
-        self._patch(local_models, "_lms", return_value=None)
 
     def _patch(self, target, name, *args, **kwargs):
         patcher = patch.object(target, name, *args, **kwargs) if args or kwargs else patch.object(target, name)
@@ -322,7 +317,7 @@ class TestDownloadOptions(unittest.TestCase):
                 patch.object(local_models, "_runner", return_value=runner), \
                 patch.object(local_models, "_confirm", return_value=True) as confirm, \
                 patch.object(local_models, "_pull_ollama") as pull, \
-                patch.object(local_models, "_get_lmstudio") as lms:
+                patch.object(local_models, "_get_omlx") as lms:
             local_models.show(repl, " hf")
         self.repl = repl
         return repl, pick, confirm, pull, lms
@@ -487,7 +482,7 @@ class TestDownloadOptions(unittest.TestCase):
         pull.assert_not_called()
 
     def test_an_mlx_option_is_downloaded_through_the_app_that_runs_it(self):
-        _, _, _, pull, lms = self._show("3", runner="lmstudio")
+        _, _, _, pull, lms = self._show("3", runner="omlx")
         pull.assert_not_called()
         self.assertEqual(lms.call_args.args[1].pull_tag, _MLX4.pull_tag)
 
@@ -548,7 +543,7 @@ class TestSpeedFloor(unittest.TestCase):
         self.assertIn("1 listed last", repl.console.export_text())
 
 
-class TestLmStudioToolWarning(unittest.TestCase):
+class TestUntaggedToolWarning(unittest.TestCase):
     def _show(self, runner):
         repl = _Repl()
         with patch.object(local_models.fit, "chip", return_value="Apple M3"), \
@@ -560,8 +555,8 @@ class TestLmStudioToolWarning(unittest.TestCase):
             local_models.show(repl, " hf")
         return repl.console.export_text()
 
-    def test_an_lm_studio_download_warns_that_tool_use_is_unconfirmed(self):
-        self.assertIn("Tool use isn't confirmed", self._show("lmstudio"))
+    def test_an_omlx_download_warns_that_tool_use_is_unconfirmed(self):
+        self.assertIn("Tool use isn't confirmed", self._show("omlx"))
 
     def test_an_ollama_download_does_not(self):
         self.assertNotIn("Tool use isn't confirmed", self._show("ollama"))

@@ -1,6 +1,6 @@
 """/models local [best|ollama|hf|mlx] [query]: find local models that fit this machine, rate how hard
 they'd run (relax, balance, hard), and download the chosen one with the app that runs it: Ollama
-for ollama.com models, oMLX for MLX, and Ollama or else LM Studio for Hugging Face GGUF.
+for ollama.com models, oMLX for MLX, and Ollama for Hugging Face GGUF.
 The machine's numbers come first and every download is confirmed with what it will cost, so
 nothing heavy lands by surprise; /eval runs afterwards only when asked, so cardShuffle can deal it."""
 
@@ -11,7 +11,6 @@ import shlex
 import shutil
 import subprocess
 import sys
-import time
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor
@@ -26,7 +25,7 @@ from src.tuning import tune, tune_profile
 from src.ui.picker import Choice, pick
 from src.providers import best_fit, discover, fit, huggingface, mlx
 from src.providers.base import ProviderError, post_stream
-from src.providers.lmstudio import _lms, model_files
+from src.providers.lmstudio import model_files
 from src.providers.model_eval import HAND, evaluate, hidden_refs, save_results
 
 # Each source: search(query, budget) -> list[fit.Offer]. Add one by adding a module and a line here.
@@ -232,19 +231,17 @@ def _choose_option(repl: Any, offer: fit.Offer, chip: str) -> fit.Offer | None:
 
 
 def _runner(repl: Any, offer: fit.Offer) -> str | None:
-    """The app that will download and run `offer`: "ollama" or "lmstudio", or None when neither can."""
+    """The app that will download and run `offer`: "omlx" for MLX, else "ollama", or None when it can't."""
     ollama = repl.registry.get("ollama")
     ollama_up = ollama is not None and ollama.is_available()
     if offer.source == "mlx":
         return "omlx" if "omlx" in repl.registry else None   # oMLX asks before it installs itself
-    if offer.source == "hf" and not ollama_up:
-        return "lmstudio" if _lms() else None
     return "ollama" if ollama_up else None
 
 
 _NO_RUNNER = {
     "mlx": "MLX models run in oMLX, which needs an Apple Silicon Mac.",
-    "hf": "Hugging Face GGUF models need Ollama (running) or LM Studio. Start or install one, then try again.",
+    "hf": "Hugging Face GGUF models need Ollama. Install it from ollama.com (or start it with `ollama serve`), then try again.",
     "ollama": "ollama.com models need Ollama. Install it from ollama.com (or start it with `ollama serve`), then try again.",
 }
 
@@ -253,9 +250,8 @@ _NO_RUNNER = {
 # falls back to the "install it yourself" message. ponytail: no Windows route until someone can test it.
 _INSTALL: dict[str, dict[str, list[str]]] = {
     "ollama": {"darwin": ["brew", "install", "ollama"], "linux": ["sh", "-c", "curl -fsSL https://ollama.com/install.sh | sh"]},
-    "lmstudio": {"darwin": ["brew", "install", "--cask", "lm-studio"]},
 }
-_APP_NAME = {"ollama": "Ollama", "lmstudio": "LM Studio"}
+_APP_NAME = {"ollama": "Ollama"}
 _START_WAIT = 30   # seconds to wait for a freshly started app to answer
 
 
@@ -264,25 +260,15 @@ def _start_ollama(repl: Any) -> bool:
     return tune.start_server(tune_profile.serve_env(), _START_WAIT)
 
 
-def _start_lmstudio() -> bool:
-    """Open LM Studio once so it puts its `lms` CLI on disk, then wait for it."""
-    subprocess.run(["open", "-a", "LM Studio"], capture_output=True)
-    for _ in range(_START_WAIT * 2):
-        if _lms():
-            return True
-        time.sleep(0.5)
-    return False
-
-
 def _set_up_runner(repl: Any, offer: fit.Offer) -> str | None:
     """No app can run `offer`: say what Clyde would install or start, and only after a yes do it.
-    Returns the runner ("ollama" or "lmstudio") once it works, else None."""
+    Returns "ollama" once it works, else None."""
     if offer.source == "mlx":   # oMLX installs itself on first use, with a yes; without it this Mac can't run MLX
         repl.console.print(_NO_RUNNER["mlx"])
         return None
     app = "ollama"
     name = _APP_NAME[app]
-    present = bool(shutil.which("ollama")) if app == "ollama" else bool(_lms())
+    present = bool(shutil.which("ollama"))
     cmd = None if present else _INSTALL[app].get(sys.platform)
     if not present and (cmd is None or shutil.which(cmd[0]) is None):
         repl.console.print(_NO_RUNNER[offer.source])
@@ -305,7 +291,7 @@ def _set_up_runner(repl: Any, offer: fit.Offer) -> str | None:
             repl.console.print(f"[red]Installing {name} failed[/red] (exit {done.returncode}).")
             return None
     with repl.console.status(f"[dim]Starting {name}…[/dim]", spinner="dots"):
-        started = _start_ollama(repl) if app == "ollama" else _start_lmstudio()
+        started = _start_ollama(repl)
     if not started:
         repl.console.print(f"[yellow]{name} is installed but didn't come up.[/yellow] Open it yourself, then try again.")
         return None
@@ -382,26 +368,15 @@ def show(repl: Any, arg: str) -> None:
     runner = runner or _set_up_runner(repl, offer)
     if runner is None:
         return
-    if runner in ("lmstudio", "omlx"):
+    if runner == "omlx":
         repl.console.print(f"[yellow]Tool use isn't confirmed for {offer.pull_tag}:[/yellow] Hugging Face gives no tool tag before download. "
                            "A model without it writes tool calls as plain text; /eval after the download shows whether it works.")
     if not _confirm(repl, offer, budget, chip):
         return
     if runner == "ollama":
         _pull_ollama(repl, offer)
-    elif runner == "omlx":
-        _get_omlx(repl, offer)
     else:
-        _get_lmstudio(repl, offer)
-
-
-def lms_target(offer: fit.Offer) -> tuple[str, str]:
-    """(what `lms get` takes, its format flag). A GGUF quant is pinned with `@<quant>`, so LM Studio
-    downloads exactly the file that was rated, never a variant of its own choosing."""
-    if offer.source == "mlx":
-        return offer.pull_tag, "--mlx"
-    repo, _, quant = offer.pull_tag.removeprefix("hf.co/").rpartition(":")
-    return f"https://huggingface.co/{repo}@{quant}", "--gguf"
+        _get_omlx(repl, offer)
 
 
 def _pull_ollama(repl: Any, offer: fit.Offer) -> None:
@@ -451,31 +426,6 @@ def _get_omlx(repl: Any, offer: fit.Offer) -> None:
         return
     repl.console.print(f"[green]✓ Downloaded omlx:{model}[/green]")
     _offer_eval(repl, omlx_provider, model, offer)
-
-
-def _get_lmstudio(repl: Any, offer: fit.Offer) -> None:
-    """Download with `lms get` (LM Studio's own progress bar shows), then find the new model."""
-    lmstudio = repl.registry.get("lmstudio")
-    target, fmt = lms_target(offer)
-    lmstudio.__dict__.pop("_models_cache", None)
-    before = set(lmstudio.list_models())
-    repl.console.print(f"[dim]Downloading through LM Studio: lms get {target} {fmt}[/dim]")
-    try:
-        with repl._esc.paused():
-            done = subprocess.run([_lms(), "get", target, fmt, "-y"])
-    except KeyboardInterrupt:
-        repl.console.print("Download stopped.")
-        return
-    if done.returncode != 0:
-        repl.console.print(f"[red]Download failed[/red] (lms exited with {done.returncode}).")
-        return
-    lmstudio.__dict__.pop("_models_cache", None)
-    new = sorted(set(lmstudio.list_models()) - before)
-    if len(new) != 1:
-        repl.console.print("[green]✓ Downloaded.[/green] Find it under lmstudio in /models, then run /eval lmstudio on it.")
-        return
-    repl.console.print(f"[green]✓ Downloaded lmstudio:{new[0]}[/green]")
-    _offer_eval(repl, lmstudio, new[0], offer)
 
 
 def stop_eval(console: Any, targets: list[tuple[Any, str]]) -> None:
