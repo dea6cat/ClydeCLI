@@ -77,4 +77,4 @@ certificate, `/proxy ca`, is for). Servers on this machine (Ollama, oMLX) never 
 Where to get a key or an installer, shown on screen or in a setup message: `platform.openai.com`, `platform.claude.com`,
 `platform.deepseek.com`, `platform.minimax.io`, `console.mistral.ai`, `aistudio.google.com`, `dash.cloudflare.com`, `cloud.cerebras.ai`,
 `build.nvidia.com`, `enter.pollinations.ai`, `mcp.linear.app` (an example in the MCP help),
-`polyformproject.org` (the licence text), `example.com` (placeholder in help text).
+`polyformproject.org` (the licence text), `example.com` and `proxy.example.com` (placeholders in help text).
