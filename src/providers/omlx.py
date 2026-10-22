@@ -5,7 +5,8 @@ Clyde installs it from a pinned source checkout into ~/.clyde/omlx (install(), w
 (~/.clyde/omlx/api_key, 0600): without one oMLX opens every endpoint, admin included, to anything that can reach the port,
 a web page in the browser among them. OMLX_API_KEY overrides it for a server you run yourself.
 
-`--memory-guard safe` keeps about 20% of memory free for other apps. oMLX's SSD cache tier (on by default, ~/.omlx/cache)
+`--memory-guard balanced` keeps at least 3 GB free for other apps and follows their use live; `safe` reserves at least
+6 GB, which on an 18 GB Mac left a 1.6 GB ceiling that refused a 4 GB model with 8 GB free. oMLX's SSD cache tier (on by default, ~/.omlx/cache)
 restores a prompt's KV state after a restart or an eviction instead of recomputing it; a warm repeat is no faster than
 any server that caches prompts in memory.
 """
@@ -278,7 +279,7 @@ class OMLXProvider(OpenAICompatProvider):
         log = home() / "server.log"
         log.parent.mkdir(parents=True, exist_ok=True)
         with open(log, "ab") as out:   # the key goes in the environment: a command line shows in every user's `ps`
-            subprocess.Popen([exe, "serve", "--port", str(port), "--memory-guard", "safe"], env={**os.environ, self.key_env: server_key()},
+            subprocess.Popen([exe, "serve", "--port", str(port), "--memory-guard", "balanced"], env={**os.environ, self.key_env: server_key()},
                              stdout=out, stderr=out, stdin=subprocess.DEVNULL, start_new_session=True)
         deadline = time.monotonic() + START_TIMEOUT_S
         while time.monotonic() < deadline:

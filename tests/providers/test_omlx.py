@@ -47,7 +47,7 @@ class TestOMLX(unittest.TestCase):
             self.provider._ensure_server()
         argv, kwargs = popen.call_args.args[0], popen.call_args.kwargs
         self.assertEqual(argv[:2], ["/bin/omlx", "serve"])
-        self.assertIn("safe", argv)
+        self.assertEqual(argv[argv.index("--memory-guard") + 1], "balanced")
         self.assertNotIn(omlx.server_key(), " ".join(argv))
         self.assertEqual(kwargs["env"]["OMLX_API_KEY"], omlx.server_key())
 
