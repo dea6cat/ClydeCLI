@@ -19,7 +19,7 @@ from src.ui import usage_stats as stats
 RIGHT, ESC, TAB, DOWN = "\x1b[C", "\x1b", "\t", "\x1b[B"
 TODAY = date(2026, 10, 13)
 SNAP = settings_screen.Snapshot([("Version", "1.0"), ("Model", "ollama:m")], ["Total cost: free or unpriced"], [("ecc", 3, 120)])
-REQS = [stats.Request(TODAY, "ollama:m", stats.Totals(100, 20, 0, 0)), stats.Request(TODAY, "lmstudio:q", stats.Totals(50, 5, 0, 0))]
+REQS = [stats.Request(TODAY, "ollama:m", stats.Totals(100, 20, 0, 0)), stats.Request(TODAY, "omlx:q", stats.Totals(50, 5, 0, 0))]
 
 
 def _text(fragments) -> str:

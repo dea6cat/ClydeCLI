@@ -4,7 +4,7 @@ that passed /eval; a failing or stuck model is swapped for the next card in the 
 Tiers (models):
   high-roller  strongest first
   house        by mode: reading the table (plan) gets the strongest, other modes the middle card
-  free         local models only (Ollama, LM Studio), strongest first
+  free         local models only (Ollama, oMLX), strongest first
   small        weakest first, for quick and cheap turns
 
 Strength is how many of /eval's hard tasks a model solved; ties go to the faster model.
@@ -36,7 +36,7 @@ from .types import Conversation, Role
 
 NAME = "cardShuffle"
 TIERS = ("high-roller", "house", "free", "small")
-LOCAL = ("ollama", "lmstudio")
+LOCAL = ("ollama", "omlx")
 
 # Council: `cardShuffle:<tier> council` asks the tier's top models the same question at once, Laya picks the best answer.
 COUNCIL = "council"

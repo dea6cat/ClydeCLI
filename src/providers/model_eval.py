@@ -128,7 +128,7 @@ class ModelScore:
             return "ok"
         e = self.error.lower()
         if re.search(r"http (402|429|5\d\d)|rate.?limit|credits|timed? ?out|overloaded|insufficient (system )?resources", e):
-            return "transient"   # the last one is LM Studio refusing a load the machine has no memory for (HTTP 400): nothing wrong with the model
+            return "transient"   # the last one is a local server refusing a load the machine has no memory for (HTTP 400): nothing wrong with the model
         if "tool" in e and ("support" in e or "endpoint" in e) or not self.tool_call and "without calling" in e:
             return "tools"
         if re.search(r"http 40[0134]|not found|not available|no longer available|no endpoints", e):

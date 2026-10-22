@@ -1,6 +1,6 @@
 """Hugging Face MLX repos as a source of local models for Apple Silicon. An MLX repo usually holds
-one quantization (`…-4bit`), so its size is the sum of its safetensors files: exact. LM Studio
-downloads and runs them (`lms get <url> --mlx`). Every entry point returns [] on any failure.
+one quantization (`…-4bit`), so its size is the sum of its safetensors files: exact. oMLX
+downloads and runs them (its own Hugging Face downloader). Every entry point returns [] on any failure.
 """
 from __future__ import annotations
 

@@ -4,7 +4,7 @@ ClydeCLI picks up from other agents before the model gets them.
 Two stages, as SkillSpector runs them. The static stage always runs: fast (about 2 s), offline,
 71 patterns. The LLM review runs only when ClydeCLI has a connected model SkillSpector can use
 (Anthropic, or any OpenAI-compatible endpoint: NVIDIA, OpenRouter, OpenAI, DeepSeek, Ollama,
-LM Studio, ...), and only where a person is waiting anyway: plugin installs, items the static stage
+oMLX, ...), and only where a person is waiting anyway: plugin installs, items the static stage
 flagged, and /skills scan. It can take minutes, so it never runs at startup.
 
 Verdicts are cached by content hash in ~/.clyde/skill_scans.json, so only new or changed items are

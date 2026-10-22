@@ -38,7 +38,7 @@ class TestAgentLoop(unittest.TestCase):
         )
 
     def test_a_local_model_is_sent_only_the_tools_the_prompt_asks_for(self):
-        provider = FakeProvider(reply("done"), name="lmstudio")
+        provider = FakeProvider(reply("done"), name="omlx")
         provider.context_window = lambda _model: 20000
         conversation = Conversation()
         conversation.add_user_message("review the login code")
@@ -74,7 +74,7 @@ class TestAgentLoop(unittest.TestCase):
         self.assertTrue({"bash", "edit", "write"} <= sent)
 
     def test_a_local_model_has_its_old_tool_results_trimmed_between_rounds(self):
-        provider = FakeProvider(reply("done"), name="lmstudio")
+        provider = FakeProvider(reply("done"), name="omlx")
         provider.context_window = lambda _model: 4000
         conversation = Conversation()
         for i in range(8):

@@ -76,7 +76,7 @@ def add_custom(name: str, base_url: str, protocol: str = "openai") -> str | None
     """Save a custom provider; returns why it can't be added, or None."""
     if not _NAME.match(name):
         return "use 2-31 lowercase letters, digits or dashes, starting with a letter"
-    if name in _BUILT_IN or name in ("ollama-cloud", "lmstudio", "cardShuffle", "custom"):
+    if name in _BUILT_IN or name in ("ollama-cloud", "omlx", "cardShuffle", "custom"):
         return f"{name} is a built-in provider"
     if not base_url.startswith(("http://", "https://")):
         return "the base URL must start with http:// or https://"

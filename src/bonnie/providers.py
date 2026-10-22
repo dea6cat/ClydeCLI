@@ -33,7 +33,7 @@ GUIDE: dict[str, dict[str, Any]] = {
                      "note": "Only for Ollama's hosted models. A local Ollama needs no key."},
 }
 LOCAL = {"ollama": ("Ollama", "https://ollama.com/download", "Install it, then run `ollama serve`. Clyde finds it on its own."),
-         "lmstudio": ("LM Studio", "https://lmstudio.ai", "Install it, load a model and start its local server. Clyde finds that too.")}
+         "omlx": ("oMLX", "https://github.com/jundot/omlx", "MLX models on Apple Silicon. Clyde installs and starts it the first time you pick one.")}
 MAX_KEY = 512
 _KEY = re.compile(r"^[\x21-\x7e]{8,%d}$" % MAX_KEY)   # printable ASCII, no spaces
 

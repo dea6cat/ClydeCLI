@@ -27,7 +27,7 @@ AUTH_REQUIRED = -32000
 # Terminal auth: the editor runs `clyde login` in a terminal. Zed adds the args to the agent's own `--acp` command
 # (`clyde --acp login`), so cli.py lets a subcommand win over the flag.
 AUTH_METHODS = [{"id": "login", "name": "Connect a provider", "type": "terminal", "args": ["login"],
-                 "description": "Runs `clyde login` in a terminal: pick a provider and save its key (Ollama and LM Studio need none)."}]
+                 "description": "Runs `clyde login` in a terminal: pick a provider and save its key (Ollama and oMLX need none)."}]
 _KINDS = {"read": "read", "edit": "edit", "write": "edit", "notebookedit": "edit", "bash": "execute",
           "grep": "search", "glob": "search", "webfetch": "fetch", "websearch": "fetch"}
 
@@ -156,7 +156,7 @@ class Server:
 
         # before the REPL: with nothing connected it can't resolve a model and exits, which would leave the editor waiting
         if not usable(build_registry()):
-            raise AuthRequired("No provider is connected. Run `clyde login`, or start Ollama or LM Studio.")
+            raise AuthRequired("No provider is connected. Run `clyde login`, or start Ollama or oMLX.")
 
         # ponytail: one working directory per process; editors start one agent process per project
         if params.get("cwd"):

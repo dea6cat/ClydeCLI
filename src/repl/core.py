@@ -225,7 +225,7 @@ _HELP_TEXT = """
 - `/remember [project] TEXT` - Keep a note between sessions, about you (default) or this project; `/memory` lists the notes (`/memory stale` those older than 90 days), `/forget [project] N` drops one; the model can save one too when you ask it to remember
 - `/plan [done|start|pending N|clear]` - Show the saved plan and its phases; set phase N's status; or delete the plan
 - `/terse [on|off]` - Shorter replies (fewer tokens, quicker on local models); bare opens a picker; saved
-- `/purge [name]` - Delete local models (Ollama and LM Studio) from disk, all of them or only those matching name; asks first
+- `/purge [name]` - Delete local models (Ollama and oMLX) from disk, all of them or only those matching name; asks first
 - `/eval [filter]` - Test the listed models (or those matching filter) on a tool call and a round trip
 - `/think [off|low|medium|high|on|default]` - Set the reasoning level
 - `/tools` - List available built-in tools
@@ -385,9 +385,6 @@ class ClydeREPL:
 
         keys.load_into_env()
         self.registry = build_registry()
-        if (lmstudio := self.registry.get("lmstudio")) is not None:
-            lmstudio.confirm_reload = self._confirm_reload
-            lmstudio.confirm_install = self._confirm_install_llmster
         if (omlx := self.registry.get("omlx")) is not None:
             omlx.confirm_install = self._confirm_install_omlx
         resolved = self._startup_model(model)
@@ -612,20 +609,6 @@ class ClydeREPL:
         """The pasted images a message refers to, in the order its [Image #N] markers appear."""
         numbers = dict.fromkeys(int(n) for n in re.findall(r"\[Image #(\d+)\]", text))
         return [p for n in numbers if isinstance(p := self._pastes.get(n), ImageContentBlock)]
-
-    def _confirm_reload(self, model: str, loaded: int, planned: int) -> bool:
-        """Ask before reloading an LM Studio model that is loaded with less context than Clyde would give it."""
-        self.console.print(Text(f"  {model} is loaded with a {loaded:,}-token context; Clyde would load it with {planned:,}.", style=_CARD_TEXT))
-        self.console.print(Text("  Reloading unloads it first (a few seconds); the conversation is kept.", style=_CARD_DIM))
-        return input("  Reload it? [y/N]: ").strip().lower() in ("y", "yes")
-
-    def _confirm_install_llmster(self) -> bool:
-        """Ask before downloading and running LM Studio's installer, the one download-and-run Clyde would otherwise do unasked."""
-        from src.providers.lmstudio import INSTALL_URL
-        self.console.print(Text("  LM Studio's server isn't running, and its headless daemon isn't installed.", style=_CARD_TEXT))
-        self.console.print(Text(f"  Clyde would run LM Studio's own installer: curl -fsSL {INSTALL_URL} | sh (your shell files are left alone).",
-                                style=_CARD_DIM))
-        return input("  Install it? [y/N]: ").strip().lower() in ("y", "yes")
 
     def _confirm_install_omlx(self) -> bool:
         """Ask before downloading and building oMLX, the one download-and-build Clyde would otherwise do unasked."""
@@ -1187,7 +1170,6 @@ class ClydeREPL:
         if note := updates.cached_note():
             self.console.print(f"[{_CARD_DIM}]{note}[/{_CARD_DIM}]")
             self.console.print()
-        self._warn_if_no_tool_training()
         updates.start_background_check()     # a thread: the answer shows on the next start
         start_background_refresh(self.tool_context.workspace_root)
         if isinstance(self.provider, CardShuffle):
@@ -2336,16 +2318,7 @@ class ClydeREPL:
         set_default_model(ref)
         self.console.print(f"[green]Model: {ref}[/green] [dim](saved as default)[/dim]")
         self._warn_if_unlisted()
-        self._warn_if_no_tool_training()
         return True
-
-    def _warn_if_no_tool_training(self) -> None:
-        """LM Studio knows which models were trained for tool calls. One that wasn't tends to write the call as
-        plain text and then not do the task: say so before the first turn."""
-        lacks = getattr(self.provider, "lacks_tool_training", None)
-        if lacks is not None and lacks(self.model):
-            self.console.print(f"[yellow]LM Studio says {self.model} wasn't trained for tool use.[/yellow] [dim]It may write tool calls "
-                               f"as text instead of running them. /eval {model_ref(self.provider, self.model)} tests it, or pick another with /model.[/dim]")
 
     def _warn_if_unlisted(self) -> None:
         """A model the provider's own list doesn't contain usually fails on the first request: say so now."""
@@ -2613,7 +2586,7 @@ class ClydeREPL:
         live = usable(self.registry)
         if not live:
             self.console.print("[yellow]No providers connected.[/yellow] Run [bold]clyde login[/bold], "
-                               "or start Ollama or LM Studio for local models.")
+                               "or start Ollama or oMLX for local models.")
             return
         if refresh:
             for p in live.values():

@@ -48,7 +48,7 @@ class TestReviewReply(unittest.TestCase):
         self.ctx.permission_handler = lambda name, message, suggestion: (self.asked.append(message) or self.answer, False)
 
     def _registry(self, *cloud_replies):
-        return {"lmstudio": FakeProvider(name="lmstudio"), "anthropic": FakeProvider(*cloud_replies, name="anthropic", models=("m",))}
+        return {"omlx": FakeProvider(name="omlx"), "anthropic": FakeProvider(*cloud_replies, name="anthropic", models=("m",))}
 
     def test_it_asks_once_then_replaces_each_weak_reply_with_the_cloud_models_correction(self):
         reg = self._registry(reply("the corrected answer"), reply("a second correction"))
@@ -76,7 +76,7 @@ class TestReviewReply(unittest.TestCase):
         self.assertEqual(self.asked, [])
 
     def test_with_no_cloud_model_connected_nothing_is_asked(self):
-        self.assertIsNone(review_reply("q", "", self.ctx, registry={"lmstudio": FakeProvider(name="lmstudio")}))
+        self.assertIsNone(review_reply("q", "", self.ctx, registry={"omlx": FakeProvider(name="omlx")}))
         self.assertEqual(self.asked, [])
 
     def test_the_environment_switch_turns_it_off(self):
@@ -104,7 +104,7 @@ class TestAgentLoopReview(unittest.TestCase):
 
     def test_a_local_models_weak_reply_is_replaced_in_the_result_the_stream_and_the_history(self):
         with patch("src.agent.agent_loop.review_reply", return_value="the fix") as review:
-            conversation, result, streamed = self._run(FakeProvider(reply("shaky"), name="lmstudio"))
+            conversation, result, streamed = self._run(FakeProvider(reply("shaky"), name="omlx"))
         review.assert_called_once()
         self.assertEqual(review.call_args.args[:2], ("explain this", "shaky"))
         self.assertEqual(result.response_text, "the fix")
@@ -119,7 +119,7 @@ class TestAgentLoopReview(unittest.TestCase):
 
     def test_a_reply_that_review_leaves_alone_is_unchanged(self):
         with patch("src.agent.agent_loop.review_reply", return_value=None):
-            conversation, result, streamed = self._run(FakeProvider(reply("fine"), name="lmstudio"))
+            conversation, result, streamed = self._run(FakeProvider(reply("fine"), name="omlx"))
         self.assertEqual((result.response_text, streamed, conversation.messages[-1].content), ("fine", "fine", "fine"))
 
 

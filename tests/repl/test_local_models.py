@@ -122,7 +122,7 @@ class TestRouting(unittest.TestCase):
         self.assertEqual(self._runner(MLX, ollama_up=False, lms=False), "omlx")      # MLX: oMLX, which installs itself
         self.assertIsNone(self._runner(MLX, ollama_up=True, lms=True, apple=False))  # ... and only on Apple Silicon
         self.assertEqual(self._runner(GGUF, ollama_up=True, lms=True), "ollama")     # GGUF: Ollama first
-        self.assertIsNone(self._runner(GGUF, ollama_up=False, lms=True))             # ... only: LM Studio is gone
+        self.assertIsNone(self._runner(GGUF, ollama_up=False, lms=True))             # ... only
         self.assertIsNone(self._runner(HARD, ollama_up=False, lms=True))             # ollama.com: Ollama only
 
 
@@ -147,21 +147,11 @@ class _FakeOllama:
         self.deleted.append(name)
 
 
-class _FakeLMStudio:
-    name = "lmstudio"
-
-    def __init__(self, entries):
-        self.entries = entries
-
-    def downloaded(self):
-        return self.entries
-
-
 class TestPurge(unittest.TestCase):
     def setUp(self):
         self.repl = _Repl()
         self.ollama = _FakeOllama({"qwen3:8b": 5 * GB, "llama3:8b": 4 * GB})
-        self.repl.registry = {"ollama": self.ollama, "lmstudio": _FakeLMStudio([])}
+        self.repl.registry = {"ollama": self.ollama}
         self.repl.provider, self.repl.model = self.ollama, "llama3:8b"
 
     def _purge(self, arg, answer=True):
@@ -188,28 +178,24 @@ class TestPurge(unittest.TestCase):
         ask.assert_not_called()
         self.assertIn("No local model matches", self.repl.console.export_text())
 
-    def test_lmstudio_files_are_removed_and_unlocatable_models_skipped(self):
+    def test_an_omlx_model_is_unloaded_then_its_folder_removed(self):
         import tempfile
         from pathlib import Path
+        unloaded = []
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp).resolve()
-            (root / "pub" / "repo").mkdir(parents=True)
-            (root / "pub" / "repo" / "m.gguf").write_text("x")
-            self.repl.registry["lmstudio"] = _FakeLMStudio([
-                {"modelKey": "repo", "path": "pub/repo", "sizeBytes": GB},
-                {"modelKey": "alias", "path": "qwen/alias", "sizeBytes": GB},
-                {"modelKey": "escape", "path": "../outside", "sizeBytes": GB},
-            ])
-            with patch("src.providers.lmstudio.MODELS_DIR", root):
-                self._purge("lmstudio")
-            self.assertFalse((root / "pub" / "repo").exists())
-        shown = self.repl.console.export_text()
-        self.assertIn("Deleted lmstudio:repo", shown)
-        self.assertEqual(shown.count("skipped"), 2)
+            folder = Path(tmp) / "mlx-community" / "Coder-4bit"
+            folder.mkdir(parents=True)
+            (folder / "model.safetensors").write_bytes(b"x" * 10)
+            self.repl.registry["omlx"] = type("O", (), {"name": "omlx", "unload": lambda self, m: unloaded.append(m)})()
+            with patch.object(local_models.omlx, "on_disk", return_value={"Coder-4bit": folder}):
+                self._purge("omlx")
+            self.assertFalse(folder.exists())
+        self.assertEqual(unloaded, ["Coder-4bit"])
+        self.assertIn("Deleted omlx:Coder-4bit", self.repl.console.export_text())
 
 
 class TestSetUpRunner(unittest.TestCase):
-    """A missing Ollama or LM Studio is installed only after a yes, then the download goes on."""
+    """A missing Ollama is installed only after a yes, then the download goes on."""
 
     def setUp(self):
         self.repl = _Repl()
@@ -587,19 +573,13 @@ class TestFailedEvalHidden(unittest.TestCase):
         pick.assert_not_called()
 
 
-    def test_a_failed_lm_studio_model_is_hidden_by_its_folder_not_its_key(self):
-        class _LMStudio:
-            def downloaded(self):
-                return [{"modelKey": "coder-4bit", "path": "mlx-community/Coder-4bit"},
-                        {"modelKey": "coder-q4", "path": "u/Coder/Coder.Q4_K_M.gguf"},
-                        {"modelKey": "other", "path": "x/Other"}]
+    def test_failed_omlx_and_ollama_gguf_models_are_hidden_by_the_name_each_serves_them_under(self):
         repl = _Repl()
-        repl.registry["lmstudio"] = _LMStudio()
         other_quant = Offer("u/coder", "hf.co/u/coder:Q8_0", 5 * GB, "balance", 1, "Q8_0", "hf")
         with patch.object(local_models.fit, "chip", return_value="Apple M3"), \
                 patch.object(local_models.fit, "budget_bytes", return_value=12 * GB), \
                 patch.object(local_models, "SOURCES", {"hf": lambda q, b: [GGUF, other_quant, MLX]}), \
-                patch.object(local_models, "hidden_refs", return_value={"lmstudio:coder-4bit", "lmstudio:coder-q4"}), \
+                patch.object(local_models, "hidden_refs", return_value={"omlx:Coder-4bit", f"ollama:{GGUF.pull_tag}"}), \
                 patch.object(local_models, "pick", return_value=None) as pick:
             local_models.show(repl, " hf")
         self.assertEqual([c.label for c in pick.call_args.args[2]], ["u/coder"])
@@ -627,7 +607,7 @@ class TestTuneAfterDownload(unittest.TestCase):
 
 class TestStoppedEval(unittest.TestCase):
     def _provider(self):
-        return type("P", (), {"name": "lmstudio", "unloaded": [], "unload": lambda self, m: self.unloaded.append(m)})()
+        return type("P", (), {"name": "omlx", "unloaded": [], "unload": lambda self, m: self.unloaded.append(m)})()
 
     def test_ctrl_c_during_the_offered_eval_unloads_the_model_and_saves_nothing(self):
         repl, provider = _Repl(), self._provider()
@@ -677,8 +657,8 @@ class TestShortOnMemory(unittest.TestCase):
 
 class TestLoadedBytes(unittest.TestCase):
     def test_the_runtimes_own_estimate_wins_over_the_flat_allowance(self):
-        lmstudio = type("L", (), {"estimate": lambda self, m: 6 * GB})()
-        self.assertEqual(local_models.loaded_bytes(lmstudio, "m", 4 * GB), 6 * GB)
+        omlx_provider = type("L", (), {"estimate": lambda self, m: 6 * GB})()
+        self.assertEqual(local_models.loaded_bytes(omlx_provider, "m", 4 * GB), 6 * GB)
 
     def test_without_an_estimate_it_is_the_file_plus_the_allowance(self):
         ollama = type("O", (), {})()
