@@ -223,7 +223,7 @@ wheels = [
 
 [[package]]
 name = "clyde-cli"
-version = "0.5.11"
+version = "0.6.0"
 source = { editable = "." }
 dependencies = [
     { name = "duckdb" },

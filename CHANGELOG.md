@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-22
+
 ### Added
 
 - oMLX ([github.com/jundot/omlx](https://github.com/jundot/omlx), Apache-2.0) runs MLX models on Apple Silicon, in place of LM Studio. The first time you pick an MLX model, Clyde asks, then installs oMLX's pinned v0.7.2 from source into `~/.clyde/omlx` (a uv-made Python 3.13 environment, and its Metal kernels when Xcode is there). It starts the server itself, with a key only Clyde holds (`~/.clyde/omlx/api_key`, 0600, passed in the environment so it never shows in `ps`): without one, oMLX opens its admin API to anything that can reach the port. Its SSD cache restores a prompt after a restart instead of recomputing it: on an M3 Pro, a 3,555-token prompt took 7.56 s cold, 1.01 s warm, and 0.96 s after a server restart.
@@ -750,6 +752,7 @@ The focus was on building a solid foundation with clean architecture, comprehens
 
 ---
 
+[0.6.0]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.6.0
 [0.5.11]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.5.11
 [0.5.10]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.5.10
 [0.5.9]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.5.9
