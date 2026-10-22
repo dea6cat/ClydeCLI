@@ -122,7 +122,7 @@ class TestRun(unittest.TestCase):
     def test_max_tokens_stops_after_the_round_that_went_over(self):
         call = {"input_tokens": 500, "output_tokens": 100}
         loop = [reply(tool_calls=[("Glob", {"pattern": "*.py"})], usage=call) for _ in range(2)]
-        code, out, _, provider = self._run(*loop, reply("should not get here"), output_format="stream-json", max_tokens=1000)
+        code, out, _, _ = self._run(*loop, reply("should not get here"), output_format="stream-json", max_tokens=1000)
         lines = [json.loads(line) for line in out.splitlines()]
         last = lines[-1]
         self.assertEqual((code, last["is_error"], last["error"], last["num_turns"]), (1, True, "token budget reached (1000)", 2))
