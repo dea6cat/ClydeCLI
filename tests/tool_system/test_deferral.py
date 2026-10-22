@@ -236,7 +236,7 @@ class TestLoopHelpers(unittest.TestCase):
     def test_only_local_providers_get_the_small_tool_set(self):
         from types import SimpleNamespace as NS
         from src.agent.agent_loop import _small_local
-        self.assertTrue(_small_local(NS(name="omlx", api_key="lm-studio")))
+        self.assertTrue(_small_local(NS(name="omlx", api_key="k")))
         self.assertTrue(_small_local(NS(name="ollama", api_key=None)))
         self.assertFalse(_small_local(NS(name="ollama", api_key="cloud-key")))   # Ollama's cloud models
         self.assertFalse(_small_local(NS(name="openrouter", api_key="k")))

@@ -37,6 +37,21 @@ class TestDoctorCommand(unittest.TestCase):
         self.assertTrue(success, error)
         return text
 
+    def _doctor_with_kernels(self, kernels) -> str:
+        from src.providers import omlx
+        with patch.object(omlx, "supported", return_value=True), patch.object(omlx, "native_kernels", return_value=kernels):
+            return self.run_doctor()
+
+    def test_omlx_without_a_native_kernel_says_which_models_slow_down_and_how_to_build_it(self):
+        text = self._doctor_with_kernels({"attention": "ImportError: no _ext", "lowbit": None})
+        self.assertIn("✗ oMLX native kernels: 1 of 2 available, missing attention", text)
+        self.assertIn("GLM-5.2, MiniMax M3 and Qwen3.5", text)
+
+    def test_omlx_with_every_kernel_passes_and_without_omlx_says_nothing(self):
+        self.assertIn("✓ oMLX native kernels: 2 of 2 available", self._doctor_with_kernels({"attention": None, "lowbit": None}))
+        self.assertNotIn("oMLX", self._doctor_with_kernels(None))
+        self.assertIn("✗ oMLX native kernels: couldn't check (exit 1)", self._doctor_with_kernels("exit 1"))
+
     def test_reports_python_and_dependencies(self):
         text = self.run_doctor()
         self.assertIn("✓ Python", text)

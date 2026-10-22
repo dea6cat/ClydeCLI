@@ -213,6 +213,24 @@ class TestOMLX(unittest.TestCase):
         self.assertEqual(sorted(k for k in data if k.startswith("lmstudio:")), ["lmstudio:gone"])
         self.assertEqual(len(moved), 3)
 
+    def test_native_kernels_are_asked_of_the_omlx_install_itself(self):
+        exe = Path(self.tmp) / "omlx"
+        exe.write_text("#!/opt/omlx/venv/bin/python\nimport sys\n")
+        done = omlx.subprocess.CompletedProcess([], 0, '{"attention": null, "lowbit": "ImportError: no _ext"}\n', "")
+        with patch.object(omlx, "_exe", return_value=str(exe)), patch.object(omlx.subprocess, "run", return_value=done) as run:
+            self.assertEqual(omlx.native_kernels(), {"attention": None, "lowbit": "ImportError: no _ext"})
+        self.assertEqual(run.call_args.args[0][0], "/opt/omlx/venv/bin/python")   # the install's own interpreter, not Clyde's
+        failed = omlx.subprocess.CompletedProcess([], 1, "", "ModuleNotFoundError: No module named 'omlx'\n")
+        with patch.object(omlx, "_exe", return_value=str(exe)), patch.object(omlx.subprocess, "run", return_value=failed):
+            self.assertEqual(omlx.native_kernels(), "ModuleNotFoundError: No module named 'omlx'")
+        with patch.object(omlx, "_exe", return_value=None):
+            self.assertIsNone(omlx.native_kernels())
+        (Path(self.tmp) / "python").write_text("")   # a venv: its own python wins over a #!/bin/sh trampoline
+        exe.write_text("#!/bin/sh\n'''exec' '/very/long/venv/bin/python' \"$0\" \"$@\"\n")
+        with patch.object(omlx, "_exe", return_value=str(exe)), patch.object(omlx.subprocess, "run", return_value=done) as run:
+            omlx.native_kernels()
+        self.assertEqual(run.call_args.args[0][0], str((Path(self.tmp) / "python").resolve()))
+
     def test_only_offered_on_apple_silicon(self):
         with patch.object(omlx.sys, "platform", "linux"):
             self.assertFalse(omlx.supported())

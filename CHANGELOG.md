@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `/doctor` checks oMLX's native Metal kernels by asking the oMLX install itself. Without them GLM-5.2, MiniMax M3 and Qwen3.5 models fall back to much slower generic paths without a word; the line names the missing kernels and the command that builds them. Shown on Apple Silicon once oMLX is installed.
+
 ## [0.6.0] - 2026-10-22
 
 ### Added
