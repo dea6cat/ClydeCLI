@@ -119,6 +119,13 @@ class TestRun(unittest.TestCase):
         self.assertEqual(signal.getitimer(signal.ITIMER_REAL), (0.0, 0.0))
         self.assertIs(signal.getsignal(signal.SIGALRM), before)
 
+    def test_time_limit_without_an_alarm_signal_is_refused(self):
+        from types import SimpleNamespace
+        with patch("src.repl.headless.signal", SimpleNamespace()):   # Windows: no SIGALRM
+            code, out, err, _ = self._run(reply("4"), time_limit=5)
+        self.assertEqual((code, out), (2, ""))
+        self.assertIn("isn't supported on Windows", err)
+
     def test_max_tokens_stops_after_the_round_that_went_over(self):
         call = {"input_tokens": 500, "output_tokens": 100}
         loop = [reply(tool_calls=[("Glob", {"pattern": "*.py"})], usage=call) for _ in range(2)]

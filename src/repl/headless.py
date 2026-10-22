@@ -82,6 +82,9 @@ def run(prompt: str, *, model: str | None = None, mode: str = "hold", output_for
     if not text:
         err.print("[red]Nothing to do:[/red] give a prompt, e.g. clyde -p \"explain src/cli.py\", or pipe input in.")
         return 2
+    if time_limit and not hasattr(signal, "SIGALRM"):   # Windows has no alarm signal
+        err.print("[red]--time-limit isn't supported on Windows[/red]; use the caller's timeout, which sends an interrupt.")
+        return 2
     repl = ClydeREPL(model=model, console=err, headless=True)
     repl._set_mode(mode)
     denied: list[str] = []
