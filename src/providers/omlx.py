@@ -98,6 +98,36 @@ def fixed_window(model: str) -> int | None:
     return config.get_context_tokens()
 
 
+LMSTUDIO_MODELS = Path.home() / ".lmstudio" / "models"
+
+
+def settings_file() -> Path:
+    return Path.home() / ".omlx" / "settings.json"
+
+
+def adopt_lmstudio_models() -> bool:
+    """Let oMLX serve the models LM Studio downloaded, where they are: its folder (publisher/model, a layout oMLX reads)
+    joins oMLX's model folders in ~/.omlx/settings.json, next to oMLX's own. Nothing is copied or moved. True when the
+    folder was added; a settings file that can't be read is left alone."""
+    if not LMSTUDIO_MODELS.is_dir():
+        return False
+    path = settings_file()
+    try:
+        data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    except (OSError, ValueError):
+        return False
+    model = data.setdefault("model", {}) if isinstance(data, dict) else None
+    if not isinstance(model, dict):
+        return False
+    dirs = model.get("model_dirs") or [str(Path.home() / ".omlx" / "models")]   # [] means oMLX's own folder: keep it
+    if str(LMSTUDIO_MODELS) in dirs:
+        return False
+    model["model_dirs"] = [*dirs, str(LMSTUDIO_MODELS)]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    return True
+
+
 def install(log: Callable[[str], None] = print) -> str | None:
     """Install oMLX from its pinned release into ~/.clyde/omlx: a git checkout, a Python 3.13 venv made by uv, and the
     native Metal kernels when Xcode's Metal toolchain is there (without them some model families fall back to much
@@ -243,6 +273,7 @@ class OMLXProvider(OpenAICompatProvider):
             exe = install()
             if exe is None:
                 raise ProviderError(self.name, f"couldn't install oMLX; {by_hand}")
+        adopt_lmstudio_models()   # read at start, so before it
         port = urllib.parse.urlparse(self.base_url).port or 8000
         log = home() / "server.log"
         log.parent.mkdir(parents=True, exist_ok=True)

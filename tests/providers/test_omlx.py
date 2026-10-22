@@ -87,6 +87,25 @@ class TestOMLX(unittest.TestCase):
         with patch.object(omlx, "get_json", return_value={"data": [{"id": "m", "max_model_len": 16384}]}):
             self.assertEqual(self.provider.context_window("m"), 16384)
 
+    def test_lmstudio_models_join_omlx_folders_once_and_omlx_keeps_its_own(self):
+        lms, settings = Path(self.tmp) / "lms-models", Path(self.tmp) / "omlx-settings.json"
+        lms.mkdir()
+        settings.write_text(json.dumps({"server": {"port": 8000}}))
+        with patch.object(omlx, "LMSTUDIO_MODELS", lms), patch.object(omlx, "settings_file", return_value=settings):
+            self.assertTrue(omlx.adopt_lmstudio_models())
+            self.assertFalse(omlx.adopt_lmstudio_models())
+        data = json.loads(settings.read_text())
+        self.assertEqual(data["server"], {"port": 8000})
+        self.assertEqual(data["model"]["model_dirs"], [str(Path.home() / ".omlx" / "models"), str(lms)])
+
+    def test_an_unreadable_omlx_settings_file_is_left_alone(self):
+        lms, settings = Path(self.tmp) / "lms-models", Path(self.tmp) / "omlx-settings.json"
+        lms.mkdir()
+        settings.write_text("{not json")
+        with patch.object(omlx, "LMSTUDIO_MODELS", lms), patch.object(omlx, "settings_file", return_value=settings):
+            self.assertFalse(omlx.adopt_lmstudio_models())
+        self.assertEqual(settings.read_text(), "{not json")
+
     def test_only_offered_on_apple_silicon(self):
         with patch.object(omlx.sys, "platform", "linux"):
             self.assertFalse(omlx.supported())
