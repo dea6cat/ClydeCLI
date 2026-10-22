@@ -2050,12 +2050,13 @@ class ClydeREPL:
             return
         self.console.print(f"[green]{result.user_display_message}[/green]")
 
-    def chat(self, user_input: str, max_turns: int = 20, _auth_retry: bool = False):
+    def chat(self, user_input: str, max_turns: int = 20, _auth_retry: bool = False, *, max_tokens: int | None = None):
         """Send message to LLM and display response.
 
         Args:
             user_input: The user message to send.
             max_turns: Maximum number of tool call turns (default 20, higher for complex commands).
+            max_tokens: Optional input plus output token budget for this turn (clyde -p --max-tokens).
         """
         self.last_result, self.last_error = None, None
         activity.clear()
@@ -2193,6 +2194,7 @@ class ClydeREPL:
                     on_thinking=on_thinking,
                     steer=self.control.take_steer,
                     system_extra=self.system_extra,
+                    max_tokens=max_tokens,
                 )
 
             self._current_status = self.console.status(_spin_text(word, turn_started), spinner="dots", spinner_style=_CARD_ACCENT)

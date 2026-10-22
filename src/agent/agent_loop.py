@@ -6,6 +6,7 @@ import json
 import threading
 import time
 from dataclasses import dataclass
+from types import SimpleNamespace
 from typing import Any, Callable
 
 from ..runtime import activity
@@ -241,6 +242,8 @@ def _trace_tool(name: str, tool_input: dict, started: float, is_error: bool, out
 
 
 MAX_TURNS_REPLY = "[Max tool turns reached]"
+MAX_TOKENS_REPLY = "[Token budget reached]"
+_BUDGET_KEYS = ("input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens")
 
 
 _STEERING = "The user sent this while you were working; take it into account from here on:\n"
@@ -279,6 +282,7 @@ def run_agent_loop(
     cancel: threading.Event | None = None,
     system_extra: str | None = None,
     steer: Callable[[], str | None] | None = None,
+    max_tokens: int | None = None,
 ) -> AgentLoopResult:
     """Run agent loop: LLM -> tools -> LLM until no more tools or max turns.
 
@@ -303,6 +307,8 @@ def run_agent_loop(
         cancel: Optional event; setting it aborts the in-flight request.
         steer: Optional callback returning text the user sent while the turn runs; it is added as a user
             message before the next model call (never before the first).
+        max_tokens: Optional token budget over the run (prompt, cached prompt and output); past it the loop stops after
+            that turn's tools with MAX_TOKENS_REPLY.
 
     Returns:
         AgentLoopResult with final text response, usage info, and turn count
@@ -344,6 +350,7 @@ def run_agent_loop(
                          first_input_tokens=telemetry.token_bucket(run_stats["first_input_tokens"]),
                          index="none" if not index else "names" if names_only else "full", provider_kind=kind, model_size=model_class)
     total_usage: dict[str, int] = {"input_tokens": 0, "output_tokens": 0}
+    spent = 0   # max_tokens: what the provider reports, cached prompt included; an estimate when it reports nothing
     turn_count = 0
 
     def _usage_or_none() -> dict[str, int] | None:
@@ -369,6 +376,9 @@ def run_agent_loop(
         ))
         turn_count += 1
         _add_usage(total_usage, response.usage)
+        if max_tokens:
+            spent += sum(response.usage.get(k) or 0 for k in _BUDGET_KEYS) if response.usage else \
+                trace.estimate_tokens(request) + trace.estimate_tokens(SimpleNamespace(messages=[response.message]))
         if turn_count == 1:
             run_stats["first_input_tokens"] = (response.usage or {}).get("input_tokens", 0) or 0
         append_response(conversation, response.message)
@@ -462,6 +472,10 @@ def run_agent_loop(
         if repeat_guard.stuck:
             record_run("stuck", turn_count)
             return AgentLoopResult(response_text=repeat_guard.stop_reply(), usage=_usage_or_none(), num_turns=turn_count)
+        # Checked once the turn's tool results are in, so the saved session has no call without its result. A stop the
+        # caller asked for, like an interrupt: no "run" telemetry (its outcome words are fixed in the Worker's schema).
+        if max_tokens and spent > max_tokens:
+            return AgentLoopResult(response_text=MAX_TOKENS_REPLY, usage=_usage_or_none(), num_turns=turn_count)
 
     record_run("max_turns", turn_count)
     return AgentLoopResult(

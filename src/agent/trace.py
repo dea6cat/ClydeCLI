@@ -109,7 +109,8 @@ def record(event: str, **fields: Any) -> None:
         pass
 
 
-def _estimate_tokens(conversation: Any) -> int:
+def estimate_tokens(conversation: Any) -> int:
+    """About 4 characters a token over a canonical conversation (anything with `messages`, and maybe `system_prompt`)."""
     chars = len(getattr(conversation, "system_prompt", "") or "")
     for m in getattr(conversation, "messages", []):
         chars += len(m.text or "") + len(m.thinking or "")
@@ -123,7 +124,7 @@ def model_call(provider: Any, model: str, conversation: Any, call: Callable[[], 
     if not active():
         return call()
     info = {"provider": getattr(provider, "name", str(provider)), "model": model,
-            "messages": len(getattr(conversation, "messages", [])), "est_input_tokens": _estimate_tokens(conversation)}
+            "messages": len(getattr(conversation, "messages", [])), "est_input_tokens": estimate_tokens(conversation)}
     t0 = time.monotonic()
     try:
         response = call()
