@@ -68,14 +68,22 @@ class _CheckedHTTPSConnection(http.client.HTTPSConnection):
         self._create_connection = _connect_checked
 
 
+def _via_proxy(req: urllib.request.Request) -> bool:
+    """Whether urllib routed `req` through the configured proxy (/proxy, HTTPS_PROXY). The connection then goes to the
+    proxy, often on a private address in a company network, so the private-address check can't apply to it: the target
+    is still checked by _check_url, first and on every redirect. The proxy resolves the target's name itself, so the
+    connect-time re-check against DNS rebinding is lost on that route."""
+    return req.has_proxy() or bool(getattr(req, "_tunnel_host", None))
+
+
 class _CheckedHTTP(urllib.request.HTTPHandler):
     def http_open(self, req):
-        return self.do_open(_CheckedHTTPConnection, req)
+        return self.do_open(http.client.HTTPConnection if _via_proxy(req) else _CheckedHTTPConnection, req)
 
 
 class _CheckedHTTPS(urllib.request.HTTPSHandler):
     def https_open(self, req):
-        return self.do_open(_CheckedHTTPSConnection, req, context=self._context)
+        return self.do_open(http.client.HTTPSConnection if _via_proxy(req) else _CheckedHTTPSConnection, req, context=self._context)
 
 
 def _check_url(url: str) -> urllib.parse.ParseResult:

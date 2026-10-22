@@ -85,5 +85,24 @@ class TestRedirects(unittest.TestCase):
             web_fetch._check_url("file:///etc/passwd")
 
 
+
+class TestThroughAProxy(unittest.TestCase):
+    """A company proxy usually sits on a private address: connecting to it is allowed, a private target still isn't."""
+
+    def test_a_request_routed_through_the_proxy_skips_the_connection_check_only_for_the_proxy(self):
+        import urllib.request
+        direct, tunnelled = urllib.request.Request("https://example.com"), urllib.request.Request("https://example.com")
+        tunnelled.set_proxy("10.0.0.5:3128", "https")
+        plain = urllib.request.Request("http://example.com")
+        plain.set_proxy("10.0.0.5:3128", "http")
+        self.assertEqual([web_fetch._via_proxy(r) for r in (direct, tunnelled, plain)], [False, True, True])
+
+    def test_a_private_target_is_refused_even_with_a_proxy_set(self):
+        with patch.dict("os.environ", {"HTTPS_PROXY": "http://10.0.0.5:3128", "HTTP_PROXY": "http://10.0.0.5:3128"}):
+            for url in ("http://localhost:11434/api/version", "http://169.254.169.254/latest"):
+                with self.assertRaises(ToolPermissionError):
+                    WebFetchTool().run({"url": url}, None)
+
+
 if __name__ == "__main__":
     unittest.main()
