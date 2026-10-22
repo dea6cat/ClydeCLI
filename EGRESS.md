@@ -15,7 +15,7 @@ This is the point of the tool, and it is the only place your content goes.
 |---|---|
 | **Sent** | the system prompt (Clyde's instructions plus project context such as your `CLAUDE.md`, a README excerpt and `git status`), the conversation, and tool results, which includes the text of files the model read and the output of commands it ran |
 | **Goes to** | the provider you connected: `api.openai.com`, `api.anthropic.com`, `generativelanguage.googleapis.com`, `api.mistral.ai`, `api.deepseek.com`, `api.cerebras.ai`, `api.together.xyz`, `integrate.api.nvidia.com`, `openrouter.ai`, `open.bigmodel.cn`, `api.minimaxi.com`, `gen.pollinations.ai`, `api.cloudflare.com` (Workers AI), or a custom endpoint you added. Model lists are fetched from the same provider, with your key |
-| **Local models** | Ollama, LM Studio and MLX are reached on your own machine, so nothing leaves it. (Ollama itself talks to `ollama.com` when you pull a model: that is Ollama's traffic, not Clyde's) |
+| **Local models** | Ollama and oMLX are reached on your own machine, so nothing leaves it. (Ollama itself talks to `ollama.com` when you pull a model: that is Ollama's traffic, not Clyde's) |
 | **cardShuffle and council** | each turn goes to whichever of *your connected* providers is dealt; council sends the same request to several of them |
 | **Secrets** | keys and `.env` files reach the model only after a yes (or an allow rule) |
 | **Turn it off** | connect only a local model: then the model traffic never leaves your machine |
@@ -46,18 +46,19 @@ any web request; the Worker never reads it. See [the privacy page](https://dea6c
 | Cloud review of a weak local reply | the cloud provider you connected | your request and the local model's reply, after a yes once per session | `CLYDE_CLOUD_REVIEW=off`, or answer no |
 | SkillSpector's LLM review | the model you connected | the skill, plugin or MCP tool list being reviewed, only for plugin installs, items its offline stage flagged, and `/skills scan`. The static scan is offline | `CLYDE_SKILL_SCAN=off`, or connect no model |
 | Finding local models | `ollama.com` (search), `huggingface.co` (model lists, chat templates), and the leaderboards `whichllm` reads to rank them (it builds a list in the background, about 5 minutes) | search terms and model names; no content | do not open the local-model search |
-| Installing Ollama or LM Studio | `brew`, or `ollama.com/install.sh`, from the offer in the local-model flow | nothing of yours | answer no to the offer |
+| Installing Ollama | `brew`, or `ollama.com/install.sh`, from the offer in the local-model flow | nothing of yours | answer no to the offer |
+| Installing oMLX | `github.com/jundot/omlx` (its pinned source), PyPI and GitHub (its Python packages), and uv's Python 3.13 when the Mac has none | nothing of yours | answer no to the offer |
+| Downloading an MLX model | `huggingface.co`, by oMLX's own downloader | the model's name | do not pick an MLX model in `/models local` |
 | `clyde setup` | PyPI and GitHub (the optional Laya package, `graphifyy`) and `huggingface.co` (Laya's model, about 800 MB) | nothing of yours | answer no (Laya's model is never fetched without a yes: Clyde sets `HF_HUB_OFFLINE=1`) |
 | `clyde update`, `clyde plugin install <git url>` | GitHub, or the git address you gave | nothing of yours | do not run them |
 | Running tasks against models (`/eval`, council) | the providers you connected | the task prompts | do not run them |
 
 ### Nothing downloads and runs without a yes
 
-If you use the LM Studio provider, its `lms` command is installed, and its server is not running, Clyde needs LM Studio's headless
-daemon. In the terminal UI it asks first ("Install it? [y/N]") and, on a yes, runs LM Studio's own installer
-(`curl -fsSL https://lmstudio.ai/install.sh | sh`, with your shell files left alone). Where nobody can be asked (an editor over ACP,
-`clyde -p`, Bonnie) it never installs: it stops with the command to run by hand, or you can start LM Studio's server yourself.
-(Before 0.5.10 it installed the daemon without asking.)
+If you pick an MLX model and oMLX isn't installed, Clyde needs it. In the terminal UI it asks first ("Install it? [y/N]") and, on a
+yes, installs oMLX's pinned release from source into `~/.clyde/omlx` (a git checkout, a Python 3.13 environment made by uv, and its
+Metal kernels when Xcode is there); nothing outside that folder changes. Where nobody can be asked (an editor over ACP, `clyde -p`,
+Bonnie) it never installs: it stops and says so.
 
 ## 5. What does not leave
 
@@ -69,5 +70,5 @@ daemon. In the terminal UI it asks first ("Install it? [y/N]") and, on a yes, ru
 
 Where to get a key or an installer, shown on screen or in a setup message: `platform.openai.com`, `platform.claude.com`,
 `platform.deepseek.com`, `platform.minimax.io`, `console.mistral.ai`, `aistudio.google.com`, `dash.cloudflare.com`, `cloud.cerebras.ai`,
-`build.nvidia.com`, `enter.pollinations.ai`, `lmstudio.ai` (the install page), `mcp.linear.app` (an example in the MCP help),
+`build.nvidia.com`, `enter.pollinations.ai`, `mcp.linear.app` (an example in the MCP help),
 `polyformproject.org` (the licence text), `example.com` (placeholder in help text).

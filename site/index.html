@@ -27,7 +27,7 @@
       <h1 class="enter" style="--i:0">ClydeCLI</h1>
   <p class="enter lead" style="--i:1">A coding-agent harness for the terminal. Bring any LLM; Clyde gives it tools, permissions, undo and sessions.</p>
   <div class="install enter" style="--i:2"><code id="cmd" tabindex="0" role="region" aria-label="Install command">curl -fsSL https://raw.githubusercontent.com/dea6cat/ClydeCLI/main/install.sh | sh</code><button type="button" id="copy" class="cut" data-copy="cmd">Copy</button></div>
-  <p class="enter" style="--i:3">The model can be one of 13 providers, a local model through Ollama or LM Studio, or any OpenAI- or Anthropic-compatible endpoint. Written in Python, free for noncommercial use. <a href="bonnie.html">Bonnie</a>, the same engine in a browser page, comes in the same install. Prefer pipx? <code>pipx install --python python3.14 git+https://github.com/dea6cat/ClydeCLI</code> (needs Python 3.14) works too.</p>
+  <p class="enter" style="--i:3">The model can be one of 13 providers, a local model through Ollama or oMLX, or any OpenAI- or Anthropic-compatible endpoint. Written in Python, free for noncommercial use. <a href="bonnie.html">Bonnie</a>, the same engine in a browser page, comes in the same install. Prefer pipx? <code>pipx install --python python3.14 git+https://github.com/dea6cat/ClydeCLI</code> (needs Python 3.14) works too.</p>
     </div>
     <div class="hero-mark enter" style="--i:2">
       <svg id="mark" viewBox="0 0 170 100" role="img" aria-label="ClydeCLI and Bonnie: a red spade with a prompt cut out of it, beside an upside-down spade with a code slash cut out of it">
@@ -49,7 +49,7 @@
 
   <h2>Bring any model</h2>
   <dl class="grid">
-    <div class="cut"><dt>Local or hosted</dt><dd>Run a model on your own machine with Ollama or LM Studio, or bring your own key for 13 hosted providers or any OpenAI- or Anthropic-compatible service. <a href="keys.html">Where to get a key</a>.</dd></div>
+    <div class="cut"><dt>Local or hosted</dt><dd>Run a model on your own machine with Ollama or oMLX, or bring your own key for 13 hosted providers or any OpenAI- or Anthropic-compatible service. <a href="keys.html">Where to get a key</a>.</dd></div>
     <div class="cut"><dt>Switch any time</dt><dd>Pick the model per session with <code>/model</code>, or let cardShuffle deal one each turn from the models that passed your <code>/eval</code>.</dd></div>
     <div class="cut"><dt>Sessions you can find again</dt><dd>Every turn is saved. <code>/resume</code> or <code>clyde -c</code> picks one up, <code>clyde sessions search</code> finds an old one by what was said, and <code>/rewind</code> undoes a change.</dd></div>
     <div class="cut"><dt>Memory you control</dt><dd>It reads the memory files you already keep (<code>CLYDE.md</code>, <code>CLAUDE.md</code>, <code>AGENTS.md</code>, <code>GEMINI.md</code>) and keeps notes you ask it to remember, in plain markdown you can edit. It learns nothing on its own.</dd></div>

@@ -58,7 +58,7 @@ Explain the code in $path. Start with an analogy, then draw a diagram.
 | GLM (Zhipu) | `GLM_API_KEY` | |
 | MiniMax | `MINIMAX_API_KEY` | via its Anthropic-compatible endpoint |
 | Ollama (local) | none | native `/api/chat`, context sized to your RAM |
-| LM Studio (local) | none | picked up when installed: models from its server or `lms ls`; the server starts on first use |
+| oMLX (local, Apple Silicon) | none | MLX models through [oMLX](https://github.com/jundot/omlx) (Apache-2.0). Installed into `~/.clyde/omlx` from its pinned source after a yes, started on first use with a key only Clyde holds and the `balanced` memory guard (`/settings` offers aggressive, fixed ceilings and off). Serves `~/.lmstudio/models` in place |
 | Ollama Cloud | `OLLAMA_API_KEY` | |
 | cardShuffle | none | not a provider: deals each turn to one of the models above (see below) |
 
@@ -85,7 +85,7 @@ memory it takes when loaded:
 
 If the app a model needs isn't installed (or Ollama isn't running), Clyde shows the install command, asks first, then installs, starts it and downloads the model.
 
-`/purge` deletes local models from Ollama and LM Studio to free disk: bare, it removes all of them; `/purge qwen` only those
+`/purge` deletes local models from Ollama and oMLX to free disk: bare, it removes all of them; `/purge qwen` only those
 whose name matches. It lists what goes and the space freed, and asks first.
 
 Models that don't fit aren't shown. Each row also has a rough speed (from the chip's memory bandwidth;
@@ -95,9 +95,9 @@ budget and what's free right now, and what its rating means. Hard models default
 bigger than the free disk is refused. After the pull, `/eval` is offered (again defaulting to no for hard
 models, since loading is the heavy part); once it passes, `cardShuffle:free` can deal it.
 
-Each model downloads with the app that runs it: ollama.com models through Ollama; MLX through LM Studio
-(`lms get <url> --mlx`); Hugging Face GGUF through Ollama (`hf.co/<repo>:<quant>`), or LM Studio when
-Ollama isn't running (`lms get <url>@<quant>`, pinned to exactly the file that was rated). MLX sizes are
+Each model downloads with the app that runs it: ollama.com models and Hugging Face GGUF through Ollama
+(`hf.co/<repo>:<quant>`, pinned to exactly the file that was rated); MLX through oMLX's own downloader, into
+`~/.omlx/models` as `publisher/model` and served as `omlx:<model>` (Ctrl-C cancels it in oMLX too). MLX sizes are
 exact (the repo's safetensors); GGUF sizes are exact per file; ollama.com sizes are estimated at Q4.
 
 **A second opinion on weak replies.** Small local models slip: an empty answer, a pretend tool call
@@ -121,7 +121,7 @@ dealt to a model that passed `/eval`, and that model keeps the turn through its 
 |---|---|
 | `cardShuffle:high-roller` | the strongest model first |
 | `cardShuffle:house` | the middle card; in ♠ reading the table (plan mode), the strongest |
-| `cardShuffle:free` | local Ollama / LM Studio models only, strongest first |
+| `cardShuffle:free` | local Ollama / oMLX models only, strongest first |
 | `cardShuffle:small` | the weakest, fastest model first |
 
 Strength comes from `/eval`: every model that passes the basic tool check then plays a hand of eleven
@@ -206,7 +206,7 @@ hooks are loaded for the folder Bonnie started in, so restart her to pick up a n
 getting a key (with a link to its key page), pasting it (hidden, with a check that it looks whole), and testing it. A key is tested
 before it is saved, so a wrong one is refused with a plain reason and nothing is stored. Saved keys go where `clyde login` puts them
 (`~/.clyde/keys.json`, readable only by you) and are never sent back to the page, only a masked form. You can replace or disconnect a
-key, add any OpenAI- or Anthropic-compatible service, and pick a connected model with one click. Ollama and LM Studio show whether
+key, add any OpenAI- or Anthropic-compatible service, and pick a connected model with one click. Ollama and oMLX show whether
 they are running. Services that can't check a key without sending a message are saved as "unverified" and say so.
 
 ## Laya
@@ -285,7 +285,7 @@ exfiltration, privilege escalation, supply chain, MCP tool poisoning and more.
 
 The static stage always runs (`--no-llm`, offline). The LLM review runs when ClydeCLI has a connected
 model SkillSpector can use (Anthropic, or any OpenAI-compatible endpoint: NVIDIA, OpenRouter, OpenAI,
-DeepSeek, Ollama, LM Studio), with your current model (or, from the CLI, your default one). It can take
+DeepSeek, Ollama, oMLX), with your current model (or, from the CLI, your default one). It can take
 minutes, so it never runs at startup: only at plugin installs, on items the static stage flagged, and
 on `/skills scan`. Ctrl+C skips it.
 

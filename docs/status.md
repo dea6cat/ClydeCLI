@@ -10,7 +10,7 @@
 |--------|--------|-------------|
 | CLI Entry | ✅ | `clyde`, `login`, `logout`, `config`, `--model`, `--list-models`, `-c`, `--resume`, `-p` (headless: answer on stdout, JSON output, exit status) |
 | Interactive REPL | ✅ | Rich output, history, tab completion, multiline, streaming |
-| Multi-Provider | ✅ | 13 providers (incl. local Ollama and LM Studio), stdlib HTTP, live model lists, `provider:model` switching |
+| Multi-Provider | ✅ | 13 providers (incl. local Ollama and oMLX), stdlib HTTP, live model lists, `provider:model` switching |
 | Agent Loop | ✅ | Tool-calling loop with retries, reasoning control, history repair |
 | Skill System | ✅ | SKILL.md slash-command skills with args + tool limits |
 | Context Building | ✅ | Workspace snapshot, git status, a README excerpt, entry points, the code map and memory files go into the prompt: `~/.clyde/CLYDE.md` (user), `CLYDE.md` (project, shared) and `CLYDE.local.md` (project, personal, keep it gitignored). Files written for other agents are read too: `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, `.cursorrules`, `.github/copilot-instructions.md` (one per folder, first found wins) |
@@ -25,7 +25,7 @@
 | Tracing | ✅ | Every session writes `~/.clyde/traces/<session>.jsonl` (model and tool calls, timings, tokens, secrets redacted); `/debug` shows the last turn, `clyde --debug` streams it live |
 | Compaction | ✅ | `/compact` on demand; runs automatically once history reaches 80% of the context window |
 | cardShuffle | ✅ | A model that deals each turn to an `/eval`-ranked real model (high-roller, house, free, small), with fallback on errors, max tool turns and stuck loops |
-| Local models | ✅ | `/models local` finds ollama.com, Hugging Face GGUF and MLX models that fit this machine, rated relax / balance / hard, confirmed before download through Ollama or LM Studio |
+| Local models | ✅ | `/models local` finds ollama.com, Hugging Face GGUF and MLX models that fit this machine, rated relax / balance / hard, confirmed before download through Ollama (ollama.com, GGUF) or oMLX (MLX) |
 | whichllm | ✅ | Bundled benchmark ranking of local models in `/models local`: the best models that fit this machine, with quality, speed range and license in the download confirmation |
 | SkillSpector | ✅ | Bundled scanner for skills, plugins and MCP servers from other agents: static always, LLM review when a usable model is connected; `DO_NOT_INSTALL` items held back until `/skills allow` |
 | Laya | ✅ | Optional local decision model (`clyde-cli[laya]`): hands a stuck cardShuffle turn to the next card; scores every turn's difficulty and steers `house` once `/laya`'s evidence shows it separates easy turns from hard ones |
