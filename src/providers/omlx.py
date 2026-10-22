@@ -5,7 +5,7 @@ Clyde installs it from a pinned source checkout into ~/.clyde/omlx (install(), w
 (~/.clyde/omlx/api_key, 0600): without one oMLX opens every endpoint, admin included, to anything that can reach the port,
 a web page in the browser among them. OMLX_API_KEY overrides it for a server you run yourself.
 
-`--memory-guard balanced` keeps at least 3 GB free for other apps and follows their use live; `safe` reserves at least
+`--memory-guard balanced` (the default; /settings offers aggressive, fixed ceilings and off) keeps at least 3 GB free for other apps and follows their use live; `safe` reserves at least
 6 GB, which on an 18 GB Mac left a 1.6 GB ceiling that refused a 4 GB model with 8 GB free. oMLX's SSD cache tier (on by default, ~/.omlx/cache)
 restores a prompt's KV state after a restart or an eviction instead of recomputing it; a warm repeat is no faster than
 any server that caches prompts in memory.
@@ -97,6 +97,42 @@ def fixed_window(model: str) -> int | None:
         if os.environ.get(key, "").isdigit():
             return int(os.environ[key])
     return config.get_context_tokens()
+
+
+GUARD = "balanced"
+_CUSTOM_SHARES = (0.4, 0.5, 0.6)   # of RAM: a fixed ceiling, picked from a list since /settings cycles through choices
+
+
+def memory_guard_choices() -> tuple[str, ...]:
+    """What /settings offers for oMLX's memory guard: balanced (the default), aggressive, a few fixed ceilings, off."""
+    from .ollama import _total_ram_bytes
+    ram_gb = _total_ram_bytes() / 1024 ** 3
+    return (GUARD, "aggressive", *dict.fromkeys(f"custom {int(ram_gb * share)} GB" for share in _CUSTOM_SHARES), "off")
+
+
+def memory_guard_args(choice: str | None) -> list[str]:
+    """`omlx serve` arguments for a /settings choice; anything unknown is the default."""
+    if choice in ("aggressive", "off"):
+        return ["--memory-guard", choice]
+    if choice and choice.startswith("custom ") and choice.removeprefix("custom ").removesuffix(" GB").isdigit():
+        return ["--memory-guard-gb", choice.removeprefix("custom ").removesuffix(" GB")]
+    return ["--memory-guard", GUARD]
+
+
+def stop_server() -> bool:
+    """Stop the server Clyde started (its pid is saved at start), so the next request starts it with new settings.
+    A server you started yourself is never touched. True when one was stopped."""
+    pid_file = home() / "server.pid"
+    try:
+        pid = int(pid_file.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    pid_file.unlink(missing_ok=True)
+    name = subprocess.run(["ps", "-p", str(pid), "-o", "comm="], capture_output=True, text=True).stdout.strip()
+    if not name.endswith("omlx-server"):   # gone, or the pid now belongs to something else
+        return False
+    os.kill(pid, 15)
+    return True
 
 
 LMSTUDIO_MODELS = Path.home() / ".lmstudio" / "models"
@@ -278,9 +314,12 @@ class OMLXProvider(OpenAICompatProvider):
         port = urllib.parse.urlparse(self.base_url).port or 8000
         log = home() / "server.log"
         log.parent.mkdir(parents=True, exist_ok=True)
+        from src import config
         with open(log, "ab") as out:   # the key goes in the environment: a command line shows in every user's `ps`
-            subprocess.Popen([exe, "serve", "--port", str(port), "--memory-guard", "balanced"], env={**os.environ, self.key_env: server_key()},
-                             stdout=out, stderr=out, stdin=subprocess.DEVNULL, start_new_session=True)
+            server = subprocess.Popen([exe, "serve", "--port", str(port), *memory_guard_args(config.get_omlx_memory_guard())],
+                                      env={**os.environ, self.key_env: server_key()},
+                                      stdout=out, stderr=out, stdin=subprocess.DEVNULL, start_new_session=True)
+        (home() / "server.pid").write_text(str(server.pid), encoding="utf-8")
         deadline = time.monotonic() + START_TIMEOUT_S
         while time.monotonic() < deadline:
             if self._server_up():

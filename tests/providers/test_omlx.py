@@ -106,6 +106,37 @@ class TestOMLX(unittest.TestCase):
             self.assertFalse(omlx.adopt_lmstudio_models())
         self.assertEqual(settings.read_text(), "{not json")
 
+    def test_each_memory_guard_choice_becomes_serve_arguments(self):
+        with patch("src.providers.ollama._total_ram_bytes", return_value=18 * GB):
+            choices = omlx.memory_guard_choices()
+        self.assertEqual(choices, ("balanced", "aggressive", "custom 7 GB", "custom 9 GB", "custom 10 GB", "off"))
+        self.assertEqual(omlx.memory_guard_args("custom 9 GB"), ["--memory-guard-gb", "9"])
+        self.assertEqual(omlx.memory_guard_args("off"), ["--memory-guard", "off"])
+        self.assertEqual(omlx.memory_guard_args(None), ["--memory-guard", "balanced"])
+        self.assertEqual(omlx.memory_guard_args("custom lots GB"), ["--memory-guard", "balanced"])
+
+    def test_the_server_starts_with_the_guard_picked_in_settings_and_its_pid_is_kept(self):
+        with patch.object(omlx, "_exe", return_value="/bin/omlx"), patch.object(self.provider, "_server_up", side_effect=[False, True]), \
+                patch("src.config.get_omlx_memory_guard", return_value="aggressive"), \
+                patch.object(omlx.subprocess, "Popen") as popen:
+            popen.return_value.pid = 4242
+            self.provider._ensure_server()
+        argv = popen.call_args.args[0]
+        self.assertEqual(argv[argv.index("--memory-guard") + 1], "aggressive")
+        self.assertEqual((Path(self.tmp) / "omlx" / "server.pid").read_text(), "4242")
+
+    def test_stopping_touches_only_the_omlx_server_clyde_started(self):
+        pid_file = Path(self.tmp) / "omlx" / "server.pid"
+        pid_file.parent.mkdir(parents=True)
+        for name, stopped in (("/usr/bin/vim", False), ("omlx-server", True)):
+            pid_file.write_text("4242")
+            with patch.object(omlx.subprocess, "run", return_value=omlx.subprocess.CompletedProcess([], 0, name + "\n", "")), \
+                    patch.object(omlx.os, "kill") as kill:
+                self.assertEqual(omlx.stop_server(), stopped)
+            self.assertEqual(kill.called, stopped)
+            self.assertFalse(pid_file.exists())
+        self.assertFalse(omlx.stop_server())   # nothing started: nothing to stop
+
     def test_only_offered_on_apple_silicon(self):
         with patch.object(omlx.sys, "platform", "linux"):
             self.assertFalse(omlx.supported())

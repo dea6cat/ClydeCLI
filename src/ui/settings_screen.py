@@ -14,6 +14,7 @@ from datetime import date
 from typing import Any, Callable
 
 from src import config as config_mod
+from src.providers import omlx
 from src.ui import usage_stats as stats
 from src.ui.picker import scroll
 
@@ -77,6 +78,9 @@ def settings() -> list[Setting]:
         Setting("Context window (local models)", (None, 4096, 8192, 16384, 32768, 65536, 131072), lambda c: config_mod.get_context_tokens(),
                 config_mod.set_context_tokens, applies="your next message; LM Studio reloads the model with it"),
         Setting("Update channel", config_mod.UPDATE_CHANNELS, lambda c: c.get("update_channel", "latest"), config_mod.set_update_channel),
+        *([Setting("oMLX memory guard", omlx.memory_guard_choices(), lambda c: config_mod.get_omlx_memory_guard() or omlx.GUARD,
+                   config_mod.set_omlx_memory_guard, applies="your next oMLX request (Clyde restarts its oMLX server with it)")]
+          if omlx.supported() else []),
     ]
 
 

@@ -37,6 +37,16 @@ class TestSettingsScreen(unittest.TestCase):
             p.start()
             self.addCleanup(p.stop)
 
+    def test_omlx_memory_guard_cycles_and_restarts_clydes_server(self):
+        with patch.object(settings_screen.omlx, "supported", return_value=True):
+            guard = next(s for s in settings_screen.settings() if s.label == "oMLX memory guard")
+        self.assertEqual(guard.value(), "balanced")
+        with patch("src.providers.omlx.stop_server") as stop:
+            guard.write(guard.next())
+        self.assertEqual((config.get_omlx_memory_guard(), stop.called), ("aggressive", True))
+        with patch.object(settings_screen.omlx, "supported", return_value=False):
+            self.assertNotIn("oMLX memory guard", [s.label for s in settings_screen.settings()])
+
     def test_each_tab_shows_its_content(self):
         shown = lambda **kw: _text(settings_screen.render(_state(**kw), SNAP, REQS, [], TODAY))  # noqa: E731
         self.assertIn("Version:", shown())
