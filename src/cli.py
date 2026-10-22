@@ -183,6 +183,8 @@ Examples:
     license_parser.add_argument('action', nargs='?', choices=['show', 'accept'], default='show')
 
     args = parser.parse_args()
+    from src import network
+    network.apply()   # the proxy and company certificate from /proxy, before any request
 
     if args.command == 'license':
         return handle_license(Console(), args.action)

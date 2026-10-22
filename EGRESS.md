@@ -60,6 +60,12 @@ yes, installs oMLX's pinned release from source into `~/.clyde/omlx` (a git chec
 Metal kernels when Xcode is there); nothing outside that folder changes. Where nobody can be asked (an editor over ACP, `clyde -p`,
 Bonnie) it never installs: it stops and says so.
 
+### Through a proxy
+
+With a proxy set (`/proxy`, or `HTTPS_PROXY` in your environment), everything above goes through it, so the proxy sees
+which hosts Clyde talks to; with HTTPS it cannot read the content unless your network inspects TLS (the case a company
+certificate, `/proxy ca`, is for). Servers on this machine (Ollama, oMLX) never go through it.
+
 ## 5. What does not leave
 
 - **Bonnie** serves its page on `127.0.0.1` only, and the page loads nothing from outside (no fonts, scripts or images from the web).

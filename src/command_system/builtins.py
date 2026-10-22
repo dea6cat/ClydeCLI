@@ -685,6 +685,9 @@ def doctor_command_call(args: str, context: CommandContext) -> LocalCommandResul
 
     git = shutil.which("git")
     lines.append(_check(bool(git), f"git: {git or 'not found'}", "install git for repository context"))
+    from .. import network
+    proxy, ca = network.describe()
+    lines.append(_check(True, f"Network: proxy {proxy}; certificates: {ca} (/proxy changes them)"))
 
     lines.append(_check(True, f"Workspace: {context.workspace_root} (cwd {context.cwd})"))
     perms = context.config.get("permission_context")
@@ -693,6 +696,26 @@ def doctor_command_call(args: str, context: CommandContext) -> LocalCommandResul
         denied = ", ".join(sorted(perms.deny_names) + [f"{p}*" for p in perms.deny_prefixes]) or "none"
         lines.append(_check(True, f"Permissions: extra dirs {extra}; allow_docs {perms.allow_docs}; denied tools {denied}"))
 
+    return LocalCommandResult(type="text", value="\n".join(lines))
+
+
+def proxy_command_call(args: str, context: CommandContext) -> LocalCommandResult:
+    """Handle /proxy - show or set how Clyde reaches the network: `/proxy system|off|<url>`, `/proxy ca <file>|off`."""
+    from .. import network
+    words = args.split()
+    try:
+        if words[:1] == ["ca"] and len(words) == 2:
+            network.set_ca(None if words[1] == "off" else words[1])
+        elif len(words) == 1:
+            network.set_proxy(words[0])
+        elif words:
+            return LocalCommandResult(type="text", value="Usage: /proxy [system | off | <http(s) proxy URL>] · /proxy ca <PEM file> | off")
+    except ValueError as e:
+        return LocalCommandResult(type="text", value=f"Not changed: {e}")
+    proxy, ca = network.describe()
+    lines = [f"Proxy setting: {network.get_proxy()} (now: {proxy})", f"Certificates: {ca}"]
+    if words:
+        lines.append("Saved. It applies the next time Clyde starts.")
     return LocalCommandResult(type="text", value="\n".join(lines))
 
 
@@ -788,6 +811,13 @@ DOCTOR_COMMAND = LocalCommand(
     supports_non_interactive=True,
 )
 
+PROXY_COMMAND = LocalCommand(
+    name="proxy",
+    description="Show or set the network proxy and a company root certificate (for networks that inspect TLS)",
+    argument_hint="[system | off | <url> | ca <file> | ca off]",
+    supports_non_interactive=True,
+)
+
 CHECK_COMMAND = LocalCommand(
     name="check",
     description="Run the project's ruff, mypy and pytest and show a summary",
@@ -865,6 +895,8 @@ def execute_command_sync(cmd_name: str, args: str, context: CommandContext) -> t
             result = compact_command_call(args, context)
         elif cmd is DOCTOR_COMMAND:
             result = doctor_command_call(args, context)
+        elif cmd is PROXY_COMMAND:
+            result = proxy_command_call(args, context)
         elif cmd is CHECK_COMMAND:
             result = check_command_call(args, context)
         elif cmd is MAP_COMMAND:
@@ -886,6 +918,7 @@ COST_COMMAND.set_call(cost_command_call)
 CONTEXT_COMMAND.set_call(context_command_call)
 COMPACT_COMMAND.set_call(compact_command_call)
 DOCTOR_COMMAND.set_call(doctor_command_call)
+PROXY_COMMAND.set_call(proxy_command_call)
 CHECK_COMMAND.set_call(check_command_call)
 MAP_COMMAND.set_call(map_command_call)
 
@@ -901,6 +934,7 @@ def get_builtin_commands() -> list[Command]:
         CONTEXT_COMMAND,
         COMPACT_COMMAND,
         DOCTOR_COMMAND,
+        PROXY_COMMAND,
         CHECK_COMMAND,
         MAP_COMMAND,
         INIT_COMMAND,

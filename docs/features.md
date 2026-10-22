@@ -66,6 +66,25 @@ No vendor SDKs. Every provider is plain HTTP from the standard library. Model li
 from each provider, not a hardcoded guess. Pick one with `provider:model`, switch mid-session
 with `/model`, and the conversation carries over.
 
+### Proxies and company networks
+
+`/proxy` shows and sets how Clyde reaches the network; `/settings` has the same two rows (Network proxy, Company
+certificate). Both are applied at start through the standard environment variables, so Clyde's requests, its MCP
+servers, the oMLX downloader and Bash commands all take the same route.
+
+| Command | Does |
+|---|---|
+| `/proxy system` | The default: whatever `HTTPS_PROXY` / `HTTP_PROXY` / `NO_PROXY` say |
+| `/proxy http://proxy.example.com:8080` | Send everything through that proxy |
+| `/proxy off` | Go direct, even when the environment names a proxy |
+| `/proxy ca corp-root.pem` | Add a company root certificate, for networks that inspect TLS; `/proxy ca off` removes it |
+
+This machine's own servers (Ollama, oMLX on `localhost`) are always reached directly: a company proxy can't reach them.
+A company certificate is added to the default roots, not put in their place, so public sites still verify. When a
+certificate isn't trusted, the error says so and points to `/proxy ca`. SOCKS proxies aren't supported, and Clyde
+doesn't store proxy passwords: for a proxy that needs one, export `HTTPS_PROXY=http://user:pass@host:port` in your
+shell profile and keep the setting on `system`. `/doctor` shows the proxy in use (never its password) and the certificates.
+
 ## Local Models That Fit
 
 *Know the table before you buy in.*

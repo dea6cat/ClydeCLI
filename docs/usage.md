@@ -19,6 +19,7 @@
 | `/eval [filter]` | Test listed models on a tool call and a round trip, then a hand of 11 graded tasks for those that pass; shows pass/fail, hand score, latency and tok/s, and remembers which ones don't work |
 | `/think [level]` | Reasoning: off, low, medium, high, on, default |
 | `/doctor`    | Diagnose environment, config, keys and permissions |
+| `/proxy`     | Show or set the network proxy and a company root certificate |
 | `/mcp`       | Connected MCP servers and their tools |
 | `/mcp login <server>` / `/mcp logout <server>` | OAuth sign-in (browser) for a remote MCP server, or forget its tokens |
 | `/plugins`   | Loaded plugins and what each added |
