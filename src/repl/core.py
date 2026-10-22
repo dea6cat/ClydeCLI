@@ -388,6 +388,8 @@ class ClydeREPL:
         if (lmstudio := self.registry.get("lmstudio")) is not None:
             lmstudio.confirm_reload = self._confirm_reload
             lmstudio.confirm_install = self._confirm_install_llmster
+        if (omlx := self.registry.get("omlx")) is not None:
+            omlx.confirm_install = self._confirm_install_omlx
         resolved = self._startup_model(model)
         if resolved is None:
             sys.exit(1)
@@ -623,6 +625,14 @@ class ClydeREPL:
         self.console.print(Text("  LM Studio's server isn't running, and its headless daemon isn't installed.", style=_CARD_TEXT))
         self.console.print(Text(f"  Clyde would run LM Studio's own installer: curl -fsSL {INSTALL_URL} | sh (your shell files are left alone).",
                                 style=_CARD_DIM))
+        return input("  Install it? [y/N]: ").strip().lower() in ("y", "yes")
+
+    def _confirm_install_omlx(self) -> bool:
+        """Ask before downloading and building oMLX, the one download-and-build Clyde would otherwise do unasked."""
+        from src.providers.omlx import REPO, VERSION, home
+        self.console.print(Text("  oMLX, the open-source server Clyde runs MLX models with, isn't installed.", style=_CARD_TEXT))
+        self.console.print(Text(f"  Clyde would install {VERSION} from {REPO.removesuffix('.git')} into {home()} (a few minutes; "
+                                "nothing outside that folder changes).", style=_CARD_DIM))
         return input("  Install it? [y/N]: ").strip().lower() in ("y", "yes")
 
     def _add_rule_under_input(self) -> None:

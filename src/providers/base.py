@@ -202,11 +202,11 @@ def _replace_unencodable(error: UnicodeError) -> tuple[bytes, int]:
 codecs.register_error("clyde_replace", _replace_unencodable)
 
 
-def _request(url: str, payload: dict, headers: dict | None) -> urllib.request.Request:
+def _request(url: str, payload: dict, headers: dict | None, method: str = "POST") -> urllib.request.Request:
     hdrs = {"Content-Type": "application/json", "User-Agent": _USER_AGENT}
     if headers:
         hdrs.update(headers)
-    return urllib.request.Request(url, data=json.dumps(payload, ensure_ascii=False).encode("utf-8", "clyde_replace"), headers=hdrs, method="POST")
+    return urllib.request.Request(url, data=json.dumps(payload, ensure_ascii=False).encode("utf-8", "clyde_replace"), headers=hdrs, method=method)
 
 
 # A remote stream that sends nothing for this long has stalled: give up instead of holding the turn
@@ -263,12 +263,12 @@ def remaining_quota(provider: str) -> str:
 
 
 def post_json(url: str, payload: dict, headers: dict | None = None, timeout: int = 600,
-              provider: str = "http", cancel=None) -> dict:
-    """POST JSON, return parsed JSON. Raises ProviderError with a useful message, or
+              provider: str = "http", cancel=None, method: str = "POST") -> dict:
+    """POST (or `method`) JSON, return parsed JSON. Raises ProviderError with a useful message, or
     _Cancelled if the cancel Event is set (before connecting or via an aborted socket)."""
     if cancel is not None and cancel.is_set():
         raise _Cancelled()
-    resp = _open(_request(url, payload, headers), timeout, provider, cancel)
+    resp = _open(_request(url, payload, headers, method), timeout, provider, cancel)
     _note_limits(resp, provider)
     _register(resp)
     try:

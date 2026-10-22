@@ -17,6 +17,7 @@ from .card_shuffle import CardShuffle
 from .cloudflare import CloudflareProvider
 from .google import GoogleProvider
 from .lmstudio import LMStudioProvider
+from . import omlx
 from .openai_compat import OpenAICompatProvider
 from .pollinations import PollinationsProvider
 
@@ -66,6 +67,8 @@ _AUTO_ORDER = ("anthropic", "openai", "google", "openrouter", "deepseek", "mistr
 
 def build_registry() -> dict[str, Provider]:
     reg: dict[str, Provider] = {"ollama": ollama.local(), "lmstudio": LMStudioProvider()}
+    if omlx.supported():
+        reg["omlx"] = omlx.OMLXProvider()
     cloud = ollama.cloud()
     if cloud is not None:
         reg[cloud.name] = cloud
@@ -118,9 +121,9 @@ def model_ref(provider: Provider, model: str) -> str:
 
 def pick_default_model(reg: dict[str, Provider]) -> str | None:
     """A model to use when none is configured, so a key in the environment is enough to start:
-    the first local Ollama or LM Studio model, else the first connected cloud provider (in _AUTO_ORDER) with
+    the first local Ollama, oMLX or LM Studio model, else the first connected cloud provider (in _AUTO_ORDER) with
     its suggested model, or its first listed one. None when nothing is usable."""
-    for name in ("ollama", "lmstudio", *_AUTO_ORDER):
+    for name in ("ollama", "omlx", "lmstudio", *_AUTO_ORDER):
         provider = reg.get(name)
         if provider is None:
             continue

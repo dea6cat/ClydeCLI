@@ -18,6 +18,7 @@ from pathlib import Path
 
 from . import fit
 from .base import ProviderError, get_json
+from .omlx import KV_SHARE, MAX_WINDOW, WINDOW_FLOOR, fixed_window, kv_bytes_per_token  # noqa: F401 (tests use them from here)
 from .openai_compat import OpenAICompatProvider
 
 DEFAULT_URL = "http://localhost:1234/v1"
@@ -25,10 +26,7 @@ DEFAULT_URL = "http://localhost:1234/v1"
 # ponytail: a guess until first load; LM Studio picks the loaded context from its own settings
 UNLOADED_CONTEXT = 8192
 _CONTEXT_TTL = 30
-MAX_WINDOW = 32768      # past this a small local model loses the thread; compaction keeps the rest
-WINDOW_FLOOR = 4096
 GGUF_WINDOW = 8192      # ponytail: a GGUF's layer count isn't in `lms ls`; read the GGUF header to size it like an MLX model
-KV_SHARE = 0.5          # of the budget left after weights and runtime overhead, the share the KV cache may take
 LOAD_TTL_S = 3600       # LM Studio unloads a model Clyde loaded after an hour idle
 
 
@@ -62,18 +60,6 @@ def model_files(entry: dict) -> Path | None:
     root = MODELS_DIR.resolve()
     target = (root / str(entry.get("path", ""))).resolve()
     return target if root in target.parents and target.exists() else None
-
-
-def kv_bytes_per_token(folder: Path | None) -> int | None:
-    """fp16 KV cache bytes per token from a model folder's config.json (MLX/safetensors), or None when it can't be told."""
-    try:
-        cfg = json.loads((folder / "config.json").read_text(encoding="utf-8"))
-        layers, heads = int(cfg["num_hidden_layers"]), int(cfg["num_attention_heads"])
-        kv_heads = int(cfg.get("num_key_value_heads") or heads)
-        head_dim = int(cfg.get("head_dim") or int(cfg["hidden_size"]) // heads)
-    except (OSError, ValueError, KeyError, TypeError, AttributeError):
-        return None
-    return 2 * layers * kv_heads * head_dim * 2
 
 
 class LMStudioProvider(OpenAICompatProvider):
@@ -140,13 +126,7 @@ class LMStudioProvider(OpenAICompatProvider):
         return entry.get("trainedForToolUse") is False
 
     def _fixed_window(self, model: str) -> int | None:
-        """The window the user fixed: an environment override, else the one saved by /settings."""
-        from src import config
-        from .ollama import _ctx_env_key
-        for key in ("CLYDE_CONTEXT_TOKENS", f"CLYDE_MODEL_CONTEXT_{_ctx_env_key(model)}"):
-            if os.environ.get(key, "").isdigit():
-                return int(os.environ[key])
-        return config.get_context_tokens()
+        return fixed_window(model)
 
     def planned_window(self, model: str) -> int:
         """The window Clyde loads the model with: what fits the memory budget after the weights, KV cache included
