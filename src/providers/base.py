@@ -10,6 +10,7 @@ import email.utils
 import http.client
 import codecs
 import json
+import ssl
 import threading
 import time as _time
 import urllib.error
@@ -225,6 +226,15 @@ def _stalled(provider: str, timeout) -> ProviderError:
     return ProviderError(provider, f"no response for {timeout} s; the endpoint stalled. Try again or switch model")
 
 
+def _connection_failed(e: urllib.error.URLError, provider: str) -> ProviderError:
+    """A request that never got an answer. An untrusted certificate is said plainly, and not retried: on a company network
+    that inspects TLS it fails the same way every time until its root certificate is added."""
+    if isinstance(e.reason, ssl.SSLCertVerificationError):
+        return ProviderError(provider, f"certificate not trusted ({e.reason.verify_message}). On a network that inspects TLS, "
+                                       "add its root certificate with /proxy ca <file>, then start Clyde again")
+    return ProviderError(provider, f"connection failed: {e.reason}", retryable=True)
+
+
 def _open(req, timeout, provider, cancel):
     try:
         return urllib.request.urlopen(req, timeout=timeout)
@@ -237,7 +247,7 @@ def _open(req, timeout, provider, cancel):
             raise _Cancelled() from e
         if isinstance(e.reason, TimeoutError):
             raise _stalled(provider, timeout) from e
-        raise ProviderError(provider, f"connection failed: {e.reason}", retryable=True) from e
+        raise _connection_failed(e, provider) from e
 
 
 # Provider -> its last response's remaining-quota headers (x-ratelimit-remaining-tokens, anthropic-ratelimit-
@@ -387,7 +397,7 @@ def get_text(url: str, timeout: int = 15, provider: str = "http", limit: int = 2
     except urllib.error.HTTPError as e:
         raise _http_error(e, provider) from e
     except urllib.error.URLError as e:
-        raise ProviderError(provider, f"connection failed: {e.reason}", retryable=True) from e
+        raise _connection_failed(e, provider) from e
     except (OSError, http.client.HTTPException) as e:
         raise ProviderError(provider, f"connection failed: {e}", retryable=True) from e
 
@@ -403,6 +413,6 @@ def get_json(url: str, headers: dict | None = None, timeout: int = 15, provider:
     except urllib.error.HTTPError as e:
         raise _http_error(e, provider) from e
     except urllib.error.URLError as e:
-        raise ProviderError(provider, f"connection failed: {e.reason}", retryable=True) from e
+        raise _connection_failed(e, provider) from e
     except (OSError, http.client.HTTPException) as e:   # a read that times out or drops after connecting is not a URLError
         raise ProviderError(provider, f"connection failed: {e}", retryable=True) from e

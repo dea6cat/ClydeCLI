@@ -62,5 +62,6 @@
 - ✅ **Phase 6**: Model play: cardShuffle routing across `/eval`-ranked models, local models that fit the machine (ollama.com, Hugging Face GGUF and MLX), Laya bundled for stuck-loop detection, and SkillSpector bundled to scan skills, plugins and MCP servers
 - ✅ **Laya's difficulty in `cardShuffle:house`**: promotes itself from shadow mode once `/laya`'s evidence shows it separates easy turns from hard ones
 - ✅ **IDE integration** through the Agent Client Protocol (`clyde --acp`)
+- 🔲 **Messaging from your phone** (Signal, then maybe iMessage): proposed, not built. Design, security model and the upkeep each needs: [messaging.md](messaging.md)
 
 **See [FEATURE_LIST.md](../FEATURE_LIST.md) for detailed feature status and PR guidelines.**

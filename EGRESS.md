@@ -60,6 +60,12 @@ yes, installs oMLX's pinned release from source into `~/.clyde/omlx` (a git chec
 Metal kernels when Xcode is there); nothing outside that folder changes. Where nobody can be asked (an editor over ACP, `clyde -p`,
 Bonnie) it never installs: it stops and says so.
 
+### Through a proxy
+
+With a proxy set (`/proxy`, or `HTTPS_PROXY` in your environment), everything above goes through it, so the proxy sees
+which hosts Clyde talks to; with HTTPS it cannot read the content unless your network inspects TLS (the case a company
+certificate, `/proxy ca`, is for). Servers on this machine (Ollama, oMLX) never go through it.
+
 ## 5. What does not leave
 
 - **Bonnie** serves its page on `127.0.0.1` only, and the page loads nothing from outside (no fonts, scripts or images from the web).
@@ -71,4 +77,4 @@ Bonnie) it never installs: it stops and says so.
 Where to get a key or an installer, shown on screen or in a setup message: `platform.openai.com`, `platform.claude.com`,
 `platform.deepseek.com`, `platform.minimax.io`, `console.mistral.ai`, `aistudio.google.com`, `dash.cloudflare.com`, `cloud.cerebras.ai`,
 `build.nvidia.com`, `enter.pollinations.ai`, `mcp.linear.app` (an example in the MCP help),
-`polyformproject.org` (the licence text), `example.com` (placeholder in help text).
+`polyformproject.org` (the licence text), `example.com` and `proxy.example.com` (placeholders in help text).

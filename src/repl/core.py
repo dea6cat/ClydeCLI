@@ -235,6 +235,7 @@ _HELP_TEXT = """
 - `/cost` - Show session cost and usage
 - `/compact` - Compact conversation to save context space
 - `/doctor` - Diagnose environment, config, keys and permissions
+- `/proxy [system|off|<url>|ca <file>]` - Show or set the network proxy and a company root certificate
 - `/mcp` - Show connected MCP servers and their tools
 - `/mcp login <server>` / `/mcp logout <server>` - OAuth sign-in for a remote MCP server (opens your browser), or forget its tokens
 - `/plugins` - Installed, Errors and Stats tabs: what each plugin added, what went wrong, Space turns one on or off
