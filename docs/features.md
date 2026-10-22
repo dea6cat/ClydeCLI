@@ -358,6 +358,7 @@ it can't ask you anything. Options:
 | `--output-format json` | `{"result", "is_error", "error", "model", "num_turns", "usage", "denied", "session_id"}` |
 | `--output-format stream-json` | One `{"type": "message", "message": {...}}` line per message as the turn runs (the session file's shape: text, thinking, tool calls and their results), then the `json` fields as `{"type": "result", ...}`. A run killed partway keeps every line written before |
 | `--max-turns N` | Tool rounds before giving up (default 20) |
+| `--time-limit SECONDS` | Stop the run after this long (startup not counted), even mid-command; error `time limit reached`, exit 1 |
 | `--model provider:model` | As in the REPL; `cardShuffle:house` works too |
 
 Exit status is 0 when it answered, 1 when it failed, ran out of rounds or got SIGTERM, 2 when there was nothing

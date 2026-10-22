@@ -62,8 +62,17 @@ def _interrupt(_signum: int, _frame: Any) -> None:
     raise KeyboardInterrupt
 
 
+class _OutOfTime(KeyboardInterrupt):
+    """--time-limit ran out: an interrupt like SIGTERM, told apart in the result line."""
+
+
+def _out_of_time(_signum: int, _frame: Any) -> None:
+    raise _OutOfTime
+
+
 def run(prompt: str, *, model: str | None = None, mode: str = "hold", output_format: str = "text",
-        max_turns: int = 20, stdin: TextIO | None = None, stdout: TextIO | None = None) -> int:
+        max_turns: int = 20, time_limit: float | None = None, stdin: TextIO | None = None,
+        stdout: TextIO | None = None) -> int:
     """Run one headless turn; return the process exit status."""
     from src.repl.core import ClydeREPL
 
@@ -102,11 +111,19 @@ def run(prompt: str, *, model: str | None = None, mode: str = "hold", output_for
     # A CI cancel or a harness timeout sends SIGTERM: as an interrupt it reaches the running command, whose process group is
     # then killed (src/system/proc.py), and the result line still says what happened.
     previous = signal.signal(signal.SIGTERM, _interrupt)
+    previous_alarm = signal.signal(signal.SIGALRM, _out_of_time) if time_limit else None
+    if time_limit:
+        signal.setitimer(signal.ITIMER_REAL, time_limit)
     try:
         repl.chat(text, max_turns=max_turns)
+    except _OutOfTime:
+        repl.last_error = f"time limit reached ({time_limit:g}s)"
     except KeyboardInterrupt:
         repl.last_error = "interrupted"
     finally:
+        if time_limit:
+            signal.setitimer(signal.ITIMER_REAL, 0)
+            signal.signal(signal.SIGALRM, previous_alarm)
         signal.signal(signal.SIGTERM, previous)
 
     result, error = repl.last_result, repl.last_error

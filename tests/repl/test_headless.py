@@ -106,6 +106,19 @@ class TestRun(unittest.TestCase):
         self.assertEqual((code, last["type"], last["is_error"], last["error"]), (1, "result", True, "interrupted"))
         self.assertIs(signal.getsignal(signal.SIGTERM), before)   # put back for whoever runs next
 
+    def test_time_limit_stops_a_running_command_and_the_run(self):
+        import signal
+        import time
+        before = signal.getsignal(signal.SIGALRM)
+        began = time.monotonic()
+        code, out, _, _ = self._run(reply(tool_calls=[("Bash", {"command": "sleep 5"})]), reply("should not get here"),
+                                    mode="all_in", output_format="json", time_limit=0.5)
+        data = json.loads(out)
+        self.assertLess(time.monotonic() - began, 4)
+        self.assertEqual((code, data["is_error"], data["error"]), (1, True, "time limit reached (0.5s)"))
+        self.assertEqual(signal.getitimer(signal.ITIMER_REAL), (0.0, 0.0))
+        self.assertIs(signal.getsignal(signal.SIGALRM), before)
+
     def test_anything_that_would_ask_is_denied_not_prompted(self):
         with patch("rich.prompt.Prompt.ask", side_effect=AssertionError("prompted in -p mode")), \
                 patch("rich.prompt.Confirm.ask", side_effect=AssertionError("prompted in -p mode")):
