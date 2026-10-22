@@ -22,7 +22,7 @@ from typing import Any, TextIO
 
 from rich.console import Console
 
-from src.agent.agent_loop import MAX_TURNS_REPLY
+from src.agent.agent_loop import MAX_TOKENS_REPLY, MAX_TURNS_REPLY
 from src.agent.conversation import message_dict
 from src.providers import model_ref
 
@@ -71,8 +71,8 @@ def _out_of_time(_signum: int, _frame: Any) -> None:
 
 
 def run(prompt: str, *, model: str | None = None, mode: str = "hold", output_format: str = "text",
-        max_turns: int = 20, time_limit: float | None = None, stdin: TextIO | None = None,
-        stdout: TextIO | None = None) -> int:
+        max_turns: int = 20, time_limit: float | None = None, max_tokens: int | None = None,
+        stdin: TextIO | None = None, stdout: TextIO | None = None) -> int:
     """Run one headless turn; return the process exit status."""
     from src.repl.core import ClydeREPL
 
@@ -115,7 +115,7 @@ def run(prompt: str, *, model: str | None = None, mode: str = "hold", output_for
     if time_limit:
         signal.setitimer(signal.ITIMER_REAL, time_limit)
     try:
-        repl.chat(text, max_turns=max_turns)
+        repl.chat(text, max_turns=max_turns, max_tokens=max_tokens)
     except _OutOfTime:
         repl.last_error = f"time limit reached ({time_limit:g}s)"
     except KeyboardInterrupt:
@@ -129,10 +129,12 @@ def run(prompt: str, *, model: str | None = None, mode: str = "hold", output_for
     result, error = repl.last_result, repl.last_error
     answer = result.response_text if result is not None else ""
     ran_out = answer == MAX_TURNS_REPLY
-    failed = error is not None or result is None or ran_out
+    over_budget = answer == MAX_TOKENS_REPLY
+    failed = error is not None or result is None or ran_out or over_budget
     if output_format in ("json", "stream-json"):
         payload: dict[str, Any] = {
-            "result": answer, "is_error": failed, "error": error or ("ran out of tool rounds" if ran_out else None),
+            "result": answer, "is_error": failed,
+            "error": error or ("ran out of tool rounds" if ran_out else f"token budget reached ({max_tokens})" if over_budget else None),
             "model": model_ref(repl.provider, repl.model), "num_turns": result.num_turns if result else 0,
             "usage": (result.usage if result else None) or {}, "denied": denied, "session_id": repl.session.session_id,
         }

@@ -359,6 +359,7 @@ it can't ask you anything. Options:
 | `--output-format stream-json` | One `{"type": "message", "message": {...}}` line per message as the turn runs (the session file's shape: text, thinking, tool calls and their results), then the `json` fields as `{"type": "result", ...}`. A run killed partway keeps every line written before |
 | `--max-turns N` | Tool rounds before giving up (default 20) |
 | `--time-limit SECONDS` | Stop the run after this long (startup not counted), even mid-command; error `time limit reached`, exit 1 |
+| `--max-tokens N` | Stop once the run has used more than N tokens (prompt, cached prompt and output, over every model call), after that round's tools; error `token budget reached`, exit 1. A provider that reports no usage is counted by estimate (about 4 characters a token) |
 | `--model provider:model` | As in the REPL; `cardShuffle:house` works too |
 
 Exit status is 0 when it answered, 1 when it failed, ran out of rounds or got SIGTERM, 2 when there was nothing

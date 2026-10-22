@@ -119,6 +119,32 @@ class TestRun(unittest.TestCase):
         self.assertEqual(signal.getitimer(signal.ITIMER_REAL), (0.0, 0.0))
         self.assertIs(signal.getsignal(signal.SIGALRM), before)
 
+    def test_max_tokens_stops_after_the_round_that_went_over(self):
+        call = {"input_tokens": 500, "output_tokens": 100}
+        loop = [reply(tool_calls=[("Glob", {"pattern": "*.py"})], usage=call) for _ in range(2)]
+        code, out, _, provider = self._run(*loop, reply("should not get here"), output_format="stream-json", max_tokens=1000)
+        lines = [json.loads(line) for line in out.splitlines()]
+        last = lines[-1]
+        self.assertEqual((code, last["is_error"], last["error"], last["num_turns"]), (1, True, "token budget reached (1000)", 2))
+        self.assertEqual(last["usage"]["input_tokens"] + last["usage"]["output_tokens"], 1200)
+        self.assertEqual(lines[-2]["message"]["content"][0]["type"], "tool_result")   # the last call kept its result
+
+    def test_max_tokens_counts_cached_prompt_tokens(self):
+        call = {"input_tokens": 50, "output_tokens": 10, "cache_read_input_tokens": 2000}
+        code, out, _, _ = self._run(reply(tool_calls=[("Glob", {"pattern": "*.py"})], usage=call), reply("should not get here"),
+                                    output_format="json", max_tokens=1000)
+        self.assertEqual((code, json.loads(out)["error"]), (1, "token budget reached (1000)"))
+
+    def test_max_tokens_estimates_when_the_provider_reports_no_usage(self):
+        loop = [reply(tool_calls=[("Glob", {"pattern": "*.py"})]) for _ in range(3)]   # no usage, as many OpenAI-compatible servers
+        code, out, _, _ = self._run(*loop, reply("should not get here"), output_format="json", max_tokens=50)
+        data = json.loads(out)
+        self.assertEqual((code, data["error"], data["usage"]), (1, "token budget reached (50)", {}))   # usage stays what was reported
+
+    def test_a_run_under_max_tokens_is_not_stopped(self):
+        code, out, _, _ = self._run(reply("4", usage={"input_tokens": 10, "output_tokens": 1}), max_tokens=1000)
+        self.assertEqual((code, out), (0, "4\n"))
+
     def test_anything_that_would_ask_is_denied_not_prompted(self):
         with patch("rich.prompt.Prompt.ask", side_effect=AssertionError("prompted in -p mode")), \
                 patch("rich.prompt.Confirm.ask", side_effect=AssertionError("prompted in -p mode")):

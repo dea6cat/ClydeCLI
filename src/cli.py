@@ -94,7 +94,7 @@ Examples:
   clyde doctor                        How Clyde is installed: method, version, PATH, other installs, Claude Code
   clyde license [accept]              Show the licence terms and whether you accepted them; accept records it
   clyde -p "<prompt>"                 One turn without the prompt, answer on stdout (scripts, CI); also --mode,
-                                      --output-format json|stream-json, --max-turns, --time-limit. Piped input is added: git diff | clyde -p "review"
+                                      --output-format json|stream-json, --max-turns, --time-limit, --max-tokens. Piped input is added: git diff | clyde -p "review"
   clyde --acp                         Run as an Agent Client Protocol agent on stdio, for editors (Zed, JetBrains)
   clyde acp install zed [-y]          Add Clyde to Zed's settings as an external agent (shows the change, asks first)
 """
@@ -123,6 +123,9 @@ Examples:
     parser.add_argument('--time-limit', type=float, metavar='SECONDS',
                         help='-p: stop the run after this many seconds (startup not counted), even mid-command; the result '
                              'says so and the exit status is 1')
+    parser.add_argument('--max-tokens', type=int, metavar='N',
+                        help='-p: stop once the run has used more than N tokens (input plus output, over every model '
+                             'call), after that round\'s tools; the result says so and the exit status is 1')
     parser.add_argument('--acp', action='store_true',
                         help='Speak the Agent Client Protocol on stdio so an editor (Zed, JetBrains) can run Clyde')
 
@@ -207,7 +210,7 @@ Examples:
         telemetry.set_surface("print")
         return headless.run(args.print_prompt, model=args.model, mode=args.mode,
                             output_format=args.output_format, max_turns=args.max_turns,
-                            time_limit=args.time_limit)
+                            time_limit=args.time_limit, max_tokens=args.max_tokens)
 
     if args.command == 'luv':
         from src import telemetry
@@ -257,7 +260,7 @@ Examples:
             print(f"review: {e}", file=sys.stderr)
             return 2
         return headless.run(prompt, model=args.model, mode='plan', output_format=args.output_format, max_turns=args.max_turns,
-                            time_limit=args.time_limit)
+                            time_limit=args.time_limit, max_tokens=args.max_tokens)
 
     if args.version:
         from src import __version__
