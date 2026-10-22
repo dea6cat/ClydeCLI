@@ -387,6 +387,9 @@ class ClydeREPL:
         self.registry = build_registry()
         if (omlx := self.registry.get("omlx")) is not None:
             omlx.confirm_install = self._confirm_install_omlx
+            from src.providers.omlx import migrate_lmstudio_refs
+            for line in migrate_lmstudio_refs():   # LM Studio was replaced by oMLX, which serves the same folders
+                self.console.print(f"[dim]Moved {line} (oMLX now runs LM Studio's models).[/dim]")
         resolved = self._startup_model(model)
         if resolved is None:
             sys.exit(1)

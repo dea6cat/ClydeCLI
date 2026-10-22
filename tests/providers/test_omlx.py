@@ -186,6 +186,33 @@ class TestOMLX(unittest.TestCase):
         self.assertIsInstance(error, KeyboardInterrupt)
         self.assertTrue(calls[-1].endswith("/admin/api/hf/cancel/t1"))
 
+    def test_lmstudio_refs_move_to_the_folder_oMLX_serves_only_when_one_matches(self):
+        folders = {"Parable-Qwen3-4B-Claude-Fable-5-MLX-8bit": Path("a"), "Qwen3.5-9B-MLX-4bit": Path("b"), "Qwen3.5-9B-MLX-8bit": Path("c")}
+        with patch.object(omlx, "on_disk", return_value=folders):
+            self.assertEqual(omlx.lmstudio_ref("lmstudio:parable-qwen3-4b-claude-fable-5-mlx"),
+                             "omlx:Parable-Qwen3-4B-Claude-Fable-5-MLX-8bit")   # the key LM Studio gave it, on this Mac
+            self.assertIsNone(omlx.lmstudio_ref("lmstudio:qwen/qwen3.5-9b"))   # two quantizations: don't guess
+            self.assertIsNone(omlx.lmstudio_ref("lmstudio:gone-model"))
+
+    def test_the_saved_model_and_eval_results_move_and_unmatched_ones_stay(self):
+        from src.providers import model_eval
+        evals = Path(self.tmp) / "model_evals.json"
+        evals.write_text(json.dumps({"lmstudio:a-mlx": {"passed": True, "strength": 3}, "lmstudio:b-mlx": {"passed": False},
+                                     "omlx:B-MLX-4bit": {"passed": True, "strength": 4}, "lmstudio:gone": {"passed": True}}))
+        saved = {"model": "lmstudio:a-mlx"}
+        with patch.object(omlx, "on_disk", return_value={"A-MLX-8bit": Path("a"), "B-MLX-4bit": Path("b")}), \
+                patch.object(model_eval, "results_path", return_value=evals), \
+                patch("src.config.get_default_model", side_effect=lambda: saved["model"]), \
+                patch("src.config.set_default_model", side_effect=lambda ref: saved.update(model=ref)):
+            moved = omlx.migrate_lmstudio_refs()
+            self.assertEqual(omlx.migrate_lmstudio_refs(), [])   # nothing left to move
+        data = json.loads(evals.read_text())
+        self.assertEqual(saved["model"], "omlx:A-MLX-8bit")
+        self.assertEqual(data["omlx:A-MLX-8bit"], {"passed": True, "strength": 3})
+        self.assertEqual(data["omlx:B-MLX-4bit"]["strength"], 4)   # the oMLX result is newer than LM Studio's
+        self.assertEqual(sorted(k for k in data if k.startswith("lmstudio:")), ["lmstudio:gone"])
+        self.assertEqual(len(moved), 3)
+
     def test_only_offered_on_apple_silicon(self):
         with patch.object(omlx.sys, "platform", "linux"):
             self.assertFalse(omlx.supported())

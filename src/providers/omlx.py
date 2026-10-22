@@ -186,6 +186,38 @@ def on_disk() -> dict[str, Path]:
     return found
 
 
+def lmstudio_ref(ref: str) -> str | None:
+    """The omlx: ref for an LM Studio ref, matched to a folder oMLX serves by fit.model_key: LM Studio's key drops the
+    quantization (`lmstudio:parable-qwen3-4b-mlx` is the folder Parable-Qwen3-4B-MLX-8bit). None when no folder, or more
+    than one, matches: a guess could point a saved model or a passed /eval at another quantization."""
+    key = fit.model_key(ref.removeprefix("lmstudio:"))
+    matches = [name for name in on_disk() if fit.model_key(name) == key]
+    return f"omlx:{matches[0]}" if len(matches) == 1 else None
+
+
+def migrate_lmstudio_refs() -> list[str]:
+    """Move what Clyde saved under LM Studio's refs to oMLX's: the default model, and the /eval results that cardShuffle
+    deals from. A ref with no single matching folder is left as it was. One "old -> new" line per ref moved."""
+    from src import config
+    from . import model_eval
+    moved: list[str] = []
+    saved = config.get_default_model()
+    if saved and saved.startswith("lmstudio:") and (new := lmstudio_ref(saved)):
+        config.set_default_model(new)
+        moved.append(f"{saved} -> {new}")
+    results = model_eval.load_results()
+    changed = False
+    for old in [ref for ref in results if ref.startswith("lmstudio:")]:
+        if new := lmstudio_ref(old):
+            entry = results.pop(old)
+            results.setdefault(new, entry)   # an oMLX result already there is newer: keep it
+            moved.append(f"{old} -> {new}")
+            changed = True
+    if changed:
+        model_eval.results_path().write_text(json.dumps(results, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+    return moved
+
+
 def install(log: Callable[[str], None] = print) -> str | None:
     """Install oMLX from its pinned release into ~/.clyde/omlx: a git checkout, a Python 3.13 venv made by uv, and the
     native Metal kernels when Xcode's Metal toolchain is there (without them some model families fall back to much
