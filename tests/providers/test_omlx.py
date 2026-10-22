@@ -50,6 +50,7 @@ class TestOMLX(unittest.TestCase):
         self.assertEqual(argv[argv.index("--memory-guard") + 1], "balanced")
         self.assertNotIn(omlx.server_key(), " ".join(argv))
         self.assertEqual(kwargs["env"]["OMLX_API_KEY"], omlx.server_key())
+        self.assertEqual(kwargs["env"]["HF_HUB_OFFLINE"], "0")   # laya_client's offline default must not reach oMLX's downloader
 
     def test_not_installed_and_nobody_to_ask_never_installs(self):
         with patch.object(omlx, "_exe", return_value=None), patch.object(self.provider, "_server_up", return_value=False), \
@@ -149,6 +150,41 @@ class TestOMLX(unittest.TestCase):
                 patch.object(self.provider, "_server_up", return_value=False), patch.object(self.provider, "_status", return_value=[]):
             self.assertEqual(self.provider._fetch_models(), ["Parable-4B-MLX-8bit", "Qwen3-8B-4bit"])   # bare folder names, no embedder
             self.assertEqual(self.provider._entry("Qwen3-8B-4bit")["estimated_size"], 10)
+
+    def _download(self, *updates, interrupt=False):
+        task = {"task_id": "t1", "repo_id": "mlx-community/Qwen3-8B-4bit", "status": "pending"}
+        polls = [{"tasks": [{**task, **u}]} for u in updates]
+        calls, seen = [], []
+
+        def post(url, payload, **kw):
+            calls.append(url)
+            return {"task": task}
+
+        def poll(*_a, **_kw):
+            if interrupt:
+                raise KeyboardInterrupt
+            return polls.pop(0)
+        with patch.object(self.provider, "_ensure_server"), patch.object(omlx, "post_json", side_effect=post), \
+                patch.object(omlx, "get_json", side_effect=poll), patch.object(omlx.time, "sleep"):
+            try:
+                return self.provider.download("mlx-community/Qwen3-8B-4bit", seen.append), seen, calls
+            except (ProviderError, KeyboardInterrupt) as e:
+                return e, seen, calls
+
+    def test_a_download_waits_for_omlx_and_names_the_model_as_omlx_serves_it(self):
+        model, seen, _ = self._download({"status": "downloading", "progress": 40.0}, {"status": "completed", "progress": 100.0})
+        self.assertEqual(model, "Qwen3-8B-4bit")
+        self.assertEqual([t["progress"] for t in seen], [40.0, 100.0])
+
+    def test_a_failed_download_says_why(self):
+        error, _, _ = self._download({"status": "failed", "error": "401 gated repo"})
+        self.assertIsInstance(error, ProviderError)
+        self.assertIn("401 gated repo", str(error))
+
+    def test_ctrl_c_cancels_the_download_in_omlx_too(self):
+        error, _, calls = self._download(interrupt=True)
+        self.assertIsInstance(error, KeyboardInterrupt)
+        self.assertTrue(calls[-1].endswith("/admin/api/hf/cancel/t1"))
 
     def test_only_offered_on_apple_silicon(self):
         with patch.object(omlx.sys, "platform", "linux"):

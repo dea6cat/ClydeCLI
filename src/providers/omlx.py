@@ -312,6 +312,31 @@ class OMLXProvider(OpenAICompatProvider):
         self._status_cache = None
         self._ensured = {*getattr(self, "_ensured", set()), (model, planned)}
 
+    def download(self, repo_id: str, on_progress: Callable[[dict], None]) -> str:
+        """Download a Hugging Face MLX repo with oMLX's own downloader (into its model folder, as publisher/model) and wait
+        for it; `on_progress` gets each task update. The id the model is served under, or ProviderError. Ctrl-C cancels
+        the download in oMLX too (running it again resumes from the files already there)."""
+        self._ensure_server()
+        task = post_json(f"{self._admin}/hf/download", {"repo_id": repo_id}, headers=self._headers(), timeout=60,
+                         provider=self.name)["task"]
+        try:
+            while task.get("status") not in ("completed", "failed", "cancelled"):
+                time.sleep(1)
+                tasks = get_json(f"{self._admin}/hf/tasks", headers=self._headers(), timeout=15, provider=self.name)["tasks"]
+                task = next((t for t in tasks if t.get("task_id") == task["task_id"]), task)
+                on_progress(task)
+        except KeyboardInterrupt:
+            try:
+                self._call(f"{self._admin}/hf/cancel/{task['task_id']}", {})
+            except ProviderError:
+                pass
+            raise
+        if task["status"] != "completed":
+            raise ProviderError(self.name, f"oMLX's download of {repo_id} {task['status']}: {task.get('error') or 'no reason given'}")
+        self._status_cache = None
+        self.__dict__.pop("_models_cache", None)
+        return repo_id.rsplit("/", 1)[-1]
+
     def estimate(self, model: str) -> int | None:
         """oMLX's estimate of the memory the model needs once loaded, in bytes."""
         size = self._entry(model).get("estimated_size")
@@ -348,7 +373,8 @@ class OMLXProvider(OpenAICompatProvider):
         from src import config
         with open(log, "ab") as out:   # the key goes in the environment: a command line shows in every user's `ps`
             server = subprocess.Popen([exe, "serve", "--port", str(port), *memory_guard_args(config.get_omlx_memory_guard())],
-                                      env={**os.environ, self.key_env: server_key()},
+                                      # laya_client sets HF_HUB_OFFLINE=1 in Clyde's process; oMLX's downloader must reach Hugging Face
+                                      env={**os.environ, self.key_env: server_key(), "HF_HUB_OFFLINE": "0"},
                                       stdout=out, stderr=out, stdin=subprocess.DEVNULL, start_new_session=True)
         (home() / "server.pid").write_text(str(server.pid), encoding="utf-8")
         deadline = time.monotonic() + START_TIMEOUT_S

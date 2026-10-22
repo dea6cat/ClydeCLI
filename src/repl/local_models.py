@@ -1,6 +1,6 @@
 """/models local [best|ollama|hf|mlx] [query]: find local models that fit this machine, rate how hard
 they'd run (relax, balance, hard), and download the chosen one with the app that runs it: Ollama
-for ollama.com models, LM Studio for MLX, and Ollama or else LM Studio for Hugging Face GGUF.
+for ollama.com models, oMLX for MLX, and Ollama or else LM Studio for Hugging Face GGUF.
 The machine's numbers come first and every download is confirmed with what it will cost, so
 nothing heavy lands by surprise; /eval runs afterwards only when asked, so cardShuffle can deal it."""
 
@@ -236,14 +236,14 @@ def _runner(repl: Any, offer: fit.Offer) -> str | None:
     ollama = repl.registry.get("ollama")
     ollama_up = ollama is not None and ollama.is_available()
     if offer.source == "mlx":
-        return "lmstudio" if _lms() else None
+        return "omlx" if "omlx" in repl.registry else None   # oMLX asks before it installs itself
     if offer.source == "hf" and not ollama_up:
         return "lmstudio" if _lms() else None
     return "ollama" if ollama_up else None
 
 
 _NO_RUNNER = {
-    "mlx": "MLX models run in LM Studio, which isn't installed. Get it from lmstudio.ai, then try again.",
+    "mlx": "MLX models run in oMLX, which needs an Apple Silicon Mac.",
     "hf": "Hugging Face GGUF models need Ollama (running) or LM Studio. Start or install one, then try again.",
     "ollama": "ollama.com models need Ollama. Install it from ollama.com (or start it with `ollama serve`), then try again.",
 }
@@ -277,7 +277,10 @@ def _start_lmstudio() -> bool:
 def _set_up_runner(repl: Any, offer: fit.Offer) -> str | None:
     """No app can run `offer`: say what Clyde would install or start, and only after a yes do it.
     Returns the runner ("ollama" or "lmstudio") once it works, else None."""
-    app = "lmstudio" if offer.source == "mlx" else "ollama"
+    if offer.source == "mlx":   # oMLX installs itself on first use, with a yes; without it this Mac can't run MLX
+        repl.console.print(_NO_RUNNER["mlx"])
+        return None
+    app = "ollama"
     name = _APP_NAME[app]
     present = bool(shutil.which("ollama")) if app == "ollama" else bool(_lms())
     cmd = None if present else _INSTALL[app].get(sys.platform)
@@ -327,7 +330,8 @@ def _failed_eval(offer: fit.Offer, failed: set[str], failed_paths: set[str]) -> 
     if tag.startswith("hf.co/"):   # GGUF: path is publisher/repo/file.gguf, the quant is in the file name
         repo, _, quant = tag.removeprefix("hf.co/").rpartition(":")
         return any(p.startswith(f"{repo}/") and quant in p for p in failed_paths)
-    return tag.removeprefix("https://huggingface.co/") in failed_paths   # MLX: path is publisher/repo
+    repo = tag.removeprefix("https://huggingface.co/")   # MLX: oMLX serves publisher/repo as repo
+    return f"omlx:{repo.rsplit('/', 1)[-1]}" in failed or repo in failed_paths
 
 
 def show(repl: Any, arg: str) -> None:
@@ -378,13 +382,15 @@ def show(repl: Any, arg: str) -> None:
     runner = runner or _set_up_runner(repl, offer)
     if runner is None:
         return
-    if runner == "lmstudio":
-        repl.console.print(f"[yellow]Tool use isn't confirmed for {offer.pull_tag}:[/yellow] LM Studio gives no tool tag before download. "
+    if runner in ("lmstudio", "omlx"):
+        repl.console.print(f"[yellow]Tool use isn't confirmed for {offer.pull_tag}:[/yellow] Hugging Face gives no tool tag before download. "
                            "A model without it writes tool calls as plain text; /eval after the download shows whether it works.")
     if not _confirm(repl, offer, budget, chip):
         return
     if runner == "ollama":
         _pull_ollama(repl, offer)
+    elif runner == "omlx":
+        _get_omlx(repl, offer)
     else:
         _get_lmstudio(repl, offer)
 
@@ -421,6 +427,30 @@ def _pull_ollama(repl: Any, offer: fit.Offer) -> None:
     _offer_eval(repl, ollama, tag, offer)
     with repl._esc.paused():
         tune.offer(repl.console, model=tag)
+
+
+def _get_omlx(repl: Any, offer: fit.Offer) -> None:
+    """Download an MLX model with oMLX's own downloader (oMLX starts first, and installs with a yes), then offer /eval."""
+    omlx_provider, repo = repl.registry["omlx"], offer.pull_tag.removeprefix("https://huggingface.co/")
+
+    def progress(task: dict) -> None:
+        total = task.get("total_size") or 0
+        status.update(f"[dim]Downloading {repo} through oMLX: {task.get('progress', 0):.0f}%"
+                      + (f" of {total / fit.GB:.1f} GB" if total else "") + "[/dim]")
+
+    try:
+        with repl._esc.paused():
+            omlx_provider._ensure_server()   # outside the spinner: a first run asks before installing oMLX
+        with repl.console.status(f"[dim]Downloading {repo} through oMLX…[/dim]", spinner="dots") as status:
+            model = omlx_provider.download(repo, progress)
+    except ProviderError as e:
+        repl.console.print(f"[red]Download failed:[/red] {e}")
+        return
+    except KeyboardInterrupt:
+        repl.console.print("Download stopped. Running it again resumes it.")
+        return
+    repl.console.print(f"[green]✓ Downloaded omlx:{model}[/green]")
+    _offer_eval(repl, omlx_provider, model, offer)
 
 
 def _get_lmstudio(repl: Any, offer: fit.Offer) -> None:

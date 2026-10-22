@@ -113,15 +113,15 @@ class TestConfirm(unittest.TestCase):
 
 
 class TestRouting(unittest.TestCase):
-    def _runner(self, offer, ollama_up: bool, lms: bool):
+    def _runner(self, offer, ollama_up: bool, lms: bool, apple: bool = True):
         repl = _Repl()
-        repl.registry = {"ollama": _Ollama(ollama_up)}
+        repl.registry = {"ollama": _Ollama(ollama_up), **({"omlx": object()} if apple else {})}
         with patch.object(local_models, "_lms", return_value="/bin/lms" if lms else None):
             return local_models._runner(repl, offer)
 
     def test_each_model_goes_to_the_app_that_runs_it(self):
-        self.assertEqual(self._runner(MLX, ollama_up=True, lms=True), "lmstudio")    # MLX: LM Studio only
-        self.assertIsNone(self._runner(MLX, ollama_up=True, lms=False))
+        self.assertEqual(self._runner(MLX, ollama_up=False, lms=False), "omlx")      # MLX: oMLX, which installs itself
+        self.assertIsNone(self._runner(MLX, ollama_up=True, lms=True, apple=False))  # ... and only on Apple Silicon
         self.assertEqual(self._runner(GGUF, ollama_up=True, lms=True), "ollama")     # GGUF: Ollama first
         self.assertEqual(self._runner(GGUF, ollama_up=False, lms=True), "lmstudio")  # ... else LM Studio
         self.assertIsNone(self._runner(HARD, ollama_up=False, lms=True))             # ollama.com: Ollama only
@@ -268,13 +268,12 @@ class TestSetUpRunner(unittest.TestCase):
         self.assertIn("ollama serve", ask.call_args.args[0])
         up.assert_called_once()
 
-    def test_mlx_installs_lm_studio_as_a_cask(self):
+    def test_mlx_without_omlx_installs_nothing_else(self):
         self._which({"brew"})
-        self._patch(local_models, "_start_lmstudio", return_value=True)
-        with patch.object(local_models.Confirm, "ask", return_value=True), \
-                patch.object(local_models, "_runner", return_value="lmstudio"):
-            self.assertEqual(local_models._set_up_runner(self.repl, MLX), "lmstudio")
-        self.assertEqual(self.run.call_args.args[0], ["brew", "install", "--cask", "lm-studio"])
+        with patch.object(local_models.Confirm, "ask") as ask:
+            self.assertIsNone(local_models._set_up_runner(self.repl, MLX))
+        ask.assert_not_called()
+        self.run.assert_not_called()
 
     def test_no_way_to_install_asks_nothing(self):
         self._which(set())   # no brew
