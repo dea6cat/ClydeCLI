@@ -636,6 +636,18 @@ def doctor_command_call(args: str, context: CommandContext) -> LocalCommandResul
     checked, problems = lint_skills(project_root=context.workspace_root)
     lines.append(_check(not problems, f"Skills: {checked} checked, {len(problems)} problem(s)", "listed below"))
     lines += [f"      {p}" for p in problems]
+    from ..providers import omlx
+    kernels = omlx.native_kernels() if omlx.supported() else None
+    if isinstance(kernels, str):
+        lines.append(_check(False, f"oMLX native kernels: couldn't check ({kernels})", "reinstall oMLX"))
+    elif kernels is not None:
+        missing = sorted(k for k, why in kernels.items() if why is not None)
+        own = omlx.home() / "src"
+        build = (f"build them with `make -C {own} kernels PYTHON={omlx.home() / 'venv' / 'bin' / 'python'}` (needs full Xcode)"
+                 if own.is_dir() else "reinstall oMLX with its native kernels (`brew install omlx --with-custom-kernel`, or the app)")
+        lines.append(_check(not missing, f"oMLX native kernels: {len(kernels) - len(missing)} of {len(kernels)} available"
+                            + (f", missing {', '.join(missing)}" if missing else ""),
+                            f"{omlx.SLOW_WITHOUT_KERNELS} run on much slower generic paths without them; {build}"))
 
     config_path = get_config_path()
     saved_model = None

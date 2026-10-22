@@ -218,6 +218,45 @@ def migrate_lmstudio_refs() -> list[str]:
     return moved
 
 
+_KERNEL_PROBE = ("import json; from omlx.custom_kernels import native_kernel_status as s; "
+                 "print(json.dumps({k: (None if v.get('available') else str(v.get('import_error'))) for k, v in s().items()}))")
+SLOW_WITHOUT_KERNELS = "GLM-5.2, MiniMax M3 and Qwen3.5 models"   # oMLX's README: they fall back to generic paths, GLM-5.2 prefill ~30x slower
+
+
+def _python_of(exe: str) -> str | None:
+    """The interpreter an `omlx` script runs under: the venv's own `python` next to it (Clyde's install, Homebrew's
+    libexec), else its shebang. The sibling comes first because a long venv path gets a `#!/bin/sh` trampoline
+    instead of a shebang."""
+    script = Path(exe).resolve()
+    if (sibling := script.parent / "python").exists():
+        return str(sibling)
+    try:
+        first = script.read_text(encoding="utf-8", errors="replace").split("\n", 1)[0]
+    except OSError:
+        return None
+    return first[2:].strip() if first.startswith("#!") and "python" in first else None
+
+
+def native_kernels() -> dict[str, str | None] | str | None:
+    """oMLX's optional native Metal kernels, asked of the install itself: kernel -> None when it loads, else why not.
+    Without them some model families run on much slower generic paths and say nothing. None when oMLX isn't
+    installed; a string when the install couldn't be asked."""
+    exe = _exe()
+    python = _python_of(exe) if exe else None
+    if exe is None:
+        return None
+    if python is None:
+        return f"can't tell which Python {exe} runs under"
+    try:
+        done = subprocess.run([python, "-c", _KERNEL_PROBE], capture_output=True, text=True, timeout=60)
+        result = json.loads(done.stdout.strip().splitlines()[-1]) if done.returncode == 0 and done.stdout.strip() else None
+    except (OSError, subprocess.TimeoutExpired, ValueError) as e:
+        return str(e)
+    if not isinstance(result, dict):
+        return (done.stderr.strip().splitlines() or [f"exit {done.returncode}"])[-1]
+    return result
+
+
 def install(log: Callable[[str], None] = print) -> str | None:
     """Install oMLX from its pinned release into ~/.clyde/omlx: a git checkout, a Python 3.13 venv made by uv, and the
     native Metal kernels when Xcode's Metal toolchain is there (without them some model families fall back to much
