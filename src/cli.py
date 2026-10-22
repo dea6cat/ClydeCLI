@@ -370,7 +370,7 @@ def run_login_flow(console: Console, registry: dict, default_provider: str = "an
         if provider_name is None:
             return None
 
-    if provider_name not in ("ollama", "lmstudio", "cardShuffle"):  # local servers and cardShuffle need no key
+    if provider_name not in ("ollama", "omlx", "cardShuffle"):  # local servers and cardShuffle need no key
         key = prompt_secret(f"Enter {provider_name} API key" + (" (empty if it needs none)" if custom else ""))
         key = key or ("none" if custom else "")   # a keyless server (vLLM, a local proxy) still gets a Bearer header
         if not key:
@@ -401,7 +401,7 @@ def run_login_flow(console: Console, registry: dict, default_provider: str = "an
                           "Start it with `ollama serve`.")
         else:
             console.print(f"[red]{provider_name} isn't available.[/red]"
-                          + (" Install LM Studio, or start its server." if provider_name == "lmstudio" else "")
+                          + (" oMLX installs itself on first use, on Apple Silicon." if provider_name == "omlx" else "")
                           + (" It deals only models that passed /eval: run /eval first." if provider_name == "cardShuffle" else ""))
         return None
 

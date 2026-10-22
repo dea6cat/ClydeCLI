@@ -1,7 +1,7 @@
 """End-to-end harness for the terminal app: a real `clyde` in a pseudo-terminal, talking to a scripted fake model.
 
 Nothing here touches the real machine's setup: every run gets a throwaway HOME (so no keys, sessions, skills or
-settings), a PATH without Ollama or LM Studio, and no provider keys in the environment. The only model is the
+settings), a PATH without Ollama or oMLX, and no provider keys in the environment. The only model is the
 fake server in this file, added as a custom provider named `fake`.
 
     server = FakeModel([say("hello")])
@@ -148,7 +148,7 @@ def isolated_env(server: FakeModel | None, home: Path, *, with_key: bool = True,
            if not k.endswith(("_API_KEY", "_API_TOKEN", "_ACCOUNT_ID")) and k != "XDG_CONFIG_HOME"}
     env.update({
         "HOME": str(home), "TERM": "xterm-256color", "PYTHONPATH": str(REPO),
-        "PATH": f"{Path(sys.executable).parent}:/usr/bin:/bin",     # no Ollama or LM Studio command line tools
+        "PATH": f"{Path(sys.executable).parent}:/usr/bin:/bin",     # no Ollama or oMLX command line tools
         "OLLAMA_HOST": "http://127.0.0.1:1", "OLLAMA_API_BASE": "http://127.0.0.1:1",   # both: the second wins when set
         "CLYDE_NO_MODEL_FETCH": "1", "CLYDE_ACCEPT_LICENSE": "1", "CLYDE_NO_UPDATE_CHECK": "1",   # the licence gate and the update check have their own tests
         "CLYDE_TRACE": "off", "PYTHONDONTWRITEBYTECODE": "1",

@@ -30,7 +30,7 @@ class SkillTool:
         return ToolSpec(
             name="Skill",
             description="Execute a prompt-based SKILL.md skill or a legacy Python skill module.",
-            # One object schema (strict OpenAI-style servers such as LM Studio reject a top-level anyOf):
+            # One object schema (strict OpenAI-style servers reject a top-level anyOf):
             # `skill` + `args` for SKILL.md skills, or the legacy `name` + `input` for Python skill modules.
             input_schema={
                 "type": "object",

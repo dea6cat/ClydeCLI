@@ -486,7 +486,7 @@ input[type="color"] { width: 36px; height: 24px; padding: 0; border: 1px solid v
           <p>A key is a long password that a model service gives you. It lets Bonnie ask that service for answers on your account, and the service bills you, not Clyde.</p>
           <ul><li>Bonnie sends it only to that service.</li><li>It is saved on this computer in <code>~/.clyde/keys.json</code>, readable only by you, and is never shown again.</li><li>Treat it like a password: don't paste it into chats or commits.</li></ul></details>
         <details><summary>Which one should I pick?</summary>
-          <ul><li><b>Ollama or LM Studio</b> run models on this machine: no key, nothing leaves it.</li><li><b>OpenRouter</b> is one key for many models from many makers.</li><li>Already pay for <b>Anthropic, OpenAI or Google</b>? Use that one.</li></ul>
+          <ul><li><b>Ollama or oMLX</b> run models on this machine: no key, nothing leaves it.</li><li><b>OpenRouter</b> is one key for many models from many makers.</li><li>Already pay for <b>Anthropic, OpenAI or Google</b>? Use that one.</li></ul>
           <p>Pricing and free allowances belong to each service, so check their pages.</p></details>
         <div class="pgrid" id="pgrid" aria-label="Providers"></div>
       </div>

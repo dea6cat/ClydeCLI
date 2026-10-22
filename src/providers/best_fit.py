@@ -88,7 +88,7 @@ def _ranked(budget: int, chip: str, profile: str, refresh: bool = False) -> tupl
 
 
 def search(query: str, budget: int) -> list[Offer]:
-    """Top-ranked GGUF models that fit `budget`, as offers Ollama (`hf.co/<repo>:<quant>`) or LM Studio can pull."""
+    """Top-ranked GGUF models that fit `budget`, as offers Ollama can pull (`hf.co/<repo>:<quant>`)."""
     chip, profile, state = fit.chip(), _profile(), _cache_state()
     if state != "fresh":
         _build(budget, chip, profile)   # never make the picker wait minutes for it

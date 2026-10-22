@@ -19,7 +19,7 @@ from src.ui import usage_stats as stats
 RIGHT, ESC, TAB, DOWN = "\x1b[C", "\x1b", "\t", "\x1b[B"
 TODAY = date(2026, 10, 13)
 SNAP = settings_screen.Snapshot([("Version", "1.0"), ("Model", "ollama:m")], ["Total cost: free or unpriced"], [("ecc", 3, 120)])
-REQS = [stats.Request(TODAY, "ollama:m", stats.Totals(100, 20, 0, 0)), stats.Request(TODAY, "lmstudio:q", stats.Totals(50, 5, 0, 0))]
+REQS = [stats.Request(TODAY, "ollama:m", stats.Totals(100, 20, 0, 0)), stats.Request(TODAY, "omlx:q", stats.Totals(50, 5, 0, 0))]
 
 
 def _text(fragments) -> str:
@@ -36,6 +36,16 @@ class TestSettingsScreen(unittest.TestCase):
         for p in (patch.dict(os.environ, {"XDG_CONFIG_HOME": "", "HOME": home}), patch.object(Path, "home", return_value=Path(home))):
             p.start()
             self.addCleanup(p.stop)
+
+    def test_omlx_memory_guard_cycles_and_restarts_clydes_server(self):
+        with patch.object(settings_screen.omlx, "supported", return_value=True):
+            guard = next(s for s in settings_screen.settings() if s.label == "oMLX memory guard")
+        self.assertEqual(guard.value(), "balanced")
+        with patch("src.providers.omlx.stop_server") as stop:
+            guard.write(guard.next())
+        self.assertEqual((config.get_omlx_memory_guard(), stop.called), ("aggressive", True))
+        with patch.object(settings_screen.omlx, "supported", return_value=False):
+            self.assertNotIn("oMLX memory guard", [s.label for s in settings_screen.settings()])
 
     def test_each_tab_shows_its_content(self):
         shown = lambda **kw: _text(settings_screen.render(_state(**kw), SNAP, REQS, [], TODAY))  # noqa: E731

@@ -126,7 +126,7 @@ class TestAgentLoopDeferral(unittest.TestCase):
     def test_a_small_local_model_keeps_a_tool_once_offered_so_the_prompt_prefix_stays_put(self):
         # The tool list and its index sit early in the prompt. A list that shrinks again re-prefills everything
         # after it on a local server, so a tool offered earlier in the session stays offered.
-        provider = FakeProvider(reply("a"), reply("b"), reply("c"), name="lmstudio")
+        provider = FakeProvider(reply("a"), reply("b"), reply("c"), name="omlx")
         for text in ("run the tests", "explain this function", "explain it once more"):
             self._ask(provider, text)
         first, second, third = provider.requests
@@ -136,7 +136,7 @@ class TestAgentLoopDeferral(unittest.TestCase):
         self.assertEqual(first["conversation"].system_prompt, second["conversation"].system_prompt)
 
     def test_a_small_local_model_gains_a_tool_when_the_prompt_needs_one_and_does_not_lose_the_rest(self):
-        provider = FakeProvider(reply("a"), reply("b"), name="lmstudio")
+        provider = FakeProvider(reply("a"), reply("b"), name="omlx")
         self._ask(provider, "explain this function")
         self._ask(provider, "run the tests")
         first, second = (_names(r["tools"]) for r in provider.requests)
@@ -151,7 +151,7 @@ class TestAgentLoopDeferral(unittest.TestCase):
         self.assertEqual(_names(provider.requests[0]["tools"]), _names(provider.requests[1]["tools"]))
 
     def test_a_small_local_model_is_told_when_to_check_code_and_a_hosted_one_is_not(self):
-        local, hosted = FakeProvider(reply("hi"), name="lmstudio"), FakeProvider(reply("hi"))
+        local, hosted = FakeProvider(reply("hi"), name="omlx"), FakeProvider(reply("hi"))
         self._run(local)
         self._run(hosted)
         self.assertIn(VERIFY_PROMPT, local.requests[0]["conversation"].system_prompt)
@@ -236,7 +236,7 @@ class TestLoopHelpers(unittest.TestCase):
     def test_only_local_providers_get_the_small_tool_set(self):
         from types import SimpleNamespace as NS
         from src.agent.agent_loop import _small_local
-        self.assertTrue(_small_local(NS(name="lmstudio", api_key="lm-studio")))
+        self.assertTrue(_small_local(NS(name="omlx", api_key="lm-studio")))
         self.assertTrue(_small_local(NS(name="ollama", api_key=None)))
         self.assertFalse(_small_local(NS(name="ollama", api_key="cloud-key")))   # Ollama's cloud models
         self.assertFalse(_small_local(NS(name="openrouter", api_key="k")))

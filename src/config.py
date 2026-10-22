@@ -173,6 +173,21 @@ def set_context_tokens(tokens: Optional[int]) -> None:
     save_config(config)
 
 
+def get_omlx_memory_guard() -> str | None:
+    """The memory guard the user picked for oMLX's server in /settings, or None for the default (balanced)."""
+    value = load_config().get("omlx_memory_guard")
+    return value if isinstance(value, str) else None
+
+
+def set_omlx_memory_guard(choice: str) -> None:
+    """Persist oMLX's memory guard and stop the server Clyde started, so the next request starts it with the new one."""
+    from src.providers import omlx
+    config = load_config()
+    config["omlx_memory_guard"] = choice
+    save_config(config)
+    omlx.stop_server()
+
+
 UPDATE_CHANNELS = ("latest", "stable")
 
 

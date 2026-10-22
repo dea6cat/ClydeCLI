@@ -42,7 +42,7 @@ uv tool install --python 3.14 git+https://github.com/dea6cat/ClydeCLI           
 cd your-project && clyde                                                              # type a task; Clyde asks before it edits a file or runs a command
 ```
 
-Setup connects a model: any of 13 providers with your key, or one running on your machine (Ollama, LM Studio). The first run asks you to accept the licence. More install options are [in the install guide](docs/install.md).
+Setup connects a model: any of 13 providers with your key, or one running on your machine (Ollama, or oMLX for MLX models on Apple Silicon). The first run asks you to accept the licence. More install options are [in the install guide](docs/install.md).
 
 
 ***

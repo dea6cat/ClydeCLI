@@ -204,7 +204,7 @@ def describe(provider: Any, model: str) -> tuple[str, str]:
         from src.providers import model_size
         from src.providers.keys import PROVIDER_KEY_ENV
         name = getattr(provider, "name", "")
-        kind = ("mixed" if name == "cardShuffle" else "local" if name in ("ollama", "lmstudio", "mlx") and getattr(provider, "api_key", None) is None
+        kind = ("mixed" if name == "cardShuffle" else "local" if name in ("ollama", "omlx") and getattr(provider, "api_key", None) is None
                 else "hosted" if name in PROVIDER_KEY_ENV or name == "ollama" else "custom")
         return kind, _size_bucket(model_size.billions(provider, model))
     except Exception:

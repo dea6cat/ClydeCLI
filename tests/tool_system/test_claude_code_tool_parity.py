@@ -123,7 +123,7 @@ if __name__ == "__main__":
 
 class TestToolSchemasAreObjects(unittest.TestCase):
     def test_every_tool_schema_is_an_object_at_the_top(self) -> None:
-        # Strict OpenAI-compatible servers (LM Studio) reject a tool whose parameters aren't type: object.
+        # Strict OpenAI-compatible servers (some local ones) reject a tool whose parameters aren't type: object.
         from src.tool_system.defaults import build_default_registry
 
         bad = [s.name for s in build_default_registry().list_specs() if s.input_schema.get("type") != "object"]

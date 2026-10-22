@@ -119,7 +119,7 @@
 
   <h3>What it can't do</h3>
   <ul>
-    <li>It works with Ollama only, including models pulled from Hugging Face into Ollama. LM Studio does not let you set the cache type or flash attention from outside its app, so it is left out.</li>
+    <li>It works with Ollama only, including models pulled from Hugging Face into Ollama. oMLX models are not tuned here: Clyde sets their window and memory guard, and oMLX has its own per-model settings.</li>
     <li>Ollama's hosted models can't be tuned, since the provider runs the server.</li>
     <li>The quality check catches changes in what the model says, its tool calls and long-context recall. It does not judge writing quality.</li>
     <li>It makes the model fit and run better. It does not make it smarter; that takes fine-tuning, which is a separate tool.</li>

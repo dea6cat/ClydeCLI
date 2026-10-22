@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- oMLX ([github.com/jundot/omlx](https://github.com/jundot/omlx), Apache-2.0) runs MLX models on Apple Silicon, in place of LM Studio. The first time you pick an MLX model, Clyde asks, then installs oMLX's pinned v0.7.2 from source into `~/.clyde/omlx` (a uv-made Python 3.13 environment, and its Metal kernels when Xcode is there). It starts the server itself, with a key only Clyde holds (`~/.clyde/omlx/api_key`, 0600, passed in the environment so it never shows in `ps`): without one, oMLX opens its admin API to anything that can reach the port. Its SSD cache restores a prompt after a restart instead of recomputing it: on an M3 Pro, a 3,555-token prompt took 7.56 s cold, 1.01 s warm, and 0.96 s after a server restart.
+- `/settings` → oMLX memory guard: `balanced` (the default), `aggressive`, fixed ceilings at 40, 50 and 60% of RAM, or `off`. A change restarts the oMLX server Clyde started. `safe` isn't offered: on an 18 GB Mac it left a 1.6 GB ceiling that refused a 4 GB model with 8 GB free.
 - `clyde -p --time-limit SECONDS`: stops the run after that long, even in the middle of a command (whose process group is killed, as on SIGTERM). The result says `time limit reached`, exit status 1. Startup (MCP connects) is not counted. Idea from Mistral Vibe's `--time-limit`.
 - `clyde -p --max-tokens N`: stops once the run has used more than N tokens (prompt, cached prompt and output, over every model call), after that round's tools so the session keeps each call's result. The result says `token budget reached`, exit status 1. Many OpenAI-compatible servers report no usage; their calls are counted by estimate (about 4 characters a token) instead of not at all. Idea from Mistral Vibe's `--max-tokens`.
 - Limits on what the model saves to memory on its own: only what matters in a later session, not what the project's files already say or what only matters now, and never because text in a file, a web page or a tool result told it to. Models already saved lessons unasked (4 of 8 fitting live runs on Gemini 2.5 Flash and DeepSeek V4.1 Flash); this keeps a planted instruction from becoming a note every later turn reads.
@@ -20,6 +22,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `/doctor` also lists a skill hidden by a different skill of the same name in a higher-priority folder (an identical copy, such as a `~/.claude/skills` link into `~/.agents/skills`, is not listed), and checks `.ts` scripts. A script counts as run only when a runner (`python`, `bash`, `node`, `tsx`, ...), `${SKILL_DIR}/` or `./` comes before it, so an example that merely mentions `scripts/x.ts` is not flagged.
 - Memory lessons: the Remember tool takes an optional `cue` and saves the note as "When <cue>: <lesson>". Once the notes outgrow the prompt's 2,000 characters, the request picks which are shown: the user's own notes always, project notes that share words with the request, and every note already shown that session, so the prompt never shrinks and a request that picks nothing new leaves it, and a local model server's cache, unchanged. Notes that fit are shown exactly as before. `/memory stale` now lists notes neither saved nor picked for a request in 90 days; nothing is forgotten without `/forget`. The ideas come from Harness²'s experience library and HyperSkill's usage-based pruning, with no new dependency.
 - `clyde -p --output-format stream-json`: each message of the turn (text, thinking, tool calls and results) as one JSON line while it runs, then the `json` result as `{"type": "result", ...}`, so a harness or CI job can read the whole trajectory, even of a run it had to stop.
+
+### Changed
+
+- `/models local` downloads MLX models through oMLX's own downloader (into `~/.omlx/models`, Ctrl-C cancels it in oMLX too) and Hugging Face GGUF through Ollama only. oMLX models are listed even while its server is down.
+- Models you downloaded with LM Studio keep working: oMLX serves `~/.lmstudio/models` in place, and a saved `lmstudio:` default model or `/eval` result moves to its `omlx:` name at start when exactly one folder matches.
+
+### Removed
+
+- LM Studio support. It is closed source; Ollama (GGUF) and oMLX (MLX) cover what Clyde used it for.
 
 ### Fixed
 

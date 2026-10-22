@@ -48,7 +48,7 @@ class TestProviders(ts.BonnieCase):
         status, body = self.call("GET", "/api/providers")
         rows = {r["id"]: r for r in body["providers"]}
         self.assertEqual(status, 200)
-        self.assertTrue({"anthropic", "openai", "google", "ollama-cloud", "cloudflare", "ollama", "lmstudio"} <= set(rows))
+        self.assertTrue({"anthropic", "openai", "google", "ollama-cloud", "cloudflare", "ollama", "omlx"} <= set(rows))
         self.assertTrue(all(r["url"].startswith("https://") for r in rows.values()))
         self.assertFalse(any(r["connected"] for r in rows.values() if r["kind"] == "key"))
         self.assertEqual(rows["cloudflare"]["extra"]["set"], False)

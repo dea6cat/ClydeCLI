@@ -22,7 +22,7 @@ def from_specs(specs: Iterable[Any]) -> tuple[ToolSpec, ...]:
 
 
 def _object_schema(schema) -> dict:  # type: ignore[no-untyped-def]
-    """Strict servers (LM Studio, OpenAI strict mode) require parameters with type object and a
+    """Strict servers (OpenAI strict mode, some local servers) require parameters with type object and a
     properties map, even for a tool that takes nothing."""
     out = dict(schema or {})
     out.setdefault("type", "object")
@@ -31,7 +31,7 @@ def _object_schema(schema) -> dict:  # type: ignore[no-untyped-def]
 
 
 def to_openai(specs: tuple[ToolSpec, ...]) -> list[dict]:
-    """OpenAI / OpenRouter / Mistral / NVIDIA / DeepSeek / Cerebras / GLM / Ollama / LM Studio shape."""
+    """OpenAI / OpenRouter / Mistral / NVIDIA / DeepSeek / Cerebras / GLM / Ollama / oMLX shape."""
     return [
         {"type": "function", "function": {
             "name": s.name, "description": s.description, "parameters": _object_schema(s.input_schema),
