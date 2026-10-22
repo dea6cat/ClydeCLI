@@ -29,7 +29,7 @@ from src.config import clyde_home
 
 from . import fit
 from .base import ProviderError, get_json, post_json
-from .openai_compat import OpenAICompatProvider
+from .openai_compat import OpenAICompatProvider, _is_chat_model
 
 DEFAULT_URL = "http://localhost:8000/v1"
 REPO = "https://github.com/jundot/omlx.git"
@@ -165,6 +165,27 @@ def adopt_lmstudio_models() -> bool:
     return True
 
 
+def model_dirs() -> list[Path]:
+    """The folders oMLX serves models from: those in its settings, else its own; LM Studio's joins at the next start."""
+    try:
+        listed = json.loads(settings_file().read_text(encoding="utf-8")).get("model", {}).get("model_dirs") or []
+    except (OSError, ValueError, AttributeError):
+        listed = []
+    dirs = [Path(d).expanduser() for d in listed if isinstance(d, str)] or [Path.home() / ".omlx" / "models"]
+    return dirs + [LMSTUDIO_MODELS] if LMSTUDIO_MODELS.is_dir() and LMSTUDIO_MODELS not in dirs else dirs
+
+
+def on_disk() -> dict[str, Path]:
+    """The MLX models in those folders (a config.json and safetensors weights, one or two levels down, as in
+    publisher/model), by the id oMLX serves them under: the folder's own name."""
+    found: dict[str, Path] = {}
+    for root in model_dirs():
+        for config in sorted([*root.glob("*/config.json"), *root.glob("*/*/config.json")]):
+            if any(config.parent.glob("*.safetensors")):
+                found.setdefault(config.parent.name, config.parent)
+    return found
+
+
 def install(log: Callable[[str], None] = print) -> str | None:
     """Install oMLX from its pinned release into ~/.clyde/omlx: a git checkout, a Python 3.13 venv made by uv, and the
     native Metal kernels when Xcode's Metal toolchain is there (without them some model families fall back to much
@@ -237,7 +258,17 @@ class OMLXProvider(OpenAICompatProvider):
         return models
 
     def _entry(self, model: str) -> dict:
-        return next((m for m in self._status() if m.get("id") == model), {})
+        """The model's entry from the server, else what its folder tells while the server is down."""
+        if served := next((m for m in self._status() if m.get("id") == model), None):
+            return served
+        folder = on_disk().get(model)
+        if folder is None:
+            return {}
+        return {"id": model, "model_path": str(folder), "estimated_size": sum(f.stat().st_size for f in folder.glob("*.safetensors"))}
+
+    def _fetch_models(self) -> list[str]:
+        """The server's models, or the ones on disk while it is down (it only starts when a request needs it)."""
+        return super()._fetch_models() if self._server_up() else sorted(m for m in on_disk() if _is_chat_model(m))
 
     def context_window(self, model: str) -> int:
         """The window oMLX serves the model with (`max_model_len` in /v1/models), else the one Clyde plans."""

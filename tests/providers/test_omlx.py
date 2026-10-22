@@ -137,6 +137,19 @@ class TestOMLX(unittest.TestCase):
             self.assertFalse(pid_file.exists())
         self.assertFalse(omlx.stop_server())   # nothing started: nothing to stop
 
+    def test_models_are_listed_from_disk_while_the_server_is_down(self):
+        own, lms, settings = Path(self.tmp) / "own", Path(self.tmp) / "lms", Path(self.tmp) / "omlx-settings.json"
+        for folder in (own / "Qwen3-8B-4bit", lms / "AnkitAI" / "Parable-4B-MLX-8bit", lms / "x" / "bge-m3-embedding", own / "no-weights"):
+            folder.mkdir(parents=True)
+            (folder / "config.json").write_text("{}")
+            if folder.name != "no-weights":
+                (folder / "model.safetensors").write_bytes(b"0" * 10)
+        settings.write_text(json.dumps({"model": {"model_dirs": [str(own)]}}))
+        with patch.object(omlx, "LMSTUDIO_MODELS", lms), patch.object(omlx, "settings_file", return_value=settings), \
+                patch.object(self.provider, "_server_up", return_value=False), patch.object(self.provider, "_status", return_value=[]):
+            self.assertEqual(self.provider._fetch_models(), ["Parable-4B-MLX-8bit", "Qwen3-8B-4bit"])   # bare folder names, no embedder
+            self.assertEqual(self.provider._entry("Qwen3-8B-4bit")["estimated_size"], 10)
+
     def test_only_offered_on_apple_silicon(self):
         with patch.object(omlx.sys, "platform", "linux"):
             self.assertFalse(omlx.supported())
