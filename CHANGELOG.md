@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `/proxy` and two rows in `/settings` (Network proxy, Company certificate): use the environment's proxy (the default), a proxy URL, or none, and add a company root certificate for networks that inspect TLS. They are applied at start through the standard variables, so MCP servers, the oMLX downloader and Bash commands take the same route. The certificate is added to the default roots, not put in their place. `/doctor` shows both, without a proxy's password. SOCKS and stored proxy passwords aren't supported.
+- `clyde doctor` and `/doctor` show the update channel (`latest` follows every commit on main, `stable` tagged releases) and the command that switches it. It used to show only in `/settings` or a `clyde update --check` that reached GitHub.
 - `/doctor` checks oMLX's native Metal kernels by asking the oMLX install itself. Without them GLM-5.2, MiniMax M3 and Qwen3.5 models fall back to much slower generic paths without a word; the line names the missing kernels and the command that builds them. Shown on Apple Silicon once oMLX is installed.
 
 ### Fixed

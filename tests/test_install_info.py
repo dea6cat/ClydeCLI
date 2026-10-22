@@ -73,6 +73,14 @@ class TestReport(unittest.TestCase):
                 patch("src.install.license_gate.is_accepted", return_value=True):
             return "\n".join(ii.report_lines())
 
+    def test_the_update_channel_is_shown_with_how_to_switch(self):
+        with patch("src.config.get_update_channel", return_value="latest"):
+            self.assertIn("✓ Update channel: latest (`clyde update` follows every commit on main; "
+                          "`clyde update --channel stable` switches)", self._report([Path("/a/clyde")], None))
+        with patch("src.config.get_update_channel", return_value="stable"):
+            self.assertIn("Update channel: stable (`clyde update` follows tagged releases; `clyde update --channel latest` switches)",
+                          self._report([Path("/a/clyde")], None))
+
     def test_one_install_is_clean(self):
         text = self._report([Path("/a/clyde")], None)
         self.assertNotIn("✗", text)

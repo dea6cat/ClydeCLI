@@ -100,10 +100,15 @@ def _check(ok: bool, text: str, hint: str = "") -> str:
 
 def report_lines() -> list[str]:
     """The install section of `clyde doctor` and `/doctor`."""
+    from src.config import get_update_channel
     from src.install import license_gate
     info = detect()
     lines = [_check(True, f"ClydeCLI {info.version} installed with {info.method}"
                     + (f" from commit {info.commit}" if info.commit else "") + f" ({info.location})")]
+    channel = get_update_channel()
+    lines.append(_check(True, f"Update channel: {channel} (`clyde update` follows "
+                        + ("every commit on main" if channel == "latest" else "tagged releases")
+                        + f"; `clyde update --channel {'stable' if channel == 'latest' else 'latest'}` switches)"))
     commands = clyde_commands()
     if not commands:
         lines.append(_check(False, "no `clyde` on PATH", "run `uv tool update-shell` and open a new terminal"))
