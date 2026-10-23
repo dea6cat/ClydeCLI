@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-22
+
 ### Added
 
 - `/refine`: Clyde reviews the session and proposes up to three memory notes to add or drop, each backed by a quote from your own messages (checked, so a tool's output can't justify a note), asks before each, and logs it so `/refine undo` reverses the latest. An Auto-refine row in `/settings` (off, before compaction, every 10 or 25 turns) runs it on its own, adding notes only and printing each one. The idea comes from prime-agent's continual harness (MIT); this one is built on Clyde's memory notes.
@@ -766,6 +768,7 @@ The focus was on building a solid foundation with clean architecture, comprehens
 
 ---
 
+[0.7.0]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.7.0
 [0.6.0]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.6.0
 [0.5.11]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.5.11
 [0.5.10]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.5.10
