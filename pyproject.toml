@@ -29,6 +29,8 @@ dependencies = [
     "rich",
     "prompt-toolkit",
     "tiktoken>=0.7.0",
+    # httpx trusts certifi's roots; 2026.10.19 drops emSign ECC Root CA - G3 (the eMudhra weak-key incident).
+    "certifi>=2026.10.19",
     # Bundled security scanner for skills, plugins and MCP servers from other agents (not on PyPI).
     "skillspector @ git+https://github.com/NVIDIA/SkillSpector@v2.12.0",
     # The Data tool's engine: profile and query CSV, Parquet and JSON files with read-only SQL.

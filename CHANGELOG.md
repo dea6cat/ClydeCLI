@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Clyde now requires certifi 2026.10.19 or later, the bundle of root certificates its HTTPS requests trust. That release drops the emSign ECC Root CA - G3 after eMudhra's weak-key incident; an older bundle kept trusting it, which left connections open to interception.
+
 ## [0.7.0] - 2026-10-22
 
 ### Added
