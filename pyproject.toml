@@ -33,8 +33,8 @@ dependencies = [
     # The Data tool's engine: profile and query CSV, Parquet and JSON files with read-only SQL.
     "duckdb>=1.5,<2",
     # Ranks local models by real benchmarks and how they fit the machine: our fork of github.com/Andyyyy64/whichllm (MIT) with a library entry point.
-    # Pinned to a commit (the stale-cache branch tip): clyde-2 was deleted, and a branch pin can move or vanish under us again.
-    "whichllm @ git+https://github.com/dea6cat/whichLocalLLM@30c66fe567f278b3ee929a50165b8bd617b7a07a",
+    # The fork is published as whichllm-clyde on PyPI (dist name differs; it still imports as `whichllm`).
+    "whichllm-clyde>=0.5.20",
 ]
 
 [project.optional-dependencies]
