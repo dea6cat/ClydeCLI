@@ -7,7 +7,9 @@ name = "clyde-cli"
 version = "0.7.0"
 description = "A coding-agent harness for your terminal: bring any LLM, cloud or local, and Clyde turns it into an agent"
 readme = "README.md"
-license = {text = "PolyForm-Noncommercial-1.0.0 (portions MIT); see LICENSE"}
+# SPDX (PEP 639): the "(portions MIT)" detail lives in LICENSE. setuptools >=77 accepts the expression form; the old table form is deprecated.
+license = "PolyForm-Noncommercial-1.0.0"
+license-files = ["LICENSE"]
 # 3.12 is SkillSpector's floor and 3.14 its ceiling (v2.12.0 declares >=3.12,<3.15); raise the ceiling when it does.
 requires-python = ">=3.12,<3.15"
 authors = [
@@ -17,7 +19,6 @@ keywords = ["cli", "ai", "llm", "agent", "anthropic", "openai", "gemini", "ollam
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "License :: Other/Proprietary License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
