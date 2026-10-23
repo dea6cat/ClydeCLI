@@ -16,9 +16,10 @@
 | `/login [provider]` | Connect a provider or replace its key (`custom` adds any OpenAI-compatible API), then switch to its model |
 | `/models [all\|refresh]` | List models from every connected provider; hides ones `/eval` found broken (`all` shows them, `refresh` re-fetches the lists) |
 | `/models local [best\|ollama\|hf\|mlx] [words]` | Find local models on ollama.com and Hugging Face (GGUF, and MLX on Apple Silicon) that fit this machine, rated relax / balance / hard, and download one |
+| `/purge [words]` | Delete local models from Ollama and oMLX to free disk: bare, all of them; with words, only those whose name matches. Lists what goes and the space freed, and asks first |
 | `/eval [filter]` | Test listed models on a tool call and a round trip, then a hand of 11 graded tasks for those that pass; shows pass/fail, hand score, latency and tok/s, and remembers which ones don't work |
 | `/think [level]` | Reasoning: off, low, medium, high, on, default |
-| `/doctor`    | Diagnose environment, config, keys and permissions |
+| `/doctor`    | Diagnose environment, config, keys and permissions; shows the update channel and the proxy in use, and warns when oMLX's custom kernels are missing (GLM-5.2, MiniMax M3 and Qwen3.5 run on the slow path without them) |
 | `/proxy`     | Show or set the network proxy and a company root certificate |
 | `/mcp`       | Connected MCP servers and their tools |
 | `/mcp login <server>` / `/mcp logout <server>` | OAuth sign-in (browser) for a remote MCP server, or forget its tokens |
