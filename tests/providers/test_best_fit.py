@@ -51,6 +51,16 @@ class TestBestFit(unittest.TestCase):
         with patch.object(best_fit, "_cache_state", return_value="fresh"), patch.object(best_fit, "_ranked", side_effect=OSError("offline")):
             self.assertEqual(best_fit.search("", 12 * GB), [])
 
+    def test_without_whichllm_installed_there_are_no_offers_and_no_build(self):
+        with patch.object(best_fit, "find_spec", return_value=None), patch.object(best_fit, "_build") as build:
+            self.assertFalse(best_fit.available())
+            self.assertEqual(best_fit.search("", 12 * GB), [])
+        build.assert_not_called()
+
+    def test_a_cache_that_cannot_be_read_gives_no_offers(self):
+        with patch.object(best_fit, "_cache_state", side_effect=ValueError("corrupt")):
+            self.assertEqual(best_fit.search("", 12 * GB), [])
+
     def test_a_cold_cache_starts_the_build_in_the_background_and_returns_nothing(self):
         with patch.object(best_fit, "_cache_state", return_value="none"), patch.object(best_fit, "_build") as build:
             self.assertEqual(best_fit.search("", 12 * GB), [])

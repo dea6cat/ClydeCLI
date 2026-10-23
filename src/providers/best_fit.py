@@ -10,6 +10,7 @@ from __future__ import annotations
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
+from importlib.util import find_spec
 
 from src.tuning import tune_profile
 
@@ -40,6 +41,11 @@ def detail(r) -> str:  # type: ignore[no-untyped-def]
     if r.model.license:
         parts.append(r.model.license)
     return " · ".join(parts)
+
+
+def available() -> bool:
+    """True when whichllm is installed (it ships as whichllm-clyde and imports as whichllm)."""
+    return find_spec("whichllm") is not None
 
 
 _builder: threading.Thread | None = None
@@ -89,12 +95,15 @@ def _ranked(budget: int, chip: str, profile: str, refresh: bool = False) -> tupl
 
 def search(query: str, budget: int) -> list[Offer]:
     """Top-ranked GGUF models that fit `budget`, as offers Ollama can pull (`hf.co/<repo>:<quant>`)."""
-    chip, profile, state = fit.chip(), _profile(), _cache_state()
-    if state != "fresh":
-        _build(budget, chip, profile)   # never make the picker wait minutes for it
-    if state == "none":
+    if not available():
         return []
+    chip, profile = fit.chip(), _profile()
     try:
+        state = _cache_state()
+        if state != "fresh":
+            _build(budget, chip, profile)   # never make the picker wait minutes for it
+        if state == "none":
+            return []
         ranked = _ranked(budget, chip, profile)
     except Exception:   # a failed fetch or an upstream change must never break /models local
         return []

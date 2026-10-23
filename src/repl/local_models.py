@@ -321,7 +321,10 @@ def show(repl: Any, arg: str) -> None:
         with ThreadPoolExecutor(max_workers=len(names)) as pool:
             found = pool.map(lambda name: SOURCES[name](query, budget)[:shown], names)
             offers = [o for rows in found for o in rows]
-    if best_fit.pending():
+    if "best" in names and not best_fit.available():
+        repl.console.print("[dim]whichllm isn't installed, so the 'best' group is left out; "
+                           "`pip install whichllm-clyde` adds it.[/dim]")
+    elif best_fit.pending():
         repl.console.print("[dim]whichllm is building its ranking of models in the background (about 5 minutes, then every 6 hours); "
                            "the 'best' group joins this list when it is ready.[/dim]")
     failed = {ref.lower() for ref in hidden_refs()}   # ollama.com's tool tag isn't proof: /eval already showed some of these don't work

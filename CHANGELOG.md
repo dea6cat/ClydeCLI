@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `/models local` no longer fails when whichllm isn't installed: the `best` group is left out, and `/models local best` says why and how to add it (`pip install whichllm-clyde`). A whichllm cache that can't be read is treated the same way.
+
 ## [0.7.0] - 2026-10-22
 
 ### Added
