@@ -384,6 +384,15 @@ There is no OS sandbox. Clyde used to run shell commands under macOS `sandbox-ex
 could have broken every command, so the permission prompt is the guard instead. The catch: once you approve a command, it can write
 anywhere you can. Read what it says before you press yes.
 
+## Answering in your own words
+
+At a permission prompt you can type an answer instead of a key. A model reads it in a request of its own, seeing only what you
+typed, never the action asking to run, and decides whether it is a plain yes: "sure, go ahead", "dale" and "ok" allow it. Anything
+else holds that action and goes to Clyde as your words at its next step, so "no, edit the copy in src/ instead" both stops the edit
+and says what to do. A yes with a condition ("yes but only the old ones") counts as anything else. The check uses the session's
+model (the one dealt last under cardShuffle), takes at most 15 seconds, and if the model can't be reached or doesn't answer in time,
+the action doesn't run. In Bonnie, type the answer while the card waits and press Steer.
+
 ## Permission Rules
 
 Stop answering the same prompt. Add rules to `~/.clyde/settings.json` (Claude Code's syntax), or
