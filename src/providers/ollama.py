@@ -159,7 +159,10 @@ class OllamaProvider:
         if reasoning is None or not self.supports_reasoning(model):
             return None
         if reasoning == "off":
-            return False
+            # A thinking-only model (Qwen3 Thinking 2507: its template opens every answer with <think> and never reads .Think) reasons
+            # anyway; with think:false Ollama stops splitting that out and it lands in the answer. Keep it in the thinking channel.
+            template = self._show(model).get("template") or ""
+            return "<think>" in template and not re.search(r"\.Think\b", template)
         if reasoning in ("low", "medium", "high") and any(s in model.lower() for s in _THINK_STRING_MODELS):
             return reasoning
         return True

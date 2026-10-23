@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Reasoning off on Ollama's thinking-only models (`qwen3:4b`, Qwen3 Thinking 2507): they reason whatever `think` says, and with `think: false` Ollama stopped splitting the reasoning out, so it landed in the answer. Compaction summaries, `/refine` and any other no-reasoning request got prose instead of the answer. Clyde now reads the model's template and keeps that reasoning in the thinking channel; models that can turn it off still do.
 - With `HTTPS_PROXY` set, Clyde sent its requests to `localhost` (Ollama, oMLX) to the proxy too, which a company proxy can't reach. They now always go direct.
 - WebFetch refused every URL behind a proxy on a private address (most company proxies): its private-network check was applied to the connection to the proxy. It now applies to the URL and every redirect, and a `localhost` or metadata address is still refused.
 - An untrusted TLS certificate is reported as such, with the `/proxy ca` fix, instead of a generic connection error that was retried.
