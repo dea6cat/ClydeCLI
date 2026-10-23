@@ -119,6 +119,8 @@ Each model downloads with the app that runs it: ollama.com models and Hugging Fa
 `~/.omlx/models` as `publisher/model` and served as `omlx:<model>` (Ctrl-C cancels it in oMLX too). MLX sizes are
 exact (the repo's safetensors); GGUF sizes are exact per file; ollama.com sizes are estimated at Q4.
 
+The split is deliberate. Ollama is the mature runner for a mature format; MLX is young, and so is oMLX, so the young stack runs the young format. oMLX can serve GGUF — it just isn't the runner to trust with it yet.
+
 **A second opinion on weak replies.** Small local models slip: an empty answer, a pretend tool call
 (`[TOOL_SEARCH]` written out as text), leaked special tokens, or a short refusal that says it cannot reach files or run
 anything (a model that was not trained for tool use does that instead of calling the tool). These are plain text checks;
