@@ -35,6 +35,15 @@ class ThinkValue(unittest.TestCase):
     def test_level_is_native_string_for_gpt_oss(self):
         self.assertEqual(_prov(["thinking"])._think_value("gpt-oss:20b", "high"), "high")
 
+    def test_off_keeps_a_thinking_only_models_reasoning_out_of_the_answer(self):
+        # Qwen3 Thinking 2507's template: always opens with <think>, only checks IsThinkSet; think:false would dump the reasoning into content
+        p = OllamaProvider()
+        p._show = lambda model: {"capabilities": ["thinking"], "template": "{{ if $.IsThinkSet }}x{{ end }}<|im_start|>assistant\n<think>\n"}
+        self.assertIs(p._think_value("qwen3:4b", "off"), True)
+        # a hybrid template that reads .Think can turn it off
+        p._show = lambda model: {"capabilities": ["thinking"], "template": "{{ if not $.Think }}<think>\n\n</think>{{ end }}"}
+        self.assertIs(p._think_value("qwen3:8b", "off"), False)
+
     def test_noncapable_model_never_gets_think(self):
         p = _prov(["completion", "tools"])
         for lvl in ("off", "on", "low", "medium", "high", None):
