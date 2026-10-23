@@ -92,5 +92,3 @@ graphify-out/
 # ClydeCLI code map (Map tool)
 .clyde/code-map/
 
-# Local design docs
-docs/
