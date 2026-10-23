@@ -223,6 +223,7 @@ _HELP_TEXT = """
 - `/settings` - Status, Config, Usage and Stats tabs: session details, the options you can toggle, token use, and per-day and per-model charts
 - `/goal [text|plan|clear]` - Set a goal for this session (kept in the system prompt every turn), show it, or clear it; `plan` makes it "every phase of the saved plan is complete"
 - `/remember [project] TEXT` - Keep a note between sessions, about you (default) or this project; `/memory` lists the notes (`/memory stale` those older than 90 days), `/forget [project] N` drops one; the model can save one too when you ask it to remember
+- `/refine [focus|undo]` - Review this session for notes worth keeping (or wrong ones to drop), each backed by a quote from you; asks before each; `undo` reverses the latest; /settings Auto-refine runs it on its own
 - `/plan [done|start|pending N|clear]` - Show the saved plan and its phases; set phase N's status; or delete the plan
 - `/terse [on|off]` - Shorter replies (fewer tokens, quicker on local models); bare opens a picker; saved
 - `/purge [name]` - Delete local models (Ollama and oMLX) from disk, all of them or only those matching name; asks first
@@ -456,6 +457,7 @@ class ClydeREPL:
             "/remember",
             "/memory",
             "/forget",
+            "/refine",
             "/eval",
             "/think",
             "/tools",
@@ -1456,6 +1458,9 @@ class ClydeREPL:
         elif cmd == '/forget' or cmd.startswith('/forget '):
             self._handle_forget(raw.split(maxsplit=1)[1].strip() if " " in raw.strip() else "")
 
+        elif cmd == '/refine' or cmd.startswith('/refine '):
+            self._handle_refine(raw.split(maxsplit=1)[1].strip() if " " in raw.strip() else "")
+
         elif cmd == '/plan' or cmd.startswith('/plan '):
             self._handle_plan(raw.split(maxsplit=1)[1].strip() if " " in raw.strip() else "")
 
@@ -1547,6 +1552,7 @@ class ClydeREPL:
             self.command_context.config["provider"] = self.provider
             self.command_context.config["model"] = self.model
             self.command_context.config["system_prompt"] = ""
+            self._refine_before_compaction()
             # Try new command system
             try:
                 handled, result_text = self._try_execute_new_command('compact', '')
@@ -2039,6 +2045,7 @@ class ClydeREPL:
         """Compact the conversation before a turn when it nears the context window."""
         if not needs_auto_compact(self.session.conversation, self._context_window()):
             return
+        self._refine_before_compaction()
         self.console.print("[dim]Context is nearly full; compacting the conversation...[/dim]")
         started = time.monotonic()
         activity.set("compacting the conversation")
@@ -2240,6 +2247,7 @@ class ClydeREPL:
                 self.console.print()
             dealt = self.provider.dealt if isinstance(self.provider, CardShuffle) else None
             self._turn_footer(past, turn_started, result.usage, dealt or model_ref(self.provider, self.model))
+            self._refine_after_turn()
 
         except Exception as e:
             self._current_status = None
@@ -2509,6 +2517,76 @@ class ClydeREPL:
             self.console.print(f"[red]{e}[/red]")
             return
         self.console.print(f"[green]Forgot ({scope}):[/green] {gone}")
+
+    def _refine_review(self, focus: str = "", *, adds_only: bool = False):
+        """One refine review of this session with the current model; its usage is counted like any request."""
+        from src import refine
+        with self.console.status("Refining", spinner="dots", spinner_style=_CARD_ACCENT):
+            edits, skipped, usage = refine.review(self.provider, self.model, self.session.conversation, self.tool_context.workspace_root,
+                                                  focus, adds_only=adds_only)
+        if usage:
+            self.cost_tracker.record_usage(self.provider_name, self.model, usage, label="refine")
+        return edits, skipped
+
+    def _handle_refine(self, arg: str) -> None:
+        """/refine [focus]: review the session for memory notes to add or drop, asking before each; /refine undo reverses the latest."""
+        from src import refine
+        root = self.tool_context.workspace_root
+        if arg == "undo":
+            try:
+                self.console.print(f"[green]Undone:[/green] {refine.undo(root)}", highlight=False)
+            except ValueError as e:
+                self.console.print(f"[red]{e}[/red]")
+            return
+        try:
+            edits, skipped = self._refine_review(arg)
+        except Exception as e:
+            self.console.print(f"[red]Refine failed: {e}[/red]")
+            return
+        for reason in skipped:
+            self.console.print(f"[dim]Set aside: {reason}[/dim]", highlight=False)
+        if not edits:
+            self.console.print("Nothing worth keeping from this session yet.", markup=False)
+            return
+        kept = 0
+        for edit in edits:
+            if not self.tool_context.permission_handler("Refine", refine.describe(edit), None)[0]:
+                continue
+            try:
+                refine.apply(edit, root, "manual")
+                kept += 1
+            except ValueError as e:
+                self.console.print(f"[red]{e}[/red]")
+        if kept:
+            self.console.print(f"[green]Kept {kept} of {len(edits)}.[/green] /memory lists the notes; /refine undo reverses the latest.")
+
+    def _auto_refine(self, trigger: str) -> None:
+        """Auto-refine (/settings): review and apply, adding notes only, each one printed; a failure is a dim line, never the turn's error."""
+        from src import refine
+        try:
+            edits, _ = self._refine_review(adds_only=True)
+            for edit in edits:
+                note = refine.apply(edit, self.tool_context.workspace_root, f"auto: {trigger}")
+                self.console.print(f"[dim]♠ Refined ({edit.scope}): {note}  (/refine undo)[/dim]", highlight=False)
+        except Exception as e:
+            self.console.print(f"[dim]Auto-refine skipped: {e}[/dim]", highlight=False)
+
+    def _refine_after_turn(self) -> None:
+        """Count finished turns for an "every N turns" Auto-refine, and run it when the count comes round."""
+        from src import refine
+        every = refine.every_turns(refine.mode())
+        if not every or getattr(self, "headless", False):
+            return
+        self._refine_turns = getattr(self, "_refine_turns", 0) + 1
+        if self._refine_turns >= every:
+            self._refine_turns = 0
+            self._auto_refine(f"every {every} turns")
+
+    def _refine_before_compaction(self) -> None:
+        """Auto-refine "before compaction": review the messages compaction is about to summarise away."""
+        from src import refine
+        if refine.mode() == "before compaction":
+            self._auto_refine("before compaction")
 
     def _handle_plan(self, arg: str) -> None:
         """/plan [done|start|pending N|clear]: show the saved plan, set one phase's status, or delete the plan."""

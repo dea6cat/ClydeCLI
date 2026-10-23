@@ -15,6 +15,7 @@ from typing import Any, Callable
 
 from src import config as config_mod
 from src import network
+from src import refine
 from src.providers import omlx
 from src.ui import usage_stats as stats
 from src.ui.picker import scroll
@@ -75,6 +76,8 @@ def settings() -> list[Setting]:
         Setting("Trace requests", (True, False), lambda c: session(c).get("trace", True) is not False, _set_session("trace")),
         Setting("Terse replies", (True, False), lambda c: c.get("output_style") == "terse",
                 lambda on: config_mod.set_output_style("terse" if on else None)),
+        Setting("Auto-refine", refine.MODES, lambda c: refine.mode(), refine.set_mode,
+                applies="from your next turn; it only adds notes, each one printed, and /refine undo reverses the latest"),
         Setting("Max history", (50, 100, 200, 500), lambda c: session(c).get("max_history", 100), _set_session("max_history")),
         Setting("Context window (local models)", (None, 4096, 8192, 16384, 32768, 65536, 131072), lambda c: config_mod.get_context_tokens(),
                 config_mod.set_context_tokens, applies="your next message; oMLX serves the model with it"),

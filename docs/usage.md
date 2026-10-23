@@ -29,6 +29,7 @@
 | `/goal [text\|plan\|clear]` | A goal for this session, kept in the system prompt every turn (500 characters at most); `plan` makes it "every phase of the saved plan is complete" and it clears itself when the last phase is done |
 | `/remember [project] TEXT` | Keep a note between sessions, about you (default) or this project. The model can save one too when you ask it to remember something |
 | `/memory` / `/forget [project] N` | List the notes with numbers; drop one |
+| `/refine [focus]` / `/refine undo` | Review this session for notes worth keeping or wrong ones to drop, each backed by a quote from you; asks before each. `undo` reverses the latest. The Auto-refine row in `/settings` runs it on its own |
 | `/plan [done\|start\|pending N \| clear]` | Show the saved plan; set phase N's status; or delete the plan |
 | `/debug [path]` | The last turn's model and tool calls, or the trace file path |
 | `/skills scan` / `/skills allow <name>` | Rescan skills with SkillSpector (LLM review when your model allows) and show verdicts; let a held-back skill, plugin or `mcp:<server>` in |
@@ -255,6 +256,18 @@ notes, newest first, up to 1,000 characters, then the notes that share words wit
 those 1,000), and every note already shown in this session (so the prompt does not change again on a request that picks nothing new).
 `/memory` then marks the notes not in the prompt yet. `/memory stale` lists notes neither saved nor picked for a request in
 90 days; Clyde never forgets one on its own, so you decide with `/forget`.
+
+`/refine` asks the current model, with no tools, to look back over the session since the last compaction and propose up to three
+edits to the notes: a preference or correction you stated, a project fact that took effort to find, or a note the session shows is
+wrong. Each edit must quote your own words as its evidence; Clyde checks the quote is really in one of your messages, so text a tool
+returned (a web page, a file) can never justify a note. It shows each edit with its quote and asks before keeping it, and
+`/refine undo` reverses the latest one. Add a focus to steer it: `/refine the test setup`. Every edit is logged to
+`~/.clyde/refine_history.jsonl`.
+
+The **Auto-refine** row in `/settings` runs the same review on its own: `before compaction` (it reads the messages compaction is
+about to summarise), `every 10 turns` or `every 25 turns`. Run that way it keeps what passes the checks without asking, only ever
+adds notes (dropping one needs `/refine`), and prints each note it keeps; `/refine undo` takes one back. It is `off` unless you
+choose otherwise, and each review is one more request to your model, counted in `/cost`.
 
 ## Plans
 
