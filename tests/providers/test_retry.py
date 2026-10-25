@@ -70,3 +70,43 @@ class Retry(unittest.TestCase):
         with self.assertRaises(ProviderError) as ctx:
             base.stream_with_retry(P(), Conversation(system_prompt="s"), "m", (), lambda _c: None, retries=0)
         self.assertEqual(str(ctx.exception), "[x] HTTP 503: down")
+
+    def test_a_rate_limit_without_retry_after_waits_longer_than_a_transient_blip(self):
+        # A rate window rarely resets inside the generic 1-2-4 s; 429 without Retry-After
+        # starts at 5 s and grows toward MAX_RETRY_AFTER_WAIT_S instead. The wait loop
+        # sleeps in 0.1 s slices, so the waits are read back as their total.
+        sleeps = []
+        base._time.sleep = sleeps.append
+        class P:
+            name="x"
+            def stream(self, c,m,t,on_text, *, cancel=None, **_kwargs):
+                raise ProviderError("x", "HTTP 429: rate limited", retryable=True, status=429)
+        with self.assertRaises(ProviderError):
+            base.stream_with_retry(P(), Conversation(system_prompt="s"), "m", (), lambda _c: None, retries=3)
+        self.assertAlmostEqual(sum(sleeps), 5.0 + 10.0 + 20.0, delta=0.5)
+
+    def test_transient_errors_keep_the_short_backoff(self):
+        sleeps = []
+        base._time.sleep = sleeps.append
+        class P:
+            name="x"
+            def stream(self, c,m,t,on_text, *, cancel=None, **_kwargs):
+                raise ProviderError("x", "HTTP 503: down", retryable=True, status=503)
+        with self.assertRaises(ProviderError):
+            base.stream_with_retry(P(), Conversation(system_prompt="s"), "m", (), lambda _c: None, retries=3)
+        self.assertAlmostEqual(sum(sleeps), 1.0 + 2.0 + 4.0, delta=0.5)
+
+    def test_a_rate_limit_that_survives_longer_backoff_can_still_succeed(self):
+        sleeps = []
+        base._time.sleep = sleeps.append
+        calls = {"n": 0}
+        class P:
+            name="x"
+            def stream(self, c,m,t,on_text, *, cancel=None, **_kwargs):
+                calls["n"] += 1
+                if calls["n"] < 3:
+                    raise ProviderError("x", "HTTP 429: rate limited", retryable=True, status=429)
+                return ProviderResponse(message=Message.assistant(text="ok"), raw={})
+        r = base.stream_with_retry(P(), Conversation(system_prompt="s"), "m", (), lambda _c: None, retries=3)
+        self.assertEqual(r.message.text, "ok")
+        self.assertAlmostEqual(sum(sleeps), 5.0 + 10.0, delta=0.5)
