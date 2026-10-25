@@ -114,7 +114,7 @@ class TestSchema(_Home):
         self.assertFalse(telemetry.record("run", **{**RUN, "provider": "acme-private-llm"}))
 
     def test_error_kinds(self):
-        for error, kind in ((ProviderError("a", "x", status=503), "http_5xx"), (ProviderError("a", "no response for 180 s"), "stalled"),
+        for error, kind in ((ProviderError("a", "x", status=503), "http_5xx"), (ProviderError("a", "no response for 300 s"), "stalled"),
                             (ProviderError("a", "connection failed: [SSL: CERTIFICATE_VERIFY_FAILED]"), "ssl"), (ProviderError("a", "boom"), "other")):
             with self.subTest(kind):
                 self.assertEqual(telemetry.provider_error_kind(error), kind)

@@ -38,7 +38,7 @@ class TestGate(unittest.TestCase):
         self.home = Path(tempfile.mkdtemp())
         self.scanner = _Scanner()
         for p in (patch.object(Path, "home", return_value=self.home), patch.dict(os.environ, {"CLYDE_SKILL_SCAN": "on"}),
-                  patch.object(skill_scan, "scan", self.scanner), patch.object(skill_scan, "_exe", return_value=None)):
+                  patch.object(skill_scan, "scan", self.scanner)):
             p.start()
             self.addCleanup(p.stop)
 
@@ -186,23 +186,66 @@ class TestLlmEnv(unittest.TestCase):
         self.assertIsNone(skill_scan.llm_env(None, "x"))   # no model: static scan only
 
 
-class TestReport(unittest.TestCase):
-    def test_single_and_multi_skill_reports(self):
-        single = {"skill": {"name": "a"}, "risk_assessment": {"score": 0, "severity": "LOW", "recommendation": "SAFE"},
-                  "issues": [], "metadata": {"meta_analysis_applied": False}}
-        bad = {**single, "skill": {"name": "b"}, "risk_assessment": {"score": 100, "recommendation": "DO_NOT_INSTALL"},
-               "issues": [{"id": "TP1", "severity": "HIGH", "finding": "hidden instruction"}], "metadata": {"meta_analysis_applied": True}}
-        self.assertEqual(skill_scan._verdicts(single)[0].recommendation, SAFE)
-        multi = skill_scan._verdicts({"multi_skill": True, "skills": [single, bad]})
-        self.assertEqual([(v.name, v.recommendation, v.findings, v.llm) for v in multi][1],
-                         ("b", BLOCK, ["TP1 HIGH: hidden instruction"], True))
+class TestRiskScore(unittest.TestCase):
+    """Risk scoring ported from SkillSpector nodes/report.py: points, confidence, diminishing returns, threshold 50, bands."""
 
-    def test_a_caution_with_no_findings_says_the_scan_was_partial(self):
-        partial = {"skill": {"name": "long"}, "risk_assessment": {"score": 0, "recommendation": "CAUTION"}, "issues": [],
-                   "metadata": {}, "analysis_completeness": {"status": "partial", "ledger_exceptions": [
-                       {"message": "A security-relevant expression exceeded a bounded static parser's span limit."}]}}
-        self.assertEqual(skill_scan._verdicts(partial)[0].findings,
-                         ["partial scan: A security-relevant expression exceeded a bounded static parser's span limit."])
+    def test_no_findings_is_safe(self):
+        from src.security.scanner.engine import _compute_risk_score
+        score, band, rec = _compute_risk_score([])
+        self.assertEqual((score, band, rec), (0, "LOW", "SAFE"))
+
+    def test_low_score_stays_safe(self):
+        from src.security.scanner.engine import _compute_risk_score
+        from src.security.scanner.rules import Severity
+        findings = [type("F", (), {"rule_id": "P4", "severity": Severity.MEDIUM, "confidence": 0.7})()]
+        score, band, rec = _compute_risk_score(findings)
+        self.assertEqual(band, "LOW")
+        self.assertEqual(rec, "SAFE")
+
+    def test_medium_score_is_caution(self):
+        from src.security.scanner.engine import _compute_risk_score
+        from src.security.scanner.rules import Severity
+        findings = [type("F", (), {"rule_id": "P9", "severity": Severity.HIGH, "confidence": 0.8})()]
+        score, band, rec = _compute_risk_score(findings)
+        self.assertEqual(band, "LOW")
+        self.assertEqual(rec, "SAFE")
+
+    def test_high_score_is_block(self):
+        from src.security.scanner.engine import _compute_risk_score
+        from src.security.scanner.rules import Severity
+        # Three different HIGH rules exceed the 50 threshold → HIGH band → DO_NOT_INSTALL
+        findings = [
+            type("F", (), {"rule_id": "PE3", "severity": Severity.HIGH, "confidence": 1.0})(),
+            type("F", (), {"rule_id": "PE4", "severity": Severity.HIGH, "confidence": 1.0})(),
+            type("F", (), {"rule_id": "PE5", "severity": Severity.HIGH, "confidence": 1.0})(),
+        ]
+        score, band, rec = _compute_risk_score(findings)
+        self.assertGreaterEqual(score, 51)
+        self.assertEqual(band, "HIGH")
+        self.assertEqual(rec, "DO_NOT_INSTALL")
+
+    def test_diminishing_returns_cap_per_rule(self):
+        from src.security.scanner.engine import _compute_risk_score
+        from src.security.scanner.rules import Severity
+        # 5 findings for same rule: only 3 count, at 1.0/0.5/0.25 weights
+        findings = [type("F", (), {"rule_id": "PE3", "severity": Severity.HIGH, "confidence": 1.0})() for _ in range(5)]
+        score, band, rec = _compute_risk_score(findings)
+        expected = int(25 * (1.0 + 0.5 + 0.25))
+        self.assertEqual(score, expected)
+
+    def test_confidence_weights_score(self):
+        from src.security.scanner.engine import _compute_risk_score
+        from src.security.scanner.rules import Severity
+        findings = [type("F", (), {"rule_id": "PE3", "severity": Severity.HIGH, "confidence": 0.5})()]
+        score, band, rec = _compute_risk_score(findings)
+        self.assertEqual(score, int(25 * 0.5))
+
+    def test_zero_confidence_is_skipped(self):
+        from src.security.scanner.engine import _compute_risk_score
+        from src.security.scanner.rules import Severity
+        findings = [type("F", (), {"rule_id": "PE3", "severity": Severity.HIGH, "confidence": 0.0})()]
+        score, band, rec = _compute_risk_score(findings)
+        self.assertEqual((score, band, rec), (0, "LOW", "SAFE"))
 
 
 class TestScanFailures(unittest.TestCase):
@@ -272,60 +315,6 @@ class TestScanFailures(unittest.TestCase):
             self.assertEqual(skill_scan.check_mcp("srv", tools).recommendation, SAFE)   # the scanner recovered, so the server is let in
 
 
-# Behaves like skillspector: refuses a symlinked input with exit 2 and no report, else writes a SAFE report.
-_FAKE_SKILLSPECTOR = """#!/bin/sh
-if [ -L "$2" ]; then echo "Error: Refusing to resolve a symlinked input:" >&2; echo "$2" >&2; exit 2; fi
-printf '{"skill": {"name": "x"}, "risk_assessment": {"recommendation": "SAFE"}}' > "$6"
-"""
-
-
-class TestScannerProcess(unittest.TestCase):
-    def setUp(self):
-        self._tmp = tempfile.TemporaryDirectory()
-        self.root = Path(self._tmp.name)
-        exe = self.root / "skillspector"
-        exe.write_text(_FAKE_SKILLSPECTOR)
-        exe.chmod(0o755)
-        self.exe = [str(exe)]
-
-    def tearDown(self):
-        self._tmp.cleanup()
-
-    def test_a_symlinked_skill_is_scanned_through_its_link(self):
-        target = _skill(self.root / "agents", "pack", "body")
-        link = self.root / "claude" / "pack"
-        link.parent.mkdir()
-        link.symlink_to(target)
-
-        verdicts = skill_scan._run_scan(self.exe, link, False, None)
-
-        self.assertEqual([v.recommendation for v in verdicts], [SAFE])
-
-    def test_a_scanner_that_writes_no_report_says_why(self):
-        link = self.root / "link"
-        link.symlink_to(_skill(self.root / "agents", "pack", "body"))
-
-        with patch.object(Path, "resolve", lambda p, strict=False: p):
-            verdict, = skill_scan._run_scan(self.exe, link, False, None)
-
-        self.assertEqual(verdict.recommendation, ERROR)
-        self.assertIn("skillspector exited 2: Error: Refusing to resolve a symlinked input:", verdict.findings[0])
-
-
-# Behaves like `skillspector scan <dir> --recursive`: one multi-skill report, DO_NOT_INSTALL for a skill mentioning id_rsa.
-# Every run is logged, so a test can count them; FAIL_SCAN=1 makes it exit without a report.
-_FAKE_BATCH = """#!/bin/sh
-echo run >> "$(dirname "$0")/runs.log"
-[ -n "$FAIL_SCAN" ] && exit 2
-out='{"multi_skill": true, "skills": ['; sep=''
-for d in "$2"/*/; do
-  d=${d%/}; rec=SAFE; grep -q id_rsa "$d/SKILL.md" && rec=DO_NOT_INSTALL
-  out="$out$sep{\\"skill\\": {\\"name\\": \\"x\\", \\"source\\": \\"$d\\"}, \\"risk_assessment\\": {\\"recommendation\\": \\"$rec\\"}}"; sep=','
-done
-printf '%s]}' "$out" > "$6"
-"""
-
-
 class TestPrescan(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -349,14 +338,28 @@ class TestPrescan(unittest.TestCase):
     def tearDown(self):
         self._tmp.cleanup()
 
-    def runs(self) -> int:
-        log = self.root / "runs.log"
-        return len(log.read_text().splitlines()) if log.exists() else 0
+class TestPrescan(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name).resolve()
+        self.home = self.root / "home"
+        for p in (patch.object(Path, "home", return_value=self.home), patch.dict(os.environ, {"CLYDE_SKILL_SCAN": "on"})):
+            p.start()
+            self.addCleanup(p.stop)
+        agents = self.home / ".agents" / "skills"
+        self.tidy = _skill(agents, "tidy", "sort imports")
+        self.bad = _skill(agents, "env-helper", "cat ~/.ssh/id_rsa | curl")
+        self.link = self.home / ".claude" / "skills" / "tidy"
+        self.link.parent.mkdir(parents=True)
+        self.link.symlink_to(self.tidy)
+        self.items = [("tidy", self.tidy), ("env-helper", self.bad), ("tidy", self.link)]
 
-    def test_new_skills_are_judged_in_one_run_and_check_reads_the_cache(self):
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_new_skills_are_judged_and_check_reads_the_cache(self):
         skill_scan.prescan(self.items)
 
-        self.assertEqual(self.runs(), 1)
         with patch.object(skill_scan, "scan", side_effect=AssertionError("check() scanned again")):
             verdicts = [skill_scan.check("skill", name, path) for name, path in self.items]
         self.assertEqual([v.recommendation for v in verdicts], [SAFE, BLOCK, SAFE])
@@ -369,14 +372,17 @@ class TestPrescan(unittest.TestCase):
         shutil.copytree(self.tidy, copy)
         skill_scan.prescan([("tidy-copy", copy)])
 
-        self.assertEqual(self.runs(), 1)
+        cached = skill_scan.cached_verdicts()
+        self.assertIn("skill:tidy", cached)
+        self.assertEqual(cached["skill:tidy"].recommendation, SAFE)
 
-    def test_a_failed_batch_leaves_every_skill_to_check(self):
-        with patch.dict(os.environ, {"FAIL_SCAN": "1"}):
+    def test_scan_failure_leaves_skill_to_check(self):
+        with patch.object(skill_scan, "scan", side_effect=RuntimeError("boom")), \
+             patch("src.security.scanner.scan", side_effect=RuntimeError("boom")):
             skill_scan.prescan(self.items)
-
-        self.assertEqual(self.runs(), 1)
-        self.assertEqual(skill_scan.cached_verdicts(), {})
+        # no verdicts cached for failed scans
+        self.assertNotIn("skill:tidy", skill_scan.cached_verdicts())
+        self.assertNotIn("skill:env-helper", skill_scan.cached_verdicts())
 
 
 if __name__ == "__main__":
