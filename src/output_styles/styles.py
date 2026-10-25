@@ -39,6 +39,16 @@ TERSE_RULE = (
     "paths, numbers and error text exact. Be fully clear for warnings, destructive actions and multi-step instructions."
 )
 
+# Caveman voice: ultra-terse, simple grammar, no articles or "the"/"a"/"is". Like a grunt-led engineer.
+# Saves even more tokens than terse; good for local models and quick checks.
+CAVEMAN_RULE = (
+    "Answer like a caveman: short, broken English. No 'the', 'a', 'an', 'is', 'are'. "
+    "Lead with the answer. No greetings, no restating the question, no closing offers or recaps. "
+    "Fragments are fine. Keep code, commands, paths, numbers and error text exact. "
+    "Be fully clear for warnings, destructive actions and multi-step instructions. "
+    "Example: 'Code fixed. Run test.' not 'I have fixed the code. Run the test.'"
+)
+
 BUILTIN_OUTPUT_STYLES: dict[str, OutputStyle] = {
     "default": OutputStyle(
         name="default",
@@ -49,5 +59,11 @@ BUILTIN_OUTPUT_STYLES: dict[str, OutputStyle] = {
         prompt=f"{CLYDE_PERSONA}\n\nRespond with concise implementation details plus short educational notes when they improve understanding.",
     ),
     "terse": OutputStyle(name="terse", prompt=f"{CLYDE_PERSONA}\n\n{TERSE_RULE}"),
+    "caveman": OutputStyle(
+        name="caveman",
+        prompt=(
+            f"{CLYDE_PERSONA}\n\n{CAVEMAN_RULE}"
+        ),
+    ),
     "bonnie": OutputStyle(name="bonnie", prompt=BONNIE_PERSONA),
 }
