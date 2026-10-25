@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- OpenAI-compatible providers that stream `delta.content` as a list of fragments (`[{"type": "text", "text": "..."}]`) instead of a plain string crashed the reply with `TypeError: sequence item 0: expected str instance, list found` (`src/providers/openai_compat.py`). The stream path now flattens the fragments to their text.
+
 ## [0.7.0] - 2026-10-22
 
 ### Added
