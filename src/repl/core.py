@@ -2074,14 +2074,17 @@ class ClydeREPL:
             return
         self.console.print(f"[green]{result.user_display_message}[/green]")
 
-    def chat(self, user_input: str, max_turns: int = 20, _auth_retry: bool = False, *, max_tokens: int | None = None):
+    def chat(self, user_input: str, max_turns: int | None = None, _auth_retry: bool = False, *, max_tokens: int | None = None):
         """Send message to LLM and display response.
 
         Args:
             user_input: The user message to send.
-            max_turns: Maximum number of tool call turns (default 20, higher for complex commands).
+            max_turns: Maximum number of tool call turns (default from /settings → Tool turns,
+                20; higher for complex commands like /init).
             max_tokens: Optional input plus output token budget for this turn (clyde -p --max-tokens).
         """
+        if max_turns is None:
+            max_turns = load_config().get("session", {}).get("max_tool_turns", 20)
         self.last_result, self.last_error = None, None
         activity.clear()
         trace.record("turn", provider=self.provider_name, model=self.model, prompt_chars=len(user_input))
@@ -2253,14 +2256,18 @@ class ClydeREPL:
 
             if self.headless:
                 pass   # `clyde -p` prints the answer itself, on stdout
-            elif self.stream and stream_started:
-                self.console.print()
-                self.console.print()
-            elif not result.response_text.strip():
-                self._print_no_answer(result)
             else:
-                self.console.print(Markdown(result.response_text))
-                self.console.print()
+                if result.response_text == MAX_TURNS_REPLY:
+                    self.console.print(f"[dim]Hit the {max_turns}-tool-turn limit mid-task. Say 'continue' to pick up where it left"
+                                       f" off, or raise the limit under /settings → Tool turns.[/dim]", markup=False)
+                if self.stream and stream_started:
+                    self.console.print()
+                    self.console.print()
+                elif not result.response_text.strip():
+                    self._print_no_answer(result)
+                else:
+                    self.console.print(Markdown(result.response_text))
+                    self.console.print()
             dealt = self.provider.dealt if isinstance(self.provider, CardShuffle) else None
             self._turn_footer(past, turn_started, result.usage, dealt or model_ref(self.provider, self.model))
             self._refine_after_turn()

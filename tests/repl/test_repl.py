@@ -265,6 +265,45 @@ class TestREPL(unittest.TestCase):
                     self.assertEqual(mock_session.conversation.messages[1].role, "assistant")
                     self.assertEqual(mock_session.conversation.messages[1].content, "Hello")
 
+    def test_chat_uses_the_tool_turn_limit_configured_in_settings(self):
+        with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
+            (self.config_dir / "config.json").write_text(
+                json.dumps({"model": "glm:glm-4.5", "session": {"max_tool_turns": 40}}))
+            with patch('src.repl.core.Session.create') as mock_session_factory:
+                mock_session = Mock()
+                mock_session.conversation = Conversation()
+                mock_session_factory.return_value = mock_session
+
+                with _fake_provider_env():
+                    repl = ClydeREPL(model="glm:glm-4.5")
+                    repl.console.print = Mock()
+
+                    with patch('src.repl.core.run_agent_loop') as mock_agent_loop:
+                        mock_agent_loop.return_value = Mock(response_text="done", usage=None, num_turns=1)
+                        repl.chat("do the task")
+
+                    self.assertEqual(mock_agent_loop.call_args.kwargs["max_turns"], 40)
+
+    def test_hitting_the_tool_turn_limit_says_how_to_continue(self):
+        from src.agent.agent_loop import MAX_TURNS_REPLY
+        with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
+            with patch('src.repl.core.Session.create') as mock_session_factory:
+                mock_session = Mock()
+                mock_session.conversation = Conversation()
+                mock_session_factory.return_value = mock_session
+
+                with _fake_provider_env():
+                    repl = ClydeREPL(model="glm:glm-4.5")
+                    repl.console.print = Mock()
+
+                    with patch('src.repl.core.run_agent_loop') as mock_agent_loop:
+                        mock_agent_loop.return_value = Mock(response_text=MAX_TURNS_REPLY, usage=None, num_turns=20)
+                        repl.chat("do the task")
+
+                    printed = " ".join(str(c.args[0]) for c in repl.console.print.call_args_list if c.args)
+                    self.assertIn("continue", printed)
+                    self.assertIn("Tool turns", printed)
+
     def test_chat_stream_falls_back_to_agent_loop_for_code_task(self):
         """Code-like prompts keep the existing agent loop path for safety."""
         with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):

@@ -79,6 +79,8 @@ def settings() -> list[Setting]:
         Setting("Auto-refine", refine.MODES, lambda c: refine.mode(), refine.set_mode,
                 applies="from your next turn; it only adds notes, each one printed, and /refine undo reverses the latest"),
         Setting("Max history", (50, 100, 200, 500), lambda c: session(c).get("max_history", 100), _set_session("max_history")),
+        Setting("Tool turns", (20, 40, 60, 100), lambda c: session(c).get("max_tool_turns", 20), _set_session("max_tool_turns"),
+                applies="your next turn; the tool rounds one task may use before it stops and asks you to continue"),
         Setting("Context window (local models)", (None, 4096, 8192, 16384, 32768, 65536, 131072), lambda c: config_mod.get_context_tokens(),
                 config_mod.set_context_tokens, applies="your next message; oMLX serves the model with it"),
         Setting("Network proxy", network.proxy_choices(), lambda c: network.get_proxy(), network.set_proxy,
