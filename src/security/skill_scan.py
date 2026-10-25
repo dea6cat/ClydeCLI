@@ -174,20 +174,92 @@ def _verdicts(report: dict[str, Any]) -> list[Verdict]:
     return out
 
 
+def _verdict_from_scan_result(result: ScanResult, llm: bool = False) -> Verdict:
+    """Convert an in-house ScanResult into a skill_scan Verdict."""
+    return Verdict(
+        name=result.name,
+        recommendation=result.recommendation,
+        score=result.score,
+        severity=result.severity,
+        findings=[f"{f.rule_id} {f.severity}: {f.message}" for f in result.findings],
+        llm=llm,
+        approved=False,
+    )
+
+
+def _provider_from_env(env: dict[str, str]) -> tuple[Any, str | None]:
+    """Build a provider object and model from the env dict produced by llm_env().
+
+    Returns (provider, model), or (None, None) when no reviewable provider is configured.
+    """
+    prov = env.get("SKILLSPECTOR_PROVIDER")
+    model = env.get("SKILLSPECTOR_MODEL")
+    if not prov or not model:
+        return None, None
+    if prov == "anthropic":
+        key = env.get("ANTHROPIC_API_KEY", "")
+        if not key:
+            return None, None
+        os.environ["ANTHROPIC_API_KEY"] = key
+        from src.providers.anthropic import AnthropicProvider
+
+        return AnthropicProvider(name="anthropic"), model
+    if prov == "openai_compatible":
+        key = env.get("SKILLSPECTOR_COMPAT_API_KEY", "")
+        base = env.get("SKILLSPECTOR_COMPAT_BASE_URL", "")
+        if not key or not base:
+            return None, None
+        os.environ["SKILLSPECTOR_COMPAT_API_KEY"] = key
+        from src.providers.openai_compat import OpenAICompatProvider
+
+        return OpenAICompatProvider(
+            name="clyde-review", base_url=base, key_env="SKILLSPECTOR_COMPAT_API_KEY"
+        ), model
+    return None, None
+
+
+def _to_verdicts(results: list[ScanResult], env: dict[str, str] | None = None) -> list[Verdict]:
+    """Run optional LLM review over scan results and convert them to Verdicts."""
+    from src.security.scanner.llm_review import enhance_with_llm
+
+    provider, model = _provider_from_env(env) if env else (None, None)
+    verdicts: list[Verdict] = []
+    for result in results:
+        llm_reviewed = False
+        if provider and model:
+            try:
+                result = enhance_with_llm(result, provider, model)
+                llm_reviewed = True
+            except Exception:
+                pass
+        verdicts.append(_verdict_from_scan_result(result, llm=llm_reviewed))
+    return verdicts
+
+
 def scan(path: Path, *, recursive: bool = False, env: dict[str, str] | None = None) -> list[Verdict]:
-    """Run SkillSpector on a skill folder or file (recursive: each subfolder with a SKILL.md is its own
-    skill). The LLM review runs when `env` names a provider; otherwise --no-llm."""
-    exe = _exe()
-    if exe is None:
-        return [Verdict(path.name, ERROR, findings=["skillspector is not installed"])]
+    """Scan with the in-house security scanner, replacing SkillSpector.
+
+    The static scan always runs. The LLM review runs when `env` names a provider
+    (built by llm_env / default_llm_env); otherwise static scan only.
+    """
     if sys.stderr.isatty():
-        print(f"\x1b[2m♠ SkillSpector is scanning {path.name}{' with an LLM review (up to 5 minutes; Ctrl+C skips it)' if env else ''}…\x1b[0m",
-              end="", file=sys.stderr, flush=True)
+        label = " with LLM review" if env else ""
+        print(
+            f"\x1b[2m♠ Scanning {path.name}{label}…\x1b[0m",
+            end="",
+            file=sys.stderr,
+            flush=True,
+        )
     try:
-        return _run_scan(exe, path, recursive, env)
+        from src.security.scanner import scan as inhouse_scan
+
+        results = inhouse_scan(path, recursive=recursive)
+    except Exception as e:
+        return [Verdict(path.name, ERROR, findings=[f"scan failed: {type(e).__name__}: {e}"])]
     finally:
         if sys.stderr.isatty():
-            print("\r\x1b[2K", end="", file=sys.stderr, flush=True)   # the status line must not stay on screen
+            print("\r\x1b[2K", end="", file=sys.stderr, flush=True)
+    return _to_verdicts(results, env)
 
 
 def _run_scan(exe: list[str], path: Path, recursive: bool, env: dict[str, str] | None) -> list[Verdict]:

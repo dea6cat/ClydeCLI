@@ -213,7 +213,7 @@ def _request(url: str, payload: dict, headers: dict | None, method: str = "POST"
 # A remote stream that sends nothing for this long has stalled: give up instead of holding the turn
 # for the full read timeout. Local servers keep 600 s, since loading a model can be that slow.
 # ponytail: one fixed value; a per-provider setting if some endpoint legitimately idles longer.
-STALL_TIMEOUT = 180
+STALL_TIMEOUT = 300
 _LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1", "0.0.0.0")
 
 
