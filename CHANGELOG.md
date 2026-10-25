@@ -7,13 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
+### Added
 
-- whichllm, the engine behind `/models local`'s `best` ranking, is vendored into the repo at `src/vendor/whichllm` (our fork of github.com/Andyyyy64/whichllm, MIT; license text and attribution in that folder and LICENSE) instead of a pinned git dependency. The pin had to be repointed once already when a branch vanished; a vendored copy can't. Its one runtime need the rest of Clyde didn't have, `psutil`, is now a direct dependency.
-
-### Fixed
-
-- OpenAI-compatible providers that stream `delta.content` as a list of fragments (`[{"type": "text", "text": "..."}]`) instead of a plain string crashed the reply with `TypeError: sequence item 0: expected str instance, list found` (`src/providers/openai_compat.py`). The stream path now flattens the fragments to their text.
+- Answer a permission prompt in your own words: a model reads only your reply and allows the action when it is a plain yes ("sure, go ahead", "dale"). Anything else, a no, a question or a yes with a condition, holds that action and reaches Clyde as your words at its next step. The check is capped at 15 s and fails closed. In Bonnie, type the answer while the card waits and press Steer. It comes from the Discord bridge that was not kept. Live on Qwen2.5-Coder-3B: 12 of 12 replies read right, 0.1 s each.
 
 ## [0.7.0] - 2026-10-22
 

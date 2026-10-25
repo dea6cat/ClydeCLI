@@ -846,18 +846,34 @@ class ClydeREPL:
             self.console.print(Text.assemble(("    ", ""), (key, f"bold {_CARD_ACCENT}"), ("  ", ""), (desc, _CARD_TEXT)))
         keys = "/".join(k for k, _, _ in options)
 
-        choice = input(f"  Allow? [{keys}] (y): ").strip().lower()
+        typed = input(f"  Allow? [{keys}, or answer in your own words] (y): ").strip()
+        choice = typed.lower()
         if choice in ("", "yes", "no", "enable", "always"):
             choice = {"": "y", "always": "a"}.get(choice, choice[:1])
         key = next((k for i, (k, _, _) in enumerate(options, start=1) if choice in (k, str(i))), None)
         if key is None:
-            self.console.print(Text("  Not an option; denied.", style=_CARD_DIM))
-            return False, False
+            return self._plain_answer(typed), False
         if key == "e":
             self._enable_permission_setting(setting_to_enable)
         elif key == "a" and suggestion:
             self._save_permission_rule(suggestion)
         return next(allowed for k, _, allowed in options if k == key), False
+
+    def _plain_answer(self, typed: str) -> bool:
+        """A permission answer in the user's own words: allowed only when a model reads it as a plain yes. Anything else denies this
+        action and goes to the model as the user's words at its next step ("no, edit the copy in src/ instead")."""
+        from src import plain_answer
+        if len(typed) < 2:
+            self.console.print(Text("  Not an option; denied.", style=_CARD_DIM))
+            return False
+        with self.console.status("Reading your answer", spinner="dots", spinner_style=_CARD_ACCENT):
+            yes, why = plain_answer.is_plain_yes(*plain_answer.judge(self), typed)
+        if yes:
+            self.console.print(Text("  Read as a yes; allowed.", style=_CARD_DIM))
+            return True
+        self.control.steer(typed)
+        self.console.print(Text(f"  {why + '; ' if why else ''}not a plain yes, so this one is held; your words go to Clyde.", style=_CARD_DIM))
+        return False
 
     def _save_permission_rule(self, rule: str) -> None:
         """Apply an allow rule now and save it to the user settings for later sessions."""
