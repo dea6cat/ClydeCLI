@@ -10,6 +10,7 @@ from __future__ import annotations
 import ast
 import json
 import re
+from bisect import bisect_right
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -24,10 +25,30 @@ from src.security.scanner.rules import (
     RULE_ID_TO_SEVERITY,
     SUBPROCESS_CALLS,
     VERTICAL_BLANK_LINES,
-    VERTICAL_BLANK_LINES,
     get_compiled_patterns,
     is_padding_char,
 )
+
+
+# ---- Risk scoring ported verbatim from SkillSpector nodes/report.py ----
+# _compute_risk_score: points, confidence weighting, diminishing returns,
+# threshold 50, bands (81/51/21/0).
+_SEVERITY_POINTS: dict[str, int] = {"CRITICAL": 50, "HIGH": 25, "MEDIUM": 10, "LOW": 5}
+_RISK_SEVERITY_BANDS: list[tuple[int, str]] = [
+    (81, "CRITICAL"),
+    (51, "HIGH"),
+    (21, "MEDIUM"),
+    (0, "LOW"),
+]
+_RISK_RECOMMENDATION: dict[str, str] = {
+    "LOW": "SAFE",
+    "MEDIUM": "CAUTION",
+    "HIGH": "DO_NOT_INSTALL",
+    "CRITICAL": "DO_NOT_INSTALL",
+}
+_MAX_OCCURRENCES_PER_RULE = 3
+_DIMINISHING_WEIGHTS = (1.0, 0.5, 0.25)
+_RISK_SCORE_FLOORS_BY_RULE_ID: dict[str, int] = {"SC8": 51}
 
 
 @dataclass
@@ -255,15 +276,14 @@ def scan_skill_folder(skill_path: Path) -> ScanResult:
             all_findings.extend(scan_file(file_path))
 
     # Calculate score and recommendation
-    score = calculate_score(all_findings)
-    recommendation, severity = calculate_recommendation(all_findings, score)
+    score, severity_band, recommendation = _compute_risk_score(all_findings)
 
     return ScanResult(
         name=skill_name,
         findings=all_findings,
         score=score,
         recommendation=recommendation,
-        severity=severity,
+        severity=severity_band,
     )
 
 
@@ -277,65 +297,64 @@ def scan_mcp_tools(tools: list[dict[str, Any]], server_name: str) -> ScanResult:
     # Check text patterns in tool definitions
     all_findings.extend(check_text_patterns_all(tool_content, f"{server_name}.mcp.json"))
 
-    # Calculate score and recommendation
-    score = calculate_score(all_findings)
-    recommendation, severity = calculate_recommendation(all_findings, score)
+    score, severity_band, recommendation = _compute_risk_score(all_findings)
 
     return ScanResult(
         name=server_name,
         findings=all_findings,
         score=score,
         recommendation=recommendation,
-        severity=severity,
+        severity=severity_band,
     )
 
 
-def calculate_score(findings: list[Finding]) -> int:
-    """Calculate a score from 0-100 based on findings."""
+def _compute_risk_score(findings: list[Finding]) -> tuple[int, str, str]:
+    """Compute risk score ported verbatim from SkillSpector nodes/report.py.
+
+    Returns (score, severity_band, recommendation).
+    Scoring: points per severity, confidence-weighted, diminishing returns
+    (max 3 occurrences per rule at 1.0/0.5/0.25), threshold 50, bands
+    (81/51/21/0).
+    """
     if not findings:
-        return 0
+        return 0, "LOW", "SAFE"
 
-    # Score based on severity
-    severity_scores = {
-        "CRITICAL": 100,
-        "HIGH": 70,
-        "MEDIUM": 40,
-        "LOW": 20,
-    }
+    by_rule: dict[str, tuple[str, list[float]]] = {}
+    for f in findings:
+        raw_conf = f.confidence if f.confidence is not None else 1.0
+        conf = min(max(float(raw_conf), 0.0), 1.0)
+        if conf <= 0:
+            continue
+        if f.rule_id not in by_rule:
+            by_rule[f.rule_id] = (f.severity, [])
+        by_rule[f.rule_id][1].append(conf)
 
-    # Use the highest severity finding
-    max_severity = max(
-        (severity_scores.get(f.severity, 0) for f in findings),
-        default=0,
-    )
+    total_points = 0.0
+    for severity, confidences in by_rule.values():
+        confidences.sort(reverse=True)
+        points = _SEVERITY_POINTS.get(severity, 0)
+        for i, conf in enumerate(confidences[:_MAX_OCCURRENCES_PER_RULE]):
+            weight = _DIMINISHING_WEIGHTS[min(i, len(_DIMINISHING_WEIGHTS) - 1)]
+            total_points += points * conf * weight
 
-    # Count findings to adjust score
-    num_findings = len(findings)
-    if num_findings > 1:
-        # Cap at 100
-        max_severity = min(max_severity + (num_findings - 1) * 10, 100)
+    score = int(total_points)
 
-    return max_severity
+    # Risk floors
+    rule_ids = set(by_rule.keys())
+    if "SC8" in rule_ids:
+        score = max(score, _RISK_SCORE_FLOORS_BY_RULE_ID["SC8"])
+    if rule_ids & {"BH2", "BH3"}:
+        score = max(score, _RISK_SCORE_FLOORS_BY_RULE_ID["SC8"])
 
+    # Bands
+    severity_band = "LOW"
+    for threshold, band in _RISK_SEVERITY_BANDS:
+        if score >= threshold:
+            severity_band = band
+            break
 
-def calculate_recommendation(findings: list[Finding], score: int) -> tuple[str, str]:
-    """Calculate recommendation and severity from findings and score."""
-    if not findings:
-        return "SAFE", ""
-
-    # Check for any CRITICAL or HIGH findings
-    has_critical = any(f.severity == "CRITICAL" for f in findings)
-    has_high = any(f.severity == "HIGH" for f in findings)
-    has_medium = any(f.severity == "MEDIUM" for f in findings)
-
-    if has_critical:
-        return "DO_NOT_INSTALL", "CRITICAL"
-    elif has_high:
-        return "DO_NOT_INSTALL", "HIGH"
-    elif has_medium:
-        return "CAUTION", "MEDIUM"
-    else:
-        return "CAUTION", "LOW"
+    recommendation = _RISK_RECOMMENDATION[severity_band]
+    return score, severity_band, recommendation
 
 
 def scan(skill_path: Path, *, recursive: bool = False, env: dict[str, str] | None = None) -> list[ScanResult]:
@@ -362,4 +381,4 @@ def scan(skill_path: Path, *, recursive: bool = False, env: dict[str, str] | Non
     return results
 
 
-__all__ = ["scan", "scan_skill_folder", "scan_mcp_tools", "ScanResult", "Finding"]
+__all__ = ["scan", "scan_skill_folder", "scan_mcp_tools", "_compute_risk_score", "ScanResult", "Finding"]

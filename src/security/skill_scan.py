@@ -26,7 +26,6 @@ import hashlib
 import json
 import os
 import shutil
-import subprocess
 import sys
 import tempfile
 import time
@@ -108,13 +107,6 @@ def digest(path: Path) -> str:
     return h.hexdigest()
 
 
-def _exe() -> list[str] | None:
-    """The skillspector command shipped beside this Python, else on PATH."""
-    beside = Path(sys.executable).parent / "skillspector"
-    found = str(beside) if beside.is_file() else shutil.which("skillspector")
-    return [found] if found else None
-
-
 def llm_env(provider: Any, model: str | None) -> dict[str, str] | None:
     """SkillSpector's provider settings for ClydeCLI's connected model, or None when SkillSpector
     can't use it (then the scan runs with --no-llm)."""
@@ -153,25 +145,6 @@ def default_llm_env() -> dict[str, str] | None:
         return llm_env(*resolved) if resolved else None
     except Exception:
         return None
-
-
-def _verdicts(report: dict[str, Any]) -> list[Verdict]:
-    """One Verdict per scanned skill in a single- or multi-skill JSON report."""
-    out = []
-    for s in report.get("skills") if report.get("multi_skill") else [report]:
-        risk, meta = s.get("risk_assessment") or {}, s.get("metadata") or {}
-        skill = s.get("skill")
-        name = skill.get("name") if isinstance(skill, dict) else str(skill or "")
-        findings = [f"{i.get('id')} {i.get('severity')}: {str(i.get('finding') or i.get('explanation') or '')[:120]}"
-                    for i in s.get("issues") or []]
-        done = s.get("analysis_completeness") or report.get("analysis_completeness") or {}
-        if not findings and isinstance(done, dict) and done.get("status") not in (None, "complete"):
-            # CAUTION with nothing found means SkillSpector couldn't inspect everything: say what it couldn't.
-            reasons = sorted({str(x.get("message") or x.get("reason_code")) for x in done.get("ledger_exceptions") or []})
-            findings = [f"partial scan: {r[:120]}" for r in reasons] or [f"partial scan ({done.get('status')})"]
-        out.append(Verdict(name, str(risk.get("recommendation") or ERROR), int(risk.get("score") or 0),
-                           str(risk.get("severity") or ""), findings, bool(meta.get("meta_analysis_applied"))))
-    return out
 
 
 def _verdict_from_scan_result(result: ScanResult, llm: bool = False) -> Verdict:
@@ -262,32 +235,6 @@ def scan(path: Path, *, recursive: bool = False, env: dict[str, str] | None = No
     return _to_verdicts(results, env)
 
 
-def _run_scan(exe: list[str], path: Path, recursive: bool, env: dict[str, str] | None) -> list[Verdict]:
-    report = _run_report(exe, path, recursive, env)
-    return [Verdict(path.name, ERROR, findings=[report[:160]])] if isinstance(report, str) else _verdicts(report)
-
-
-def _run_report(exe: list[str], path: Path, recursive: bool, env: dict[str, str] | None) -> dict[str, Any] | str:
-    """SkillSpector's JSON report for `path`, or why there is none."""
-    with tempfile.TemporaryDirectory() as tmp:
-        report = Path(tmp) / "report.json"
-        # SkillSpector refuses a symlinked input, and ~/.claude/skills is often links into ~/.agents/skills. The loader
-        # reads through the link, so the target is exactly what reaches the model.
-        cmd = [*exe, "scan", str(path.resolve()), "--format", "json", "--output", str(report)]
-        cmd += ["--recursive"] if recursive else []
-        cmd += [] if env else ["--no-llm"]
-        try:
-            done = subprocess.run(cmd, env={**os.environ, **(env or {})}, capture_output=True, text=True, check=False,
-                                  timeout=_TIMEOUT_LLM if env else _TIMEOUT_STATIC)
-            if not report.is_file():
-                said = " ".join((done.stderr or done.stdout).split()) or "no report"
-                return f"skillspector exited {done.returncode}: {said}"
-            data = json.loads(report.read_text(encoding="utf-8"))
-            return data if isinstance(data, dict) else "scan failed: the report is not a JSON object"
-        except (OSError, ValueError, subprocess.SubprocessError) as e:
-            return f"scan failed: {type(e).__name__}: {e}"
-
-
 # What a plugin can make ClydeCLI load (src/plugins.py). The rest of its folder (a repo's packages, tests,
 # docs) never reaches the model or runs, and scanning it all overruns the timeout.
 _PLUGIN_PARTS = ("skills", "hooks", "tools", ".mcp.json")
@@ -366,7 +313,7 @@ def _announce_failure(kind: str, name: str, verdict: Verdict) -> None:
     trace.record("scan_failed", kind=kind, name=name, reason=reason, closed=closed())
     outcome = ("held back, because CLYDE_SKILL_SCAN=closed (set it to off to load it anyway)" if closed()
                else "loaded WITHOUT a scan (CLYDE_SKILL_SCAN=closed holds such items back)")
-    print(f"\x1b[33m⚠ SkillSpector could not scan {kind} {name}: {reason}. It is {outcome}.\x1b[0m", file=sys.stderr, flush=True)
+    print(f"\x1b[33m⚠ Scanner could not scan {kind} {name}: {reason}. It is {outcome}.\x1b[0m", file=sys.stderr, flush=True)
 
 
 def _check(kind: str, name: str, path: Path, env: dict[str, str] | None, rescan: bool) -> Verdict:
@@ -411,76 +358,44 @@ def _key(kind: str, name: str, where: str, cache: dict[str, Any]) -> str:
 
 
 def prescan(items: list[tuple[str, Path]]) -> None:
-    """Judge every new or changed skill in `items` (name, folder) before check() asks, in a few batched SkillSpector runs
-    instead of one process per skill: about 1.7 s of every run is SkillSpector starting up. Content already judged under
-    another name or folder (a ~/.claude/skills link and its ~/.agents/skills target) takes that verdict, unapproved, without
-    a scan. Whatever a batch leaves out is left to check(), which scans it alone and remembers a failure."""
-    exe = _exe()
-    if not enabled() or exe is None:
+    """Judge every new or changed skill in `items` using the in-house scanner."""
+    if not enabled():
         return
     cache = _load_cache()
     judged = {e["hash"]: e["verdict"] for e in cache.values() if isinstance(e, dict) and "hash" in e and "verdict" in e}
     results: dict[str, dict[str, Any]] = {}
-    pending: dict[str, list[tuple[str, str, str]]] = {}   # content hash -> [(cache key, name, where)]
-    folders: dict[str, Path] = {}
+    pending: dict[str, tuple[list[tuple[str, str, str]], Path]] = {}
     for name, path in items:
         where = str(path)
         key, content = _key("skill", name, where, cache), digest(path)
         entry = cache.get(key) or {}
-        cache[key] = {**entry, "path": where}   # claims the key, so a later skill of the same name gets its own as in check()
+        cache[key] = {**entry, "path": where}
         failed = entry.get("failed") or {}
         if (entry.get("hash") == content and "verdict" in entry) or (
                 failed.get("hash") == content and time.time() - failed.get("at", 0) < _RETRY_AFTER):
             continue
         if content in judged:
             results[key] = {"hash": content, "path": where, "verdict": {**judged[content], "name": name, "approved": False}}
-        elif all(p.parent == path for p in path.rglob("SKILL.md")):   # a folder of nested skills would report several verdicts
-            pending.setdefault(content, []).append((key, name, where))
-            folders.setdefault(content, path)
-    hashes = list(pending)
-    for i, verdict in _scan_batched(exe, [folders[c] for c in hashes]).items():
-        for key, name, where in pending[hashes[i]]:
-            results[key] = {"hash": hashes[i], "path": where, "verdict": {**asdict(verdict), "name": name}}
+        elif all(p.parent == path for p in path.rglob("SKILL.md")):
+            if content not in pending:
+                pending[content] = ([], path)
+            pending[content][0].append((key, name, where))
+    for content, (entries, path) in pending.items():
+        try:
+            from src.security.scanner import scan as inhouse_scan
+            scan_results = inhouse_scan(path, recursive=False)
+        except Exception:
+            scan_results = []
+        verdicts = _to_verdicts(scan_results)
+        verdict = verdicts[0] if verdicts else Verdict(path.name, ERROR, findings=["scan failed: no results"])
+        if verdict.recommendation == ERROR:
+            continue   # a failed scan says nothing: leave it to check(), which remembers the failure
+        for key, name, where in entries:
+            results[key] = {"hash": content, "path": where, "verdict": asdict(verdict)}
     if results:
-        fresh = _load_cache()   # other sessions may have saved while this scanned
+        fresh = _load_cache()
         fresh.update(results)
         _save_cache(fresh)
-
-
-def _scan_batched(exe: list[str], folders: list[Path]) -> dict[int, Verdict]:
-    """Verdicts by index into `folders`, from recursive scans of copies staged _CHUNK_SKILLS to a batch, _CHUNK_WORKERS at a
-    time. A folder that could not be copied, was left out of the report or failed to scan has no verdict."""
-    if not folders:
-        return {}
-    with tempfile.TemporaryDirectory() as tmp:
-        batches = []
-        for start in range(0, len(folders), _CHUNK_SKILLS):
-            batch = Path(tmp) / f"batch-{start // _CHUNK_SKILLS}"
-            batch.mkdir()
-            for i, folder in enumerate(folders[start:start + _CHUNK_SKILLS], start):
-                try:
-                    shutil.copytree(folder.resolve(), batch / str(i))
-                except OSError:
-                    shutil.rmtree(batch / str(i), ignore_errors=True)   # a partial copy would be judged on part of the skill
-            batches.append(batch)
-        if sys.stderr.isatty():
-            print(f"\x1b[2m♠ SkillSpector is scanning {len(folders)} new or changed skill(s)…\x1b[0m", end="", file=sys.stderr, flush=True)
-        try:
-            with ThreadPoolExecutor(_CHUNK_WORKERS) as pool:
-                reports = list(pool.map(lambda b: _run_report(exe, b, True, None), batches))
-        finally:
-            if sys.stderr.isatty():
-                print("\r\x1b[2K", end="", file=sys.stderr, flush=True)
-    found: dict[int, Verdict] = {}
-    for report in reports:
-        if isinstance(report, str):
-            continue
-        for item, verdict in zip(report.get("skills") or [] if report.get("multi_skill") else [report], _verdicts(report)):
-            skill = item.get("skill") if isinstance(item, dict) else None
-            source = Path(str(skill.get("source") or "")).name if isinstance(skill, dict) else ""
-            if source.isdigit() and int(source) < len(folders) and verdict.recommendation != ERROR:
-                found[int(source)] = verdict
-    return found
 
 
 def approve(kind: str, name: str) -> bool:
