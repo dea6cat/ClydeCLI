@@ -94,7 +94,7 @@ class TestBestFit(unittest.TestCase):
                 self.assertEqual(best_fit._profile(), expected, uses)
 
     def test_the_profile_reaches_the_ranking(self):
-        with patch("whichllm.api.recommend", return_value=[]) as rec:
+        with patch("src.vendor.whichllm.api.recommend", return_value=[]) as rec:
             best_fit._ranked.cache_clear()
             best_fit._ranked(12 * GB, "Apple M3 Pro", "coding")
         self.assertEqual(rec.call_args.kwargs["profile"], "coding")

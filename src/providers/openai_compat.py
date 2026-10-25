@@ -201,9 +201,15 @@ class OpenAICompatProvider:
                 thinking.append(chunk)
                 if on_thinking:
                     on_thinking(chunk)
-            if delta.get("content"):
-                content.append(delta["content"])
-                on_text(delta["content"])
+            piece = delta.get("content")
+            if piece:
+                # Some providers send content as a list of fragments ([{"type": "text", "text": "..."}])
+                # rather than a plain string; flatten to the text.
+                if isinstance(piece, list):
+                    piece = "".join(f.get("text", "") for f in piece if isinstance(f, dict))
+                if isinstance(piece, str) and piece:
+                    content.append(piece)
+                    on_text(piece)
             for frag in delta.get("tool_calls") or []:
                 idx = frag.get("index", 0)
                 slot = by_index.setdefault(idx, {"id": None, "name": "", "args": ""})
