@@ -337,8 +337,10 @@ def stream_with_retry(provider, conversation, model, tools, on_text, *, retries=
 def _stream_with_retry(provider, conversation, model, tools, on_text, *, retries=3, cancel=None,
                        reasoning=None, on_thinking=None) -> ProviderResponse:
     """provider.stream with backoff on retryable ProviderError (429/5xx/connection). Honors a
-    cancel Event (re-raises immediately). When a retryable error survives every retry, the
-    message gets a `— retried N×, still failing` suffix so it doesn't read as a single blip."""
+    cancel Event (re-raises immediately). A 429 without a Retry-After gets its own curve —
+    5 s growing to MAX_RETRY_AFTER_WAIT_S, not the generic 1-2-4 s, which a rate window
+    always outlives. When a retryable error survives every retry, the message gets a
+    `— retried N×, still failing` suffix so it doesn't read as a single blip."""
     delay = 1.0
     for attempt in range(retries + 1):
         try:
@@ -358,7 +360,11 @@ def _stream_with_retry(provider, conversation, model, tools, on_text, *, retries
                     raise ProviderError(e.provider, f"{raw} — retried {attempt}×, still failing",
                                         retryable=True, status=e.status, retry_after=e.retry_after) from e
                 raise
-            delay = min(e.retry_after, MAX_RETRY_AFTER_WAIT_S) if e.retry_after else delay   # the provider's own ask beats our backoff
+            rate_limited = e.status == 429
+            if e.retry_after:
+                delay = min(e.retry_after, MAX_RETRY_AFTER_WAIT_S)   # the provider's own ask beats our backoff
+            elif rate_limited:
+                delay = max(delay, 5.0)
             activity.set(f"retry {attempt + 1} of {retries} in {delay:.0f}s: {str(e).removeprefix(f'[{e.provider}] ')[:70]}")
             waited = 0.0
             while waited < delay:
@@ -366,7 +372,7 @@ def _stream_with_retry(provider, conversation, model, tools, on_text, *, retries
                     raise
                 _time.sleep(0.1)
                 waited += 0.1
-            delay = min(delay * 2, 8.0)
+            delay = min(delay * 2, MAX_RETRY_AFTER_WAIT_S if rate_limited else 8.0)
     raise AssertionError("unreachable")
 
 
