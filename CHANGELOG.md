@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Answer a permission prompt in your own words: a model reads only your reply and allows the action when it is a plain yes ("sure, go ahead", "dale"). Anything else, a no, a question or a yes with a condition, holds that action and reaches Clyde as your words at its next step. The check is capped at 15 s and fails closed. In Bonnie, type the answer while the card waits and press Steer. It comes from the Discord bridge that was not kept. Live on Qwen2.5-Coder-3B: 12 of 12 replies read right, 0.1 s each.
 
+### Changed
+
+- The tool-turn limit is configurable: a Tool turns row in `/settings` (20, 40, 60 or 100; 20 as before) sets how many tool rounds one task may use, and a turn that reaches it now says so plainly — how many rounds it used, that `continue` picks up where it left off, and where the limit is raised — instead of the bare `[Max tool turns reached]`. `clyde -p --max-turns` is unchanged.
+
 ### Fixed
 
 - A rate-limited request (HTTP 429) got the same backoff as any transient blip — 1, 2, 4 seconds — which a rate window always outlives, so every retry burned and the turn died with "retried 3×, still failing". A 429 without a `Retry-After` now waits 5 seconds and doubles up to the same 30-second ceiling a `Retry-After` is capped at; providers that send the header were already fine.

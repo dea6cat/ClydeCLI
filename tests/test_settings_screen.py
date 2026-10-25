@@ -83,6 +83,12 @@ class TestSettingsScreen(unittest.TestCase):
         with self.assertRaises(ValueError):
             config.set_context_tokens(10)
 
+    def test_tool_turns_cycles_and_is_saved(self):
+        turns = next(s for s in settings_screen.settings() if s.label == "Tool turns")
+        self.assertEqual(turns.value(), 20)
+        turns.write(turns.next())
+        self.assertEqual(config.load_config()["session"]["max_tool_turns"], 40)
+
     def test_stats_keys_flip_the_view_and_range_without_touching_settings(self):
         with create_pipe_input() as pipe:
             pipe.send_text(RIGHT * 3 + TAB + "r" + DOWN + ESC)
