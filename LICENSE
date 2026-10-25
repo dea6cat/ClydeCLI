@@ -7,6 +7,10 @@ Copies of ClydeCLI obtained before this change were licensed under the MIT Licen
 
 Required Notice: Copyright (c) 2026 dea6cat (https://github.com/dea6cat/ClydeCLI)
 
+Portions of this software are vendored third-party code under the MIT License: src/vendor/whichllm is our fork of
+whichllm (Copyright (c) 2026 Andyyyy64, https://github.com/Andyyyy64/whichllm); its MIT license text is at
+src/vendor/whichllm/LICENSE.
+
 ================================================================================
 # PolyForm Noncommercial License 1.0.0
 
