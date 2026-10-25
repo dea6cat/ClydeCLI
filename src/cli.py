@@ -373,11 +373,43 @@ def run_login_flow(console: Console, registry: dict, default_provider: str = "an
             return None
 
     if provider_name not in ("ollama", "omlx", "cardShuffle"):  # local servers and cardShuffle need no key
-        key = prompt_secret(f"Enter {provider_name} API key" + (" (empty if it needs none)" if custom else ""))
-        key = key or ("none" if custom else "")   # a keyless server (vLLM, a local proxy) still gets a Bearer header
-        if not key:
-            console.print("\n[red]Error: API key cannot be empty[/red]")
-            return None
+        from src.providers import browser_sign_in
+
+        browser = browser_sign_in.PROVIDER_BROWSER_AUTH.get(provider_name)
+        key = None
+        if browser:
+            choice = pick_or_prompt(
+                console,
+                f"Sign in to {provider_name}",
+                [
+                    Choice("browser", "Open browser to sign in (browser sign-in)"),
+                    Choice("key", "Paste an API key"),
+                ],
+                current="browser",
+                description="Browser sign-in opens the provider's sign-in page and saves the key for you.",
+            )
+            if choice is None:
+                return None
+            if choice == "browser":
+                base, api = browser
+                console.print(
+                    f"[dim]Opening your browser to sign in to {provider_name}…[/dim]"
+                )
+                try:
+                    key = browser_sign_in.login(base, api)
+                except browser_sign_in.BrowserSignInError as e:
+                    console.print(f"[red]Sign-in failed:[/red] {e}")
+                    return None
+                except KeyboardInterrupt:
+                    console.print("Sign-in cancelled.")
+                    return None
+                console.print(f"[green]✓ {provider_name} connected[/green]")
+        if key is None:
+            key = prompt_secret(f"Enter {provider_name} API key" + (" (empty if it needs none)" if custom else ""))
+            key = key or ("none" if custom else "")   # a keyless server (vLLM, a local proxy) still gets a Bearer header
+            if not key:
+                console.print("\n[red]Error: API key cannot be empty[/red]")
+                return None
         keys.connect(_key_name(provider_name), key)
         extra = keys.PROVIDER_EXTRA_ENV.get(provider_name)   # e.g. Cloudflare's account id, which its URL contains
         if extra:
