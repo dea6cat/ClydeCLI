@@ -113,6 +113,38 @@ class DeepSeekReplay(unittest.TestCase):
         self.assertNotIn("reasoning_content", other)
 
 
+class ContentFragmentList(unittest.TestCase):
+    """Some providers stream `delta.content` as a list of fragments
+    ([{"type": "text", "text": "..."}]) instead of a plain string. The stream
+    path must flatten that to its text, or `"".join(content)` raises and the
+    on_text callback gets a list it can't render. Reproduces the traceback in
+    repl/core.py -> agent_loop -> openai_compat.stream.
+    """
+
+    def setUp(self):
+        self._orig = oc.post_stream
+
+        def fake(url, payload, **kw):
+            return iter([
+                'data: {"choices":[{"delta":{"content":[{"type":"text","text":"Hel"}]}}]}\n',
+                'data: {"choices":[{"delta":{"content":[{"type":"text","text":"lo"}]}}]}\n',
+                'data: {"choices":[{"delta":{"content":"!"}}]}\n',
+                "data: [DONE]\n",
+            ])
+        oc.post_stream = fake
+
+    def tearDown(self):
+        oc.post_stream = self._orig
+
+    def test_list_content_is_flattened_to_text(self):
+        seen = []
+        conv = Conversation(system_prompt="s")
+        conv.append(Message.user("hi"))
+        resp = _p(None).stream(conv, "m", (), seen.append)
+        self.assertEqual(resp.message.text, "Hello!")
+        self.assertEqual(seen, ["Hel", "lo", "!"])
+
+
 class RegistryData(unittest.TestCase):
     def test_styles_and_caps_are_configured_as_data(self):
         reg = registry.build_registry()
