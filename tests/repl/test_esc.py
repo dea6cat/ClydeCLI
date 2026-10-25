@@ -85,7 +85,7 @@ class TestPermissionPromptShowsKeys(unittest.TestCase):
         shown = repl.console.file.getvalue()
         for part in ("y  yes", "a  yes, and don't ask again for Bash(rm:*)", "n  no"):
             self.assertIn(part, shown)
-        self.assertIn("[y/a/n]", ask.call_args.args[0])
+        self.assertIn("[y/a/n, or answer in your own words]", ask.call_args.args[0])
 
 
 class TestSpinnerResumesAfterPrompt(unittest.TestCase):

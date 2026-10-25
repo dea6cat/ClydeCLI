@@ -278,6 +278,28 @@ class TestTurns(BonnieCase):
         self.assertEqual(second, [(False, False)])
 
 
+    def test_words_sent_while_a_card_waits_answer_it(self):
+        self.bonnie.control.busy = True
+        last = None
+        for verdict, steered in (((True, ""), None), ((False, ""), "no, list src/ only")):
+            result = []
+            threading.Thread(target=lambda: result.append(self.bonnie.ask_permission("Bash", "run ls", None))).start()
+            card = next(e for e in self.wait_for("permission", **({"after": last} if last else {})) if e["kind"] == "permission")
+            words = steered or "sure, go ahead"
+            with patch("src.plain_answer.is_plain_yes", return_value=verdict):
+                status, body = self.call("POST", "/api/steer", {"text": words})
+            self.assertEqual((status, body), (200, {"answered": True, "allowed": verdict[0]}))
+            deadline = time.monotonic() + 5
+            while not result and time.monotonic() < deadline:
+                time.sleep(0.05)
+            self.assertEqual(result, [(verdict[0], False)])
+            self.assertEqual(self.bonnie.control.take_steer(), steered)
+            done = next(e for e in self.wait_for("permission_answered", after=card["id"]) if e["kind"] == "permission_answered")
+            self.assertEqual(done["card"], card["card"])
+            last = done["id"]
+        self.bonnie.control.busy = False
+
+
 class TestChanges(BonnieCase):
     def test_mode_session_and_model_changes_work_when_idle_and_are_refused_while_busy(self):
         self.assertEqual(self.call("POST", "/api/mode", {"mode": "plan"})[1]["mode"], "plan")

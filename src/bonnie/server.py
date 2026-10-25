@@ -163,6 +163,21 @@ class Bonnie:
         waiter[0].set()
         return True
 
+    def answer_in_words(self, text: str) -> bool | None:
+        """Text sent while a permission card waits answers it: allowed only when a model reads it as a plain yes, otherwise the
+        action is denied and the text steers Clyde. None when no card waits (the text is ordinary steering)."""
+        from src import plain_answer
+        with self._lock:
+            pid = next(reversed(self._waiters), None)
+        if pid is None:
+            return None
+        yes, _ = plain_answer.is_plain_yes(*plain_answer.judge(self.repl), text)
+        if not yes:
+            self.control.steer(text)
+        if self.answer_permission(pid, yes):
+            self.events.emit("permission_answered", card=pid, allow=yes, text=text)
+        return yes
+
     def stop(self) -> None:
         self.stopped_at = time.monotonic()
         self._stop_requested = True
@@ -619,6 +634,8 @@ def make_server(bonnie: Bonnie, host: str = "127.0.0.1", port: int = 0) -> Threa
                     self._json(200, {"queued": bonnie.control.prompts.qsize()})
                 elif not bonnie.control.busy:
                     self._json(409, {"error": "nothing is running; send it as a prompt"})
+                elif (allowed := bonnie.answer_in_words(text.strip())) is not None:
+                    self._json(200, {"answered": True, "allowed": allowed})
                 else:
                     bonnie.control.steer(text.strip())
                     self._json(200, {"steering": True})

@@ -922,7 +922,10 @@ $("stop").addEventListener("click", () => api("/api/stop", {}).catch((e) => note
 $("steer").addEventListener("click", async () => {
   const text = $("input").value.trim();
   if (!text) return;
-  try { await api("/api/steer", { text }); $("input").value = ""; autosize(); note("Sent to the running task: " + text); } catch (e) { note(e.message, "error"); }
+  try {
+    const r = await api("/api/steer", { text }); $("input").value = ""; autosize();
+    note(r.answered ? (r.allowed ? "Read as a yes; allowed." : "Not a plain yes, so that one is held; your words go to Clyde.") : "Sent to the running task: " + text);
+  } catch (e) { note(e.message, "error"); }
 });
 document.querySelectorAll("#form .chip[data-mode]").forEach((c) => c.addEventListener("click", () => { st.ui = c.dataset.mode; paintControls(); }));
 $("nav-computer").addEventListener("click", () => { showView("chat"); st.ui = "computer"; paintControls(); $("input").focus(); });
@@ -943,8 +946,9 @@ function permissionCard(e) {
   const allow = h("button", { class: "btn cut primary" }, "Allow"), deny = h("button", { class: "btn cut" }, "Deny");
   const answer = (ok) => async () => { allow.disabled = deny.disabled = true; try { await api("/api/permission", { card: e.card, allow: ok }); } catch (err) { note(err.message, "error"); } };
   allow.addEventListener("click", answer(true)); deny.addEventListener("click", answer(false));
-  col.append(h("div", { class: "card cut", role: "group", "aria-label": "Permission needed" },
-    h("div", {}, h("b", {}, "Bonnie wants to use " + e.tool), h("div", { class: "note" }, e.message)), h("div", { class: "row" }, allow, deny)));
+  col.append(h("div", { class: "card cut", role: "group", "aria-label": "Permission needed", "data-card": e.card },
+    h("div", {}, h("b", {}, "Bonnie wants to use " + e.tool), h("div", { class: "note" }, e.message)), h("div", { class: "row" }, allow, deny),
+    h("div", { class: "note" }, "Or answer in your own words below and press Steer: only a plain yes allows it.")));
   st.bubble = null; scroll();
 }
 function trackSources(e) {
@@ -977,6 +981,7 @@ function handle(e) {
   else if (e.kind === "tool") toolLine(e);
   else if (e.kind === "notice") note(e.message);
   else if (e.kind === "permission") permissionCard(e);
+  else if (e.kind === "permission_answered") document.querySelectorAll(`[data-card="${e.card}"] button`).forEach((b) => { b.disabled = true; });
   else if (e.kind === "artifact") { artifactCard(e); if ($("main").dataset.view === "artifacts") loadArtifacts().catch(() => {}); }
   else if (e.kind === "error") { finish(); note(e.message, "error"); }
   else if (e.kind === "turn_end") {
