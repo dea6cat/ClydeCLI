@@ -50,7 +50,7 @@ class ToolContext:
     hooks: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     # Saved allow/deny rules (see permission_rules.py); the REPL loads them from settings.
     # Mutated in place so sub-agents, which get a shallow copy of this context, see new rules.
-    permission_rules: dict[str, list[str]] = field(default_factory=lambda: {"allow": [], "deny": []})
+    permission_rules: dict[str, list[str]] = field(default_factory=lambda: {"allow": [], "ask": [], "deny": []})
     # Files and folders outside the project that the user approved this session (a folder covers what is under it).
     # Shared with sub-agents like the rules above, so one yes covers the whole session.
     granted_paths: set[Path] = field(default_factory=set)

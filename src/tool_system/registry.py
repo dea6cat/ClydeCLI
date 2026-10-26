@@ -11,6 +11,25 @@ from .hooks import run_hooks
 from .permission_handler import PermissionResult
 from .permission_rules import check_rules, suggest_rule
 from .protocol import ToolCall, ToolResult
+
+_WHOLE_FILES = {"image", "pdf", "notebook"}   # Read's encoded files: never cut
+
+
+def _clip_result(result: ToolResult, limit: int) -> ToolResult:
+    """Hold a tool's text output to its declared max_result_size_chars: the head and tail stay, the whole output goes to
+    the context cache for RetrieveContext. Before this nothing enforced the limit, and Bash kept only its first 20,000
+    characters, so a failing test run lost the error at its end."""
+    from ..context_system.context_cache import clip
+
+    out = result.output
+    if isinstance(out, str):
+        clipped: Any = clip(out, limit)
+    elif isinstance(out, dict) and out.get("type") not in _WHOLE_FILES:
+        clipped = {k: clip(v, limit) if isinstance(v, str) else v for k, v in out.items()}
+    else:
+        return result
+    return result if clipped == out else ToolResult(name=result.name, output=clipped, is_error=result.is_error,
+                                                     tool_use_id=result.tool_use_id, content_type=result.content_type)
 from .schema_validation import validate_json_schema
 
 
@@ -220,7 +239,9 @@ class ToolRegistry:
         target = _edit_target(spec, call.input, context) if context.confirm_edits else None
         if target is not None and permission_result.behavior.value == "allow":
             permission_result = PermissionResult.ask(f"{spec.name} wants to change {_shown(target, context)}")   # hold mode
-        auto = context.auto_approve and not _is_major(spec, call.input, context)
+        if ruling == "ask" and permission_result.behavior.value == "allow":   # an ask rule: always a prompt
+            permission_result = PermissionResult.ask(f"{spec.name}: an ask rule in settings wants your yes")
+        auto = context.auto_approve and not _is_major(spec, call.input, context) and ruling != "ask"
         if permission_result.behavior.value == "ask" and (ruling == "allow" or auto):
             if auto and ruling != "allow":
                 trace.record("permission_auto", tool=spec.name, message=permission_result.message)
@@ -271,6 +292,7 @@ class ToolRegistry:
             except Exception:   # a checkpoint must never stop the edit; the tool reports bad paths itself
                 pass
         result = tool.run(call.input, context)
+        result = _clip_result(result, spec.max_result_size_chars)
         feedback = run_hooks(
             context.hooks, "PostToolUse",
             {"tool_name": spec.name, "tool_input": call.input, "tool_response": result.output}, context.cwd,

@@ -145,5 +145,46 @@ class TestWithoutATerminal(unittest.TestCase):
         self.assertIsNone(pick(Console(file=io.StringIO()), "Pick", []))
 
 
+OPTIONS = [{"label": "Restore it (Recommended)", "description": "Put the return back.", "preview": "line one\nline two"},
+           {"label": "Leave it", "description": "You are editing it."}]
+
+
+def _answer(keys: str, multi: bool = False):
+    with create_pipe_input() as pipe:
+        pipe.send_text(keys)
+        return picker.ask("Loop edit", "How should I proceed?", OPTIONS, multi=multi, input=pipe, output=DummyOutput())
+
+
+@unittest.skipIf(create_pipe_input is None, "prompt_toolkit not installed")
+class TestAskQuestion(unittest.TestCase):
+    """AskUserQuestion drawn as Claude Code does: header chip, options with descriptions, your own words, chat."""
+
+    def test_arrows_and_row_numbers_pick_an_option(self):
+        self.assertEqual(_answer(ENTER), "Restore it (Recommended)")
+        self.assertEqual(_answer(DOWN + ENTER), "Leave it")
+        self.assertEqual(_answer("2" + ENTER), "Leave it")
+
+    def test_typing_answers_in_your_own_words(self):
+        self.assertEqual(_answer("only if tests pass" + ENTER), "only if tests pass")
+        self.assertEqual(_answer("3" + "no" + "\x7f" + "o!" + ENTER), "no!")   # row 3, then backspace
+
+    def test_chat_about_this_and_esc(self):
+        self.assertIs(_answer("4" + ENTER), picker.CHAT)
+        self.assertIsNone(_answer(CTRL_C))
+
+    def test_multi_select_ticks_with_space(self):
+        self.assertEqual(_answer(" " + DOWN + " " + ENTER, multi=True), "Restore it (Recommended), Leave it")
+        self.assertEqual(_answer(DOWN + ENTER, multi=True), "Leave it")   # nothing ticked: the focused one
+
+    def test_the_view_shows_header_descriptions_rows_and_the_focused_preview(self):
+        text = "".join(t for _s, t in picker.render_question("Loop edit", "How should I proceed?", OPTIONS, 0,
+                                                             multi=False, chosen=set(), typed=""))
+        for part in ("☐ Loop edit", "▌ How should I proceed?", "❯ 1. Restore it (Recommended)", "Put the return back.",
+                     "3. Type something.", "4. Chat about this", "│ line one", "Enter to select · ↑/↓ to navigate"):
+            self.assertIn(part, text)
+        other = "".join(t for _s, t in picker.render_question("h", "q", OPTIONS, 1, multi=False, chosen=set(), typed=""))
+        self.assertNotIn("line one", other)   # the preview follows the cursor
+
+
 if __name__ == "__main__":
     unittest.main()
