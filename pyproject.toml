@@ -34,6 +34,9 @@ dependencies = [
     # Ranks local models by real benchmarks and how they fit the machine: our fork of github.com/Andyyyy64/whichllm (MIT)
     # with a library entry point, vendored at src/vendor/whichllm (license there) so a git pin can't break installs again.
     "psutil>=5.9",
+    # whichllm's own imports (its api and model cache); they used to arrive only as SkillSpector's dependencies.
+    "click>=8",
+    "httpx>=0.27",
 ]
 
 [project.optional-dependencies]
