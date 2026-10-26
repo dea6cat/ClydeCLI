@@ -36,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Lines typed while a turn runs are no longer lost. The Esc watcher is the only reader of the keyboard during a turn and used to throw away everything but Esc, so the "queued input" never had anything to queue; it now keeps what you type, the REPL runs each line as the next turn, and a half-typed line (no Enter yet) starts the next prompt instead of being stranded. Arrow keys and other key sequences still don't count as text. In a real terminal session a request typed while the first was answering was answered after it.
 - `/brief` asked every question as if it were the first: the earlier answers never reached the model. It now sees them, always ends (after 10 questions the spec is written from what is known), and keeps its `READY` marker out of the spec.
 - `/harness` listed model names it had made up (three Ollama models, the provider's name as its only model). It now lists what each connected provider really returns, and Ollama's installed models.
 - A second compaction no longer loses what the first one kept. The summarizer reads only the recent messages, so the previous summary and older requests dropped out of the new one; it now updates the previous summary and sees those requests. A decision made before two compactions was recalled 3 of 3 times, against 1 of 3 (the others made up a database).

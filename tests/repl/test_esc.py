@@ -66,6 +66,69 @@ class TestEscCancels(unittest.TestCase):
         self.assertIn("restored", out)
 
 
+@unittest.skipUnless(os.name == "posix", "needs a pseudo-terminal")
+class TestTypedDuringATurnIsKept(unittest.TestCase):
+    """The watcher reads the keyboard during a turn; it used to throw away everything but Esc, so queued input was lost."""
+
+    def _typed_while_watching(self, *chunks: bytes) -> str:
+        import pty
+        from src.repl.esc import EscWatcher
+
+        master, slave = pty.openpty()
+        stream = os.fdopen(slave, "r")
+        self.addCleanup(stream.close)
+        self.addCleanup(os.close, master)
+        watcher = EscWatcher(stream)
+        with watcher.active():
+            for chunk in chunks:
+                os.write(master, chunk)
+                time.sleep(0.25)
+        return watcher.take_typed()
+
+    def test_lines_typed_during_a_turn_are_kept_whole_including_a_half_typed_one(self):
+        self.assertEqual(self._typed_while_watching(b"fix the tests\npass", b"es too\nhal"), "fix the tests\npasses too\nhal")
+
+    def test_arrow_keys_are_not_text_and_utf8_split_across_reads_survives(self):
+        self.assertEqual(self._typed_while_watching(b"a\x1b[Ab\x1bOPc", "caf\u00e9".encode()[:4], "caf\u00e9".encode()[4:]), "abccafé")
+
+    def test_what_was_taken_is_forgotten(self):
+        import pty
+        from src.repl.esc import EscWatcher
+
+        master, slave = pty.openpty()
+        stream = os.fdopen(slave, "r")
+        self.addCleanup(stream.close)
+        self.addCleanup(os.close, master)
+        watcher = EscWatcher(stream)
+        with watcher.active():
+            os.write(master, b"once\n")
+            time.sleep(0.25)
+        self.assertEqual((watcher.take_typed(), watcher.take_typed()), ("once\n", ""))
+
+
+class TestDrainQueuedInput(unittest.TestCase):
+    def _repl(self, typed: str):
+        from types import SimpleNamespace
+        from src.repl.core import ClydeREPL
+
+        repl = ClydeREPL.__new__(ClydeREPL)
+        repl._input_buffer = ""
+        repl._esc = SimpleNamespace(take_typed=lambda: typed)
+        return repl
+
+    def test_the_drain_returns_the_lines_the_watcher_kept_and_holds_the_rest(self):
+        import io
+        from unittest.mock import patch
+
+        repl = self._repl("first\r\nsecond\nhalf")
+        with patch("sys.stdin", io.StringIO()):   # no fileno: only the watcher's text
+            self.assertEqual(repl._drain_queued_input(), ["first", "second"])
+            self.assertEqual(repl._input_buffer, "half")
+            repl._esc = type(repl._esc)(take_typed=lambda: " line\n")   # the rest of it arrives
+            self.assertEqual(repl._drain_queued_input(), ["half line"])
+            self.assertEqual(repl._input_buffer, "")
+
+
 class TestPermissionPromptShowsKeys(unittest.TestCase):
     def test_y_and_n_are_visible_and_accepted(self):
         import io
