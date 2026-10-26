@@ -31,13 +31,14 @@ dependencies = [
     "tiktoken>=0.7.0",
     # httpx trusts certifi's roots; 2026.10.19 drops emSign ECC Root CA - G3 (the eMudhra weak-key incident).
     "certifi>=2026.10.19",
-    # Bundled security scanner for skills, plugins and MCP servers from other agents (not on PyPI).
-    "skillspector @ git+https://github.com/NVIDIA/SkillSpector@v2.12.0",
     # The Data tool's engine: profile and query CSV, Parquet and JSON files with read-only SQL.
     "duckdb>=1.5,<2",
-    # Ranks local models by real benchmarks and how they fit the machine: our fork of github.com/Andyyyy64/whichllm (MIT) with a library entry point.
-    # Pinned to a commit (the stale-cache branch tip): clyde-2 was deleted, and a branch pin can move or vanish under us again.
-    "whichllm @ git+https://github.com/dea6cat/whichLocalLLM@30c66fe567f278b3ee929a50165b8bd617b7a07a",
+    # Ranks local models by real benchmarks and how they fit the machine: our fork of github.com/Andyyyy64/whichllm (MIT)
+    # with a library entry point, vendored at src/vendor/whichllm (license there) so a git pin can't break installs again.
+    "psutil>=5.9",
+    # whichllm's own imports (its api and model cache); they used to arrive only as SkillSpector's dependencies.
+    "click>=8",
+    "httpx>=0.27",
 ]
 
 [project.optional-dependencies]
@@ -62,3 +63,7 @@ Documentation = "https://github.com/dea6cat/ClydeCLI#readme"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["src*"]
+
+# Ship the vendored code's MIT license text with it (attribution travels with the code).
+[tool.setuptools.package-data]
+"src.vendor.whichllm" = ["LICENSE"]

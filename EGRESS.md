@@ -45,7 +45,7 @@ any web request; the Worker never reads it. See [the privacy page](https://dea6c
 |---|---|---|---|
 | Cloud review of a weak local reply | the cloud provider you connected | your request and the local model's reply, after a yes once per session | `CLYDE_CLOUD_REVIEW=off`, or answer no |
 | SkillSpector's LLM review | the model you connected | the skill, plugin or MCP tool list being reviewed, only for plugin installs, items its offline stage flagged, and `/skills scan`. The static scan is offline | `CLYDE_SKILL_SCAN=off`, or connect no model |
-| Finding local models | `ollama.com` (search), `huggingface.co` (model lists, chat templates), and the leaderboards `whichllm` reads to rank them (it builds a list in the background, about 5 minutes) | search terms and model names; no content | do not open the local-model search |
+| Finding local models | `ollama.com` (search), `huggingface.co` (model lists, chat templates), and the leaderboards the vendored `whichllm` (`src/vendor/whichllm`) reads to rank them — `artificialanalysis.ai`, `livebench.ai`, `raw.githubusercontent.com` (Aider's leaderboard) and `datasets-server.huggingface.co` (Chatbot Arena data) — building a list in the background, about 5 minutes | search terms and model names; no content | do not open the local-model search |
 | Installing Ollama | `brew`, or `ollama.com/install.sh`, from the offer in the local-model flow | nothing of yours | answer no to the offer |
 | Installing oMLX | `github.com/jundot/omlx` (its pinned source), PyPI and GitHub (its Python packages), and uv's Python 3.13 when the Mac has none | nothing of yours | answer no to the offer |
 | Downloading an MLX model | `huggingface.co`, by oMLX's own downloader | the model's name | do not pick an MLX model in `/models local` |
@@ -77,4 +77,5 @@ certificate, `/proxy ca`, is for). Servers on this machine (Ollama, oMLX) never 
 Where to get a key or an installer, shown on screen or in a setup message: `platform.openai.com`, `platform.claude.com`,
 `platform.deepseek.com`, `platform.minimax.io`, `console.mistral.ai`, `aistudio.google.com`, `dash.cloudflare.com`, `cloud.cerebras.ai`,
 `build.nvidia.com`, `enter.pollinations.ai`, `mcp.linear.app` (an example in the MCP help),
-`polyformproject.org` (the licence text), `example.com` and `proxy.example.com` (placeholders in help text).
+`polyformproject.org` (the licence text), `www.apache.org` (Apache-2.0 licence text in scanner headers), `astral.sh` (uv's install command, printed by the vendored whichllm's own `run` command),
+`example.com` and `proxy.example.com` (placeholders in help text).

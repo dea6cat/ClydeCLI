@@ -213,7 +213,7 @@ def _request(url: str, payload: dict, headers: dict | None, method: str = "POST"
 # A remote stream that sends nothing for this long has stalled: give up instead of holding the turn
 # for the full read timeout. Local servers keep 600 s, since loading a model can be that slow.
 # ponytail: one fixed value; a per-provider setting if some endpoint legitimately idles longer.
-STALL_TIMEOUT = 180
+STALL_TIMEOUT = 300
 _LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1", "0.0.0.0")
 
 
@@ -337,12 +337,20 @@ def stream_with_retry(provider, conversation, model, tools, on_text, *, retries=
 def _stream_with_retry(provider, conversation, model, tools, on_text, *, retries=3, cancel=None,
                        reasoning=None, on_thinking=None) -> ProviderResponse:
     """provider.stream with backoff on retryable ProviderError (429/5xx/connection). Honors a
-    cancel Event (re-raises immediately). When a retryable error survives every retry, the
-    message gets a `— retried N×, still failing` suffix so it doesn't read as a single blip."""
+    cancel Event (re-raises immediately). A 429 without a Retry-After gets its own curve —
+    5 s growing to MAX_RETRY_AFTER_WAIT_S, not the generic 1-2-4 s, which a rate window
+    always outlives. When a retryable error survives every retry, the message gets a
+    `— retried N×, still failing` suffix so it doesn't read as a single blip."""
     delay = 1.0
+    shown: list[str] = []   # text already streamed to the user in this call
+
+    def text(chunk: str) -> None:
+        shown.append(chunk)
+        on_text(chunk)
+
     for attempt in range(retries + 1):
         try:
-            return provider.stream(conversation, model, tools, on_text, cancel=cancel,
+            return provider.stream(conversation, model, tools, text, cancel=cancel,
                                    reasoning=reasoning, on_thinking=on_thinking)
         except _Cancelled:
             raise
@@ -350,6 +358,13 @@ def _stream_with_retry(provider, conversation, model, tools, on_text, *, retries
             cancelled = cancel is not None and cancel.is_set()
             if not e.retryable or cancelled:
                 raise
+            if "".join(shown).strip():
+                # Part of the answer already printed: a retry would print it again from the top (Kilo never
+                # retries past output). Hand back what arrived as an interrupted reply; the agent loop asks the
+                # model to continue it, as it does for a reply cut off at the output limit.
+                from ..agent import trace   # lazy: the agent package imports this module
+                trace.record("stream_interrupted", provider=e.provider, chars=len("".join(shown)), error=str(e)[:200])
+                return ProviderResponse(message=Message.assistant(text="".join(shown)), raw={}, done_reason="interrupted")
             if e.retry_after and e.retry_after > MAX_RETRY_AFTER_WAIT_S:
                 raise   # waiting that long would stall the turn; the caller (cardShuffle) benches the model instead
             if attempt == retries:
@@ -358,7 +373,11 @@ def _stream_with_retry(provider, conversation, model, tools, on_text, *, retries
                     raise ProviderError(e.provider, f"{raw} — retried {attempt}×, still failing",
                                         retryable=True, status=e.status, retry_after=e.retry_after) from e
                 raise
-            delay = min(e.retry_after, MAX_RETRY_AFTER_WAIT_S) if e.retry_after else delay   # the provider's own ask beats our backoff
+            rate_limited = e.status == 429
+            if e.retry_after:
+                delay = min(e.retry_after, MAX_RETRY_AFTER_WAIT_S)   # the provider's own ask beats our backoff
+            elif rate_limited:
+                delay = max(delay, 5.0)
             activity.set(f"retry {attempt + 1} of {retries} in {delay:.0f}s: {str(e).removeprefix(f'[{e.provider}] ')[:70]}")
             waited = 0.0
             while waited < delay:
@@ -366,7 +385,7 @@ def _stream_with_retry(provider, conversation, model, tools, on_text, *, retries
                     raise
                 _time.sleep(0.1)
                 waited += 0.1
-            delay = min(delay * 2, 8.0)
+            delay = min(delay * 2, MAX_RETRY_AFTER_WAIT_S if rate_limited else 8.0)
     raise AssertionError("unreachable")
 
 

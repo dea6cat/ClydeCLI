@@ -1,6 +1,6 @@
 """The best models for this machine, ranked by real benchmarks: a source for /models local.
 
-The ranking is whichllm's (github.com/Andyyyy64/whichllm, MIT; we bundle our fork, dea6cat/whichLocalLLM).
+The ranking is whichllm's (github.com/Andyyyy64/whichllm, MIT; our fork, vendored at src/vendor/whichllm).
 It merges LiveBench, Artificial Analysis, Aider and Arena scores and sizes each model's memory from its
 architecture. Clyde replaces its machine detection with ours: the memory budget the other sources use, and
 the chip's bandwidth. Every entry point returns [] on any failure, like the other sources.
@@ -22,7 +22,7 @@ CREDIT = "ranked by whichllm"
 
 
 def _machine(budget: int, chip: str):  # type: ignore[no-untyped-def]
-    from whichllm.hardware.types import GPUInfo, HardwareInfo
+    from src.vendor.whichllm.hardware.types import GPUInfo, HardwareInfo
 
     ram = fit._total_ram_bytes() or budget
     gpu = GPUInfo(chip or "GPU", "apple" if chip.startswith("Apple") else "nvidia", budget, usable_vram_bytes=budget,
@@ -48,7 +48,7 @@ _builder: threading.Thread | None = None
 def _cache_state() -> str:
     """"fresh", "stale" or "none" for whichllm's cached model list. Building it takes about 5 minutes
     (Hugging Face and the leaderboards); a stale list still ranks well, so it is served while a new one builds."""
-    from whichllm.models.cache import load_cache
+    from src.vendor.whichllm.models.cache import load_cache
 
     return "fresh" if load_cache() is not None else "stale" if load_cache(ttl=None) is not None else "none"
 
@@ -82,7 +82,7 @@ def _profile() -> str:
 
 @lru_cache(maxsize=4)
 def _ranked(budget: int, chip: str, profile: str, refresh: bool = False) -> tuple:
-    from whichllm.api import recommend
+    from src.vendor.whichllm.api import recommend
 
     return tuple(recommend(_machine(budget, chip), top=_TOP, profile=profile, refresh=refresh, stale_ok=not refresh))
 

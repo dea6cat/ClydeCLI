@@ -113,6 +113,116 @@ class DeepSeekReplay(unittest.TestCase):
         self.assertNotIn("reasoning_content", other)
 
 
+class ContentFragmentList(unittest.TestCase):
+    """Some providers stream `delta.content` as a list of fragments
+    ([{"type": "text", "text": "..."}]) instead of a plain string. The stream
+    path must flatten that to its text, or `"".join(content)` raises and the
+    on_text callback gets a list it can't render. Reproduces the traceback in
+    repl/core.py -> agent_loop -> openai_compat.stream.
+    """
+
+    def setUp(self):
+        self._orig = oc.post_stream
+
+        def fake(url, payload, **kw):
+            return iter([
+                'data: {"choices":[{"delta":{"content":[{"type":"text","text":"Hel"}]}}]}\n',
+                'data: {"choices":[{"delta":{"content":[{"type":"text","text":"lo"}]}}]}\n',
+                'data: {"choices":[{"delta":{"content":"!"}}]}\n',
+                "data: [DONE]\n",
+            ])
+        oc.post_stream = fake
+
+    def tearDown(self):
+        oc.post_stream = self._orig
+
+    def test_list_content_is_flattened_to_text(self):
+        seen = []
+        conv = Conversation(system_prompt="s")
+        conv.append(Message.user("hi"))
+        resp = _p(None).stream(conv, "m", (), seen.append)
+        self.assertEqual(resp.message.text, "Hello!")
+        self.assertEqual(seen, ["Hel", "lo", "!"])
+
+
+class Mistral(unittest.TestCase):
+    """Mistral's own shapes, probed live 2026-10-26: reasoning streams as `content` fragments of type "thinking", and
+    reasoning_effort is per family (others 400 on it). Same handling as Mistral Vibe's MistralMapper."""
+
+    def setUp(self):
+        self._orig, self._orig_get = oc.post_stream, oc.get_json
+        self.sent = {}
+        self.catalog_reads = 0
+
+        def no_catalog(url, **kw):   # offline: the families answer
+            self.catalog_reads += 1
+            raise OSError("offline")
+        oc.get_json = no_catalog
+
+        def fake(url, payload, **kw):
+            self.sent.update(payload)
+            return iter([
+                'data: {"choices":[{"delta":{"content":[{"type":"thinking","thinking":[{"type":"text","text":"plan "}],"closed":true}]}}]}\n',
+                'data: {"choices":[{"delta":{"content":[{"type":"thinking","thinking":[{"type":"text","text":"it"}]}]}}]}\n',
+                'data: {"choices":[{"delta":{"content":[{"type":"text","text":"Hi"}]}}]}\n',
+                'data: {"choices":[{"delta":{"content":"!"},"finish_reason":"stop"}]}\n',
+                "data: [DONE]\n",
+            ])
+        oc.post_stream = fake
+
+    def tearDown(self):
+        oc.post_stream, oc.get_json = self._orig, self._orig_get
+
+    def test_the_catalog_names_new_models_and_a_failed_read_is_not_retried_every_turn(self):
+        p = registry.build_registry()["mistral"]
+        for _ in range(3):
+            p._reasoning_fields("zai-glm-5-3-flash", "off")
+        self.assertEqual(self.catalog_reads, 1)                     # offline: one try per run, not one per request
+
+        oc.get_json = lambda url, **kw: {"models": [
+            {"id": "mistral-huge-9", "aliases": ["huge-latest"], "parameters": {"reasoning": ["none", "high"]}},
+            {"id": "zai-glm-7", "parameters": {"reasoning": ["low", "high", "max"]}},
+            {"id": "ministral-3b-latest", "parameters": {}}]}
+        p = registry.build_registry()["mistral"]
+        f = p._reasoning_fields
+        self.assertEqual(f("mistral-huge-9", "off"), {"reasoning_effort": "none"})   # no family knows it
+        self.assertEqual(f("huge-latest", "high"), {"reasoning_effort": "high"})     # by alias
+        self.assertEqual(f("zai-glm-7", "off"), {"reasoning_effort": "low"})
+        self.assertEqual(f("ministral-3b-latest", "high"), {})
+        self.assertEqual(f("magistral-small-latest", "high"), {"reasoning_effort": "high"})  # not listed: family
+
+    def test_thinking_fragments_are_thinking_not_dropped(self):
+        conv = Conversation(system_prompt="s")
+        conv.append(Message.user("hi"))
+        thoughts, text = [], []
+        resp = registry.build_registry()["mistral"].stream(conv, "zai-glm-5-3-flash", (), text.append, on_thinking=thoughts.append)
+        self.assertEqual(resp.message.thinking, "plan it")
+        self.assertEqual(thoughts, ["plan ", "it"])
+        self.assertEqual((resp.message.text, text), ("Hi!", ["Hi", "!"]))
+
+    def test_reasoning_effort_by_family(self):
+        f = registry.build_registry()["mistral"]._reasoning_fields
+        self.assertEqual(f("mistral-medium-latest", "off"), {"reasoning_effort": "none"})
+        self.assertEqual(f("magistral-small-latest", "high"), {"reasoning_effort": "high"})
+        self.assertEqual(f("mistral-small-2603", "on"), {"reasoning_effort": "high"})
+        self.assertEqual(f("zai-glm-5-3-flash", "off"), {"reasoning_effort": "low"})   # it 400s "none"
+        self.assertEqual(f("zai-glm-5-3-flash", "on"), {})                             # it thinks by default
+        for model in ("ministral-3b-latest", "codestral-latest", "mistral-large-latest"):
+            self.assertEqual(f(model, "high"), {}, model)                              # these 400 on the field
+        self.assertEqual(f("mistral-medium-latest", None), {})
+
+    def test_a_reasoning_model_gets_its_thinking_back_and_others_do_not(self):
+        conv = Conversation(system_prompt="s")
+        conv.append(Message.user("hi"))
+        conv.append(Message.assistant(text="ok", thinking="because", tool_calls=[ToolCall(id="abcdefghi", name="Read", arguments={})]))
+        p = registry.build_registry()["mistral"]
+        glm = [m for m in p._messages(conv, "zai-glm-5-3-flash") if m["role"] == "assistant"][0]
+        self.assertEqual(glm["content"], [{"type": "thinking", "thinking": [{"type": "text", "text": "because"}]},
+                                          {"type": "text", "text": "ok"}])
+        small = [m for m in p._messages(conv, "ministral-3b-latest") if m["role"] == "assistant"][0]
+        self.assertEqual(small["content"], "ok")
+
+
 class RegistryData(unittest.TestCase):
     def test_styles_and_caps_are_configured_as_data(self):
         reg = registry.build_registry()
@@ -121,7 +231,8 @@ class RegistryData(unittest.TestCase):
         self.assertEqual(reg["openrouter"]._max_tokens, 16384)
         self.assertEqual(reg["deepseek"]._reasoning_style, "deepseek")
         self.assertEqual(reg["cerebras"]._reasoning_style, "cerebras")
-        self.assertIsNone(reg["mistral"]._reasoning_style)
+        self.assertEqual(reg["mistral"]._reasoning_style, "mistral")
+        self.assertIsNone(reg["nvidia"]._reasoning_style)
         self.assertIsNone(reg["deepseek"]._max_tokens)
 
 

@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 import re
+import time
 from typing import Callable
 
 from .base import ProviderError, ProviderResponse, cached_model_list, get_json, post_stream
@@ -22,6 +23,7 @@ _NON_CHAT = (
     "rerank", "guard", "safety", "reward", "-parse", "nemoretriever", "nvclip",
     "bge-", "arctic-embed", "voxtral", "riva", "diffusion", "calibration",
     "topic-control", "detector", "-fim-", ":batch",  # OpenRouter batch variants reject chat requests
+    "vibe-cli-with-tools",   # Mistral's model behind Vibe's web-search tool; not in its chat catalog
 )
 
 
@@ -40,6 +42,26 @@ _OPENAI_REASONING = re.compile(r"^(o\d|gpt-5|gpt-6)")
 _CEREBRAS_REASONING = ("qwen-3", "gpt-oss", "gemma-4")
 _CEREBRAS_CANT_DISABLE = ("gpt-oss",)
 _EFFORTS = ("low", "medium", "high")
+#   mistral    reasoning_effort, by family (probed 2026-10-26; the rest 400 "reasoning_effort is not enabled"):
+#              small/medium/magistral take none|high and think only when asked; zai-glm always thinks, takes
+#              low|high|max and 400s "none" ("low" thinks 0 tokens). Same mapping as Mistral Vibe.
+#              Mistral's model catalog (GET /v1/model-catalog?surface=vibe-code, what Vibe reads) names each model's
+#              levels; these families are the fallback when it is unreachable or leaves a model out (it lists 3 today).
+#              Temperature stays the server's: measured 2026-10-26 on tool tasks, ministral-3b scored 8/8 at its
+#              default, 5/8 at Vibe's 0.2 and at 0.7; ministral-8b and small 8/8 at all three.
+_MISTRAL_TOGGLED = ("mistral-small", "mistral-medium", "magistral", "mistral-vibe-cli-latest")
+_MISTRAL_GLM = ("zai-glm",)
+_CATALOG_TTL = 30 * 86_400   # as Vibe caches it; a failed fetch is cached too, so offline costs one try per run
+
+
+def _mistral_effort(levels: list[str], reasoning: str) -> str | None:
+    """The reasoning_effort for a /think level, from the levels a Mistral model takes. One that takes "none" thinks only
+    when asked (off/low -> none, the rest -> high); one that doesn't always thinks (off/low -> its lowest, "on" -> its
+    default). Same mapping as Mistral Vibe."""
+    top = "high" if "high" in levels else levels[-1]
+    if "none" in levels:
+        return {"off": "none", "low": "none", "medium": top, "high": top, "on": top}.get(reasoning)
+    return {"off": levels[0], "low": levels[0], "medium": top, "high": top}.get(reasoning)
 
 
 def _usage(raw: dict | None) -> dict | None:
@@ -93,7 +115,38 @@ class OpenAICompatProvider:
             return bool(_OPENAI_REASONING.match(m))
         if style == "cerebras":
             return m.startswith(_CEREBRAS_REASONING)
+        if style == "mistral":
+            return bool(self._mistral_levels(m))
         return style in ("openrouter", "deepseek")
+
+    def _mistral_levels(self, model: str) -> list[str]:
+        """The reasoning levels a Mistral model takes: its catalog entry, else its family's, else [] (no reasoning)."""
+        m = model.lower()
+        catalog = self._mistral_catalog()
+        if m in catalog:
+            return catalog[m]
+        if m.startswith(_MISTRAL_GLM):
+            return ["low", "high", "max"]
+        return ["none", "high"] if m.startswith(_MISTRAL_TOGGLED) else []
+
+    def _mistral_catalog(self) -> dict[str, list[str]]:
+        """Model id and alias -> reasoning levels, from Mistral's catalog; {} when it can't be read."""
+        cache = getattr(self, "_catalog_cache", None)
+        if cache is not None and time.monotonic() - cache[0] < _CATALOG_TTL:
+            return cache[1]
+        levels: dict[str, list[str]] = {}
+        try:
+            data = get_json(f"{self.base_url}/model-catalog?surface=vibe-code", headers=self._headers(), timeout=5,
+                            provider=self.name)
+            for entry in data.get("models") or []:
+                found = [str(x) for x in (entry.get("parameters") or {}).get("reasoning") or []]
+                for name in [entry.get("id"), *(entry.get("aliases") or [])]:
+                    if name and found:
+                        levels[str(name).lower()] = found
+        except Exception:   # offline, no key, or the endpoint moved: the families still answer
+            pass
+        self._catalog_cache = (time.monotonic(), levels)
+        return levels
 
     def _reasoning_fields(self, model: str, reasoning) -> dict:
         """This service's own request fields for a /think level; {} keeps its default."""
@@ -109,6 +162,9 @@ class OpenAICompatProvider:
                 return {"thinking": {"type": "disabled"}}
             effort = {} if reasoning == "on" else {"reasoning_effort": "low" if reasoning == "low" else "high"}
             return {"thinking": {"type": "enabled"}, **effort}
+        if style == "mistral":
+            effort = _mistral_effort(self._mistral_levels(model), reasoning)
+            return {"reasoning_effort": effort} if effort else {}
         if reasoning == "on":
             return {}
         if reasoning == "off":
@@ -126,8 +182,11 @@ class OpenAICompatProvider:
         ids = [m.get("id", "") for m in data.get("data", [])]
         return sorted(i for i in ids if i and _is_chat_model(i))
 
-    def _messages(self, conv: Conversation) -> list[dict]:
+    def _messages(self, conv: Conversation, model: str = "") -> list[dict]:
         call_id = _nine_character_id if self.name == "mistral" else (lambda i: i)
+        # A Mistral reasoning model gets its earlier thinking back, as Vibe sends it: without it a model that always
+        # thinks (zai-glm) loses its own plan across tool calls. A model without reasoning would not read it.
+        think_back = self._reasoning_style == "mistral" and self.supports_reasoning(model)
         out = [{"role": "system", "content": conv.system_prompt}]
         for m in conv.messages:
             if m.tool_results:
@@ -140,6 +199,9 @@ class OpenAICompatProvider:
                 # reasoning_content; other services don't take the field.
                 if self._reasoning_style == "deepseek" and m.thinking:
                     entry["reasoning_content"] = m.thinking
+                if think_back and m.thinking:
+                    entry["content"] = [{"type": "thinking", "thinking": [{"type": "text", "text": m.thinking}]},
+                                        *([{"type": "text", "text": m.text}] if m.text else [])]
                 if m.tool_calls:
                     entry["tool_calls"] = [
                         {"id": call_id(tc.id), "type": "function",
@@ -155,7 +217,7 @@ class OpenAICompatProvider:
         return out
 
     def _payload(self, conversation: Conversation, model: str, tools: tuple[ToolSpec, ...], stream: bool) -> dict:
-        payload: dict = {"model": model, "messages": self._messages(conversation), "stream": stream}
+        payload: dict = {"model": model, "messages": self._messages(conversation, model), "stream": stream}
         if tools:   # OpenAI rejects an empty tools array
             payload["tools"] = to_openai(tools)
         return payload
@@ -201,9 +263,24 @@ class OpenAICompatProvider:
                 thinking.append(chunk)
                 if on_thinking:
                     on_thinking(chunk)
-            if delta.get("content"):
-                content.append(delta["content"])
-                on_text(delta["content"])
+            piece = delta.get("content")
+            if piece:
+                # Some providers send content as a list of fragments ([{"type": "text", "text": "..."}])
+                # rather than a plain string; flatten to the text. Mistral sends reasoning the same way, as
+                # {"type": "thinking", "thinking": [{"type": "text", ...}]}: that is thinking, not answer.
+                if isinstance(piece, list):
+                    frags = [f for f in piece if isinstance(f, dict)]
+                    for f in frags:
+                        if f.get("type") == "thinking":
+                            said = "".join(x.get("text", "") for x in f.get("thinking") or [] if isinstance(x, dict))
+                            if said:
+                                thinking.append(said)
+                                if on_thinking:
+                                    on_thinking(said)
+                    piece = "".join(f.get("text", "") for f in frags if f.get("type", "text") == "text")
+                if isinstance(piece, str) and piece:
+                    content.append(piece)
+                    on_text(piece)
             for frag in delta.get("tool_calls") or []:
                 idx = frag.get("index", 0)
                 slot = by_index.setdefault(idx, {"id": None, "name": "", "args": ""})

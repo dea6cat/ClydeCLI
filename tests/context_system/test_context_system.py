@@ -61,7 +61,7 @@ class TestContextSystem(unittest.TestCase):
             self.assertIn("# Demo", summary.readme_excerpt)
             self.assertIn("pip install demo", summary.readme_excerpt)
             self.assertNotIn("## Details", summary.readme_excerpt)
-            self.assertTrue(summary.readme_excerpt.endswith("...[truncated]"))
+            self.assertIn("\n...[truncated; full text: RetrieveContext(reference=\"ctx:", summary.readme_excerpt)
 
     def test_readme_excerpt_hard_cuts_oversized_first_section(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

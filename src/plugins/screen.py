@@ -59,7 +59,7 @@ def errors(loaded: list[plugins.Loaded]) -> list[str]:
         found += [f"{plugin.name}: {p}" for p in contents(plugin).problems]
         verdict = skill_scan.cached_verdicts().get(f"plugin:{plugin.name}")
         if verdict and verdict.blocked:
-            found.append(f"{plugin.name}: held back by SkillSpector ({', '.join(verdict.findings[:2]) or 'no detail'}); "
+            found.append(f"{plugin.name}: held back by the security scan ({', '.join(verdict.findings[:2]) or 'no detail'}); "
                          f"`clyde plugin enable {plugin.name}` records your approval")
     return found
 

@@ -1,4 +1,4 @@
-"""PreToolUse / PostToolUse hooks: shell commands from ~/.clyde/settings.json or settings.toml.
+"""PreToolUse / PostToolUse / UserPromptSubmit / Stop hooks: shell commands from ~/.clyde/settings.json or settings.toml.
 
 The canonical shape is Claude Code's:
     {"hooks": {"PreToolUse": [{"matcher": "Bash|Write", "hooks": [{"type": "command", "command": "..."}]}]}}
@@ -51,6 +51,9 @@ _EVENTS = {
     "beforereadfile": ("PreToolUse", "Read"),
     "afterfileedit": ("PostToolUse", "Write|Edit|NotebookEdit"),
 }
+# Claude Code's turn events, matched by exact name: Cursor's lowercase "stop" is a different event (it runs once the
+# agent is done and can't hold the turn), so it is not read as Stop.
+_LIFECYCLE = ("UserPromptSubmit", "Stop")
 
 # Gemini CLI tool names that may appear in a matcher.
 _TOOL_NAMES = {
@@ -104,7 +107,7 @@ def normalize_hooks(table: Any) -> dict[str, list[dict[str, Any]]]:
     """Map a hooks table in any supported format onto PreToolUse / PostToolUse groups."""
     out: dict[str, list[dict[str, Any]]] = {}
     for name, value in (table.items() if isinstance(table, dict) else []):
-        event = _EVENTS.get(str(name).lower())
+        event = (str(name), "") if name in _LIFECYCLE else _EVENTS.get(str(name).lower())
         if event:
             out.setdefault(event[0], []).extend(_groups(value, event[1]))
     return out
@@ -164,7 +167,7 @@ def run_hooks(hooks: dict[str, list[dict[str, Any]]], event: str, payload: dict[
     """Run the event's matching hook commands; return the message of the first one that blocks."""
     stdin = json.dumps({"hook_event_name": event, "cwd": str(cwd), **payload}, default=str)
     for group in hooks.get(event) or []:
-        if not _matches(group["matcher"], payload["tool_name"]):
+        if not _matches(group["matcher"], payload.get("tool_name", "")):
             continue
         for hook in group["hooks"]:
             try:
@@ -179,6 +182,40 @@ def run_hooks(hooks: dict[str, list[dict[str, Any]]], event: str, payload: dict[
             if done.returncode == 0 and (verdict := _json_verdict(done.stdout.strip())):
                 return verdict
     return None
+
+
+def run_lifecycle(hooks: dict[str, list[dict[str, Any]]], event: str, payload: dict[str, Any], cwd: Path) -> tuple[str | None, str]:
+    """Run a turn's UserPromptSubmit or Stop hooks, as Claude Code does: (why one blocked, or None; context to add).
+    Exit 2 or a JSON block/deny stops it with that reason. On UserPromptSubmit, plain stdout or JSON
+    hookSpecificOutput.additionalContext is context for the model; Stop hooks only block (the reason goes to the model)."""
+    stdin = json.dumps({"hook_event_name": event, "cwd": str(cwd), **payload}, default=str)
+    context: list[str] = []
+    for group in hooks.get(event) or []:
+        for hook in group["hooks"]:
+            try:
+                done = subprocess.run(hook["command"], shell=True, input=stdin, capture_output=True, text=True,
+                                      cwd=cwd, timeout=hook.get("timeout", DEFAULT_TIMEOUT))
+            except (OSError, subprocess.TimeoutExpired):
+                continue   # a hook that can't run never holds the turn
+            out = done.stdout.strip()
+            if done.returncode == 2:
+                return done.stderr.strip() or f"blocked by {event} hook: {hook['command']}", "\n".join(context)
+            if done.returncode != 0 or not out:
+                continue
+            if verdict := _json_verdict(out):
+                return verdict, "\n".join(context)
+            if event == "UserPromptSubmit":
+                try:
+                    reply = json.loads(out)
+                except ValueError:
+                    reply = None
+                if isinstance(reply, dict):
+                    added = (reply.get("hookSpecificOutput") or {}).get("additionalContext")
+                    if isinstance(added, str) and added.strip():
+                        context.append(added.strip())
+                else:
+                    context.append(out)
+    return None, "\n".join(context)
 
 
 def find_foreign_hooks(sources: tuple[tuple[str, Path], ...] | None = None) -> list[tuple[str, Path, dict[str, list[dict[str, Any]]]]]:

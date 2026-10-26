@@ -5,6 +5,7 @@ import re
 import tomllib
 from pathlib import Path
 
+from .context_cache import cut, marker
 from .token_estimation import rough_token_count
 from .models import ProjectSummary
 
@@ -67,9 +68,9 @@ def _excerpt(text: str, max_tokens: int) -> str:
             break
         kept = candidate
     if kept:
-        return kept if kept == text.strip() else kept + "\n...[truncated]"
+        return kept if kept == text.strip() else kept + marker(text.strip())
     # First section alone is over budget: hard-cut it (rough_token_count is chars // 4).
-    return text.strip()[: max_tokens * 4].rstrip() + "\n...[truncated]"
+    return cut(text.strip(), max_tokens * 4)
 
 
 def _python_scripts(root: Path) -> tuple[str, ...]:

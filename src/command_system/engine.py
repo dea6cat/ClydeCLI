@@ -224,6 +224,8 @@ def create_command_context(
     history: Any = None,
     cwd: str | Path | None = None,
     config: dict[str, Any] | None = None,
+    provider: Any = None,
+    model: str | None = None,
 ) -> CommandContext:
     """
     Create a command context.
@@ -235,6 +237,8 @@ def create_command_context(
         history: History log object
         cwd: Current working directory (defaults to workspace_root)
         config: Optional configuration dict
+        provider: Optional provider instance for model calls
+        model: Optional model name for model calls
 
     Returns:
         CommandContext instance
@@ -249,4 +253,6 @@ def create_command_context(
         cost_tracker=cost_tracker,
         history=history,
         config=config or {},
+        provider=provider,
+        model=model,
     )

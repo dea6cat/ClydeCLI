@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
 
-from ..context_system.builder import build_context_prompt
+from ..context_system.builder import build_context_prompt, section_report
 from ..context_system.context_analyzer import (
     analyze_context,
     format_context_as_markdown,
@@ -375,6 +375,7 @@ def context_command_call(args: str, context: CommandContext) -> LocalCommandResu
             is_auto_compact_enabled=is_auto_compact_enabled,
         )
 
+        data.sections = section_report(context.workspace_root)
         markdown = format_context_as_markdown(data)
         return LocalCommandResult(type="text", value=markdown)
     except Exception as e:
@@ -615,7 +616,7 @@ def doctor_command_call(args: str, context: CommandContext) -> LocalCommandResul
     else:
         lines.append(_check(True, f"Python {running}" + (f" (requires {spec}, not checked)" if spec else "")))
 
-    for dep in ("rich", "prompt-toolkit", "tiktoken", "skillspector"):
+    for dep in ("rich", "prompt-toolkit", "tiktoken"):
         try:
             lines.append(_check(True, f"{dep} {version(dep)}"))
         except PackageNotFoundError:
@@ -629,7 +630,7 @@ def doctor_command_call(args: str, context: CommandContext) -> LocalCommandResul
     from ..security import skill_scan
     held = [k for k, v in skill_scan.cached_verdicts().items() if v.blocked]
     caution = [k for k, v in skill_scan.cached_verdicts().items() if v.recommendation == skill_scan.CAUTION]
-    lines.append(_check(not held, f"SkillSpector: {len(skill_scan.cached_verdicts())} item(s) scanned, {len(held)} held back"
+    lines.append(_check(not held, f"Security scan: {len(skill_scan.cached_verdicts())} item(s) scanned, {len(held)} held back"
                         + (f" ({', '.join(held)})" if held else "") + (f", {len(caution)} caution" if caution else ""),
                         "/skills scan shows why; /skills allow <kind:name> lets one in"))
     from ..skills.lint import lint_skills
@@ -753,6 +754,102 @@ def map_command_call(args: str, context: CommandContext) -> LocalCommandResult:
         return LocalCommandResult(type="text", value=str(e))
 
 
+def brief_command_call(args: str, context: CommandContext) -> LocalCommandResult:
+    """/brief asks questions and waits for answers, so the interactive REPL runs it (src/repl/orchestrate.py)."""
+    return LocalCommandResult(type="text", value="/brief runs in the interactive REPL: start `clyde` and type /brief <request>.")
+
+
+def harness_command_call(args: str, context: CommandContext) -> LocalCommandResult:
+    """Handle /harness - list discovered agent harnesses, CLI tools, MCP servers, and local models."""
+    from ..agent.harness import discover_all, format_harness_table, harness_by_name
+
+    word, _, rest = args.strip().partition(" ")
+    word = word.strip().lower()
+
+    if word == "list" or not word:
+        harnesses = discover_all()
+        return LocalCommandResult(type="text", value=format_harness_table(harnesses))
+
+    harnesses = discover_all()
+    h = harness_by_name(harnesses, rest)
+    if h is None:
+        return LocalCommandResult(
+            type="text",
+            value=f"Harness '{rest}' not found. Run /harness list to see available harnesses.",
+        )
+    models_str = ", ".join(m.model_id for m in h.models) or "none"
+    return LocalCommandResult(
+        type="text",
+        value=(
+            f"# {h.name}\n"
+            f"Kind: {h.kind}\n"
+            f"Description: {h.description}\n"
+            f"Models: {models_str}\n"
+            f"{f'Binary: {h.binary}' if h.binary else ''}\n"
+            f"{f'Config: {h.config_path}' if h.config_path else ''}"
+        ),
+    )
+
+
+def orchestrate_command_call(args: str, context: CommandContext) -> LocalCommandResult:
+    """/orchestrate needs a terminal for its pickers and approvals, so the interactive REPL runs it (src/repl/orchestrate.py)."""
+    return LocalCommandResult(type="text", value="/orchestrate runs in the interactive REPL: start `clyde` and type /orchestrate <task>.")
+
+
+def todo_command_call(args: str, context: CommandContext) -> LocalCommandResult:
+    """Handle /todo - view and manage Clyde's own todo list."""
+    from ..agent import todos as todo_mod
+
+    word, _, rest = args.strip().partition(" ")
+    word = word.strip().lower()
+    todo_list = todo_mod.load()
+
+    if not word:
+        if not todo_list:
+            return LocalCommandResult(type="text", value="No todos. Add one with /todo add <content>.")
+        lines = ["# Clyde's Todo List", ""]
+        for i, t in enumerate(todo_list):
+            status_icon = {"pending": "○", "in_progress": "●", "completed": "✓"}.get(t.status, "○")
+            lines.append(f"  {i}. [{status_icon}] {t.content}")
+        return LocalCommandResult(type="text", value="\n".join(lines))
+
+    if word == "clear":
+        todo_mod.clear()
+        return LocalCommandResult(type="text", value="Cleared all todos.")
+
+    if word == "add":
+        if not rest:
+            return LocalCommandResult(type="text", value="Usage: /todo add <content>")
+        item = todo_mod.add(rest)
+        return LocalCommandResult(type="text", value=f"Added todo #{len(todo_list)}: {item.content}")
+
+    if word == "done":
+        try:
+            index = int(rest)
+        except ValueError:
+            return LocalCommandResult(type="text", value="Usage: /todo done <index>")
+        item = todo_mod.set_status(index, "completed")
+        if item is None:
+            return LocalCommandResult(type="text", value=f"No todo at index {index}.")
+        return LocalCommandResult(type="text", value=f"Marked todo #{index} as completed: {item.content}")
+
+    # /todo <index> <status>
+    parts = rest.split(None, 1)
+    try:
+        index = int(parts[0])
+    except (ValueError, IndexError):
+        return LocalCommandResult(type="text", value="Usage: /todo <index> <status>  (status: pending/in_progress/completed)")
+    if len(parts) < 2:
+        return LocalCommandResult(type="text", value="Usage: /todo <index> <status>  (status: pending/in_progress/completed)")
+    status = parts[1].strip().lower()
+    if status not in {"pending", "in_progress", "completed"}:
+        return LocalCommandResult(type="text", value=f"Invalid status '{status}'. Use: pending, in_progress, completed")
+    item = todo_mod.set_status(index, status)
+    if item is None:
+        return LocalCommandResult(type="text", value=f"No todo at index {index}.")
+    return LocalCommandResult(type="text", value=f"Todo #{index} is now {status}: {item.content}")
+
+
 # Command definitions
 HELP_COMMAND = LocalCommand(
     name="help",
@@ -832,6 +929,34 @@ MAP_COMMAND = LocalCommand(
     supports_non_interactive=True,
 )
 
+BRIEF_COMMAND = LocalCommand(
+    name="brief",
+    description="Interview the user to turn a vague request into a complete spec before anything is built",
+    argument_hint="<request> | continue | spec | clear",
+    supports_non_interactive=False,
+)
+
+HARNESS_COMMAND = LocalCommand(
+    name="harness",
+    description="List discovered agent harnesses, CLI tools, MCP servers, and local models",
+    argument_hint="list | <name>",
+    supports_non_interactive=True,
+)
+
+ORCHESTRATE_COMMAND = LocalCommand(
+    name="orchestrate",
+    description="Pick a master, advisor and workers, get briefed, and run them side by side in git worktrees",
+    argument_hint="<task>",
+    supports_non_interactive=False,
+)
+
+TODO_COMMAND = LocalCommand(
+    name="todo",
+    description="View and manage Clyde's own todo list",
+    argument_hint="| add <content> | done <index> | <index> <status> | clear",
+    supports_non_interactive=True,
+)
+
 INIT_COMMAND = PromptCommand(
     name="init",
     description="Initialize new CLYDE.md file(s) and optional skills/hooks with codebase documentation",
@@ -901,6 +1026,14 @@ def execute_command_sync(cmd_name: str, args: str, context: CommandContext) -> t
             result = check_command_call(args, context)
         elif cmd is MAP_COMMAND:
             result = map_command_call(args, context)
+        elif cmd is BRIEF_COMMAND:
+            result = brief_command_call(args, context)
+        elif cmd is HARNESS_COMMAND:
+            result = harness_command_call(args, context)
+        elif cmd is ORCHESTRATE_COMMAND:
+            result = orchestrate_command_call(args, context)
+        elif cmd is TODO_COMMAND:
+            result = todo_command_call(args, context)
         else:
             return False, None, f"Command not implemented for sync execution: {cmd_name}"
 
@@ -921,6 +1054,10 @@ DOCTOR_COMMAND.set_call(doctor_command_call)
 PROXY_COMMAND.set_call(proxy_command_call)
 CHECK_COMMAND.set_call(check_command_call)
 MAP_COMMAND.set_call(map_command_call)
+BRIEF_COMMAND.set_call(brief_command_call)
+HARNESS_COMMAND.set_call(harness_command_call)
+ORCHESTRATE_COMMAND.set_call(orchestrate_command_call)
+TODO_COMMAND.set_call(todo_command_call)
 
 
 def get_builtin_commands() -> list[Command]:
@@ -937,6 +1074,10 @@ def get_builtin_commands() -> list[Command]:
         PROXY_COMMAND,
         CHECK_COMMAND,
         MAP_COMMAND,
+        BRIEF_COMMAND,
+        HARNESS_COMMAND,
+        ORCHESTRATE_COMMAND,
+        TODO_COMMAND,
         INIT_COMMAND,
         REVIEW_COMMAND,
     ]

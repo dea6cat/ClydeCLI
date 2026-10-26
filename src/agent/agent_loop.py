@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import re
 import threading
 import time
 from dataclasses import dataclass
@@ -14,6 +16,8 @@ from ..tool_system.checks import edit_check_for
 from . import trace
 from ..tool_system.registry import ToolRegistry
 from ..tool_system.context import ToolContext
+from ..tool_system.hooks import run_lifecycle
+from ..tool_system.permission_rules import bare_denied
 from ..memory import memory_prompt
 from ..tool_system.plan_file import PLAN_SHAPE, plan_prompt, read_plan
 from ..context_system.microcompact import trim_old_tool_results
@@ -118,6 +122,49 @@ class AgentLoopResult:
     response_text: str
     usage: dict[str, Any] | None = None  # {"input_tokens": int, "output_tokens": int}
     num_turns: int = 0
+    ran_out: bool = False   # every tool turn used; response_text is then the model's own wrap-up
+
+
+# After N consecutive failing tool calls (different calls each time, so the repeat guard
+# does not catch them) the model is burning tokens on nothing: stop and tell it to change
+# approach or talk to the user.
+_MAX_CONSECUTIVE_TOOL_ERRORS = 5
+_STALLED_REPLY = "The tool calls keep failing (different arguments each time). Stop digging: change your approach, use a different tool, or tell me what is blocking you."
+
+
+# A reply that stops at the output limit, or ends with no answer text (a reasoning model can spend its turn thinking),
+# is asked for again with feedback. Mistral Vibe does this for the cut-off case, 6 times, discarding the partial reply;
+# here the partial reply stays and the model continues it, so no tokens are thrown away.
+# ponytail: one shared cap for both cases; split it if a model needs more continuations than retries.
+_MAX_RECOVERIES = 3
+_CUT_OFF = ("length", "max_tokens", "interrupted")   # interrupted: the stream dropped mid-answer (base.py)
+_CONTINUE_NUDGE = ("Your reply was cut off before it finished. Continue exactly where it stopped, without repeating "
+                   "it. Keep reasoning brief, and split long file contents or edits into several smaller tool calls.")
+_ANSWER_NUDGE = "Your last reply had no answer text. Answer now in plain text; keep any reasoning brief."
+# A Stop hook that blocks keeps the turn going with its reason; past this many blocks in a row the turn ends anyway
+# (Claude Code's override is 8), so a hook that never passes can't loop forever.
+_MAX_STOP_BLOCKS = 8
+_HOOK_CONTEXT = "Context from a UserPromptSubmit hook:\n"
+_STOP_HOOK = "A Stop hook did not let the turn end yet: "
+_WRAP_UP = ("You have used every tool turn this task allows. Do not call tools. In plain text, say briefly: what is done, "
+            "what remains, and what to do next.")
+
+
+def _continue(cut: str, more: str) -> str:
+    """A cut-off reply joined to its continuation. Asked not to, a model still restarts the line it was cut on, with the
+    same opening and sometimes other words (live, ministral-8b: "- September: Gradual- September: Mild and pleasant");
+    that partial line then goes and the continuation keeps its own."""
+    head, _, last = cut.rpartition("\n")
+    last, start = last.strip(), more.lstrip()
+    same = len(os.path.commonprefix([last, start]))
+    if last and same >= min(len(last), 10):   # ponytail: a 10-character shared opening means a restart; rare false match
+        return (head + "\n" if head else "") + start
+    # The cut line was a list item and the continuation opens the next one ("- May: sunny" then "- June: hot"):
+    # the model judged the cut item done, so the next one starts its own line instead of running on.
+    item = re.match(r"([-*•>|#]+|\d+[.)])\s", last)
+    if item and start.startswith(item.group(1)):
+        return cut.rstrip() + "\n" + start
+    return cut + more
 
 
 ToolEventHandler = Callable[[ToolEvent], None]
@@ -255,12 +302,16 @@ def _small_local(provider: Provider) -> bool:
     return name == "omlx" or (name == "ollama" and getattr(provider, "api_key", None) is None)
 
 
+# What Clyde itself adds as user turns; never the user's prompt (local reply review, hooks and tool routing read it).
+_INJECTED = (_STEERING, _HOOK_CONTEXT, _STOP_HOOK, _CONTINUE_NUDGE, _ANSWER_NUDGE, _WRAP_UP)
+
+
 def _last_prompt(conversation: Conversation) -> str:
     """What the user last typed (not a tool result, not a steering note). Reads the agent's own history (`content`)
     as well as canonical turns (`text`): the loop passes the first, and matching only the second left the prompt empty."""
     for message in reversed(conversation.messages):
         text = getattr(message, "text", None) or getattr(message, "content", None)
-        if message.role == Role.USER and isinstance(text, str) and text and not text.startswith(_STEERING):
+        if message.role == Role.USER and isinstance(text, str) and text and not text.startswith(_INJECTED):
             return text
     return ""
 
@@ -314,7 +365,10 @@ def run_agent_loop(
         AgentLoopResult with final text response, usage info, and turn count
     """
     tool_context.provider, tool_context.model = provider, model
-    all_specs = tool_registry.list_specs()
+    rules = getattr(tool_context, "permission_rules", None) or {"deny": []}
+    # A tool denied by bare name (`Bash`, `mcp__github__*`) is not shown at all, as Claude Code does: the model can't
+    # spend turns calling it, and its definition costs no prompt tokens.
+    all_specs = [s for s in tool_registry.list_specs() if not bare_denied(s.name, rules)]
     known_tools = tuple(s.name for s in all_specs)   # every tool runs when called; only some are sent (deferral.py)
     style_name = getattr(tool_context, "output_style_name", None)
     style_dir = getattr(tool_context, "output_style_dir", None)
@@ -339,6 +393,8 @@ def run_agent_loop(
     last_user_visible_message: str | None = None
     repeat_guard = RepeatGuard()
     run_stats = {"tool_calls": 0, "tool_errors": 0, "repeats_refused": 0, "first_input_tokens": 0}
+    consecutive_errors = 0
+    recoveries, carried = 0, ""   # carried: a cut-off reply's text, which the next reply continues
 
     def record_run(outcome: str, turns: int) -> None:
         if not telemetry.enabled():
@@ -355,6 +411,16 @@ def run_agent_loop(
 
     def _usage_or_none() -> dict[str, int] | None:
         return total_usage if total_usage["input_tokens"] > 0 or total_usage["output_tokens"] > 0 else None
+
+    hooks = getattr(tool_context, "hooks", None) or {}
+    stop_blocks = 0
+    if hooks.get("UserPromptSubmit"):
+        blocked, added = run_lifecycle(hooks, "UserPromptSubmit", {"prompt": _last_prompt(conversation)}, tool_context.cwd)
+        if blocked:
+            record_run("done", 0)
+            return AgentLoopResult(response_text=f"Prompt blocked by a UserPromptSubmit hook: {blocked}", usage=None, num_turns=0)
+        if added:
+            conversation.add_user_message(_HOOK_CONTEXT + added)
 
     for _turn in range(max_turns):
         if _turn and steer is not None and (steering := steer()):
@@ -387,12 +453,30 @@ def run_agent_loop(
         tool_calls = response.message.tool_calls
 
         if not tool_calls:
+            cut_off = response.done_reason in _CUT_OFF
+            empty = not final_assistant_content.strip() and last_user_visible_message is None
+            if (cut_off or empty) and recoveries < _MAX_RECOVERIES:
+                recoveries += 1
+                carried = _continue(carried, final_assistant_content)
+                # Where it stopped, quoted: told only to continue, ministral-8b skipped the line it was cut on 2 runs in 3.
+                stopped = f' It stopped at: "…{final_assistant_content[-80:]}"' if final_assistant_content.strip() else ""
+                conversation.add_user_message(_CONTINUE_NUDGE + stopped if cut_off else _ANSWER_NUDGE)
+                continue
+            final_assistant_content = _continue(carried, final_assistant_content)
             if final_assistant_content.strip() == "" and last_user_visible_message is not None:
                 final_assistant_content = last_user_visible_message
             if only is not None and (fixed := review_reply(_last_prompt(conversation), final_assistant_content, tool_context)):
                 text_handler("\n\n" + fixed)   # a weak local reply already streamed; the cloud model's correction follows it
                 conversation.messages[-1].content = fixed
                 final_assistant_content = fixed
+            if hooks.get("Stop") and stop_blocks < _MAX_STOP_BLOCKS:
+                blocked, _ = run_lifecycle(hooks, "Stop", {"stop_hook_active": stop_blocks > 0,
+                                                           "last_assistant_message": final_assistant_content},
+                                           tool_context.cwd)
+                if blocked:
+                    stop_blocks += 1
+                    conversation.add_user_message(_STOP_HOOK + blocked)
+                    continue
             record_run("done", turn_count)
             return AgentLoopResult(
                 response_text=final_assistant_content,
@@ -400,6 +484,7 @@ def run_agent_loop(
                 num_turns=turn_count,
             )
 
+        stop_blocks = 0   # as Claude Code: the Stop cap counts blocks with no tool call between them
         for tc in tool_calls:
             run_stats["tool_calls"] += 1
             tool_id = tc.id
@@ -452,9 +537,11 @@ def run_agent_loop(
                 conversation.add_tool_result_message(tool_id, result_output, is_error=result.is_error)
                 repeat_guard.record(tool_name, tool_input, result_output)
                 run_stats["tool_errors"] += bool(result.is_error)
+                consecutive_errors = consecutive_errors + 1 if result.is_error else 0
             except Exception as e:
                 error_str = f"Error: {e}"
                 run_stats["tool_errors"] += 1
+                consecutive_errors += 1
                 if isinstance(e, RepeatedCall):
                     run_stats["repeats_refused"] += 1
                 else:
@@ -472,14 +559,31 @@ def run_agent_loop(
         if repeat_guard.stuck:
             record_run("stuck", turn_count)
             return AgentLoopResult(response_text=repeat_guard.stop_reply(), usage=_usage_or_none(), num_turns=turn_count)
+        if consecutive_errors >= _MAX_CONSECUTIVE_TOOL_ERRORS:
+            record_run("stalled", turn_count)
+            return AgentLoopResult(response_text=_STALLED_REPLY, usage=_usage_or_none(), num_turns=turn_count)
         # Checked once the turn's tool results are in, so the saved session has no call without its result. A stop the
         # caller asked for, like an interrupt: no "run" telemetry (its outcome words are fixed in the Worker's schema).
         if max_tokens and spent > max_tokens:
             return AgentLoopResult(response_text=MAX_TOKENS_REPLY, usage=_usage_or_none(), num_turns=turn_count)
 
     record_run("max_turns", turn_count)
+    # Out of tool turns: one more request, with no tools, for the model to say where the task stands (Kilo does the
+    # same); a fixed "[Max tool turns reached]" told the user nothing. It stays as the fallback if this fails.
+    conversation.add_user_message(_WRAP_UP)
+    wrap_up = ""
+    try:
+        request = to_canonical(conversation, system_prompt, flatten_tools=True)
+        response = trace.model_call(provider, model, request, lambda: stream_with_retry(
+            provider, request, model, (), text_handler, cancel=cancel, reasoning=reasoning))
+        _add_usage(total_usage, response.usage)
+        append_response(conversation, response.message)
+        wrap_up = (response.message.text or "").strip()
+    except Exception:   # the turns are spent either way; say so plainly
+        pass
     return AgentLoopResult(
-        response_text=MAX_TURNS_REPLY,
+        response_text=wrap_up or MAX_TURNS_REPLY,
         usage=_usage_or_none(),
         num_turns=turn_count,
+        ran_out=True,
     )
