@@ -222,5 +222,36 @@ class TestAnswer(StationWebCase):
         self.assertEqual(got, [False])
 
 
+class TestPage(unittest.TestCase):
+    """The page is one string; these check what a browser would run into without running one."""
+
+    def _themes(self) -> dict[str, dict[str, set[str]]]:
+        import re
+        found = {}
+        for key, pal, words in re.findall(r'(\w+): \{ name: "[^"]+",\s*pal: \{(.*?)\},\s*words: \{(.*?)\} \}', station_web.PAGE, re.S):
+            found[key] = {"pal": set(re.findall(r"(\w+): \"", pal)), "words": set(re.findall(r"(\w+): \"", words))}
+        return found
+
+    def test_the_themes_give_the_same_things_different_words_and_nothing_else(self):
+        themes = self._themes()
+        self.assertEqual(set(themes), {"city", "steam", "cyber"})
+        first = themes["city"]
+        self.assertTrue({"deck", "bay", "outbox", "read", "write", "shell", "web", "mcp", "other", "task", "results", "review", "report", "landing", "table"} <= first["words"])
+        self.assertEqual([themes[k] for k in ("steam", "cyber")], [first, first])   # every theme names every room, object and hallway, in a palette of the same colours
+
+    def test_the_scene_is_built_with_svg_nodes_and_text_and_the_theme_choice_cannot_break_the_page(self):
+        page = station_web.PAGE
+        self.assertIn("createElementNS", page)
+        self.assertNotIn("innerHTML", page)
+        self.assertNotIn("insertAdjacentHTML", page)
+        self.assertNotIn("document.write", page)
+        self.assertNotIn("eval(", page)
+        self.assertIn("try { return localStorage", page)   # a private window may not allow it
+        self.assertIn("prefers-reduced-motion", page)     # reduced motion: the crew appear at their spot instead of walking
+        self.assertNotIn("http://", page.replace("http://www.w3.org/2000/svg", ""))   # no outside script, font or image
+        self.assertNotIn("https://", page)
+        self.assertNotIn("<img", page)   # drawn in code, no picture files
+
+
 if __name__ == "__main__":
     unittest.main()

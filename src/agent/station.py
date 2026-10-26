@@ -57,9 +57,10 @@ def snapshot(run: Run) -> dict[str, Any]:
     last: dict[str, dict[str, Any]] = {}
     constraint: dict[str, str] = {}
     for e in events:
-        last[e["who"]] = e
         if e["kind"] == "constraint":
             constraint[e["who"]] = e.get("note", "")
+        if e["kind"] not in ("tools", "constraint", "check"):   # bookkeeping, not what a member is doing
+            last[e["who"]] = e
     crew = [{"name": n, "model": m, "kind": kinds.get(n), "doing": _doing(last.get(n)), "constraint": constraint.get(n)} for n, m in people]
     asks = run.pending()
     status = state.get("status", "?")

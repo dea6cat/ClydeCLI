@@ -267,6 +267,7 @@ def _work(run: Run, name: str, role: RoleAssignment, provider: Any, prompt: str,
     if out["patch"]:
         (folder / "changes.patch").write_text(out["patch"], encoding="utf-8")
     run.event(name, "finished" if out["ok"] else "failed", files=len(out["files"]))
+    run.event("bonnie", "check", target=name, reason="result")   # Bonnie collects what the worker made
     return out
 
 
@@ -299,7 +300,8 @@ def orchestrate(plan: OrchestrationPlan, spec: str, *, workspace: Path, parent: 
     kinds = {"master": plan.master.harness.kind, "advisor": plan.advisor.harness.kind if plan.advisor else None,
              **{n: w.harness.kind for n, w in zip(names, plan.workers)}}   # provider (Clyde's own loop) or cli
     run = Run.create(plan.task, {"master": plan.master.ref, "advisor": plan.advisor.ref if plan.advisor else None,
-                                 "workers": [{"name": n, "model": w.ref} for n, w in zip(names, plan.workers)], "kinds": kinds})
+                                 "workers": [{"name": n, "model": w.ref} for n, w in zip(names, plan.workers)], "kinds": kinds,
+                                 "orchestrators": ["clyde", "bonnie"]})
     run.update(spec=spec, repo=str(root), workspaces={})
     _record_tools(run, plan, names, registry, parent)
     if on_start:
@@ -329,6 +331,8 @@ def orchestrate(plan: OrchestrationPlan, spec: str, *, workspace: Path, parent: 
             _git(root, "worktree", "add", "-q", "-b", branch, str(tree), "HEAD")
             workspaces[name] = {"path": str(tree), "branch": branch}
         run.update(workspaces=workspaces)
+        for n in names:
+            run.event("clyde", "check", target=n, reason="brief")   # Clyde takes each worker its task
 
         run.set_status("running")
         serial = any(w.provider_name in LOCAL_PROVIDERS for w in plan.workers)
@@ -341,6 +345,7 @@ def orchestrate(plan: OrchestrationPlan, spec: str, *, workspace: Path, parent: 
             while not all(f.done() for f in futures):
                 try:
                     for ask in run.pending():
+                        run.event("clyde", "check", target=ask["who"], reason="approval", approval=ask["id"])   # Clyde brings it to you
                         run.answer(ask["id"], bool(on_approval and on_approval(ask)))
                     time.sleep(0.2)
                 except KeyboardInterrupt:   # Ctrl-C: tell every worker to stop, then wait for them to wind down

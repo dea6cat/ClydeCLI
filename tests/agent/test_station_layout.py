@@ -52,6 +52,16 @@ class Rooms(unittest.TestCase):
         self.assertEqual([m["name"] for m in room(layout, "deck")["members"]], ["clyde", "master"])
 
 
+class Orchestrators(unittest.TestCase):
+    def test_bonnie_stands_beside_clyde_on_the_deck_and_says_what_she_last_collected(self):
+        state = {"roles": {**STATE["roles"], "orchestrators": ["clyde", "bonnie"]}}
+        deck = room(plan([], state=state), "deck")["members"]
+        self.assertEqual([(m["name"], m["doing"]) for m in deck[:2]], [("clyde", "watching the workers"), ("bonnie", "waiting at the deck")])
+        collected = room(plan([ev(1, "bonnie", "check", target="worker-2", reason="result")], state=state), "deck")["members"][1]
+        self.assertEqual(collected["doing"], "collected worker-2's result")
+        self.assertEqual([m["name"] for m in room(plan([]), "deck")["members"]][:2], ["clyde", "master"])   # an older run has no Bonnie
+
+
 class Objects(unittest.TestCase):
     def test_a_member_gets_an_object_per_family_it_was_given_and_nothing_else(self):
         events = [ev(1, "worker-1", "tools", tools=NATIVE_TOOLS), ev(1, "worker-2", "tools", tools=["Edit"]), ev(1, "advisor", "tools", tools=[])]

@@ -65,8 +65,12 @@ def build(state: dict[str, Any], events: list[dict[str, Any]], asks: list[dict[s
     people = {c["name"]: c for c in crew}
     answered = [e for e in events if e["kind"] == "approval_answered"]
 
+    checks = [e for e in events if e["kind"] == "check"]
+    last_bonnie = next((e for e in reversed(checks) if e["who"] == "bonnie"), None)
+    bonnie = {"name": "bonnie", "doing": f"collected {last_bonnie['target']}'s result" if last_bonnie else "waiting at the deck"}
+    orchestrators = [{"name": "clyde", "doing": clyde}, *([bonnie] if "bonnie" in (roles.get("orchestrators") or []) else [])]
     deck = {"id": "deck", "kind": "deck", "label": "deck",
-            "members": [{"name": "clyde", "doing": clyde}, *[people[n] for n in ("master", "advisor") if n in people]],
+            "members": [*orchestrators, *[people[n] for n in ("master", "advisor") if n in people]],
             "objects": [{"id": "deck:approvals", "family": "approvals", "pending": len(asks),
                          "asked": sum(e["kind"] == "approval_asked" for e in events),
                          "allowed": sum(bool(e.get("allow")) for e in answered), "denied": sum(not e.get("allow") for e in answered)},

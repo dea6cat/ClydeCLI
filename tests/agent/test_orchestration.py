@@ -93,6 +93,11 @@ class EndToEnd(unittest.TestCase):
             self.assertIn((who, "started"), kinds)
             self.assertIn((who, "finished"), kinds)
             self.assertIn((who, "constraint"), kinds)   # the rule a native worker really runs under is on record
+        checks = [(e["who"], e["target"], e["reason"]) for e in run.events() if e["kind"] == "check"]
+        for worker in ("worker-1", "worker-2"):
+            self.assertIn(("clyde", worker, "brief"), checks)    # Clyde takes each worker its task
+            self.assertIn(("bonnie", worker, "result"), checks)  # Bonnie collects what it made
+        self.assertEqual(run.state()["roles"]["orchestrators"], ["clyde", "bonnie"])
         tools = {e["who"]: e["tools"] for e in run.events() if e["kind"] == "tools"}
         self.assertEqual((tools["master"], tools["advisor"]), ([], []))   # a model call with no tools
         self.assertTrue({"Read", "Write", "Edit", "Bash", "Grep"} <= set(tools["worker-1"]))
@@ -120,6 +125,8 @@ class EndToEnd(unittest.TestCase):
 
         outcome = self._run({"w1": w1, "w2": w2}, on_approval=on_approval)
         self.assertEqual(asked, [("worker-1", "Bash")])
+        picked = [(e["who"], e["target"], e["reason"]) for e in outcome.run.events() if e["kind"] == "check" and e["reason"] == "approval"]
+        self.assertEqual(picked, [("clyde", "worker-1", "approval")])   # Clyde took the request to the user
         result = str(w1.requests[-1]["conversation"].messages[-1].tool_results[0].content).lower()
         self.assertTrue("denied" in result or "permission" in result or "not allowed" in result, result)
         land(outcome.run, approve=False)
