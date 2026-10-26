@@ -76,6 +76,8 @@ def settings() -> list[Setting]:
         Setting("Trace requests", (True, False), lambda c: session(c).get("trace", True) is not False, _set_session("trace")),
         Setting("Terse replies", (True, False), lambda c: c.get("output_style") == "terse",
                 lambda on: config_mod.set_output_style("terse" if on else None)),
+        Setting("Caveman replies", (True, False), lambda c: c.get("output_style") == "caveman",
+                lambda on: config_mod.set_output_style("caveman" if on else None)),
         Setting("Auto-refine", refine.MODES, lambda c: refine.mode(), refine.set_mode,
                 applies="from your next turn; it only adds notes, each one printed, and /refine undo reverses the latest"),
         Setting("Max history", (50, 100, 200, 500), lambda c: session(c).get("max_history", 100), _set_session("max_history")),
