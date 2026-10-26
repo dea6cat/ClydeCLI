@@ -629,13 +629,31 @@ function propSprite(kind, x, y, pal, theme, defs, uid, size) {   // scenery: it 
   else if (kind === "coat") g.append(fit("clothes-rack", px - 18, py - 40, 56, 56, theme));
   return g;
 }
-const CREW_FILE = { clyde: "crew-bridge-white", bonnie: "crew-plum", master: "crew-navy", advisor: "crew-lab-coat" }, WORKER_FILES = ["crew-teal", "crew-gray", "crew-slate"];   // crew-commander-red carries a halo of its own, so it is left out
+const CREW_FILE = { master: "crew-navy", advisor: "crew-lab-coat" }, WORKER_FILES = ["crew-teal", "crew-gray", "crew-slate"];   // crew-commander-red carries a halo of its own, so it is left out
 const CREW_K = 0.72;   // a person is drawn this fraction of the sprite's natural size
+const ANDROIDS = new Set(["clyde", "bonnie"]), ANDROID_W = 52, ANDROID_H = 89;
+function androidFigure(name) {   // Clyde and Bonnie as chrome androids, an outlaw pair of our own design: a flat cap, scarf and amber eyes for him; a beret, a cable ponytail and magenta eyes for her
+  const g = sv("g", {}), her = name === "bonnie", metal = "#aeb8c4", hi = "#eaf1f8", mid = "#7d8999", dark = "#3a4350", eye = her ? "#ff2b8a" : "#ffb020", cloth = her ? "#8a2433" : "#1f2740", half = her ? 12 : 14;
+  const r = (x, y, w, h, fill, extra) => g.append(sv("rect", { x, y, width: w, height: h, fill, ...(extra || {}) }));
+  if (her) g.append(sv("path", { d: "M10 -78Q26 -74 22 -58Q20 -50 24 -44", fill: "none", stroke: dark, "stroke-width": 6, "stroke-linecap": "round" }), sv("path", { d: "M10 -78Q26 -74 22 -58Q20 -50 24 -44", fill: "none", stroke: mid, "stroke-width": 3.4, "stroke-linecap": "round" }), sv("circle", { cx: 24, cy: -43, r: 2.6, fill: eye, class: "blink amb" }));   // the cable ponytail
+  for (const lx of [-10, 3]) { r(lx, -25, 7, 19, metal, { rx: 3 }); r(lx, -25, 2.4, 19, hi, { rx: 1.2, opacity: 0.8 }); r(lx + 4.6, -25, 2.4, 19, mid, { rx: 1.2, opacity: 0.7 }); r(lx - 1.5, -7, 10, 7, dark, { rx: 3 }); r(lx, -17, 7, 1.6, dark, { opacity: 0.6 }); }   // legs and feet
+  for (const sx of [-1, 1]) { const x = sx < 0 ? -half - 7.5 : half + 0.5; r(x, -56, 7, 26, metal, { rx: 3.5 }); r(x + (sx < 0 ? 0 : 4.6), -56, 2.4, 26, sx < 0 ? hi : mid, { rx: 1.2, opacity: 0.75 }); r(x, -42, 7, 2, dark, { opacity: 0.6 }); g.append(sv("circle", { cx: x + 3.5, cy: -28.5, r: 4.4, fill: dark, stroke: mid, "stroke-width": 1 })); g.append(sv("circle", { cx: x + 3.5, cy: -56, r: 6, fill: metal, stroke: mid, "stroke-width": 1.2 })); }   // arms, hands and shoulder joints
+  r(-half, -58, half * 2, 34, metal, { rx: 6 }); r(-half, -58, 5, 34, hi, { rx: 2.5, opacity: 0.7 }); r(half - 5, -58, 5, 34, mid, { rx: 2.5, opacity: 0.6 }); r(-half, -30, half * 2, 5, dark, { rx: 2 });   // torso and belt
+  r(-8, -54, 16, 17, mid, { rx: 4, opacity: 0.55 }); g.append(sv("circle", { cx: 0, cy: -45, r: 6.4, fill: "#10161e", stroke: hi, "stroke-width": 1.2 }), sv("circle", { cx: 0, cy: -45, r: 3.4, fill: eye, class: "flick amb" }), sv("circle", { cx: 0, cy: -45, r: 9, fill: eye, opacity: 0.16 }));   // the chest core
+  if (!her) { r(-9, -61, 18, 4.5, cloth, { rx: 2 }); r(1, -58, 5, 15, cloth, { rx: 1.5 }); r(1, -58, 1.4, 15, "#fff", { opacity: 0.18 }); } else r(-6, -60, 12, 3, mid, { rx: 1.5 });   // his scarf, her collar
+  r(-half + 1, -88, half * 2 - 2, 29, metal, { rx: 10 }); r(-half + 1, -88, 5, 29, hi, { rx: 2.5, opacity: 0.6 }); r(half - 5, -88, 5, 29, mid, { rx: 2.5, opacity: 0.55 });   // head
+  r(-10, -78, 20, 10, "#0c1118", { rx: 4.5 }); for (const ex of [-5, 5]) g.append(sv("circle", { cx: ex, cy: -73, r: 6.4, fill: eye, opacity: 0.25 }), sv("circle", { cx: ex, cy: -73, r: 2.7, fill: eye, class: "blink amb" }), sv("circle", { cx: ex - 0.8, cy: -73.8, r: 0.9, fill: "#fff" }));   // the eyes
+  if (her) { r(-4, -63, 8, 2, eye, { rx: 1, opacity: 0.9 }); } else for (let k = 0; k < 4; k++) r(-5 + k * 2.8, -64, 1.4, 4, dark, { rx: 0.7 });   // a lip light, a jaw grille
+  for (const sx of [-1, 1]) g.append(sv("circle", { cx: sx * (half + 0.5), cy: -73, r: 2.4, fill: dark, stroke: mid, "stroke-width": 0.8 }));   // ear sensors
+  if (her) { g.append(sv("ellipse", { cx: 2, cy: -88.5, rx: 14.5, ry: 5.6, fill: cloth, stroke: "#4a1018", "stroke-width": 1 }), sv("ellipse", { cx: -3, cy: -90, rx: 6, ry: 2, fill: "#fff", opacity: 0.16 }), sv("rect", { x: 1, y: -95, width: 2, height: 4, rx: 1, fill: "#4a1018" })); }   // her beret
+  else { r(-14.5, -92, 29, 8, cloth, { rx: 5 }); r(-9, -92, 11, 2.4, "#fff", { opacity: 0.16, rx: 1.2 }); r(-15.5, -85, 31, 3, shade(cloth, -30), { rx: 1.5 }); }   // his flat cap and its peak
+  return g;
+}
 function crewFile(name) { return CREW_FILE[name] || WORKER_FILES[(parseInt(number(name) || "1", 10) - 1) % WORKER_FILES.length]; }
 function personItem(name, role, theme) {
-  const file = crewFile(name), [sw, sh] = SPR[file], w = sw * CREW_K, h = sh * CREW_K, g = sv("g", { class: "sprite", "data-sprite": name });
+  const android = ANDROIDS.has(name), file = android ? null : crewFile(name), [sw, sh] = android ? [ANDROID_W / CREW_K, ANDROID_H / CREW_K] : SPR[file], w = sw * CREW_K, h = sh * CREW_K, g = sv("g", { class: "sprite", "data-sprite": name });
   const flip = sv("g", { class: "flip" }), body = sv("g", {}), carry = sv("g", { style: "display:none" });
-  body.append(sprite(file, -w / 2, -h, w, h, theme, { class: "crew-img" }));
+  body.append(android ? androidFigure(name) : sprite(file, -w / 2, -h, w, h, theme, { class: "crew-img" }));
   carry.append(sv("rect", { x: -13, y: -h * 0.42, width: 26, height: 18, rx: 2, fill: "#a8782f", stroke: "#0b0b12", "stroke-width": 1.6 }), sv("rect", { x: -2, y: -h * 0.42, width: 4, height: 18, fill: "#d8b060" }));
   flip.append(body, carry);
   const shadowEl = sv("ellipse", { cx: 0, cy: -2, rx: 16, ry: 6, fill: "#000", opacity: 0.32 }), tag = sv("g", { transform: "translate(0 " + (-h - 8) + ")" }), bubble = sv("g", { transform: "translate(0 " + (-h - 28) + ")" });
@@ -846,8 +864,8 @@ function mapSection(run) {
   return left;
 }
 function portrait(name, doing) {   // the same person as in the scene, in a small well with a lamp
-  const file = crewFile(name), [w, h] = SPR[file], svg = sv("svg", { viewBox: "0 0 " + w + " " + h, "aria-hidden": "true" });
-  svg.append(sprite(file, 0, 0, w, h, state.theme));
+  const android = ANDROIDS.has(name), file = android ? null : crewFile(name), [w, h] = android ? [ANDROID_W, ANDROID_H] : SPR[file], svg = sv("svg", { viewBox: android ? "-" + w / 2 + " -" + (h + 4) + " " + w + " " + (h + 6) : "0 0 " + w + " " + h, "aria-hidden": "true" });
+  svg.append(android ? androidFigure(name) : sprite(file, 0, 0, w, h, state.theme));
   const well = el("div", "portrait");
   well.append(svg, el("span", "lamp " + dotClass(doing)));
   return well;
