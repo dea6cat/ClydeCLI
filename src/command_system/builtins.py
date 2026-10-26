@@ -755,69 +755,8 @@ def map_command_call(args: str, context: CommandContext) -> LocalCommandResult:
 
 
 def brief_command_call(args: str, context: CommandContext) -> LocalCommandResult:
-    """Handle /brief - interview the user to turn a vague request into a complete spec."""
-    from ..agent import briefing
-
-    provider = context.provider
-    model = context.model
-    if provider is None or model is None:
-        return LocalCommandResult(type="text", value="Error: /brief needs a model. Set one with /model first.")
-
-    word, _, rest = args.strip().partition(" ")
-    word = word.strip().lower()
-    rest = rest.strip()
-
-    if word == "clear":
-        briefing.clear_state()
-        return LocalCommandResult(type="text", value="Briefing cleared. Start a new one with /brief <request>.")
-
-    if word == "spec":
-        state = briefing.load_state()
-        if state is None or not state.complete or not state.spec:
-            return LocalCommandResult(
-                type="text",
-                value="No completed spec found. Run /brief <request> to start a briefing.",
-            )
-        return LocalCommandResult(type="text", value=state.spec)
-
-    state = briefing.load_state()
-    if word == "continue":
-        if state is None or state.complete:
-            return LocalCommandResult(
-                type="text",
-                value="No active briefing to continue. Start one with /brief <request>.",
-            )
-    else:
-        initial_request = (word + " " + rest).strip() if word else rest
-        if not initial_request:
-            return LocalCommandResult(
-                type="text",
-                value="Usage: /brief <request> | continue | spec | clear",
-            )
-        state = briefing.start_briefing(initial_request)
-
-    if state.complete and state.spec:
-        return LocalCommandResult(type="text", value=state.spec)
-
-    from src.agent.conversation import Conversation
-    conversation = Conversation()
-    question, state = briefing.ask_next_question(provider, model, conversation, state)
-
-    if briefing._is_ready(question) or state.complete:
-        briefing.save_state(state)
-        return LocalCommandResult(type="text", value=state.spec or "")
-
-    print(f"\n[bold]{question}[/bold]")
-    answer = input("Answer > ").strip()
-    if not answer:
-        return LocalCommandResult(type="text", value="No answer given. Briefing paused. Run /brief continue to resume.")
-
-    state = briefing.record_answer(state, answer)
-    briefing.save_state(state)
-    return LocalCommandResult(
-        type="text",
-        value="Question recorded. Run /brief continue to answer the next question.",
-    )
+    """/brief asks questions and waits for answers, so the interactive REPL runs it (src/repl/orchestrate.py)."""
+    return LocalCommandResult(type="text", value="/brief runs in the interactive REPL: start `clyde` and type /brief <request>.")
 
 
 def harness_command_call(args: str, context: CommandContext) -> LocalCommandResult:
@@ -853,68 +792,8 @@ def harness_command_call(args: str, context: CommandContext) -> LocalCommandResu
 
 
 def orchestrate_command_call(args: str, context: CommandContext) -> LocalCommandResult:
-    """Handle /orchestrate - master/advisor/worker orchestration over discovered harnesses."""
-    from ..agent import briefing
-    from ..agent.harness import discover_all, harness_by_name, select_models_for_harness
-    from ..agent.orchestration import build_plan, format_plan
-
-    word, _, rest = args.strip().partition(" ")
-    word = word.strip().lower()
-
-    if word == "plan":
-        parts = rest.split()
-        if len(parts) < 2:
-            return LocalCommandResult(
-                type="text",
-                value="Usage: /orchestrate plan <master> [master_model] <advisor> [advisor_model] <worker1> [worker1_model] ...",
-            )
-        master_name = parts[0]
-        master_model = parts[1] if len(parts) > 1 else None
-        advisor_name = parts[2] if len(parts) > 2 else None
-        advisor_model = parts[3] if len(parts) > 3 else None
-        worker_pairs = []
-        i = 4
-        while i < len(parts):
-            w_name = parts[i]
-            w_model = parts[i + 1] if i + 1 < len(parts) else None
-            worker_pairs.append((w_name, w_model))
-            i += 2 if i + 1 < len(parts) else 1
-
-        state = briefing.load_state()
-        plan = build_plan(
-            task="",
-            master_name=master_name,
-            master_model=master_model,
-            advisor_name=advisor_name,
-            advisor_model=advisor_model,
-            worker_pairs=worker_pairs,
-            briefing_state=state,
-        )
-        if isinstance(plan, str):
-            return LocalCommandResult(type="text", value=plan)
-        return LocalCommandResult(type="text", value=format_plan(plan))
-
-    if not rest:
-        return LocalCommandResult(
-            type="text",
-            value=(
-                "Usage:\n"
-                "  /orchestrate <task>                    Start briefing for a task\n"
-                "  /orchestrate plan <master> [<model>] [<advisor> [<model>]] <worker1> [<model1>] ...\n"
-                "  /harness list                          See available harnesses and models\n"
-            ),
-        )
-
-    state = briefing.start_briefing(rest)
-    briefing.save_state(state)
-    return LocalCommandResult(
-        type="text",
-        value=(
-            f"Starting briefing for: {rest}\n"
-            f"Run /brief continue to answer Clyde's clarifying questions.\n"
-            f"Once the spec is complete, use /orchestrate plan to set up master/advisor/worker roles.\n"
-        ),
-    )
+    """/orchestrate needs a terminal for its pickers and approvals, so the interactive REPL runs it (src/repl/orchestrate.py)."""
+    return LocalCommandResult(type="text", value="/orchestrate runs in the interactive REPL: start `clyde` and type /orchestrate <task>.")
 
 
 def todo_command_call(args: str, context: CommandContext) -> LocalCommandResult:
@@ -1054,7 +933,7 @@ BRIEF_COMMAND = LocalCommand(
     name="brief",
     description="Interview the user to turn a vague request into a complete spec before anything is built",
     argument_hint="<request> | continue | spec | clear",
-    supports_non_interactive=True,
+    supports_non_interactive=False,
 )
 
 HARNESS_COMMAND = LocalCommand(
@@ -1066,9 +945,9 @@ HARNESS_COMMAND = LocalCommand(
 
 ORCHESTRATE_COMMAND = LocalCommand(
     name="orchestrate",
-    description="Run master/advisor/worker orchestration over discovered harnesses",
-    argument_hint="<task> | plan <master> <advisor> <workers> | run",
-    supports_non_interactive=True,
+    description="Pick a master, advisor and workers, get briefed, and run them side by side in git worktrees",
+    argument_hint="<task>",
+    supports_non_interactive=False,
 )
 
 TODO_COMMAND = LocalCommand(

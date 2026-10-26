@@ -89,6 +89,7 @@ Examples:
   clyde plugin list                   List installed plugins; also: plugin remove|enable|disable <name>
   clyde update [--check] [--channel latest|stable]  Move Clyde to the newest version of its channel, the way it was installed
   clyde uninstall [--purge] [-y]      Remove Clyde the way it was installed; --purge also deletes ~/.clyde
+  clyde station [ls|watch|approve|deny]  Live state of an /orchestrate run (who is doing what, spend, approvals)
   clyde tune [--ask]                  Find the best Ollama setup for how you use it, keeping quality (memory, speed, context)
   clyde telemetry [on|off|show|send]  Anonymous usage counters: on for a new install, `off` stops them; `show` prints exactly what is queued
   clyde doctor                        How Clyde is installed: method, version, PATH, other installs, Claude Code
@@ -170,6 +171,10 @@ Examples:
     telemetry_parser.add_argument('action', nargs='?', default='status', choices=['status', 'on', 'off', 'show', 'send', 'endpoint', 'reset-id'])
     telemetry_parser.add_argument('value', nargs='?', help='endpoint: the https URL to send to')
     subparsers.add_parser('doctor', help='How Clyde is installed: method, version, PATH, other installs, Claude Code, licence')
+    station_parser = subparsers.add_parser('station', help='Live state of an /orchestrate run: who is doing what, spend, approvals')
+    station_parser.add_argument('action', nargs='?', default='show', choices=['show', 'ls', 'watch', 'approve', 'deny'])
+    station_parser.add_argument('run', nargs='?', help='a run id (default: the newest)')
+    station_parser.add_argument('--once', action='store_true', help='print the state once instead of refreshing')
     update_parser = subparsers.add_parser('update', help='Move Clyde to the newest version, the way it was installed')
     update_parser.add_argument('--channel', choices=['latest', 'stable'], help='follow every commit on main (latest) or tagged releases (stable); saved')
     update_parser.add_argument('--check', action='store_true', help='only say whether a newer version exists (exit 0 current, 1 newer exists, 2 could not check)')
@@ -235,6 +240,9 @@ Examples:
     if args.command == 'telemetry':
         from src import telemetry
         return telemetry.command(Console(), args.action, args.value)
+    if args.command == 'station':
+        from src.agent import station
+        return station.command(Console(), args.action, args.run, args.once)
     if args.command == 'tune':
         from src.tuning import tune
         return tune.run(Console(), model=args.tune_model, ctx=args.ctx, reask=args.tune_ask)

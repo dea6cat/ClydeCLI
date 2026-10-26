@@ -1373,7 +1373,7 @@ class ClydeREPL:
                 'help', 'tools', 'tool',
                 'save', 'load', 'resume', 'multiline', 'stream', 'render-last',
                 'model', 'models', 'think', 'eval',
-                'skill', 'skills', 'mcp', 'debug', 'laya', 'council',
+                'skill', 'skills', 'mcp', 'debug', 'laya', 'council', 'brief', 'orchestrate',
                 'context', 'compact',  # These need special handling
                 'clear', 'reset', 'new',  # also clears the screen and redraws the banner
                 ''
@@ -1525,6 +1525,14 @@ class ClydeREPL:
                 self._pick_model()
             else:
                 self._switch_model(parts[1].strip())
+
+        elif cmd == '/brief' or cmd.startswith('/brief '):
+            from src.repl import orchestrate as orchestrate_ui
+            orchestrate_ui.brief(self, raw.partition(" ")[2])
+
+        elif cmd == '/orchestrate' or cmd.startswith('/orchestrate '):
+            from src.repl import orchestrate as orchestrate_ui
+            orchestrate_ui.orchestrate_cmd(self, raw.partition(" ")[2])
 
         elif cmd == '/models' or cmd.startswith('/models '):
             self._show_models(raw.split(maxsplit=1)[1].strip().lower() if " " in raw.strip() else "")

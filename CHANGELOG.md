@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `/orchestrate <task>`: Clyde lists the connected providers with the models each really offers, you pick the master, an optional advisor and the workers, Clyde briefs you with questions until the request is a spec, and the team runs. Each worker is its own agent on its own git worktree, all at the same time, with its own transcript, spend and approvals: a command asks you (a read-only one does not), edits inside the worktree are free, and nothing leaves it until you approve; then the changed files and a `changes.patch` land in `~/.clyde/outbox/<run>/` and the project is never touched. A local model (Ollama, oMLX) among the workers makes them run one at a time. Other agent CLIs are listed but cannot run yet. Live with two workers, an advisor and a master on gemini-3.5-flash-lite: 43 s, the advisor caught a real mismatch between a worker's file and the spec.
+- `clyde station` shows a run live from another terminal (who is doing what, spend, waiting approvals); `station ls`, `station watch` and `station approve|deny` list runs, stream events and answer a worker's request. A run is plain files in `~/.clyde/runs/<id>/` (state, events, a spend ledger with an unpriced model counted as unpriced, approvals, each worker's transcript).
 - Ask the user the way Claude Code does: when the model uses AskUserQuestion, the REPL opens an arrow-key question with the header chip, each option's description, a row to answer in your own words, "Chat about this", Space to tick for multi-select, and the focused option's preview. Without a terminal the numbered prompt stays.
 - `UserPromptSubmit` and `Stop` hooks, in Claude Code's format. A `UserPromptSubmit` hook adds context to the prompt (its stdout, or `hookSpecificOutput.additionalContext`) or blocks it; a `Stop` hook keeps the turn going until its check passes, giving up after 8 blocks in a row.
 - Permission rules gain `ask` (always prompts, even for a read-only command or in auto-approve) and Claude Code's order: deny, then ask, then allow. A project's `.clyde/settings.json` rules apply too: its deny and ask rules at once, its allow rules once you trust that exact list. A tool denied by bare name (`WebFetch`, `mcp__github__*`) is no longer shown to the model.
@@ -26,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `/brief` asked every question as if it were the first: the earlier answers never reached the model. It now sees them, always ends (after 10 questions the spec is written from what is known), and keeps its `READY` marker out of the spec.
+- `/harness` listed model names it had made up (three Ollama models, the provider's name as its only model). It now lists what each connected provider really returns, and Ollama's installed models.
 - A second compaction no longer loses what the first one kept. The summarizer reads only the recent messages, so the previous summary and older requests dropped out of the new one; it now updates the previous summary and sees those requests. A decision made before two compactions was recalled 3 of 3 times, against 1 of 3 (the others made up a database).
 - A stream that drops after printing part of an answer is continued from where it stopped, not retried from the top, which printed it twice.
 - `clyde login mistral` works: the login command takes the provider name, as #65 announced.
