@@ -112,7 +112,7 @@ button.act:focus-visible, .card:focus-visible, select:focus-visible { outline: 2
 .crew-row .st { margin-top: 2px; font-size: 13px; }
 .crew-row .ru { margin-top: 3px; font-size: 11px; color: var(--muted); line-height: 1.35; }
 .rail .asks { margin: 0; padding: 8px; } .rail .ask { margin: 0 0 8px; background: color-mix(in srgb, var(--warn) 8%, transparent); }
-.rail .feed { margin: 0; border: 0; padding: 0; overflow: hidden; flex: 0 1 auto; } .rail .feed h3 { border-top: 0; } .rail .log { max-height: 30vh; min-height: 0; padding: 8px 10px; font-size: 11.5px; }
+.rail .feed { margin: 0; border: 0; padding: 0; overflow: hidden; flex: 0 1 auto; display: flex; flex-direction: column; } .rail .feed h3 { border-top: 0; flex: none; } .rail .log { max-height: 30vh; flex: 1 1 auto; min-height: 4.5em; padding: 8px 10px; font-size: 11.5px; }
 .cards-gone { display: none; }
 /* The station. The scene is SVG built in code; a theme sets the look and the words (THEMES, below). */
 .map { overflow-x: auto; margin: 0 0 10px; border-radius: 10px; border: 1px solid var(--line); background: #000; }   /* a phone scrolls the scene, not the page */
