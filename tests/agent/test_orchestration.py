@@ -198,6 +198,19 @@ class EndToEnd(unittest.TestCase):
         self.assertIn("not the JSON asked for", asked[1])
         land(outcome.run, approve=False)
 
+    def test_on_start_runs_once_the_run_exists_and_before_any_model_call(self):
+        seen = []
+        providers = {"m": FakeProvider(reply('{"tasks": ["a"]}'), reply("ok\nVERDICT: APPROVE"), name="m"), "w1": FakeProvider(reply("x"), name="w1")}
+        plan = build_plan("t", ("provider:m", "m"), None, [("provider:w1", "m")], [_harness(f"provider:{n}") for n in providers])
+
+        def on_start(run):
+            seen.append((run.state()["roles"]["workers"][0]["name"], [e["kind"] for e in run.events()], len(providers["m"].requests)))
+
+        outcome = orchestrate(plan, "s", workspace=self.repo, parent=ToolContext(workspace_root=self.repo),
+                              registry=build_default_registry(), providers=providers, on_start=on_start)
+        self.assertEqual(seen, [("worker-1", ["created"], 0)])
+        land(outcome.run, approve=False)
+
     def test_a_worker_that_fails_is_reported_and_the_others_still_finish(self):
         outcome = self._run({"w1": FakeProvider(RuntimeError("boom"), name="w1"), "w2": FakeProvider(reply("done"), name="w2")})
         self.assertEqual(outcome.failed, ["worker-1"])

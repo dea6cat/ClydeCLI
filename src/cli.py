@@ -172,8 +172,9 @@ Examples:
     telemetry_parser.add_argument('value', nargs='?', help='endpoint: the https URL to send to')
     subparsers.add_parser('doctor', help='How Clyde is installed: method, version, PATH, other installs, Claude Code, licence')
     station_parser = subparsers.add_parser('station', help='Live state of an /orchestrate run: who is doing what, spend, approvals')
-    station_parser.add_argument('action', nargs='?', default='show', choices=['show', 'ls', 'watch', 'approve', 'deny'])
+    station_parser.add_argument('action', nargs='?', default='show', choices=['show', 'ls', 'watch', 'approve', 'deny', 'panes'])
     station_parser.add_argument('run', nargs='?', help='a run id (default: the newest)')
+    station_parser.add_argument('--who', help='watch: only this team member (worker-1, advisor, ...)')
     station_parser.add_argument('--once', action='store_true', help='print the state once instead of refreshing')
     update_parser = subparsers.add_parser('update', help='Move Clyde to the newest version, the way it was installed')
     update_parser.add_argument('--channel', choices=['latest', 'stable'], help='follow every commit on main (latest) or tagged releases (stable); saved')
@@ -242,7 +243,7 @@ Examples:
         return telemetry.command(Console(), args.action, args.value)
     if args.command == 'station':
         from src.agent import station
-        return station.command(Console(), args.action, args.run, args.once)
+        return station.command(Console(), args.action, args.run, args.once, args.who)
     if args.command == 'tune':
         from src.tuning import tune
         return tune.run(Console(), model=args.tune_model, ctx=args.ctx, reask=args.tune_ask)

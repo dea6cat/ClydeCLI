@@ -93,8 +93,8 @@ def build_plan(task: str, master: Picks | None, advisor: Picks | None, workers: 
         harness = harness_by_name(harnesses, name)
         if harness is None:
             return f"{role.capitalize()} '{name}' not found. Run /harness list."
-        if role != "worker" and harness.kind not in RUNNABLE_KINDS:
-            return f"{name} is a {harness.kind} harness; the {role} needs a provider model (an agent CLI can be a worker)."
+        if role == "master" and harness.kind not in RUNNABLE_KINDS:
+            return f"{name} is a {harness.kind} harness; the master needs a provider model (an agent CLI can advise or work)."
         if not can_work(harness):
             return f"{name} is a {harness.kind} harness Clyde can't run as a {role} yet."
         if model not in [m.model_id for m in harness.models]:
@@ -198,17 +198,36 @@ def _changed_files(tree: Path) -> list[str]:
         return []
 
 
-def _work_cli(run: Run, name: str, role: RoleAssignment, prompt: str, worktree: Path, cancel: threading.Event) -> Any:
-    """An agent CLI as the worker: run it in the worktree under its file-only contract, record what it reports."""
-    run.event(name, "constraint", note=cli_workers.constraint(role.provider_name))
-    runner = {"claude": cli_workers.run_claude, "aider": cli_workers.run_aider}[role.provider_name]
+def _run_cli(run: Run, name: str, role: RoleAssignment, prompt: str, cwd: Path, cancel: threading.Event, advisor: bool) -> Any:
+    """An agent CLI as a team member: run it under its contract (files only for a worker, advice only for the advisor)
+    and record what it reports."""
+    run.event(name, "constraint", note=cli_workers.constraint(role.provider_name, advisor))
 
     def emit(kind: str, tool: str, tool_input: Any) -> None:
         run.event(name, kind, tool=tool, input=json.dumps(tool_input or {}, default=str)[:200])
 
-    result = runner(role.harness.binary or role.provider_name, role.model, prompt, worktree, run.worker_dir(name), cancel, emit)
+    runner = cli_workers.RUNNERS[role.provider_name]
+    extra = {"advisor": True} if advisor else {}
+    result = runner(role.harness.binary or role.provider_name, role.model, prompt, cwd, run.worker_dir(name), cancel, emit, **extra)
     run.spend(name, role.ref, result.usage, result.usd, always=True)
     return result
+
+
+def _work_cli(run: Run, name: str, role: RoleAssignment, prompt: str, worktree: Path, cancel: threading.Event) -> Any:
+    return _run_cli(run, name, role, prompt, worktree, cancel, advisor=False)
+
+
+def _advise(run: Run, role: RoleAssignment, provider: Any, prompt: str, cancel: threading.Event, notes: list[str]) -> str:
+    """The advisor's review: a model call, or an agent CLI run in an empty folder where it can only answer."""
+    if role.harness.kind != "cli":
+        return _model_text(provider, role.model, REVIEW_SYSTEM, prompt, run, "advisor")
+    empty = run.worker_dir("advisor") / "cwd"
+    empty.mkdir(exist_ok=True)
+    result = _run_cli(run, "advisor", role, f"{REVIEW_SYSTEM}\n\n{prompt}", empty, cancel, advisor=True)
+    if not result.ok:
+        notes.append(f"The advisor ({role.ref}) failed, so the report has no review: {result.summary[:150]}")
+        return "(the advisor failed)"
+    return result.summary
 
 
 def _work(run: Run, name: str, role: RoleAssignment, provider: Any, prompt: str, worktree: Path,
@@ -250,9 +269,10 @@ def _work(run: Run, name: str, role: RoleAssignment, provider: Any, prompt: str,
 
 def orchestrate(plan: OrchestrationPlan, spec: str, *, workspace: Path, parent: ToolContext, registry: Any,
                 providers: dict[str, Any], on_approval: Callable[[dict[str, Any]], bool] | None = None,
-                cancel: threading.Event | None = None) -> Outcome | str:
+                cancel: threading.Event | None = None, on_start: Callable[[Run], None] | None = None) -> Outcome | str:
     """Run the plan to the point where the user decides. `on_approval(ask)` answers a worker's request from the
-    caller's thread (None: every request is denied). Returns an Outcome, or the reason it could not start."""
+    caller's thread (None: every request is denied). `on_start(run)` is called once the run exists, before any model call.
+    Returns an Outcome, or the reason it could not start."""
     root = repo_root(workspace)
     if isinstance(root, str):
         return root
@@ -261,6 +281,8 @@ def orchestrate(plan: OrchestrationPlan, spec: str, *, workspace: Path, parent: 
     run = Run.create(plan.task, {"master": plan.master.ref, "advisor": plan.advisor.ref if plan.advisor else None,
                                  "workers": [{"name": n, "model": w.ref} for n, w in zip(names, plan.workers)]})
     run.update(spec=spec, repo=str(root), workspaces={})
+    if on_start:
+        on_start(run)   # e.g. open the tmux panes: the run and its team are already recorded
 
     def provider_of(role: RoleAssignment) -> Any:
         return None if role.harness.kind == "cli" else providers[role.provider_name]   # a CLI brings its own model access
@@ -315,8 +337,7 @@ def orchestrate(plan: OrchestrationPlan, spec: str, *, workspace: Path, parent: 
         review = ""
         if plan.advisor:
             run.event("advisor", "reviewing")
-            review = _model_text(provider_of(plan.advisor), plan.advisor.model, REVIEW_SYSTEM,
-                                 f"Spec:\n{spec}\n\nWorkers:\n{digest}", run, "advisor")
+            review = _advise(run, plan.advisor, provider_of(plan.advisor), f"Spec:\n{spec}\n\nWorkers:\n{digest}", cancel, notes)
             (run.root / "advisor.md").write_text(review, encoding="utf-8")
             run.event("advisor", "reviewed")
         run.event("master", "reporting")

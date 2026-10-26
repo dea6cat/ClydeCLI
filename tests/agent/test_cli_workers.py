@@ -44,6 +44,15 @@ elif mode == "aider":
     open(".aider.tags.cache.v4", "w").write("noise")
     print("Applied edit to y.txt")
     print("Tokens: 1.2k sent, 87 received. Cost: $0.0021 message, $0.0021 session.")
+elif mode == "aider-ask":
+    print("Warning: Input is not a terminal (fd=0).")
+    print("Aider v0.86.2")
+    print("Model: mistral/m with ask edit format")
+    print("Git repo: none")
+    print("Repo-map: disabled")
+    print()
+    print("The patch looks right.")
+    print("Tokens: 1.2k sent, 87 received. Cost: $0.0003 message, $0.0003 session.")
 elif mode == "hang":
     time.sleep(60)
 '''
@@ -133,6 +142,16 @@ class CliWorkers(unittest.TestCase):
         self.assertEqual((result.ok, result.usd), (True, 0.0021))
         self.assertEqual(self.events, [("tool_use", "Edit", {"file_path": "y.txt"})])
 
+    def test_aider_as_an_advisor_asks_without_git_and_returns_only_its_answer(self):
+        binary, record = _fake_cli(self.root, "aider-ask")
+        with patch("src.providers.keys.saved_key", return_value="K"):
+            result = cli_workers.run_aider(binary, "mistral/m", "review this", self.worktree, self.folder, threading.Event(),
+                                           self._emit, advisor=True)
+        argv = json.loads(record.read_text())["argv"]
+        self.assertEqual(argv[argv.index("--chat-mode") + 1], "ask")
+        self.assertIn("--no-git", argv)
+        self.assertEqual((result.ok, result.summary, result.usd), (True, "The patch looks right.", 0.0003))   # no banner, no cost line
+
     def test_aider_without_a_key_or_for_an_unknown_provider_does_not_start(self):
         binary, record = _fake_cli(self.root, "aider")
         with patch("src.providers.keys.saved_key", return_value=None), patch.dict(os.environ, {}, clear=True):
@@ -174,6 +193,53 @@ class CliWorkerInARun(unittest.TestCase):
             self.assertEqual((out / "worker-1" / "files" / "y.txt").read_text(), "yo\n")
             self.assertEqual((out / "worker-2" / "files" / "b.txt").read_text(), "B\n")
             self.assertFalse(any(".aider" in str(p) for p in out.rglob("*")))   # aider's cache never lands
+
+
+    def _advised(self, mode: str):
+        """A run whose advisor is a fake Claude Code CLI behaving as `mode`; (outcome, run dir files, repo)."""
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = Path(tmp.name)
+        repo = root / "repo"
+        repo.mkdir()
+        _git(repo, "init", "-q")
+        (repo / "README.md").write_text("hello\n", encoding="utf-8")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-qm", "init")
+        binary, record = _fake_cli(root, mode)
+        providers = {"m": FakeProvider(reply('{"tasks": ["write b"]}'), reply("fine\nVERDICT: APPROVE"), name="m"),
+                     "w": FakeProvider(reply(tool_calls=[("Write", {"file_path": "b.txt", "content": "B\n"})]), reply("wrote b"), name="w")}
+        harnesses = [Harness("provider:m", "provider", models=[HarnessModel("m")]), Harness("provider:w", "provider", models=[HarnessModel("m")]),
+                     Harness("claude", "cli", binary=binary, models=[HarnessModel("haiku")])]
+        plan = build_plan("t", ("provider:m", "m"), ("claude", "haiku"), [("provider:w", "m")], harnesses)
+        self.assertEqual(plan.advisor.ref, "claude:haiku")   # a CLI may advise
+        with patch("src.agent.runs.clyde_home", return_value=root / "home"):
+            outcome = orchestrate(plan, "spec", workspace=repo, parent=ToolContext(workspace_root=repo),
+                                  registry=build_default_registry(), providers=providers)
+        return outcome, record, repo, providers
+
+    def test_an_agent_cli_can_be_the_advisor_with_no_tools_in_an_empty_folder(self):
+        outcome, record, _repo, providers = self._advised("claude")
+        self.assertNotIsInstance(outcome, str, outcome)
+        run = outcome.run
+        self.assertEqual((run.root / "advisor.md").read_text(), "done")   # the CLI's answer is the review
+        seen = json.loads(record.read_text())
+        self.assertEqual(seen["argv"][seen["argv"].index("--tools") + 1], "")   # no tools at all
+        self.assertIn("You are the advisor", seen["stdin"])
+        self.assertIn("wrote b", seen["stdin"])   # it was given the workers' results
+        self.assertEqual(os.path.realpath(seen["cwd"]), os.path.realpath(run.root / "workers" / "advisor" / "cwd"))
+        self.assertEqual([r["usd"] for r in run.ledger() if r["who"] == "advisor"], [0.0014])
+        self.assertIn(("advisor", "constraint"), [(e["who"], e["kind"]) for e in run.events()])
+        self.assertIn("Advisor review:\ndone", providers["m"].requests[-1]["conversation"].messages[0].text)
+        self.assertEqual(outcome.notes, [])
+        land(run, approve=False)
+
+    def test_an_advisor_that_fails_is_reported_and_the_report_still_comes(self):
+        outcome, _record, _repo, _providers = self._advised("claude-error")
+        self.assertEqual(outcome.verdict, "approve")
+        self.assertEqual(len(outcome.notes), 1)
+        self.assertIn("advisor (claude:haiku) failed", outcome.notes[0])
+        land(outcome.run, approve=False)
 
 
 if __name__ == "__main__":

@@ -3,7 +3,8 @@
     clyde station              live view of every active run (the newest when none is), refreshed until they settle
     clyde station --once       the same, printed once
     clyde station ls           every run, newest first
-    clyde station watch [id]   the event stream, one line each
+    clyde station watch [id] [--who NAME]   the event stream, one line each (one team member's with --who)
+    clyde station panes [id]   open a tmux window: the live view and a pane per team member
     clyde station approve|deny [id]   answer the oldest pending request, across the active runs or in one run
 
 It shows only what the run recorded: a crew member's state comes from its last event, and spend from the ledger.
@@ -93,7 +94,7 @@ def _show(runs: list[Run]) -> Group:
     return Group(*[render(r) for r in runs])
 
 
-def command(console: Console, action: str, target: str | None, once: bool = False) -> int:
+def command(console: Console, action: str, target: str | None, once: bool = False, who: str | None = None) -> int:
     if action == "ls":
         for run in Run.all():
             s = run.state()
@@ -112,11 +113,15 @@ def command(console: Console, action: str, target: str | None, once: bool = Fals
         run.answer(ask["id"], action == "approve")
         console.print(f"{action}d: {ask['who']} {ask['tool']} (run {run.id})", markup=False)
         return 0
+    if action == "panes":
+        from src.agent import panes
+        console.print(panes.open_panes(runs[0]), markup=False)
+        return 0
     if action == "watch":
         run, seen = runs[0], 0
         try:
             while True:
-                events = run.events()
+                events = [e for e in run.events() if who is None or e["who"] == who]
                 for e in events[seen:]:
                     detail = e.get("tool") or e.get("status") or e.get("note") or ""
                     console.print(f"{time.strftime('%H:%M:%S', time.localtime(e['t']))} {e['who']:10} {e['kind']} {detail}", markup=False)

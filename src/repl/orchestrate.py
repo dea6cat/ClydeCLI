@@ -139,7 +139,7 @@ def orchestrate_cmd(repl: Any, arg: str) -> None:
     master = _pick_model(repl, "Master (leads the team)", leaders)
     if master is None:
         return
-    advisor = _pick_model(repl, "Advisor (reviews the workers)", leaders, optional=True)
+    advisor = _pick_model(repl, "Advisor (reviews the workers)", workers_pool, optional=True)
     if advisor is None:
         return
     workers: list[tuple[str, str]] = []
@@ -161,13 +161,16 @@ def orchestrate_cmd(repl: Any, arg: str) -> None:
     if not Confirm.ask("Run the team on this spec?", console=console, default=True):
         return
 
+    from src.agent import panes
     from src.providers import build_registry
+    show_panes = bool(panes.tmux_path()) and Confirm.ask("Open a tmux pane for each team member?", console=console, default=False)
     console.print("[dim]Workers run side by side. Watch from another terminal: clyde station[/dim]")
     status = console.status("[dim]Team working…[/dim]", spinner="dots")
     status.start()
     try:
         outcome = orchestrate(plan, state.spec or task, workspace=workspace, parent=repl.tool_context, registry=repl.tool_registry,
-                              providers=build_registry(), on_approval=_approval(repl, status))
+                              providers=build_registry(), on_approval=_approval(repl, status),
+                              on_start=(lambda run: console.print(f"[dim]{escape(panes.open_panes(run))}[/dim]")) if show_panes else None)
     finally:
         status.stop()
     if isinstance(outcome, str):

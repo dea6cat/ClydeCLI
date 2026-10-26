@@ -45,7 +45,10 @@ def litellm_models(provider_models: dict[str, list[str]]) -> list[str]:
     return [f"{_LITELLM[p]}/{m}" for p, models in provider_models.items() if p in _LITELLM for m in models]
 
 
-def constraint(name: str) -> str:
+def constraint(name: str, advisor: bool = False) -> str:
+    if advisor:
+        return {"claude": "advice only: no tools at all, an empty folder, none of your own Claude settings",
+                "aider": "advice only: ask mode (it answers, never edits), no git, an empty folder"}[name]
     return {"claude": "files only: Read, Edit, Write, Glob, Grep; no commands, none of your own Claude settings",
             "aider": "files only: no shell commands, no commits"}[name]
 
@@ -91,8 +94,11 @@ def _spawn(argv: list[str], cwd: Path, env: dict[str, str], log: Path, cancel: t
     return code, killed.is_set()
 
 
-def run_claude(binary: str, model: str, prompt: str, worktree: Path, folder: Path, cancel: threading.Event, emit: Emit) -> CliResult:
-    argv = [binary, "-p", "--model", model, "--output-format", "stream-json", "--verbose", "--restricted", "--tools", _CLAUDE_TOOLS,
+def run_claude(binary: str, model: str, prompt: str, worktree: Path, folder: Path, cancel: threading.Event, emit: Emit,
+               advisor: bool = False) -> CliResult:
+    """Claude Code on `prompt` in `worktree`. As an advisor it gets no tools at all: it reads the prompt and answers."""
+    argv = [binary, "-p", "--model", model, "--output-format", "stream-json", "--verbose", "--restricted",
+            "--tools", "" if advisor else _CLAUDE_TOOLS,
             "--setting-sources", "project", "--permission-mode", "acceptEdits", "--no-session-persistence"]
     seen: dict[str, Any] = {}
     asked: dict[str, str] = {}   # tool_use id -> tool name, so a refused call can be reported as the error it is
@@ -134,6 +140,15 @@ _APPLIED = re.compile(r"^Applied edit to (.+?)\s*$")
 _COST = re.compile(r"Cost: \$([0-9.]+) message")
 
 
+_BANNER = ("Warning:", "Aider v", "Model:", "Main model:", "Git repo:", "Repo-map:", "Weak model:", "Editor model:")
+
+
+def _aider_answer(lines: list[str]) -> str:
+    """What aider said after its startup banner, without its token and cost line."""
+    start = max((i + 1 for i, line in enumerate(lines[:25]) if line.startswith(_BANNER)), default=0)
+    return "".join(line for line in lines[start:] if not line.startswith("Tokens:")).strip()
+
+
 def _aider_key(model: str) -> tuple[str, str] | str:
     """(env var, key) for the provider of an aider model id, or why there isn't one."""
     provider = next((p for p, prefix in _LITELLM.items() if model.startswith(prefix + "/")), None)
@@ -144,7 +159,9 @@ def _aider_key(model: str) -> tuple[str, str] | str:
     return (key_env, key) if key else f"no key for {provider}: run `clyde login {provider}`"
 
 
-def run_aider(binary: str, model: str, prompt: str, worktree: Path, folder: Path, cancel: threading.Event, emit: Emit) -> CliResult:
+def run_aider(binary: str, model: str, prompt: str, worktree: Path, folder: Path, cancel: threading.Event, emit: Emit,
+              advisor: bool = False) -> CliResult:
+    """aider on `prompt` in `worktree`. As an advisor it runs in ask mode (answers, never edits) and without git."""
     got = _aider_key(model)
     if isinstance(got, str):
         return CliResult(False, got)
@@ -156,13 +173,13 @@ def run_aider(binary: str, model: str, prompt: str, worktree: Path, folder: Path
             "--no-dirty-commits", "--no-gitignore", "--no-check-update", "--no-analytics", "--no-show-model-warnings",
             "--no-pretty", "--no-stream", "--no-suggest-shell-commands", "--no-detect-urls", "--no-auto-lint", "--no-auto-test",
             "--chat-history-file", str(folder / "aider.chat.md"), "--input-history-file", str(folder / "aider.input"),
-            "--llm-history-file", str(folder / "aider.llm.log")]
+            "--llm-history-file", str(folder / "aider.llm.log"), *(["--chat-mode", "ask", "--no-git"] if advisor else [])]
     tail: list[str] = []
     cost: list[float] = []
 
     def on_line(line: str) -> None:
         tail.append(line)
-        del tail[:-40]
+        del tail[:-400]
         applied = _APPLIED.match(line)
         if applied:
             emit("tool_use", "Edit", {"file_path": applied.group(1)})
@@ -174,5 +191,9 @@ def run_aider(binary: str, model: str, prompt: str, worktree: Path, folder: Path
         code, killed = _spawn(argv, worktree, env, folder / "output.log", cancel, on_line)
     except OSError as e:
         return CliResult(False, f"could not start aider: {e}")
-    summary = "".join(tail).strip()[-1500:] or ("stopped" if killed else f"aider ended with code {code} and no output")
+    text = _aider_answer(tail) if advisor else "".join(tail).strip()
+    summary = text[-1500:] or ("stopped" if killed else f"aider ended with code {code} and no output")
     return CliResult(code == 0 and not killed, summary, None, cost[-1] if cost else None)
+
+
+RUNNERS = {"claude": run_claude, "aider": run_aider}
