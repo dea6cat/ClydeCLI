@@ -48,17 +48,42 @@ def fetch(reference: str) -> str | None:
         return None
 
 
-def marker(full: str) -> str:
-    """The tail that ends a cut section: where its full text is."""
-    return f'\n...[truncated; full text: RetrieveContext(reference="{stash(full)}")]'
+def marker(full: str, shown: str = "") -> str:
+    """The tail that ends a cut section: the headings it leaves out, and where its full text is. Without the headings a
+    model can't tell the answer it needs was cut, and answers from what it sees (live: 0 of 12 runs on a rule past the cut)."""
+    names = _hidden_headings(full, shown)
+    hidden = f"not shown: {', '.join(names[:_MAX_HEADINGS])}{f' (+{len(names) - _MAX_HEADINGS} more)' if len(names) > _MAX_HEADINGS else ''}; " if names else ""
+    return f'\n...[truncated; {hidden}full text: RetrieveContext(reference="{stash(full)}")]'
 
 
 def cut(full: str, limit: int) -> str:
     """`full` when it fits `limit` characters, else its head plus the marker, `limit` characters at most."""
     if len(full) <= limit:
         return full
-    tail = marker(full)
-    return full[: max(0, limit - len(tail))].rstrip() + tail
+    head = full[:limit]
+    for _ in range(4):   # a shorter head can hide one more heading, which lengthens the marker: settle in a few steps
+        tail = marker(full, head)
+        shorter = full[: max(0, limit - len(tail))]
+        if shorter == head:
+            break
+        head = shorter
+    return head.rstrip() + tail
+
+
+_MAX_HEADINGS = 15
+_HEADING = re.compile(r"#{1,6}\s+(.+)")
+
+
+def _hidden_headings(full: str, shown: str) -> list[str]:
+    """Markdown headings of `full` past `shown`, outside code fences, each cut to 48 characters."""
+    names, fenced = [], False
+    for line in full.splitlines():
+        if line.lstrip().startswith(("```", "~~~")):
+            fenced = not fenced
+        match = None if fenced else _HEADING.fullmatch(line.strip())
+        if match and line.strip() not in shown:
+            names.append(match.group(1).strip()[:48])
+    return names
 
 
 def _prune(folder: Path) -> None:

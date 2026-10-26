@@ -68,7 +68,7 @@ def _excerpt(text: str, max_tokens: int) -> str:
             break
         kept = candidate
     if kept:
-        return kept if kept == text.strip() else kept + marker(text.strip())
+        return kept if kept == text.strip() else kept + marker(text.strip(), kept)
     # First section alone is over budget: hard-cut it (rough_token_count is chars // 4).
     return cut(text.strip(), max_tokens * 4)
 
