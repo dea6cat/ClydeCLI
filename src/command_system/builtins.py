@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
 
-from ..context_system.builder import build_context_prompt
+from ..context_system.builder import build_context_prompt, section_report
 from ..context_system.context_analyzer import (
     analyze_context,
     format_context_as_markdown,
@@ -375,6 +375,7 @@ def context_command_call(args: str, context: CommandContext) -> LocalCommandResu
             is_auto_compact_enabled=is_auto_compact_enabled,
         )
 
+        data.sections = section_report(context.workspace_root)
         markdown = format_context_as_markdown(data)
         return LocalCommandResult(type="text", value=markdown)
     except Exception as e:

@@ -1,6 +1,10 @@
 # CCR Context Plan: Reversible Compression + Retrieve Tool
 
-**Status:** Follow-up plan item (after the in-house security scanner ships)
+**Status:** Built on `feat/ccr-context`, measured first. Across 37 local repos the whole context prompt is 1.1k–3k tokens and
+every repo already loses 1–3 sections to a hard cut (instruction files at 4,000 chars, README at 600 tokens, git status at
+2,000 chars). So the reversible part makes those existing cuts reversible (`src/context_system/context_cache.py`,
+`RetrieveContext`), instruction files included since they were already being cut, and `/context` shows per-section cache
+alignment. Not built: summarizing sections that fit (little to save), the `cache_key` prefix and microcompact ordering.
 **Owner:** context_system
 **Priority:** Moderate
 
