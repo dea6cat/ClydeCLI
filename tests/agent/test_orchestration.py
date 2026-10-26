@@ -92,6 +92,8 @@ class EndToEnd(unittest.TestCase):
         for who in ("worker-1", "worker-2"):
             self.assertIn((who, "started"), kinds)
             self.assertIn((who, "finished"), kinds)
+            self.assertIn((who, "constraint"), kinds)   # the rule a native worker really runs under is on record
+        self.assertEqual(run.state()["roles"]["kinds"], {"master": "provider", "advisor": "provider", "worker-1": "provider", "worker-2": "provider"})
         self.assertEqual({r["who"] for r in run.ledger()}, {"master", "advisor", "worker-1", "worker-2"})
         out = land(run, approve=True)
         self.assertEqual((out / "worker-1" / "files" / "a.txt").read_text(), "A\n")

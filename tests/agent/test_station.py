@@ -82,7 +82,7 @@ class Station(unittest.TestCase):
             threads.append(self._waiting_ask(run))
             threading.Event().wait(0.02)   # first's ask is older than second's
         console = self._console()
-        console.print(station._show(station._select(None)))
+        console.print(station._show(station.select_runs(None)))
         out = self.buffer.getvalue()
         self.assertIn(first.id, out)
         self.assertIn(second.id, out)
@@ -94,6 +94,22 @@ class Station(unittest.TestCase):
         self.assertEqual(station.command(self._console(), "deny", second.id), 0)   # or name the run
         for thread in threads:
             thread.join(5)
+
+    def test_the_snapshot_says_what_clyde_is_doing_and_carries_each_members_kind_and_rule(self):
+        run = Run.create("add login", {"master": "a:big", "advisor": "claude:haiku", "kinds": {"master": "provider", "advisor": "cli", "worker-1": "provider"},
+                                       "workers": [{"name": "worker-1", "model": "a:small"}]})
+        run.event("worker-1", "constraint", note="edits inside its own worktree are free")
+        for status, clyde in (("planning", "briefing the team"), ("running", "watching the workers"), ("reviewing", "waiting for the review"),
+                              ("awaiting_approval", "waiting for your decision"), ("done", "landed the work")):
+            run.set_status(status)
+            self.assertEqual(station.snapshot(run)["clyde"], clyde)
+        crew = {c["name"]: c for c in station.snapshot(run)["crew"]}
+        self.assertEqual((crew["advisor"]["kind"], crew["worker-1"]["constraint"]), ("cli", "edits inside its own worktree are free"))
+        self.assertIsNone(crew["master"]["constraint"])   # nothing recorded, nothing shown
+        thread = self._waiting_ask(run)
+        self.assertEqual(station.snapshot(run)["clyde"], "waiting on you for 1 request")
+        run.answer(run.pending()[0]["id"], False)
+        thread.join(5)
 
     def test_ls_and_the_no_runs_message(self):
         console = self._console()

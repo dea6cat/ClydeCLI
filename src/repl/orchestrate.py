@@ -164,7 +164,7 @@ def orchestrate_cmd(repl: Any, arg: str) -> None:
     from src.agent import panes
     from src.providers import build_registry
     show_panes = bool(panes.tmux_path()) and Confirm.ask("Open a tmux pane for each team member?", console=console, default=False)
-    console.print("[dim]Workers run side by side. Watch from another terminal: clyde station[/dim]")
+    console.print("[dim]Workers run side by side. Watch from another terminal: clyde station (or clyde station web for the browser)[/dim]")
     status = console.status("[dim]Team working…[/dim]", spinner="dots")
     status.start()
     try:
