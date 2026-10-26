@@ -23,7 +23,8 @@ from typing import Any, Callable
 
 from src.agent.agent_types import GENERAL, AgentType
 from src.agent.conversation import Conversation as History
-from src.agent.harness import LOCAL_PROVIDERS, RUNNABLE_KINDS, Harness, discover_all, harness_by_name
+from src.agent import cli_workers
+from src.agent.harness import LOCAL_PROVIDERS, RUNNABLE_KINDS, Harness, can_work, discover_all, harness_by_name
 from src.agent.runs import Run, outbox_dir
 from src.providers.base import stream_with_retry
 from src.providers.types import Conversation, Message
@@ -92,8 +93,10 @@ def build_plan(task: str, master: Picks | None, advisor: Picks | None, workers: 
         harness = harness_by_name(harnesses, name)
         if harness is None:
             return f"{role.capitalize()} '{name}' not found. Run /harness list."
-        if harness.kind not in RUNNABLE_KINDS:
-            return f"{name} is a {harness.kind} harness; Clyde can run provider models as {role} for now."
+        if role != "worker" and harness.kind not in RUNNABLE_KINDS:
+            return f"{name} is a {harness.kind} harness; the {role} needs a provider model (an agent CLI can be a worker)."
+        if not can_work(harness):
+            return f"{name} is a {harness.kind} harness Clyde can't run as a {role} yet."
         if model not in [m.model_id for m in harness.models]:
             return f"{name} has no model '{model}'. Run /harness {name}."
         return RoleAssignment(role, harness, model)
@@ -178,18 +181,34 @@ def _worker_context(parent: ToolContext, worktree: Path, run: Run, name: str, ca
     )
 
 
+_NOISE = ":(exclude).aider*"   # aider's caches and histories are never the worker's work
+
+
 def _snapshot(worktree: Path) -> tuple[str, list[str]]:
     """(patch, changed files) of everything the worker did, tracked or new."""
-    _git(worktree, "add", "-A")
-    patch = _git(worktree, "diff", "--cached", "--binary", "--no-ext-diff", "--no-textconv", "HEAD")
+    _git(worktree, "add", "-A", "--", ".", _NOISE)
+    patch = _git(worktree, "diff", "--cached", "--binary", "--no-ext-diff", "--no-textconv", "HEAD", "--", ".", _NOISE)
     return patch, _changed_files(worktree)
 
 
 def _changed_files(tree: Path) -> list[str]:
     try:
-        return [f for f in _git(tree, "diff", "--cached", "--name-only", "-z", "HEAD").split("\0") if f]
+        return [f for f in _git(tree, "diff", "--cached", "--name-only", "-z", "HEAD", "--", ".", _NOISE).split("\0") if f]
     except (RuntimeError, OSError):
         return []
+
+
+def _work_cli(run: Run, name: str, role: RoleAssignment, prompt: str, worktree: Path, cancel: threading.Event) -> Any:
+    """An agent CLI as the worker: run it in the worktree under its file-only contract, record what it reports."""
+    run.event(name, "constraint", note=cli_workers.constraint(role.provider_name))
+    runner = {"claude": cli_workers.run_claude, "aider": cli_workers.run_aider}[role.provider_name]
+
+    def emit(kind: str, tool: str, tool_input: Any) -> None:
+        run.event(name, kind, tool=tool, input=json.dumps(tool_input or {}, default=str)[:200])
+
+    result = runner(role.harness.binary or role.provider_name, role.model, prompt, worktree, run.worker_dir(name), cancel, emit)
+    run.spend(name, role.ref, result.usage, result.usd, always=True)
+    return result
 
 
 def _work(run: Run, name: str, role: RoleAssignment, provider: Any, prompt: str, worktree: Path,
@@ -204,13 +223,20 @@ def _work(run: Run, name: str, role: RoleAssignment, provider: Any, prompt: str,
             run.event(name, event.kind, tool=event.tool_name, input=json.dumps(event.tool_input or {}, default=str)[:200])
 
     try:
-        context = _worker_context(parent, worktree, run, name, cancel, provider, role.model)
-        agent = AgentType(GENERAL, "orchestrated worker", prompt=WORKER_PROMPT)
-        result, _ = run_agent(registry, context, agent, prompt, cancel=cancel, conversation=history, on_event=on_event)
-        out["summary"] = result.response_text or ""
-        run.spend(name, role.ref, result.usage)
+        if role.harness.kind == "cli":
+            result = _work_cli(run, name, role, prompt, worktree, cancel)
+            out["summary"] = result.summary
+            out["ok"] = result.ok
+        else:
+            context = _worker_context(parent, worktree, run, name, cancel, provider, role.model)
+            agent = AgentType(GENERAL, "orchestrated worker",
+                              prompt=f"{WORKER_PROMPT}\nYour worktree is {worktree}. Work only there and use paths relative to it.")
+            result, _ = run_agent(registry, context, agent, prompt, cancel=cancel, conversation=history, on_event=on_event)
+            out["summary"] = result.response_text or ""
+            run.spend(name, role.ref, result.usage)
+            out["ok"] = True
         out["patch"], out["files"] = _snapshot(worktree)
-        out["ok"] = not cancel.is_set()
+        out["ok"] = out["ok"] and not cancel.is_set()
     except Exception as e:   # a provider error, a stopped request: the run goes on without this worker
         out["summary"] = f"{type(e).__name__}: {e}"
     folder = run.worker_dir(name)
@@ -237,7 +263,7 @@ def orchestrate(plan: OrchestrationPlan, spec: str, *, workspace: Path, parent: 
     run.update(spec=spec, repo=str(root), workspaces={})
 
     def provider_of(role: RoleAssignment) -> Any:
-        return providers[role.provider_name]
+        return None if role.harness.kind == "cli" else providers[role.provider_name]   # a CLI brings its own model access
 
     try:
         run.event("master", "splitting")
@@ -266,7 +292,7 @@ def orchestrate(plan: OrchestrationPlan, spec: str, *, workspace: Path, parent: 
         if serial:
             run.event("clyde", "serialized", note="a local model is among the workers: one at a time")
         with ThreadPoolExecutor(max_workers=1 if serial else len(names)) as pool:
-            futures = [pool.submit(_work, run, n, w, provider_of(w), f"{t}\n\nOverall spec, for context:\n{spec}",
+            futures = [pool.submit(_work, run, n, w, provider_of(w), f"{t}\n\nThe overall spec, for context only. The other workers cover the rest: do only your task above.\n{spec}",
                                    Path(workspaces[n]["path"]), parent, registry, cancel)
                        for n, w, t in zip(names, plan.workers, split)]
             while not all(f.done() for f in futures):
