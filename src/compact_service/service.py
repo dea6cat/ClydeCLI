@@ -150,6 +150,8 @@ async def compact_conversation(
         context_messages[0].get("role") != "user" or _has_tool_result(context_messages[0])
     ):
         context_messages.pop(0)
+    if earlier := _earlier_context(messages, len(context_messages)):
+        prompt += earlier
     summary_history = Conversation.from_dict(
         {"messages": [*context_messages, {"role": "user", "content": prompt}]}
     )
@@ -284,6 +286,38 @@ def _recent_files(messages: list[Message]) -> str:
             opening, closing = _fence(text)
             parts.append(f"### {raw}\n{opening}\n{text}\n{closing}")
     return "Files you were working with, as they are now:\n\n" + "\n\n".join(parts) if parts else ""
+
+
+_SUMMARY_LEAD = "This session is being continued from a previous conversation."   # messages._format_summary_text
+_EARLIER_CHARS = 8_000
+
+
+def _earlier_context(messages: list[Message], kept: int) -> str:
+    """What the summarizer would not see: it reads only the recent messages, so the previous summary and every user
+    request before them were left out of the new summary and lost. This hands it the previous summary to update
+    (Kilo's anchored summary) and those requests, first 300 characters each, about 8,000 in all."""
+    def text(message: Message) -> str:
+        if isinstance(message.content, str):
+            return message.content
+        return "\n".join(getattr(b, "text", "") for b in message.content if getattr(b, "type", "") == "text")
+
+    older = messages[: len(messages) - kept] if kept else list(messages)
+    previous = next((text(m) for m in older if m.role == "user" and text(m).startswith(_SUMMARY_LEAD)), "")
+    asked, used = [], 0
+    for m in older:
+        said = text(m).strip()
+        if m.role != "user" or not said or said.startswith(_SUMMARY_LEAD) or used > _EARLIER_CHARS:
+            continue
+        asked.append("- " + said[:300].replace("\n", " "))
+        used += len(asked[-1])
+    if not previous and not asked:
+        return ""
+    out = "\n\nWhat came before the messages above. Keep what is still true, and update it with them:"
+    if previous:
+        out += "\n\nPrevious summary:\n" + previous.removeprefix(_SUMMARY_LEAD).strip()
+    if asked:
+        out += "\n\nEarlier requests from the user:\n" + "\n".join(asked)
+    return out
 
 
 def _fallback_summary(messages: list[Message]) -> str:

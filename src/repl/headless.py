@@ -22,7 +22,7 @@ from typing import Any, TextIO
 
 from rich.console import Console
 
-from src.agent.agent_loop import MAX_TOKENS_REPLY, MAX_TURNS_REPLY
+from src.agent.agent_loop import MAX_TOKENS_REPLY
 from src.agent.conversation import message_dict
 from src.providers import model_ref
 
@@ -131,7 +131,7 @@ def run(prompt: str, *, model: str | None = None, mode: str = "hold", output_for
 
     result, error = repl.last_result, repl.last_error
     answer = result.response_text if result is not None else ""
-    ran_out = answer == MAX_TURNS_REPLY
+    ran_out = bool(result is not None and result.ran_out)
     over_budget = answer == MAX_TOKENS_REPLY
     failed = error is not None or result is None or ran_out or over_budget
     if output_format in ("json", "stream-json"):

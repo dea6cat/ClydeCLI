@@ -20,6 +20,31 @@ class Retry(unittest.TestCase):
                 return ProviderResponse(message=Message.assistant(text="ok"), raw={})
         r = base.stream_with_retry(P(), Conversation(system_prompt="s"), "m", (), lambda _c: None, retries=3)
         self.assertEqual(r.message.text, "ok"); self.assertEqual(calls["n"], 3)
+    def test_a_stream_that_drops_after_printing_text_is_not_retried_but_handed_back_interrupted(self):
+        calls, shown = {"n": 0}, []
+        class P:
+            name = "x"
+            def stream(self, c, m, t, on_text, *, cancel=None, **_kwargs):
+                calls["n"] += 1
+                on_text("The answer is ")
+                raise ProviderError("x", "connection reset", retryable=True)
+        r = base.stream_with_retry(P(), Conversation(system_prompt="s"), "m", (), shown.append, retries=3)
+        self.assertEqual((calls["n"], shown), (1, ["The answer is "]))   # printed once, never from the top again
+        self.assertEqual((r.message.text, r.done_reason), ("The answer is ", "interrupted"))
+
+    def test_a_stream_that_drops_before_any_text_is_still_retried(self):
+        calls = {"n": 0}
+        class P:
+            name = "x"
+            def stream(self, c, m, t, on_text, *, cancel=None, **_kwargs):
+                calls["n"] += 1
+                if calls["n"] == 1:
+                    raise ProviderError("x", "connection reset", retryable=True)
+                on_text("ok")
+                return ProviderResponse(message=Message.assistant(text="ok"), raw={})
+        r = base.stream_with_retry(P(), Conversation(system_prompt="s"), "m", (), lambda _c: None, retries=3)
+        self.assertEqual((calls["n"], r.message.text), (2, "ok"))
+
     def test_non_retryable_raises_immediately(self):
         class P:
             name="x"

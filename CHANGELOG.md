@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Out of tool turns, the model says what is done, what remains and what to do next, instead of the bare "[Max tool turns reached]" (still the fallback). `clyde -p` still reports it as an error, "ran out of tool rounds".
 - Tool output is held to each tool's limit with its head and its tail, and the whole of it is a `RetrieveContext` call away (paged, 50,000 characters at a time). Before, nothing enforced the limit and Bash kept only the first 20,000 characters, so a long failing run lost the error at its end: asked why such a run failed, ministral-8b now answers 3 of 3, against 0 of 3. Bash's limit is 30,000 characters per stream.
 - The context prompt puts its stable sections first and Runtime Context and git status last, so one new file no longer empties the provider's prompt cache: on this repo 2,113 of 2,359 context tokens stay cached, against 0.
 - Mistral's own model catalog decides each model's thinking levels, cached for 30 days, with the model families as the fallback offline.
@@ -25,6 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A second compaction no longer loses what the first one kept. The summarizer reads only the recent messages, so the previous summary and older requests dropped out of the new one; it now updates the previous summary and sees those requests. A decision made before two compactions was recalled 3 of 3 times, against 1 of 3 (the others made up a database).
+- A stream that drops after printing part of an answer is continued from where it stopped, not retried from the top, which printed it twice.
 - `clyde login mistral` works: the login command takes the provider name, as #65 announced.
 - Messages say "security scan", not SkillSpector, which the in-house scanner replaced.
 - `mistral-vibe-cli-with-tools`, the model behind Mistral Vibe's web search, is no longer offered in the model list.
