@@ -4,7 +4,8 @@ prompt-toolkit>=3.0.0
 tiktoken>=0.7.0
 laya==0.3.23
 duckdb>=1.5,<2
-skillspector @ git+https://github.com/NVIDIA/SkillSpector@v2.12.0
+click>=8
+httpx>=0.27
 
 # Development Dependencies
 build>=1.0.0

@@ -175,6 +175,8 @@ class TestModelsListing(unittest.TestCase):
         from src.providers.openai_compat import _is_chat_model
         self.assertFalse(_is_chat_model("openai/gpt-5.4:batch"))
         self.assertTrue(_is_chat_model("openai/gpt-5.4"))
+        self.assertFalse(_is_chat_model("mistral-vibe-cli-with-tools"))   # Vibe's web-search model
+        self.assertTrue(_is_chat_model("mistral-vibe-cli-latest"))        # an alias of mistral-medium: keep
 
     def test_models_hides_failed_ones_unless_all(self):
         import io

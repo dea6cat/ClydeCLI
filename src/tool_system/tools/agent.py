@@ -47,8 +47,9 @@ def _model_for(agent: Any, context: ToolContext) -> tuple[Any, str, str]:
 
 
 def run_agent(registry: ToolRegistry, context: ToolContext, agent: Any, prompt: str, *,
-              background: bool = False, cancel: Any = None) -> tuple[Any, str]:
-    """Run one sub-agent to the end; (AgentLoopResult, note about its model)."""
+              background: bool = False, cancel: Any = None, conversation: Any = None, on_event: Any = None) -> tuple[Any, str]:
+    """Run one sub-agent to the end; (AgentLoopResult, note about its model). The caller may pass the
+    Conversation to keep it (orchestrated workers save their transcript) and an on_event tool-event callback."""
     from ...agent.agent_loop import run_agent_loop
     from ...agent.conversation import Conversation
 
@@ -58,10 +59,10 @@ def run_agent(registry: ToolRegistry, context: ToolContext, agent: Any, prompt: 
     if background:
         sub_context.permission_handler = lambda *a: (False, False)   # nobody can answer mid-turn
         sub_context.ask_user = None
-    conversation = Conversation()
+    conversation = conversation if conversation is not None else Conversation()
     conversation.add_user_message(prompt)
     result = run_agent_loop(conversation, provider, model, _tools_for(registry, agent), sub_context,
-                            max_turns=_SUBAGENT_MAX_TURNS, system_extra=agent.prompt or None, cancel=cancel)
+                            max_turns=_SUBAGENT_MAX_TURNS, system_extra=agent.prompt or None, cancel=cancel, on_event=on_event)
     return result, note
 
 

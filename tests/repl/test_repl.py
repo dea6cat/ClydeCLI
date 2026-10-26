@@ -297,7 +297,7 @@ class TestREPL(unittest.TestCase):
                     repl.console.print = Mock()
 
                     with patch('src.repl.core.run_agent_loop') as mock_agent_loop:
-                        mock_agent_loop.return_value = Mock(response_text=MAX_TURNS_REPLY, usage=None, num_turns=20)
+                        mock_agent_loop.return_value = Mock(response_text=MAX_TURNS_REPLY, usage=None, num_turns=20, ran_out=True)
                         repl.chat("do the task")
 
                     printed = " ".join(str(c.args[0]) for c in repl.console.print.call_args_list if c.args)
@@ -665,7 +665,9 @@ class TestREPL(unittest.TestCase):
         with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
             with patch('src.repl.core.Session.create') as session:
                 session.return_value = Mock(conversation=Conversation())
-                with _fake_provider_env(reply("", usage={"input_tokens": 10, "output_tokens": 792}), reply("a real answer")):
+                # an empty reply is asked for again 3 times (agent_loop._MAX_RECOVERIES) before the notice shows
+                empty = [reply("", usage={"input_tokens": 10, "output_tokens": 198}) for _ in range(4)]
+                with _fake_provider_env(*empty, reply("a real answer")):
                     repl = ClydeREPL(model="glm:glm-4.5")
                     repl.console.print = Mock()
                     repl.chat("make this rhyme")

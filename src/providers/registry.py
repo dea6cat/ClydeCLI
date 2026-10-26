@@ -31,7 +31,7 @@ _OPENAI_COMPAT = [
     ("openrouter", "https://openrouter.ai/api/v1", "OPENROUTER_API_KEY", True, [],
      {"HTTP-Referer": "https://github.com/dea6cat/ClydeCLI", "X-Title": "ClydeCLI"},
      {"reasoning_style": "openrouter", "max_tokens": 16384, "stream_usage": True}),
-    ("mistral", "https://api.mistral.ai/v1", "MISTRAL_API_KEY", True, [], {}, {}),
+    ("mistral", "https://api.mistral.ai/v1", "MISTRAL_API_KEY", True, [], {}, {"reasoning_style": "mistral"}),
     ("nvidia", "https://integrate.api.nvidia.com/v1", "NVIDIA_API_KEY", True, [], {}, {}),
     ("deepseek", "https://api.deepseek.com/v1", "DEEPSEEK_API_KEY", True, [], {},
      {"reasoning_style": "deepseek", "stream_usage": True}),

@@ -54,6 +54,8 @@ class CommandContext:
     cost_tracker: Any
     history: Any
     config: dict[str, Any] = field(default_factory=dict)
+    provider: Any = None
+    model: str | None = None
 
 
 # Protocol for local command callables

@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable
 
+from .context_cache import cut
 from .models import ClaudeMdContext, ClaudeMdFile
 
 # Memory files, one per location: the first name that exists wins, so a repo that keeps the same
@@ -80,16 +81,13 @@ def load_claude_md_context(
             content = filter_user_file(content).strip()
         if not content:
             continue
-        if len(content) > max_chars_per_file:
-            content = content[: max_chars_per_file - 32].rstrip() + "\n...[truncated]"
-            truncated = True
         remaining = max_total_chars - total_chars
         if remaining <= 0:
             truncated = True
             break
-        if len(content) > remaining:
-            content = content[: max(0, remaining - 32)].rstrip() + "\n...[truncated]"
-            truncated = True
+        full = content
+        content = cut(full, min(max_chars_per_file, remaining))   # the rest stays reachable through RetrieveContext
+        truncated = truncated or content != full
         total_chars += len(content)
         files.append(ClaudeMdFile(path=path, content=content))
 

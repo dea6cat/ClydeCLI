@@ -29,8 +29,8 @@ class _Case(unittest.TestCase):
     def tearDown(self) -> None:
         self.tmp.cleanup()
 
-    def rules(self, allow=(), deny=()) -> None:
-        self.ctx.permission_rules = {"allow": list(allow), "deny": list(deny)}
+    def rules(self, allow=(), deny=(), ask=()) -> None:
+        self.ctx.permission_rules = {"allow": list(allow), "ask": list(ask), "deny": list(deny)}
 
     def bash(self, command: str) -> str | None:
         return check_rules("Bash", {"command": command}, self.ctx)
@@ -172,6 +172,60 @@ class TestDispatchWithRules(_Case):
         self.assertEqual(WebSearchTool().check_permissions({"query": "  "}, self.ctx).behavior.value, "allow")   # run() rejects it
 
 
+class TestAskRules(_Case):
+    """Claude Code's precedence: deny, then ask, then allow. An ask rule prompts even where nothing else would."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.registry = ToolRegistry([BashTool(), WebFetchTool()])
+
+    def test_deny_beats_ask_beats_allow(self) -> None:
+        self.rules(allow=["Bash(git:*)"], ask=["Bash(git push:*)"], deny=["Bash(git push --force:*)"])
+        self.assertEqual(self.bash("git status"), "allow")
+        self.assertEqual(self.bash("git push origin main"), "ask")
+        self.assertEqual(self.bash("git push --force origin main"), "deny")
+        self.assertEqual(self.bash("ls && git push"), "ask")   # any part of a compound command
+
+    def test_an_ask_rule_prompts_even_for_a_read_only_command_and_under_auto_approve(self) -> None:
+        self.rules(ask=["Bash(ls:*)"])
+        self.ctx.auto_approve = True
+        result = self.registry.dispatch(ToolCall(name="Bash", input={"command": "ls"}), self.ctx)
+        self.assertFalse(result.is_error)
+        self.assertEqual(len(self.asked), 1)
+
+
+class TestProjectRules(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name).resolve()
+        for p in (patch("pathlib.Path.home", return_value=self.root / "home"),):
+            p.start()
+            self.addCleanup(p.stop)
+
+    def test_project_deny_and_ask_apply_at_once_but_allow_waits_for_trust(self) -> None:
+        from src.tool_system.permission_rules import merge_project_rules
+        mine = {"allow": ["Bash(ls:*)"], "ask": [], "deny": []}
+        project = {"allow": ["Bash(rm:*)"], "ask": ["WebFetch"], "deny": ["Bash(curl:*)"]}
+        untrusted = merge_project_rules(mine, project, trusted=False)
+        self.assertEqual(untrusted, {"allow": ["Bash(ls:*)"], "ask": ["WebFetch"], "deny": ["Bash(curl:*)"]})
+        self.assertIn("Bash(rm:*)", merge_project_rules(mine, project, trusted=True)["allow"])
+
+    def test_trust_is_for_that_exact_list(self) -> None:
+        from src.tool_system.permission_rules import project_trust, set_project_trust
+        self.assertIsNone(project_trust(self.root, ["Bash(make:*)"]))
+        set_project_trust(self.root, ["Bash(make:*)"], True)
+        self.assertTrue(project_trust(self.root, ["Bash(make:*)"]))
+        self.assertIsNone(project_trust(self.root, ["Bash(make:*)", "Bash(rm:*)"]))   # the list changed: ask again
+
+    def test_a_bare_deny_hides_the_tool_and_a_scoped_one_does_not(self) -> None:
+        from src.tool_system.permission_rules import bare_denied
+        rules = {"allow": [], "ask": [], "deny": ["WebFetch", "mcp__github__*", "Bash(rm:*)"]}
+        self.assertTrue(bare_denied("WebFetch", rules))
+        self.assertTrue(bare_denied("mcp__github__create_issue", rules))
+        self.assertFalse(bare_denied("Bash", rules))
+        self.assertFalse(bare_denied("mcp__linear__list", rules))
+
+
 class TestSettingsFile(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
@@ -192,13 +246,13 @@ class TestSettingsFile(unittest.TestCase):
         self.assertIn("hooks", data)
         self.assertIn("mcpServers", data)
         self.assertEqual(self.path.stat().st_mode & 0o777, 0o600)
-        self.assertEqual(load_rules(), {"allow": ["Bash(npm test:*)"], "deny": []})
+        self.assertEqual(load_rules(), {"allow": ["Bash(npm test:*)"], "ask": [], "deny": []})
 
     def test_load_missing_or_malformed_is_empty(self) -> None:
-        self.assertEqual(load_rules(), {"allow": [], "deny": []})
+        self.assertEqual(load_rules(), {"allow": [], "ask": [], "deny": []})
         self.path.parent.mkdir()
         self.path.write_text("{not json")
-        self.assertEqual(load_rules(), {"allow": [], "deny": []})
+        self.assertEqual(load_rules(), {"allow": [], "ask": [], "deny": []})
         with self.assertRaises(ValueError):
             save_allow_rule("Bash")
 

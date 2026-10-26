@@ -342,9 +342,15 @@ def _stream_with_retry(provider, conversation, model, tools, on_text, *, retries
     always outlives. When a retryable error survives every retry, the message gets a
     `— retried N×, still failing` suffix so it doesn't read as a single blip."""
     delay = 1.0
+    shown: list[str] = []   # text already streamed to the user in this call
+
+    def text(chunk: str) -> None:
+        shown.append(chunk)
+        on_text(chunk)
+
     for attempt in range(retries + 1):
         try:
-            return provider.stream(conversation, model, tools, on_text, cancel=cancel,
+            return provider.stream(conversation, model, tools, text, cancel=cancel,
                                    reasoning=reasoning, on_thinking=on_thinking)
         except _Cancelled:
             raise
@@ -352,6 +358,13 @@ def _stream_with_retry(provider, conversation, model, tools, on_text, *, retries
             cancelled = cancel is not None and cancel.is_set()
             if not e.retryable or cancelled:
                 raise
+            if "".join(shown).strip():
+                # Part of the answer already printed: a retry would print it again from the top (Kilo never
+                # retries past output). Hand back what arrived as an interrupted reply; the agent loop asks the
+                # model to continue it, as it does for a reply cut off at the output limit.
+                from ..agent import trace   # lazy: the agent package imports this module
+                trace.record("stream_interrupted", provider=e.provider, chars=len("".join(shown)), error=str(e)[:200])
+                return ProviderResponse(message=Message.assistant(text="".join(shown)), raw={}, done_reason="interrupted")
             if e.retry_after and e.retry_after > MAX_RETRY_AFTER_WAIT_S:
                 raise   # waiting that long would stall the turn; the caller (cardShuffle) benches the model instead
             if attempt == retries:

@@ -78,7 +78,7 @@ Examples:
   clyde --debug                       Start REPL and print trace events (model/tool calls) to stderr
   clyde luv bonnie [PORT]              Start Bonnie, Clyde's luv accomplice, on localhost (default port 8080)
   bonnie luv clyde                     Start Clyde in the terminal, from Bonnie's side (same as `clyde`)
-  clyde login                         Connect a provider and pick a default model
+  clyde login [PROVIDER]              Connect a provider and pick a default model
   clyde logout openai                 Remove a saved API key
   clyde config                        Show current configuration
   clyde setup                         First-run onboarding: provider, other agents' hooks and skills, PATH
@@ -89,6 +89,7 @@ Examples:
   clyde plugin list                   List installed plugins; also: plugin remove|enable|disable <name>
   clyde update [--check] [--channel latest|stable]  Move Clyde to the newest version of its channel, the way it was installed
   clyde uninstall [--purge] [-y]      Remove Clyde the way it was installed; --purge also deletes ~/.clyde
+  clyde station [ls|watch|approve|deny]  Live state of an /orchestrate run (who is doing what, spend, approvals)
   clyde tune [--ask]                  Find the best Ollama setup for how you use it, keeping quality (memory, speed, context)
   clyde telemetry [on|off|show|send]  Anonymous usage counters: on for a new install, `off` stops them; `show` prints exactly what is queued
   clyde doctor                        How Clyde is installed: method, version, PATH, other installs, Claude Code
@@ -130,7 +131,8 @@ Examples:
                         help='Speak the Agent Client Protocol on stdio so an editor (Zed, JetBrains) can run Clyde')
 
     subparsers = parser.add_subparsers(dest='command', help='Available commands')
-    subparsers.add_parser('login', help='Connect a provider and pick a default model')
+    login_parser = subparsers.add_parser('login', help='Connect a provider and pick a default model')
+    login_parser.add_argument('provider', nargs='?', help='skip the provider question: clyde login mistral')
     logout_parser = subparsers.add_parser('logout', help='Remove a saved API key')
     logout_parser.add_argument('provider', help='Provider name, e.g. openai')
     subparsers.add_parser('config', help='Show current configuration')
@@ -169,6 +171,11 @@ Examples:
     telemetry_parser.add_argument('action', nargs='?', default='status', choices=['status', 'on', 'off', 'show', 'send', 'endpoint', 'reset-id'])
     telemetry_parser.add_argument('value', nargs='?', help='endpoint: the https URL to send to')
     subparsers.add_parser('doctor', help='How Clyde is installed: method, version, PATH, other installs, Claude Code, licence')
+    station_parser = subparsers.add_parser('station', help='Live state of an /orchestrate run: who is doing what, spend, approvals')
+    station_parser.add_argument('action', nargs='?', default='show', choices=['show', 'ls', 'watch', 'approve', 'deny', 'panes'])
+    station_parser.add_argument('run', nargs='?', help='a run id (default: the newest)')
+    station_parser.add_argument('--who', help='watch: only this team member (worker-1, advisor, ...)')
+    station_parser.add_argument('--once', action='store_true', help='print the state once instead of refreshing')
     update_parser = subparsers.add_parser('update', help='Move Clyde to the newest version, the way it was installed')
     update_parser.add_argument('--channel', choices=['latest', 'stable'], help='follow every commit on main (latest) or tagged releases (stable); saved')
     update_parser.add_argument('--check', action='store_true', help='only say whether a newer version exists (exit 0 current, 1 newer exists, 2 could not check)')
@@ -234,6 +241,9 @@ Examples:
     if args.command == 'telemetry':
         from src import telemetry
         return telemetry.command(Console(), args.action, args.value)
+    if args.command == 'station':
+        from src.agent import station
+        return station.command(Console(), args.action, args.run, args.once, args.who)
     if args.command == 'tune':
         from src.tuning import tune
         return tune.run(Console(), model=args.tune_model, ctx=args.ctx, reask=args.tune_ask)
@@ -273,7 +283,7 @@ Examples:
     if args.list_models:
         return list_models()
     if args.command == 'login':
-        return handle_login()
+        return handle_login(args.provider)
     if args.command == 'logout':
         return handle_logout(args.provider)
     if args.command == 'setup':
@@ -477,15 +487,17 @@ def run_login_flow(console: Console, registry: dict, default_provider: str = "an
     return ref
 
 
-def handle_login():
-    """Interactive provider configuration."""
+def handle_login(provider: str | None = None):
+    """Interactive provider configuration; `provider` (clyde login mistral) skips the provider question."""
     from src.providers import build_registry, keys
 
     console = Console()
     console.print("\n[bold #4eba65]ClydeCLI - Connect a provider[/bold #4eba65]\n")
     keys.load_into_env()
     registry = build_registry()
-    return 0 if run_login_flow(console, registry) else 1
+    if provider and provider not in _login_choices(registry):
+        console.print(f"[yellow]No provider called {provider!r}; pick one below.[/yellow]")
+    return 0 if run_login_flow(console, registry, provider=provider) else 1
 
 
 def _clyde_bin_on_path() -> bool:
@@ -689,12 +701,12 @@ def _scan_plugin(console: Console, plugin):  # type: ignore[no-untyped-def]
         console.print("[dim]LLM review failed or timed out; static scan only.[/dim]")
         verdict = skill_scan.check("plugin", plugin.name, plugin.root)
     color = {"SAFE": "green", "CAUTION": "yellow", "DO_NOT_INSTALL": "red"}.get(verdict.recommendation, "dim")
-    console.print(f"  SkillSpector: [{color}]{verdict.recommendation}[/{color}] (risk {verdict.score}"
+    console.print(f"  Security scan: [{color}]{verdict.recommendation}[/{color}] (risk {verdict.score}"
                   f"{', LLM-reviewed' if verdict.llm else ', static scan'})")
     for finding in verdict.findings[:5]:
         console.print(f"    • {finding}", markup=False)
     if verdict.blocked:
-        console.print("  [red]SkillSpector recommends not installing it.[/red] Enabling it anyway records your approval.")
+        console.print("  [red]The security scan recommends not installing it.[/red] Enabling it anyway records your approval.")
     return verdict
 
 
