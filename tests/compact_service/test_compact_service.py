@@ -145,6 +145,31 @@ class TestCompactConversation(unittest.TestCase):
         self.assertEqual(result.trigger, "manual")
         self.assertIn("Conversation had", result.summary_text)
 
+    def test_the_files_being_worked_on_come_back_after_compaction_as_they_are_now(self):
+        from src.agent.conversation import TextContentBlock, ToolUseContentBlock
+        from src.compact_service.service import compact_conversation
+        root = Path(self.tmpdir.name)
+        (root / "app.py").write_text("print('v2')\n")          # changed since it was read
+        (root / "notes.md").write_text("# Notes\n")
+        big = root / "big.log"
+        big.write_text("x" * 30_000)
+        use = lambda tid, name, path: Message(role="assistant", content=[ToolUseContentBlock(id=tid, name=name, input={"file_path": str(path)})])
+        conv = self._make_conversation([
+            Message(role="user", content="Fix the app " * 20),
+            use("t1", "Read", root / "app.py"),
+            use("t2", "Edit", root / "notes.md"),
+            use("t3", "Read", big),
+            use("t4", "Read", root / "gone.py"),                  # deleted since
+            Message(role="assistant", content=[TextContentBlock(text="Done.")]),
+        ])
+        result = asyncio.run(compact_conversation(conv, FakeProvider(reply("We fixed the app.")), "fake-model"))
+        self.assertIn("We fixed the app.", result.summary_text)
+        self.assertIn("print('v2')", result.summary_text)
+        self.assertIn("# Notes", result.summary_text)
+        self.assertIn("30,000 characters; read it again", result.summary_text)
+        self.assertNotIn("gone.py", result.summary_text)
+        self.assertLess(result.summary_text.index("big.log"), result.summary_text.index("app.py"))   # newest first
+
     def test_boundary_and_summary_inserted(self):
         """Boundary and summary messages are inserted into conversation."""
         from src.compact_service.service import compact_conversation

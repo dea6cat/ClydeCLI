@@ -178,6 +178,8 @@ async def compact_conversation(
 
     if not summary_text:
         summary_text = _fallback_summary(messages)
+    if recent := _recent_files(messages):
+        summary_text += "\n\n" + recent
 
     # Step 6: Create boundary marker
     last_msg_uuid = None
@@ -245,6 +247,40 @@ async def compact_conversation(
         trigger=trigger,
         user_display_message=user_display,
     )
+
+
+# After compaction the files the model was working on come back as they are now, as Claude Code does (its 5 most
+# recent, files over 5,000 tokens as a path to read again). Instruction files and the plan need nothing: they are in
+# the system prompt, rebuilt every turn, so compaction never removes them.
+RECENT_FILES = 5
+RECENT_FILE_CHARS = 20_000   # about 5,000 tokens
+_FILE_TOOLS = ("read", "edit", "write", "notebookedit")
+
+
+def _recent_files(messages: list[Message]) -> str:
+    """The files the compacted turns read or changed, newest first, re-read from disk; empty when there are none."""
+    from pathlib import Path
+    from ..context_system.builder import _fence
+
+    paths: list[str] = []
+    for message in reversed(messages):
+        for block in reversed(message.content if isinstance(message.content, list) else []):
+            name, args = getattr(block, "name", ""), getattr(block, "input", None)
+            raw = args.get("file_path") or args.get("notebook_path") if isinstance(args, dict) else None
+            if str(name).lower() in _FILE_TOOLS and isinstance(raw, str) and raw not in paths:
+                paths.append(raw)
+    parts = []
+    for raw in paths[:RECENT_FILES]:
+        try:
+            text = Path(raw).expanduser().read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue   # deleted or moved since: nothing to bring back
+        if len(text) > RECENT_FILE_CHARS:
+            parts.append(f"### {raw}\n({len(text):,} characters; read it again when you need it)")
+        else:
+            opening, closing = _fence(text)
+            parts.append(f"### {raw}\n{opening}\n{text}\n{closing}")
+    return "Files you were working with, as they are now:\n\n" + "\n\n".join(parts) if parts else ""
 
 
 def _fallback_summary(messages: list[Message]) -> str:
