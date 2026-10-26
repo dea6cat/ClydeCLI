@@ -29,9 +29,10 @@ def stash(text: str) -> str:
         if path.exists():
             path.touch()   # still in use: keep it past the TTL
         else:
-            path.parent.mkdir(parents=True, exist_ok=True)
+            path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)   # tool output can hold secrets: owner only
             _prune(path.parent)
             path.write_text(text, encoding="utf-8")
+            path.chmod(0o600)
     except OSError:
         pass   # the cut still happens; RetrieveContext says the text is gone
     return f"ctx:{digest}"
@@ -59,6 +60,18 @@ def cut(full: str, limit: int) -> str:
         return full
     tail = marker(full)
     return full[: max(0, limit - len(tail))].rstrip() + tail
+
+
+def clip(text: str, limit: int) -> str:
+    """Tool output over `limit` characters: its first and last halves of the budget around a note saying where the
+    whole of it is. The end is kept because that is where a failing command says why (a test summary, a traceback)."""
+    if len(text) <= limit:
+        return text
+    note = (f"\n…[{{omitted:,}} characters left out; the whole output: "
+            f'RetrieveContext(reference="{stash(text)}")]…\n')
+    keep = max(0, limit - len(note) - 12)
+    head, tail = text[: keep // 2], text[len(text) - (keep - keep // 2):] if keep else ""
+    return head + note.format(omitted=len(text) - len(head) - len(tail)) + tail
 
 
 def _prune(folder: Path) -> None:

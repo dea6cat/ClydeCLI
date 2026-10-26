@@ -87,5 +87,51 @@ class TestSectionReport(unittest.TestCase):
         self.assertFalse(rows["Project Instructions"]["aligned"])   # unchanged, but after the change: prefilled again
 
 
+class TestToolOutput(unittest.TestCase):
+    """Tool output over its max_result_size_chars keeps its head and tail; the whole of it is a RetrieveContext away."""
+
+    def test_clip_keeps_both_ends_within_the_limit(self):
+        text = "start\n" + "noise\n" * 20_000 + "FAILED tests/test_x.py::test_y - AssertionError"
+        clipped = context_cache.clip(text, 2_000)
+        self.assertLessEqual(len(clipped), 2_000)
+        self.assertTrue(clipped.startswith("start"))
+        self.assertTrue(clipped.endswith("AssertionError"))
+        self.assertEqual(context_cache.fetch(_ref(clipped)), text)
+        self.assertEqual(context_cache.clip("short", 2_000), "short")
+
+    def test_a_long_failing_bash_run_keeps_the_error_at_its_end(self):
+        from src.tool_system.defaults import build_default_registry
+        from src.tool_system.protocol import ToolCall
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx = ToolContext(workspace_root=Path(tmp))
+            ctx.permission_handler = lambda *_a: (True, None)   # the user says yes to the command
+            command = "for i in $(seq 1 20000); do echo line $i; done; echo 'Error: the real reason' >&2; exit 3"
+            result = build_default_registry().dispatch(ToolCall(name="Bash", input={"command": command}, tool_use_id="t"), ctx)
+        out = result.output
+        self.assertTrue(result.is_error)
+        self.assertLessEqual(len(out["stdout"]), 30_000)
+        self.assertTrue(out["stdout"].rstrip().endswith("line 20000"))   # the old cap kept only the first 20,000 chars
+        self.assertIn("Error: the real reason", out["stderr"])
+        whole = RetrieveContextTool().run({"reference": _ref(out["stdout"])}, ctx).output
+        self.assertGreater(whole["total_chars"], 30_000)                  # the whole stdout, not the clipped view
+        self.assertTrue(whole["text"].startswith("line 1\n"))
+
+    def test_retrieve_pages_through_long_text(self):
+        text = "".join(f"{i:08d}\n" for i in range(12_000))   # 108,000 characters
+        ref = context_cache.stash(text)
+        tool, ctx = RetrieveContextTool(), ToolContext(workspace_root=Path.cwd())
+        first = tool.run({"reference": ref}, ctx).output
+        second = tool.run({"reference": ref, "offset": first["next_offset"]}, ctx).output
+        third = tool.run({"reference": ref, "offset": second["next_offset"]}, ctx).output
+        self.assertEqual(first["text"] + second["text"] + third["text"], text)
+        self.assertNotIn("next_offset", third)
+
+    def test_encoded_files_are_never_cut(self):
+        from src.tool_system.protocol import ToolResult
+        from src.tool_system.registry import _clip_result
+        image = ToolResult(name="Read", output={"type": "image", "file": {"base64": "A" * 90_000}})
+        self.assertIs(_clip_result(image, 1_000), image)
+
+
 if __name__ == "__main__":
     unittest.main()

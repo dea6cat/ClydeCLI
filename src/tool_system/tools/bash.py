@@ -164,10 +164,6 @@ def is_read_only_command(command: str) -> bool:
     return parts is not None and all(_is_read_only_part(part) for part in parts)
 
 
-def _truncate(s: str, limit: int = 20000) -> str:
-    if len(s) <= limit:
-        return s
-    return s[:limit] + "\n\n... [truncated] ..."
 
 
 def _try_extract_cd(command: str) -> Path | None:
@@ -201,7 +197,7 @@ class BashTool:
                 "required": ["command"],
             },
             is_destructive=True,
-            max_result_size_chars=50_000,
+            max_result_size_chars=30_000,   # per stream (stdout, stderr), as Claude Code; the rest via RetrieveContext
         )
 
     def check_permissions(self, tool_input: dict[str, Any], context: ToolContext) -> PermissionResult:
@@ -259,8 +255,8 @@ class BashTool:
             timeout=timeout_s,
         )
 
-        stdout = _truncate(completed.stdout or "")
-        stderr = _truncate(completed.stderr or "")
+        stdout = completed.stdout or ""   # held to max_result_size_chars, head and tail, by the registry
+        stderr = completed.stderr or ""
         output: dict[str, Any] = {
             "cwd": str(cwd),
             "exit_code": completed.returncode,
