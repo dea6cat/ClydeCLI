@@ -16,6 +16,7 @@ from ..tool_system.checks import edit_check_for
 from . import trace
 from ..tool_system.registry import ToolRegistry
 from ..tool_system.context import ToolContext
+from ..tool_system.hooks import run_lifecycle
 from ..memory import memory_prompt
 from ..tool_system.plan_file import PLAN_SHAPE, plan_prompt, read_plan
 from ..context_system.microcompact import trim_old_tool_results
@@ -138,6 +139,11 @@ _CUT_OFF = ("length", "max_tokens")
 _CONTINUE_NUDGE = ("Your reply was cut off at the output token limit. Continue exactly where it stopped, without repeating "
                    "it. Keep reasoning brief, and split long file contents or edits into several smaller tool calls.")
 _ANSWER_NUDGE = "Your last reply had no answer text. Answer now in plain text; keep any reasoning brief."
+# A Stop hook that blocks keeps the turn going with its reason; past this many blocks in a row the turn ends anyway
+# (Claude Code's override is 8), so a hook that never passes can't loop forever.
+_MAX_STOP_BLOCKS = 8
+_HOOK_CONTEXT = "Context from a UserPromptSubmit hook:\n"
+_STOP_HOOK = "A Stop hook did not let the turn end yet: "
 
 
 def _continue(cut: str, more: str) -> str:
@@ -395,6 +401,16 @@ def run_agent_loop(
     def _usage_or_none() -> dict[str, int] | None:
         return total_usage if total_usage["input_tokens"] > 0 or total_usage["output_tokens"] > 0 else None
 
+    hooks = getattr(tool_context, "hooks", None) or {}
+    stop_blocks = 0
+    if hooks.get("UserPromptSubmit"):
+        blocked, added = run_lifecycle(hooks, "UserPromptSubmit", {"prompt": _last_prompt(conversation)}, tool_context.cwd)
+        if blocked:
+            record_run("done", 0)
+            return AgentLoopResult(response_text=f"Prompt blocked by a UserPromptSubmit hook: {blocked}", usage=None, num_turns=0)
+        if added:
+            conversation.add_user_message(_HOOK_CONTEXT + added)
+
     for _turn in range(max_turns):
         if _turn and steer is not None and (steering := steer()):
             conversation.add_user_message(f"{_STEERING}{steering}")
@@ -442,6 +458,14 @@ def run_agent_loop(
                 text_handler("\n\n" + fixed)   # a weak local reply already streamed; the cloud model's correction follows it
                 conversation.messages[-1].content = fixed
                 final_assistant_content = fixed
+            if hooks.get("Stop") and stop_blocks < _MAX_STOP_BLOCKS:
+                blocked, _ = run_lifecycle(hooks, "Stop", {"stop_hook_active": stop_blocks > 0,
+                                                           "last_assistant_message": final_assistant_content},
+                                           tool_context.cwd)
+                if blocked:
+                    stop_blocks += 1
+                    conversation.add_user_message(_STOP_HOOK + blocked)
+                    continue
             record_run("done", turn_count)
             return AgentLoopResult(
                 response_text=final_assistant_content,

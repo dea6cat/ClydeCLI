@@ -246,6 +246,47 @@ class TestAgentLoop(unittest.TestCase):
         self.assertEqual(result.response_text, "First half, second half.")
         self.assertIn("cut off at the output token limit", str(provider.requests[1]))
 
+    def _hooks(self, event, command):
+        return {event: [{"matcher": "", "hooks": [{"command": command, "timeout": 10}]}]}
+
+    def test_a_stop_hook_keeps_the_turn_going_until_it_passes(self):
+        flag = self.workspace / "checked"
+        self.context.hooks = self._hooks("Stop", f"test -f {flag} || {{ touch {flag}; echo 'run the tests first' >&2; exit 2; }}")
+        conversation = Conversation()
+        conversation.add_user_message("fix it")
+        provider = FakeProvider(reply("Done."), reply("Tests pass. Done."))
+
+        result = self._run(provider, conversation)
+
+        self.assertEqual(result.response_text, "Tests pass. Done.")
+        self.assertIn("run the tests first", str(provider.requests[1]))
+
+    def test_a_stop_hook_that_never_passes_is_overridden_after_eight_blocks(self):
+        self.context.hooks = self._hooks("Stop", "echo 'not yet' >&2; exit 2")
+        conversation = Conversation()
+        conversation.add_user_message("fix it")
+        provider = FakeProvider(*[reply(f"try {i}") for i in range(12)])
+
+        result = self._run(provider, conversation)
+
+        self.assertEqual((result.response_text, len(provider.requests)), ("try 8", 9))
+
+    def test_a_user_prompt_submit_hook_adds_context_or_blocks_the_prompt(self):
+        self.context.hooks = self._hooks("UserPromptSubmit", "echo 'Release freeze: no merges today.'")
+        conversation = Conversation()
+        conversation.add_user_message("merge it")
+        provider = FakeProvider(reply("I won't merge today."))
+        self._run(provider, conversation)
+        self.assertIn("Release freeze: no merges today.", str(provider.requests[0]))
+
+        self.context.hooks = self._hooks("UserPromptSubmit", "echo 'secrets in prompt' >&2; exit 2")
+        conversation = Conversation()
+        conversation.add_user_message("here is my key sk-123")
+        provider = FakeProvider(reply("never sent"))
+        result = self._run(provider, conversation)
+        self.assertEqual((len(provider.requests), result.response_text),
+                         (0, "Prompt blocked by a UserPromptSubmit hook: secrets in prompt"))
+
     def test_a_continuation_that_restarts_the_cut_line_is_not_doubled(self):
         from src.agent.agent_loop import _continue
         self.assertEqual(_continue("- May: warm\n- June:", "- June: Hot and dry.\n- July: hotter"),
