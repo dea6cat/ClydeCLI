@@ -31,6 +31,18 @@ class TestCut(unittest.TestCase):
         self.assertEqual(context_cache.fetch(_ref(cut)), full)
         self.assertEqual(context_cache.cut(full, 500), cut)   # same text, same bytes: the prompt cache keeps hitting
 
+    def test_the_marker_names_the_headings_the_cut_hides_but_not_code_or_shown_ones(self):
+        full = "# Rules\nkeep\n\n## Testing\n" + "t\n" * 300 + "```bash\n# not a heading\n```\n## Documentation\ndoc\n# graphify\nrun it\n"
+        cut = context_cache.cut(full, 200)
+        self.assertLessEqual(len(cut), 200)
+        hidden = cut.split("not shown: ", 1)[1].split(";", 1)[0]
+        self.assertEqual(hidden, "Documentation, graphify")
+        self.assertEqual(context_cache.cut(full, 200), cut)   # still byte-identical turn to turn
+
+    def test_a_long_list_of_hidden_headings_is_capped(self):
+        full = "x" * 50 + "".join(f"\n## Part {i}\nbody" for i in range(40))
+        self.assertIn("Part 14 (+25 more)", context_cache.marker(full, full[:50]))
+
     def test_only_a_well_formed_reference_reads_a_file(self):
         for bad in ("ctx:../../etc/passwd", "ctx:ABCDEF0123456789", "/etc/passwd", "ctx:0123"):
             self.assertIsNone(context_cache.fetch(bad))
