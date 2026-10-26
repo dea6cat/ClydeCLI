@@ -633,36 +633,28 @@ function propSprite(kind, x, y, pal, theme, defs, uid, size) {   // scenery: it 
   else if (kind === "coat") g.append(fit("clothes-rack", px - 18, py - 40, 56, 56, theme));
   return g;
 }
-const CREW = __CREW__;   // each crew pack's frames: pack -> animation -> direction -> frame count (station_art/<pack>-<animation>-<direction>-<nn>.png), filled in by the server
-const FIGURE = {   // each pack's idle picture facing south: [picture width, height, then the left, top, right and bottom of the figure in it]
-  rogue: [84, 84, 17, 9, 65, 71], paladin: [156, 156, 37, 9, 117, 140], reaper: [256, 256, 90, 65, 165, 190], hunter: [256, 256, 94, 63, 161, 187], admiral: [84, 84, 12, 10, 71, 71] };
+const CREW = __CREW__;   // each person's frames: person -> animation -> direction -> frame count (station_art/<person>-<animation>-<direction>-<nn>.png), filled in by the server
+const FIGURE = {   // each person's idle picture facing south: [picture width, height, then the left, top, right and bottom of the figure in it]
+  clyde: [96, 96, 34, 29, 61, 88], bonnie: [96, 96, 34, 29, 61, 88], master: [96, 96, 33, 28, 62, 88], advisor: [96, 96, 34, 29, 61, 88],
+  newsboy: [96, 96, 34, 30, 61, 88], mechanic: [96, 96, 34, 30, 61, 88], clerk: [96, 96, 33, 33, 61, 88] };
 const CREW_H = 80;   // every figure is drawn this tall, standing on its spot
-const CREW_PACK = { clyde: ["rogue", 0], bonnie: ["hunter", 0], master: ["admiral", 0], advisor: ["paladin", 0] };
-const WORKER_PACKS = [["reaper", 0], ["rogue", 160], ["admiral", 200], ["reaper", 120]];   // a pack and a hue shift, so each worker looks different
-const MIRROR = { west: "east", "south-west": "south-east", "north-west": "north-east" };
-function crewPack(name) { return CREW_PACK[name] || WORKER_PACKS[(parseInt(number(name) || "1", 10) - 1) % WORKER_PACKS.length]; }
+const CREW_NAMED = ["clyde", "bonnie", "master", "advisor"], WORKER_LOOKS = ["newsboy", "mechanic", "clerk"];   // each worker is one of three people, by number
+function crewPack(name) { return CREW_NAMED.includes(name) ? name : WORKER_LOOKS[(parseInt(number(name) || "1", 10) - 1) % WORKER_LOOKS.length]; }
 function crewBox(pack) { const [w, h, x0, y0, x1, y1] = FIGURE[pack], k = CREW_H / (y1 - y0 + 1); return { w: w * k, h: h * k, x: -(x0 + x1 + 1) / 2 * k, y: -(y1 + 1) * k }; }
 function headingDir(dx, dy) { const names = ["east", "south-east", "south", "south-west", "west", "north-west", "north", "north-east"]; return names[((Math.round(Math.atan2(dy, dx) * 4 / Math.PI) % 8) + 8) % 8]; }
-function crewFrame(pack, anim, dir, f) {   // the picture for a pose: the animation if the pack has it facing that way, else the same animation from the mirrored side, else the pack standing still
-  let a = anim, d = dir, flip = false, table = CREW[pack][a] || {};
-  if (!table[d] && MIRROR[d] && table[MIRROR[d]]) { d = MIRROR[d]; flip = true; }
-  if (!table[d]) { a = "idle"; table = CREW[pack].idle; d = dir; flip = false; if (!table[d] && MIRROR[d]) { d = MIRROR[d]; flip = true; } }
-  const n = table[d] || 1;
-  return { file: pack + "-" + a + "-" + d + "-" + String(f % n).padStart(2, "0"), flip, n };
-}
+function crewFrame(pack, anim, dir, f) { const n = CREW[pack][anim][dir] || 1; return { file: pack + "-" + anim + "-" + dir + "-" + String(f % n).padStart(2, "0"), n }; }
 const PRELOADED = {};
 function preload(pack, anim, dir) {   // fetch a whole animation the first time it is needed, so the next frame is already there
   const key = pack + anim + dir;
   if (PRELOADED[key]) return;
   PRELOADED[key] = true;
-  const probe = crewFrame(pack, anim, dir, 0);
-  for (let f = 0; f < probe.n; f++) new Image().src = artUrl(crewFrame(pack, anim, dir, f).file);
+  for (let f = 0; f < crewFrame(pack, anim, dir, 0).n; f++) new Image().src = artUrl(crewFrame(pack, anim, dir, f).file);
 }
 function personItem(name, role, theme) {
-  const [pack, hue] = crewPack(name), box = crewBox(pack), g = sv("g", { class: "sprite", "data-sprite": name }), body = sv("g", {}), mirror = sv("g", {}), carry = sv("g", { style: "display:none" });
-  const img = sv("image", { x: box.x, y: box.y, width: box.w, height: box.h, "image-rendering": "pixelated", style: hue ? "filter:hue-rotate(" + hue + "deg)" : "" });
+  const pack = crewPack(name), box = crewBox(pack), g = sv("g", { class: "sprite", "data-sprite": name }), body = sv("g", {}), carry = sv("g", { style: "display:none" });
+  const img = sv("image", { x: box.x, y: box.y, width: box.w, height: box.h, "image-rendering": "pixelated" });
   img.setAttribute("href", artUrl(crewFrame(pack, "idle", "south", 0).file));
-  mirror.append(img); body.append(mirror);
+  body.append(img);
   carry.append(sv("rect", { x: -13, y: -CREW_H * 0.5, width: 26, height: 18, rx: 2, fill: "#a8782f", stroke: "#0b0b12", "stroke-width": 1.6 }), sv("rect", { x: -2, y: -CREW_H * 0.5, width: 4, height: 18, fill: "#d8b060" }));
   const shadowEl = sv("ellipse", { cx: 0, cy: -2, rx: 16, ry: 6, fill: "#000", opacity: 0.32 }), tag = sv("g", { transform: "translate(0 " + (-CREW_H - 8) + ")" }), bubble = sv("g", { transform: "translate(0 " + (-CREW_H - 28) + ")" });
   tag.append(sv("rect", { x: -(name.length * 3.6 + 6), y: -9, width: name.length * 7.2 + 12, height: 14, rx: 3, fill: "#000", opacity: 0.6 }), sv("text", { y: 3, class: "name", fill: "#fff", stroke: "#000" }, name));
@@ -670,11 +662,10 @@ function personItem(name, role, theme) {
   const person = { name, role, g, body, carry, bubble, pack, dir: "south", shown: "", bubbleKind: null, title: g.lastChild };
   person.show = (dir, anim, f) => {   // set the picture for this pose; nothing happens when it is already showing
     const fr = crewFrame(pack, anim, dir, f);
-    if (person.shown === fr.file + fr.flip) return;
+    if (person.shown === fr.file) return;
     preload(pack, anim, dir);
-    person.shown = fr.file + fr.flip;
+    person.shown = fr.file;
     img.setAttribute("href", artUrl(fr.file));
-    mirror.setAttribute("transform", fr.flip ? "scale(-1 1)" : "");
   };
   return person;
 }
@@ -864,7 +855,7 @@ function legend() {
     item.append(el("i", cls), document.createTextNode(text));
     box.append(item);
   }
-  box.append(el("span", "", "Furniture is a capability the member was given; its plate counts how often it was used. Crew walk only when something was recorded: a worker to the furniture for a tool it used, Clyde with a task or an approval request, Bonnie to collect a result. Clouds, rain, lamps and neon are only scenery. Drag to pan, Ctrl-scroll or the + and − keys to zoom. Furniture art: \"Cozy Space Station\" by Bramble & Byte (CC-BY 4.0). Crew art: elie automata."));
+  box.append(el("span", "", "Furniture is a capability the member was given; its plate counts how often it was used. Crew walk only when something was recorded: a worker to the furniture for a tool it used, Clyde with a task or an approval request, Bonnie to collect a result. Clouds, rain, lamps and neon are only scenery. Drag to pan, Ctrl-scroll or the + and − keys to zoom. Furniture art: \"Cozy Space Station\" by Bramble & Byte (CC-BY 4.0). Crew: drawn for this station."));
   return box;
 }
 function mapSection(run) {
@@ -881,8 +872,8 @@ function mapSection(run) {
   return left;
 }
 function portrait(name, doing) {   // the same person as in the scene, in a small well with a lamp
-  const [pack, hue] = crewPack(name), [w, h, x0, y0, x1, y1] = FIGURE[pack], vh = y1 - y0 + 6, vw = vh * 0.55, svg = sv("svg", { viewBox: [(x0 + x1 + 1) / 2 - vw / 2, y0 - 3, vw, vh].join(" "), "aria-hidden": "true" });
-  const img = sv("image", { x: 0, y: 0, width: w, height: h, "image-rendering": "pixelated", style: hue ? "filter:hue-rotate(" + hue + "deg)" : "" });
+  const pack = crewPack(name), [w, h, x0, y0, x1, y1] = FIGURE[pack], vh = y1 - y0 + 6, vw = vh * 0.55, svg = sv("svg", { viewBox: [(x0 + x1 + 1) / 2 - vw / 2, y0 - 3, vw, vh].join(" "), "aria-hidden": "true" });
+  const img = sv("image", { x: 0, y: 0, width: w, height: h, "image-rendering": "pixelated" });
   img.setAttribute("href", artUrl(crewFrame(pack, "idle", "south", 0).file));
   svg.append(img);
   const well = el("div", "portrait");
@@ -1018,7 +1009,7 @@ requestAnimationFrame(loop);
 """
 
 
-_CREW_FRAME = re.compile(r"(rogue|paladin|reaper|hunter|admiral)-(idle|walk)-([a-z\-]+)-(\d+)")
+_CREW_FRAME = re.compile(r"(clyde|bonnie|master|advisor|newsboy|mechanic|clerk)-(idle|walk)-([a-z\-]+)-(\d+)")
 
 
 def _crew_index() -> dict[str, dict[str, dict[str, int]]]:

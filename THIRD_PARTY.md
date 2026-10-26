@@ -8,11 +8,6 @@
 - Changes: the files are used unmodified at their 4x size. The page scales them and tints them for each theme with a CSS filter.
 - Credit: shown in the station page's legend.
 
-## Crew sprites (elie automata)
+## Crew
 
-- What: the crew characters the web station shows: Hooded Rogue Assassin, Female Paladin, Faceless Void Reaper, Gothic Bloodhunter and Tentaclebeard Admiral, the idle and walk frames in eight directions, in `src/agent/station_art/` (`rogue-*`, `paladin-*`, `reaper-*`, `hunter-*`, `admiral-*`).
-- Author: elie automata (the free versions of these packs, found on itch.io).
-- Licence: as the author's `LICENSE.txt` in each pack says, "Commercial and non-commercial use and modifications allowed. Credit "elie automata". Distribution within finished projects allowed. No standalone resale, sharing or redistribution of original or modified assets." The text that came with the packs is kept in `src/agent/station_art/LICENSE-elie-automata.txt`.
-- Changes: the frames are modified, as the licence allows. `tools/vintage_crew.py` fades and warms their colours and adds a 1930s hat to each figure (a fedora, a cloche, a flat cap, a captain's cap); the changed frames are what ships. The page scales them and shifts the hue of some, so workers differ.
-- Credit: shown in the station page's legend.
-- Note for anyone forking: these frames are shipped as part of the finished program. Do not republish them as a standalone asset pack.
+The crew pictures in `src/agent/station_art/` (`clyde-*`, `bonnie-*`, and the other people) are drawn for this project by `tools/make_crew.py`: no outside art is involved.

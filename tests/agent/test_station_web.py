@@ -133,18 +133,17 @@ class TestArt(StationWebCase):
 
 
 class TestCrewArt(unittest.TestCase):
-    def test_every_crew_pack_stands_in_all_eight_directions_and_the_licence_and_credit_travel_with_it(self):
+    def test_every_person_has_idle_and_walk_frames_in_all_eight_directions(self):
         from src.agent import station_page
         crew = station_page._crew_index()
-        self.assertEqual(set(crew), {"rogue", "paladin", "reaper", "hunter", "admiral"})
-        for pack, anims in crew.items():
-            self.assertEqual(len(anims["idle"]), 8, pack)   # a figure can face any way it walks
-            for files in ([f"{pack}-idle-{d}-00" for d in anims["idle"]]):
-                self.assertTrue((station_web.ART / f"{files}.png").is_file(), files)
-        self.assertTrue(crew["rogue"]["walk"] and crew["paladin"]["walk"] and crew["reaper"]["walk"])   # the packs that walk, walk
-        self.assertNotIn("walk", crew["hunter"])   # the bloodhunter only stands: the page falls back to her idle frames
-        self.assertIn("elie automata", (station_web.ART / "LICENSE-elie-automata.txt").read_text())
-        self.assertIn("elie automata", (station_web.ART.parents[2] / "THIRD_PARTY.md").read_text())
+        self.assertEqual(set(crew), {"clyde", "bonnie", "master", "advisor", "newsboy", "mechanic", "clerk"})
+        for person, anims in crew.items():
+            for anim in ("idle", "walk"):
+                self.assertEqual(len(anims[anim]), 8, (person, anim))   # a figure can face any way it walks
+                for direction, count in anims[anim].items():
+                    for n in range(count):
+                        self.assertTrue((station_web.ART / f"{person}-{anim}-{direction}-{n:02d}.png").is_file(), (person, anim, direction, n))
+        self.assertEqual({p for p in station_web.PAGE.split("WORKER_LOOKS = [")[1].split("]")[0].replace('"', "").replace(" ", "").split(",")}, {"newsboy", "mechanic", "clerk"})
 
 
 class TestState(StationWebCase):
