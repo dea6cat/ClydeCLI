@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import queue
+
 from src.config import clyde_home
 
 try:
@@ -80,7 +82,9 @@ import threading
 import time
 from contextlib import contextmanager
 import re
+import select
 import sys
+import io
 import json
 from datetime import datetime
 from typing import Any
@@ -367,6 +371,10 @@ class ClydeREPL:
     # Esc cancels a running turn or command; prompts pause it (see src/repl/esc.py).
     _esc = WATCHER
 
+    # Input queue: user-typed lines collected while a turn/command is running, so requests
+    # are queued instead of lost. Drained before each prompt.
+    _input_queue: "queue.Queue[str]" = None  # type: ignore[assignment]
+
     def __init__(self, model: str | None = None, stream: bool = False,
                  resume: str | None = None, continue_last: bool = False, debug: bool = False,
                  console: Console | None = None, headless: bool = False):
@@ -384,6 +392,9 @@ class ClydeREPL:
         self._trace_options = {"enabled": session_config.get("trace", True) is not False, "live": debug}
         self.multiline_mode = False
         self.reasoning: str | None = None   # /think level; None keeps each model's default
+        self._input_queue = queue.Queue()   # user-typed lines collected while a turn runs
+        self._input_buffer = ""             # partial line leftover from draining stdin
+        self._input_reader: threading.Thread | None = None   # reads stdin while chat/command runs
 
         keys.load_into_env()
         self.registry = build_registry()
@@ -932,6 +943,8 @@ class ClydeREPL:
             conversation=self.session.conversation,
             cost_tracker=self.cost_tracker,
             history=self.history_log,
+            provider=self.provider,
+            model=self.model,
         )
 
         # Merge new commands with built-in list for completion
@@ -1219,16 +1232,26 @@ class ClydeREPL:
                     self._run_cron_job(self._cron_queue.pop(0))
                     continue
 
-                self._refresh_completer()
-                # Dynamic prompt based on multiline mode
-                # Using '❯' for a modern feel
-                prefill, self._prefill = getattr(self, "_prefill", ""), ""
-                user_input = self.prompt_session.prompt(
-                    self._prompt_message,
-                    multiline=self.multiline_mode,
-                    pre_run=self._start_cron_watch,
-                    default=prefill,   # /rewind puts the rewound message back for editing
-                )
+                # Use any input typed while the previous turn was running (queued input),
+                # then any newly drained input, before showing a fresh prompt.
+                if not self._input_queue.empty():
+                    user_input = self._input_queue.get()
+                else:
+                    queued = self._drain_queued_input()
+                    if queued:
+                        user_input = queued[0]
+                        for line in queued[1:]:
+                            self._input_queue.put(line)
+                    else:
+                        self._refresh_completer()
+                        # Dynamic prompt based on multiline mode
+                        prefill, self._prefill = getattr(self, "_prefill", ""), ""
+                        user_input = self.prompt_session.prompt(
+                            self._prompt_message,
+                            multiline=self.multiline_mode,
+                            pre_run=self._start_cron_watch,
+                            default=prefill,   # /rewind puts the rewound message back for editing
+                        )
                 if user_input is _CRON_WAKE:
                     continue
                 if user_input.strip():
@@ -1243,11 +1266,17 @@ class ClydeREPL:
                 if user_input.startswith('/'):
                     with self._esc.active():
                         self.handle_command(user_input)
+                    # drain anything typed during the command
+                    for line in self._drain_queued_input():
+                        self._input_queue.put(line)
                     continue
 
                 # Send to LLM; Esc (like Ctrl+C) cancels the turn
                 with self._esc.active():
                     self.chat(user_input)
+                # drain anything typed during the turn
+                for line in self._drain_queued_input():
+                    self._input_queue.put(line)
                 self.multiline_mode = False
 
             except KeyboardInterrupt:
@@ -1265,6 +1294,38 @@ class ClydeREPL:
             self._cron_queue.extend(pop_due_jobs(self.tool_context.crons, self._cron_checked_at, now))
             self._cron_checked_at = now
         return bool(self._cron_queue)
+
+    def _drain_queued_input(self) -> list[str]:
+        """Read any complete lines the user typed while a turn was running.
+
+        Uses select + os.read on stdin (non-blocking), so it returns whatever lines are
+        already sitting in the tty buffer without waiting for more. EscWatcher may be
+        active at the same time (cbreak mode); os.read on the same fd from both threads
+        is safe because select reports readability and each os.read consumes what it gets.
+        Any partial line (no trailing newline) stays in the buffer for the next drain.
+        Returns [] when stdin has no fileno (e.g. under pytest).
+        """
+        lines: list[str] = []
+        try:
+            fd = sys.stdin.fileno()
+        except (OSError, AttributeError, io.UnsupportedOperation):
+            return lines
+        try:
+            while select.select([fd], [], [], 0)[0]:
+                try:
+                    data = os.read(fd, 4096)
+                except OSError:
+                    break
+                if not data:
+                    break
+                text = data.decode("utf-8", errors="replace")
+                self._input_buffer += text
+                while "\n" in self._input_buffer:
+                    line, self._input_buffer = self._input_buffer.split("\n", 1)
+                    lines.append(line.rstrip("\r"))
+        except (OSError, ValueError):
+            pass
+        return lines
 
     def _start_cron_watch(self) -> None:
         """While the prompt is idle and empty, wake it up when a scheduled job comes due."""
@@ -1312,7 +1373,7 @@ class ClydeREPL:
                 'help', 'tools', 'tool',
                 'save', 'load', 'resume', 'multiline', 'stream', 'render-last',
                 'model', 'models', 'think', 'eval',
-                'skill', 'skills', 'mcp', 'debug', 'laya', 'council',
+                'skill', 'skills', 'mcp', 'debug', 'laya', 'council', 'brief', 'orchestrate',
                 'context', 'compact',  # These need special handling
                 'clear', 'reset', 'new',  # also clears the screen and redraws the banner
                 ''
@@ -1464,6 +1525,14 @@ class ClydeREPL:
                 self._pick_model()
             else:
                 self._switch_model(parts[1].strip())
+
+        elif cmd == '/brief' or cmd.startswith('/brief '):
+            from src.repl import orchestrate as orchestrate_ui
+            orchestrate_ui.brief(self, raw.partition(" ")[2])
+
+        elif cmd == '/orchestrate' or cmd.startswith('/orchestrate '):
+            from src.repl import orchestrate as orchestrate_ui
+            orchestrate_ui.orchestrate_cmd(self, raw.partition(" ")[2])
 
         elif cmd == '/models' or cmd.startswith('/models '):
             self._show_models(raw.split(maxsplit=1)[1].strip().lower() if " " in raw.strip() else "")
