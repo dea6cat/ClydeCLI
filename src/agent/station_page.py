@@ -410,7 +410,7 @@ function bounds(p) {
 
 // ---- the station seen from above: a world, floors, walls, then the Cozy Space Station sprites (CC-BY 4.0, Bramble & Byte) for furniture and crew ----
 const SPR = __SPRITES__;   // each sprite's natural size [w, h], read from the files by the server
-const WT = 9;   // wall thickness, px
+const WT = 14;   // wall thickness, px
 const FX = { grain: "", grime: "", soft: "" };
 function gradient(defs, id, stops, attrs) {
   const g = sv(attrs && attrs.r ? "radialGradient" : "linearGradient", attrs || { x1: 0, y1: 0, x2: 0, y2: 1 });
@@ -499,7 +499,68 @@ function doorsOf(p, r) {   // where a room's wall has a doorway: [side, from, to
   if (r.kind === "bay") return [["n", r.x + p.BW / 2 - 1, r.x + p.BW / 2 + 1]];
   return [["w", 5, 7]];
 }
+function hazard(defs, uid) {   // diagonal yellow and black warning stripes, as a fill
+  const pat = sv("pattern", { id: "haz" + uid, width: 16, height: 16, patternUnits: "userSpaceOnUse", patternTransform: "rotate(45)" });
+  pat.append(sv("rect", { x: 0, y: 0, width: 16, height: 16, fill: "#14110a" }), sv("rect", { x: 0, y: 0, width: 8, height: 16, fill: "#e8b820" }));
+  defs.append(pat);
+  return "url(#haz" + uid + ")";
+}
+function screenTD(g, x, y, w, h, pal, kind, seed, lit) {   // a display seen from above: a radar, a graph or lines of text
+  const col = pal.screen, on = lit ? 1 : 0.7;
+  rect(g, x, y, w, h, "#03060c", { rx: 2, stroke: shade(pal.metal, -10), "stroke-width": 1.2 });
+  rect(g, x, y, w, h, col, { rx: 2, opacity: 0.1 * on });
+  if (kind === 0) {
+    const cx = x + w / 2, cy = y + h / 2, r = Math.min(w, h) * 0.38;
+    g.append(sv("circle", { cx, cy, r, fill: "none", stroke: col, "stroke-width": 0.9, opacity: 0.8 * on }), sv("circle", { cx, cy, r: r * 0.5, fill: "none", stroke: col, "stroke-width": 0.8, opacity: 0.7 * on }), sv("line", { x1: cx - r, y1: cy, x2: cx + r, y2: cy, stroke: col, "stroke-width": 0.6, opacity: 0.6 * on }), sv("line", { x1: cx, y1: cy - r, x2: cx, y2: cy + r, stroke: col, "stroke-width": 0.6, opacity: 0.6 * on }));
+    for (let b = 0; b < 3; b++) g.append(sv("circle", { cx: cx + (hash(seed, b) - 0.5) * r * 1.4, cy: cy + (hash(b, seed) - 0.5) * r * 1.4, r: 1.3, fill: "#fff", class: "blink" + (b ? String(b + 1) : "") + " amb" }));
+  } else if (kind === 1) {
+    let d = ""; for (let i = 0; i <= 8; i++) d += (i ? "L" : "M") + (x + 3 + i * (w - 6) / 8).toFixed(1) + " " + (y + h - 3 - hash(seed + i, i * 3) * (h - 6)).toFixed(1);
+    g.append(sv("path", { d, fill: "none", stroke: col, "stroke-width": 1.2, opacity: on }));
+  } else for (let l = 0; l < Math.max(2, Math.floor(h / 4.5)); l++) rect(g, x + 3, y + 3 + l * 4.4, (w - 6) * (0.3 + hash(seed, l) * 0.65), 1.4, l % 3 === 2 ? pal.accent : col, { opacity: 0.85 * on });
+}
+function consoleBanks(layer, defs, r, doors, pal, theme, uid) {   // modules of consoles along a room's top wall: screens, buttons and a glow, as on a ship's bridge
+  const gaps = doors.filter((q) => q[0] === "n").map((q) => [q[1] * T - 14, q[2] * T + 14]);
+  const y = r.y * T + WT / 2 + 1, step = 96;
+  for (let mx = r.x * T + 22, i = 0; mx + step - 10 < (r.x + r.w) * T - 20; mx += step, i++) {
+    if (gaps.some(([a, b]) => mx < b && mx + step - 8 > a)) continue;
+    const seed = Math.round(r.x * 7 + r.y * 13) + i * 5;
+    rect(layer, mx + 3, y + 3, step - 8, 34, "#000", { opacity: 0.45, filter: FX.soft });
+    rect(layer, mx, y, step - 8, 34, shade(pal.dark, 14), { rx: 3, stroke: pal.trim, "stroke-width": 1, "stroke-opacity": 0.55 });
+    rect(layer, mx, y, step - 8, 3, "#fff", { opacity: 0.1, rx: 1.5 });
+    screenTD(layer, mx + 6, y + 5, 36, 18, pal, hash(seed, 1) > 0.5 ? 0 : 1, seed, true); screenTD(layer, mx + 46, y + 5, 36, 18, pal, hash(seed, 2) > 0.5 ? 2 : 1, seed + 3, true);
+    for (let b = 0; b < 7; b++) layer.append(sv("circle", { cx: mx + 9 + b * 11, cy: y + 28, r: 2, fill: [pal.accent, pal.lamp, pal.screen, pal.bad][Math.floor(hash(seed + b, 5) * 4)], class: hash(seed, b) > 0.6 ? "blink" + (b % 3 ? String(b % 3 + 1) : "") + " amb" : "", opacity: 0.9 }));
+    layer.append(sv("ellipse", { cx: mx + step / 2 - 4, cy: y + 46, rx: 52, ry: 22, fill: gradient(defs, "cb" + uid + i + Math.round(r.x), [[0, pal.screen, 0.2], [1, pal.screen, 0]], { r: "50%" }), class: "flick2 amb" }));
+  }
+}
+function chairTD(g, cx, cy, pal, theme, rot) {   // an office chair seen from above: a seat, a curved back, five castors
+  const tone = theme === "city" ? "#5a2b2b" : shade(pal.dark, 26), c = sv("g", { transform: "translate(" + cx + " " + cy + ") rotate(" + (rot || 0) + ")" });
+  for (let k = 0; k < 5; k++) { const a = k / 5 * Math.PI * 2; c.append(sv("circle", { cx: Math.cos(a) * 10.5, cy: Math.sin(a) * 10.5, r: 2.2, fill: "#111" })); }
+  c.append(sv("circle", { cx: 0, cy: 0, r: 9.5, fill: tone, stroke: "#000", "stroke-width": 1 }), sv("circle", { cx: 0, cy: 0, r: 6, fill: shade(tone, 12) }), sv("path", { d: "M-10 -6Q0 -17 10 -6", fill: "none", stroke: shade(tone, -25), "stroke-width": 5, "stroke-linecap": "round" }));
+  g.append(c);
+}
+function holoTable(g, box, pal, theme, defs, id) {   // the planning table: a glowing holographic map in the steampunk and cyberpunk themes, a paper map on a wooden table in the city
+  const [x, y, w, d] = box, cx = (x + w / 2) * T, cy = (y + d / 2) * T, rx = w * T / 2, ry = d * T / 2, cut = Math.min(rx, ry) * 0.45;
+  const oct = [[cx - rx + cut, cy - ry], [cx + rx - cut, cy - ry], [cx + rx, cy - ry + cut], [cx + rx, cy + ry - cut], [cx + rx - cut, cy + ry], [cx - rx + cut, cy + ry], [cx - rx, cy + ry - cut], [cx - rx, cy - ry + cut]];
+  g.append(sv("polygon", { points: pts(oct.map((q) => [q[0] + 4, q[1] + 6])), fill: "#000", opacity: 0.45, filter: FX.soft }), sv("polygon", { points: pts(oct), fill: theme === "city" ? shade(pal.wood, -10) : "#0c1118", stroke: pal.trim, "stroke-width": 4 }));
+  const inner = oct.map((q) => [cx + (q[0] - cx) * 0.86, cy + (q[1] - cy) * 0.82]);
+  g.append(sv("polygon", { points: pts(inner), fill: theme === "city" ? pal.paper : "#040a10", stroke: theme === "city" ? shade(pal.paper, -30) : pal.screen, "stroke-width": 1.6 }));
+  const clip = sv("clipPath", { id: id + "tc" }); clip.append(sv("polygon", { points: pts(inner) })); defs.append(clip);
+  const map = sv("g", { "clip-path": "url(#" + id + "tc)" }), line = theme === "city" ? shade(pal.paper, -35) : pal.screen;
+  for (let i = -6; i <= 6; i++) map.append(sv("line", { x1: cx + i * 16, y1: cy - ry, x2: cx + i * 16, y2: cy + ry, stroke: line, "stroke-width": 0.7, opacity: theme === "city" ? 0.5 : 0.28 }));
+  for (let j = -3; j <= 3; j++) map.append(sv("line", { x1: cx - rx, y1: cy + j * 16, x2: cx + rx, y2: cy + j * 16, stroke: line, "stroke-width": 0.7, opacity: theme === "city" ? 0.5 : 0.28 }));
+  for (const k of [0.3, 0.55, 0.8]) map.append(sv("ellipse", { cx, cy, rx: rx * k, ry: ry * k, fill: "none", stroke: line, "stroke-width": 1, opacity: 0.6 }));
+  if (theme !== "city") { const sweep = sv("g", { class: "spin amb", style: "transform-origin:" + cx + "px " + cy + "px" }); sweep.append(sv("line", { x1: cx, y1: cy, x2: cx + rx * 0.85, y2: cy, stroke: pal.screen, "stroke-width": 2, opacity: 0.8 }), sv("path", { d: "M" + cx + " " + cy + "L" + (cx + rx * 0.85) + " " + cy + "A" + rx * 0.85 + " " + ry * 0.85 + " 0 0 0 " + (cx + rx * 0.85 * Math.cos(0.7)) + " " + (cy - ry * 0.85 * Math.sin(0.7)) + "Z", fill: pal.screen, opacity: 0.18 })); map.append(sweep); }
+  for (let b = 0; b < 5; b++) map.append(sv("circle", { cx: cx + (hash(b, 17) - 0.5) * rx * 1.3, cy: cy + (hash(17, b) - 0.5) * ry * 1.3, r: 3, fill: theme === "city" ? pal.bad : "#fff", class: "blink" + (b % 3 ? String(b % 3 + 1) : "") + " amb" }));
+  g.append(map);
+  if (theme !== "city") g.append(sv("ellipse", { cx, cy, rx: rx * 1.5, ry: ry * 1.6, fill: gradient(defs, id + "hg", [[0, pal.screen, 0.3], [1, pal.screen, 0]], { r: "50%" }), class: "flick2 amb" }));
+  for (const [dx, dy, rot] of [[-rx * 0.6, -ry - 16, 180], [rx * 0.6, -ry - 16, 180], [-rx * 0.6, ry + 16, 0], [rx * 0.6, ry + 16, 0]]) chairTD(g, cx + dx, cy + dy, pal, theme, rot);
+}
+function cableTD(g, x0, y0, x1, y1, pal, theme) {   // a lead on the floor from a machine to the wall: bends at right angles
+  const mid = (y0 + y1) / 2, d = "M" + x0.toFixed(0) + " " + y0.toFixed(0) + "V" + mid.toFixed(0) + "H" + x1.toFixed(0) + "V" + y1.toFixed(0);
+  g.append(sv("path", { d, fill: "none", stroke: "#000", "stroke-width": 5.5, opacity: 0.5, "stroke-linejoin": "round" }), sv("path", { d, fill: "none", stroke: theme === "cyber" ? pal.neonA : "#2b2b30", "stroke-width": 3, "stroke-linejoin": "round" }), sv("path", { d, fill: "none", stroke: "#fff", "stroke-width": 0.8, opacity: 0.18, "stroke-linejoin": "round" }));
+}
 function walls(layer, defs, p, pal, theme, uid) {
+  const haz = hazard(defs, uid);
   for (const r of Object.values(p.rooms)) {
     const doors = doorsOf(p, r), x = r.x * T, y = r.y * T, w = r.w * T, d = r.d * T, runs = [];
     const cut = (side, from, to, fixed) => {   // the stretches of one side that are wall, once the doorways are taken out
@@ -507,20 +568,32 @@ function walls(layer, defs, p, pal, theme, uid) {
       let at = from; for (const [a, b] of gaps.concat([[to, to]])) { if (a > at) runs.push(side === "n" || side === "s" ? [at, fixed - WT / 2, a - at, WT] : [fixed - WT / 2, at, WT, a - at]); at = b; }
     };
     cut("n", x - WT / 2, x + w + WT / 2, y); cut("s", x - WT / 2, x + w + WT / 2, y + d); cut("w", y + WT / 2, y + d - WT / 2, x); cut("e", y + WT / 2, y + d - WT / 2, x + w);
-    for (const q of runs) rect(layer, q[0] + 3, q[1] + 4, q[2], q[3], "#000", { opacity: 0.4, filter: FX.soft });
+    for (const q of runs) rect(layer, q[0] + 4, q[1] + 6, q[2], q[3], "#000", { opacity: 0.45, filter: FX.soft });
+    consoleBanks(layer, defs, r, doors, pal, theme, uid);
     for (const q of runs) {
-      rect(layer, q[0], q[1], q[2], q[3], pal.wallL, { stroke: "#000", "stroke-width": 1.2, "stroke-opacity": 0.5 });
-      const horiz = q[2] > q[3];
-      rect(layer, q[0], q[1], horiz ? q[2] : 2.4, horiz ? 2.4 : q[3], pal.trim, { opacity: 0.9 });   // a bright edge on the wall's top
-      if (theme === "city") for (let t = 20; t < (horiz ? q[2] : q[3]) - 12; t += 44) { if (horiz) rect(layer, q[0] + t, q[1] + 3, 18, 3.4, pal.win, { opacity: 0.8 }); else rect(layer, q[0] + 3, q[1] + t, 3.4, 18, pal.win, { opacity: 0.8 }); }
-      else if (theme === "steam") for (let t = 22; t < (horiz ? q[2] : q[3]) - 12; t += 44) layer.append(sv("circle", { cx: horiz ? q[0] + t : q[0] + WT / 2, cy: horiz ? q[1] + WT / 2 : q[1] + t, r: 3.2, fill: pal.metal, stroke: "#000", "stroke-width": 0.6 }));
-      else for (let t = 14; t < (horiz ? q[2] : q[3]) - 8; t += 44) { if (horiz) rect(layer, q[0] + t, q[1] + 3, 26, 2.6, pal.neonB, { opacity: 0.85, class: "blink2 amb" }); else rect(layer, q[0] + 3, q[1] + t, 2.6, 26, pal.neonB, { opacity: 0.85, class: "blink2 amb" }); }
+      const horiz = q[2] > q[3], len = horiz ? q[2] : q[3];
+      rect(layer, q[0], q[1], q[2], q[3], pal.wallL, { stroke: "#000", "stroke-width": 1.4, "stroke-opacity": 0.6 });
+      rect(layer, q[0], q[1], horiz ? q[2] : 3, horiz ? 3 : q[3], "#fff", { opacity: 0.2 });   // the lit edge
+      rect(layer, horiz ? q[0] : q[0] + q[2] - 3, horiz ? q[1] + q[3] - 3 : q[1], horiz ? q[2] : 3, horiz ? 3 : q[3], "#000", { opacity: 0.3 });   // the shaded edge
+      let seams = "", bolts = "";
+      for (let t = 33; t < len - 8; t += 66) { seams += horiz ? "M" + (q[0] + t) + " " + q[1] + "v" + q[3] : "M" + q[0] + " " + (q[1] + t) + "h" + q[2]; bolts += horiz ? "M" + (q[0] + t - 6) + " " + (q[1] + 3.5) + "h0M" + (q[0] + t + 6) + " " + (q[1] + 3.5) + "h0" : "M" + (q[0] + 3.5) + " " + (q[1] + t - 6) + "v0M" + (q[0] + 3.5) + " " + (q[1] + t + 6) + "v0"; }
+      layer.append(sv("path", { d: seams, stroke: "#000", "stroke-width": 1.2, opacity: 0.45, fill: "none" }), sv("path", { d: bolts, stroke: shade(pal.wallL, 45), "stroke-width": 2.2, "stroke-linecap": "round", fill: "none", opacity: 0.8 }));
+      if (theme === "city") for (let t = 20; t < len - 12; t += 66) { if (horiz) rect(layer, q[0] + t, q[1] + 5, 22, 4, pal.win, { opacity: 0.85 }); else rect(layer, q[0] + 5, q[1] + t, 4, 22, pal.win, { opacity: 0.85 }); }
+      else if (theme === "steam") for (let t = 33; t < len - 8; t += 66) layer.append(sv("circle", { cx: horiz ? q[0] + t : q[0] + WT / 2, cy: horiz ? q[1] + WT / 2 : q[1] + t, r: 4.2, fill: "#7fe0d0", stroke: pal.metal, "stroke-width": 2 }));
+      else for (let t = 14; t < len - 8; t += 66) { if (horiz) rect(layer, q[0] + t, q[1] + 5, 34, 3, pal.neonB, { opacity: 0.9, class: "blink2 amb" }); else rect(layer, q[0] + 5, q[1] + t, 3, 34, pal.neonB, { opacity: 0.9, class: "blink2 amb" }); }
     }
-    for (const [side, a, b] of doors) {   // a door frame, and a lamp over it
-      const A = side === "n" || side === "s" ? [a * T, (side === "n" ? y : y + d)] : [(side === "w" ? x : x + w), a * T], Bq = side === "n" || side === "s" ? [b * T, A[1]] : [A[0], b * T];
-      for (const q of [A, Bq]) layer.append(sv("circle", { cx: q[0], cy: q[1], r: 6, fill: pal.trim, stroke: "#000", "stroke-width": 1 }));
-      layer.append(sv("circle", { cx: (A[0] + Bq[0]) / 2, cy: (A[1] + Bq[1]) / 2, r: 4, fill: theme === "cyber" ? pal.neonB : pal.lamp, class: "flick amb" }));
+    for (const [side, a, b] of doors) {   // a door: posts, a warning-striped threshold and a lamp over it
+      const A = side === "n" || side === "s" ? [a * T, (side === "n" ? y : y + d)] : [(side === "w" ? x : x + w), a * T], Bq = side === "n" || side === "s" ? [b * T, A[1]] : [A[0], b * T], horiz = side === "n" || side === "s";
+      rect(layer, horiz ? A[0] : A[0] - 11, horiz ? A[1] - 11 : A[1], horiz ? Bq[0] - A[0] : 22, horiz ? 22 : Bq[1] - A[1], haz, { opacity: 0.88, stroke: "#000", "stroke-width": 1.2 });
+      for (const q of [A, Bq]) layer.append(sv("rect", { x: q[0] - 8, y: q[1] - 8, width: 16, height: 16, rx: 3, fill: pal.trim, stroke: "#000", "stroke-width": 1.4 }), sv("circle", { cx: q[0], cy: q[1], r: 3, fill: "#000", opacity: 0.55 }));
+      layer.append(sv("circle", { cx: (A[0] + Bq[0]) / 2, cy: (A[1] + Bq[1]) / 2, r: 24, fill: gradient(defs, "dl" + uid + side + Math.round(x + y), [[0, theme === "cyber" ? pal.neonB : pal.lamp, 0.4], [1, pal.lamp, 0]], { r: "50%" }), class: "flick2 amb" }), sv("circle", { cx: (A[0] + Bq[0]) / 2, cy: (A[1] + Bq[1]) / 2, r: 4, fill: theme === "cyber" ? pal.neonB : pal.lamp, class: "flick amb" }));
     }
+  }
+}
+function lightPools(layer, defs, p, pal, theme, uid) {   // ceiling lights: a soft pool of light on the floor under each, so the rooms are not evenly lit
+  let n = 0;
+  for (const r of Object.values(p.rooms)) for (let i = 3; i < r.w; i += 6) for (let j = 3; j < r.d; j += 6) {
+    layer.append(sv("circle", { cx: (r.x + i) * T, cy: (r.y + j) * T, r: 190, fill: gradient(defs, "lp" + uid + n++, [[0, theme === "cyber" ? pal.neonB : pal.lamp, theme === "cyber" ? 0.13 : 0.18], [1, pal.lamp, 0]], { r: "50%" }) }), sv("circle", { cx: (r.x + i) * T, cy: (r.y + j) * T, r: 5, fill: "#fff", opacity: 0.5 }), sv("circle", { cx: (r.x + i) * T, cy: (r.y + j) * T, r: 9, fill: "none", stroke: "#000", "stroke-width": 1.5, opacity: 0.5 }));
   }
 }
 const FAMILY_SPRITE = { read: "file-cabinet", write: "writer-desk", shell: "console", web: "comm-booth", mcp: "server-rack", other: "crate", approvals: "dual-monitor-desk", ledger: "counter", desk: "desk", table: "meeting-table", crate: "crate" };
@@ -528,8 +601,12 @@ const PLANTS = ["plant-fern", "plant-ficus", "plant-flowering", "plant-monstera"
 function furnitureSprite(f, pal, theme, now, defs, uid) {
   const g = sv("g", {}), [x, y, w, d] = f.box, o = f.obj, id = "fg" + uid + f.family + Math.round(x * 3 + y * 5), fresh = o && o.last && now - o.last < 4;
   const bx = x * T, by = y * T, bw = w * T, bh = d * T;
+  if (f.family === "table") { holoTable(g, f.box, pal, theme, defs, id); return g; }
+  if (f.room && f.family !== "crate" && y - f.room.y < 3.2) cableTD(g, bx + bw * 0.35, by + bh * 0.3, bx + bw * 0.35 + (hash(Math.round(x * 5), Math.round(y * 3)) - 0.5) * 60, f.room.y * T + WT + 34, pal, theme);   // a lead up to the console bank on the wall
   rect(g, bx + 4, by + bh * 0.55, bw - 4, bh * 0.5, "#000", { opacity: 0.4, filter: FX.soft, rx: 8 });
   g.append(fit(FAMILY_SPRITE[f.family] || "crate", bx, by, bw, bh + 6, theme));
+  if (f.family === "desk" || f.family === "approvals") chairTD(g, bx + bw / 2, by + bh + 22, pal, theme, 0);   // someone sits at a desk
+  if (fresh && (f.family === "write" || f.family === "shell" || f.family === "read")) g.append(sv("ellipse", { cx: bx + bw / 2, cy: by + bh / 2, rx: bw * 0.9, ry: bh * 0.9, fill: gradient(defs, id + "w", [[0, pal.screen, 0.35], [1, pal.screen, 0]], { r: "50%" }), class: "flick amb" }));
   if (f.family === "approvals" && o && o.pending) g.append(sv("circle", { cx: bx + bw / 2, cy: by + bh / 2, r: 46, fill: gradient(defs, id + "p", [[0, pal.wait, 0.5], [1, pal.wait, 0]], { r: "50%" }), class: "flick2 amb" }));
   if (f.lane && f.laneState) { const on = f.laneState === "lit"; g.append(sv("circle", { cx: bx + bw - 10, cy: by + 12, r: 5, fill: on ? pal.accent : shade(pal.dark, 20), stroke: "#000", "stroke-width": 1, class: on ? "flick amb" : "" })); }   // the handoff tray: lit once that handoff was recorded
   if (f.family === "crate" && o && o.state === "landed") g.append(sv("circle", { cx: bx + bw / 2, cy: by + bh / 2, r: 56, fill: gradient(defs, id + "l", [[0, pal.accent, 0.55], [1, pal.accent, 0]], { r: "50%" }), class: "flick amb" }));
@@ -552,7 +629,7 @@ function propSprite(kind, x, y, pal, theme, defs, uid, size) {   // scenery: it 
   else if (kind === "coat") g.append(fit("clothes-rack", px - 18, py - 40, 56, 56, theme));
   return g;
 }
-const CREW_FILE = { clyde: "crew-bridge-white", bonnie: "crew-commander-red", master: "crew-navy", advisor: "crew-lab-coat" }, WORKER_FILES = ["crew-teal", "crew-gray", "crew-plum", "crew-slate"];
+const CREW_FILE = { clyde: "crew-bridge-white", bonnie: "crew-plum", master: "crew-navy", advisor: "crew-lab-coat" }, WORKER_FILES = ["crew-teal", "crew-gray", "crew-slate"];   // crew-commander-red carries a halo of its own, so it is left out
 const CREW_K = 0.72;   // a person is drawn this fraction of the sprite's natural size
 function crewFile(name) { return CREW_FILE[name] || WORKER_FILES[(parseInt(number(name) || "1", 10) - 1) % WORKER_FILES.length]; }
 function personItem(name, role, theme) {
@@ -595,6 +672,7 @@ function buildScene(run) {
   ground(svg, defs, B, pal, theme, uid);
   const floorLayer = sv("g", {}), laneLayer = sv("g", {}), wallLayer = sv("g", {}), items = sv("g", {}), signs = sv("g", {});
   floors(floorLayer, defs, p, pal, theme, uid);
+  lightPools(floorLayer, defs, p, pal, theme, uid);
   const order = { dark: 0, lit: 1, waiting: 2, refused: 3 };   // the strongest state is drawn last where lanes share a corridor
   const laneColor = { dark: pal.dim, lit: pal.accent, waiting: pal.wait, refused: pal.bad }, described = [];
   for (const lane of layout.hallways.slice().sort((a, b) => order[a.state] - order[b.state])) {
