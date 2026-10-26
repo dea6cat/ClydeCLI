@@ -54,6 +54,7 @@ DEFAULT_EXPLANATIONS: dict[str, str] = {
     "PE2": "Commands invoke sudo or root privileges.",
     "PE3": "Code accesses credential files.",
     "PE4": "Docker socket access detected.",
+    "TM1": "Commands force-delete from the filesystem root (rm -rf /…).",
     "PE5": "Privileged container / container escape flags.",
     "SC1": "Unpinned or wildcard dependency versions.",
     "SC2": "Remote code is downloaded and executed.",
@@ -126,6 +127,7 @@ RULE_ID_TO_CATEGORY: dict[str, str] = {
     "PE2": PatternCategory.PRIVILEGE_ESCALATION.value,
     "PE3": PatternCategory.PRIVILEGE_ESCALATION.value,
     "PE4": PatternCategory.PRIVILEGE_ESCALATION.value,
+    "TM1": PatternCategory.TOOL_MISUSE.value,
     "PE5": PatternCategory.PRIVILEGE_ESCALATION.value,
     "SC1": PatternCategory.SUPPLY_CHAIN.value,
     "SC2": PatternCategory.SUPPLY_CHAIN.value,
@@ -196,6 +198,7 @@ RULE_ID_TO_SEVERITY: dict[str, Severity] = {
     "PE2": Severity.MEDIUM,
     "PE3": Severity.HIGH,
     "PE4": Severity.HIGH,
+    "TM1": Severity.HIGH,
     "PE5": Severity.HIGH,
     "SC1": Severity.LOW,
     "SC2": Severity.HIGH,
@@ -421,6 +424,12 @@ RULE_PATTERNS: dict[str, list[tuple[str, float]]] = {
         (r"(?:run|execute)\s+(?:as|with)\s+root", 0.8),
         (r"(?:requires?|needs?)\s+root\s+(?:access|privileges?|permissions?)", 0.6),
         (r"(?:edit|modify|write|change)\s+(?:/etc/|system)\s+(?:files?|config)", 0.6),
+    ],
+    # --- TM1: Tool Parameter Abuse ---
+    # ponytail: only SkillSpector's `rm -rf /…` case; its full TM1 (shell=True, --force, globs, safe-idiom
+    # exemptions) is ~3,600 lines in static_patterns_tool_misuse.py. Port more when the corpus shows a miss.
+    "TM1": [
+        (r"\brm\s+-[a-zA-Z]*(?:r[a-zA-Z]*f|f[a-zA-Z]*r)[a-zA-Z]*\s+/", 0.9),
     ],
     # --- PE3: Credential Access ---
     "PE3": [

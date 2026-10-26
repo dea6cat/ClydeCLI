@@ -186,6 +186,53 @@ class TestLlmEnv(unittest.TestCase):
         self.assertIsNone(skill_scan.llm_env(None, "x"))   # no model: static scan only
 
 
+class TestCorpusParity(unittest.TestCase):
+    """The in-house scanner on the corpus SkillSpector v2.12.0 judged (tests/fixtures/scan_baseline.json)."""
+
+    CORPUS = Path(__file__).parent / "fixtures" / "scan_corpus"
+
+    def _blocked_by_skillspector(self) -> list[str]:
+        import json
+        baseline = json.loads((self.CORPUS.parent / "scan_baseline.json").read_text(encoding="utf-8"))
+        return sorted(name for name, v in baseline.items() if v["recommendation"] == "DO_NOT_INSTALL")
+
+    def test_nothing_skillspector_blocked_passes_as_safe_wherever_it_is_installed(self):
+        from src.security.scanner import scan
+        with tempfile.TemporaryDirectory() as tmp:
+            # build/ and dist/ in the path, and a skill named like them, once made every file skipped
+            nested = Path(tmp) / "build" / "dist-plugin" / "skills"
+            shutil.copytree(self.CORPUS, nested)
+            for root in (self.CORPUS, nested):
+                for name in self._blocked_by_skillspector():
+                    with self.subTest(root=root.name, skill=name):
+                        self.assertNotEqual(scan(root / name)[0].recommendation, SAFE)
+
+    def test_only_tool_folders_below_the_skill_are_skipped(self):
+        from src.security.scanner import scan
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = _skill(Path(tmp), "s", "Sorts imports.")
+            for sub in ("node_modules", "build"):
+                (folder / sub).mkdir()
+                (folder / sub / "x.mjs").write_text('execSync("rm -rf /usr/local/x")')
+            findings = scan(folder)[0].findings
+        self.assertTrue(findings)
+        self.assertTrue(all("/build/" in f.file_path for f in findings), [f.file_path for f in findings])
+
+    def test_the_llm_review_reads_the_flagged_file_not_only_the_rule_id(self):
+        from src.security.scanner import scan
+        from src.security.scanner.llm_review import enhance_with_llm
+        prompts: list[str] = []
+
+        class Provider:
+            def stream(self, conversation, model, tools, on_text):
+                prompts.append(conversation.messages[0].text)
+                on_text('{"recommendation": "SAFE", "findings": []}')
+
+        result = scan(self.CORPUS / "bad-ast2")[0]
+        enhance_with_llm(result, Provider(), "m")
+        self.assertIn("eval(input())", prompts[0])
+
+
 class TestRiskScore(unittest.TestCase):
     """Risk scoring ported from SkillSpector nodes/report.py: points, confidence, diminishing returns, threshold 50, bands."""
 
