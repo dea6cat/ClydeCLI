@@ -83,8 +83,20 @@ class TestSectionReport(unittest.TestCase):
             rows = {s["name"]: s for s in section_report(root)}
         self.assertTrue(rows["Runtime Context"]["aligned"])
         self.assertFalse(rows["Git Context"]["stable"])
-        self.assertTrue(rows["Project Instructions"]["stable"])
-        self.assertFalse(rows["Project Instructions"]["aligned"])   # unchanged, but after the change: prefilled again
+        self.assertTrue(rows["Project Instructions"]["aligned"])    # stable sections come first, so they stay cached
+        self.assertEqual([r["name"] for r in section_report(root)][-2:], ["Runtime Context", "Git Context"])
+
+    def test_one_new_file_leaves_everything_but_runtime_and_git_cached(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve()
+            subprocess.run(["git", "init", "-q", str(root)], check=True)
+            (root / "CLAUDE.md").write_text("Always add tests.\n" * 50, encoding="utf-8")
+            build_context_prompt(root)
+            (root / "new.py").write_text("x = 1\n", encoding="utf-8")   # file counts and git status both change
+            build_context_prompt(root)
+            rows = {s["name"]: s for s in section_report(root)}
+        self.assertTrue(rows["Project Instructions"]["aligned"])
+        self.assertFalse(rows["Runtime Context"]["stable"])
 
 
 class TestToolOutput(unittest.TestCase):

@@ -32,12 +32,15 @@ def build_context_prompt(
     if compact:
         summary = replace(summary, readme_path=None, readme_excerpt="")
 
+    # Stable sections first, the ones that change last: a provider caches the prompt up to its first changed byte, and
+    # Runtime Context (file counts, top-level entries, the date) and git status change with almost any edit. First,
+    # one new file left 0 of 2,351 context tokens cached on this repo.
     sections = [
-        ("Runtime Context", _render_workspace_section(workspace)),
-        ("Git Context", _render_git_section(git, root)),
+        ("Project Instructions", _render_claude_md_section(claude_md, root)),
         ("Project Summary", _render_project_summary_section(summary, root)),
         ("Code Map", _render_code_map_section(root)),
-        ("Project Instructions", _render_claude_md_section(claude_md, root)),
+        ("Runtime Context", _render_workspace_section(workspace)),
+        ("Git Context", _render_git_section(git, root)),
     ]
     kept = [(name, "\n".join(lines)) for name, lines in sections if "\n".join(lines).strip()]
     previous = _BUILDS.get(str(root), ((), ()))[1]
