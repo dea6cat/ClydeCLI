@@ -122,6 +122,7 @@ class AgentLoopResult:
     response_text: str
     usage: dict[str, Any] | None = None  # {"input_tokens": int, "output_tokens": int}
     num_turns: int = 0
+    ran_out: bool = False   # every tool turn used; response_text is then the model's own wrap-up
 
 
 # After N consecutive failing tool calls (different calls each time, so the repeat guard
@@ -145,6 +146,8 @@ _ANSWER_NUDGE = "Your last reply had no answer text. Answer now in plain text; k
 _MAX_STOP_BLOCKS = 8
 _HOOK_CONTEXT = "Context from a UserPromptSubmit hook:\n"
 _STOP_HOOK = "A Stop hook did not let the turn end yet: "
+_WRAP_UP = ("You have used every tool turn this task allows. Do not call tools. In plain text, say briefly: what is done, "
+            "what remains, and what to do next.")
 
 
 def _continue(cut: str, more: str) -> str:
@@ -300,7 +303,7 @@ def _small_local(provider: Provider) -> bool:
 
 
 # What Clyde itself adds as user turns; never the user's prompt (local reply review, hooks and tool routing read it).
-_INJECTED = (_STEERING, _HOOK_CONTEXT, _STOP_HOOK, _CONTINUE_NUDGE, _ANSWER_NUDGE)
+_INJECTED = (_STEERING, _HOOK_CONTEXT, _STOP_HOOK, _CONTINUE_NUDGE, _ANSWER_NUDGE, _WRAP_UP)
 
 
 def _last_prompt(conversation: Conversation) -> str:
@@ -565,8 +568,22 @@ def run_agent_loop(
             return AgentLoopResult(response_text=MAX_TOKENS_REPLY, usage=_usage_or_none(), num_turns=turn_count)
 
     record_run("max_turns", turn_count)
+    # Out of tool turns: one more request, with no tools, for the model to say where the task stands (Kilo does the
+    # same); a fixed "[Max tool turns reached]" told the user nothing. It stays as the fallback if this fails.
+    conversation.add_user_message(_WRAP_UP)
+    wrap_up = ""
+    try:
+        request = to_canonical(conversation, system_prompt, flatten_tools=True)
+        response = trace.model_call(provider, model, request, lambda: stream_with_retry(
+            provider, request, model, (), text_handler, cancel=cancel, reasoning=reasoning))
+        _add_usage(total_usage, response.usage)
+        append_response(conversation, response.message)
+        wrap_up = (response.message.text or "").strip()
+    except Exception:   # the turns are spent either way; say so plainly
+        pass
     return AgentLoopResult(
-        response_text=MAX_TURNS_REPLY,
+        response_text=wrap_up or MAX_TURNS_REPLY,
         usage=_usage_or_none(),
         num_turns=turn_count,
+        ran_out=True,
     )

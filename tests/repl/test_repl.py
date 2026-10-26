@@ -297,7 +297,7 @@ class TestREPL(unittest.TestCase):
                     repl.console.print = Mock()
 
                     with patch('src.repl.core.run_agent_loop') as mock_agent_loop:
-                        mock_agent_loop.return_value = Mock(response_text=MAX_TURNS_REPLY, usage=None, num_turns=20)
+                        mock_agent_loop.return_value = Mock(response_text=MAX_TURNS_REPLY, usage=None, num_turns=20, ran_out=True)
                         repl.chat("do the task")
 
                     printed = " ".join(str(c.args[0]) for c in repl.console.print.call_args_list if c.args)

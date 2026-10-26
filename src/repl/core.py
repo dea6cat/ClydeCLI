@@ -117,7 +117,7 @@ from src.tool_system.mcp_client import connect_servers, load_servers, merge_serv
 from src.tool_system.defaults import build_default_registry
 from src.tool_system.protocol import ToolCall
 from src.tool_system.tools.cron import pop_due_jobs
-from src.agent.agent_loop import MAX_TURNS_REPLY, ToolEvent, run_agent_loop, summarize_tool_result, summarize_tool_use
+from src.agent.agent_loop import ToolEvent, run_agent_loop, summarize_tool_result, summarize_tool_use
 
 # New command system imports
 from src.command_system import (
@@ -603,7 +603,7 @@ class ClydeREPL:
         tools = ToolRegistry([self.tool_registry.get(s.name) for s in self.tool_registry.list_specs() if s.name.lower() not in _NO_NESTING])
         result = run_agent_loop(copy.deepcopy(self.session.conversation), provider, model, tools, context,
                                 max_turns=_COUNCIL_MAX_TURNS, cancel=cancel, reasoning=self.reasoning, system_extra=self.system_extra)
-        if result.response_text == MAX_TURNS_REPLY:
+        if result.ran_out:
             raise ProviderError(provider.name, "ran out of reading turns")
         return ProviderResponse(message=Message.assistant(result.response_text), raw={}, usage=result.usage)
 
@@ -2262,12 +2262,12 @@ class ClydeREPL:
             with self._current_status, self._ticking(self._current_status, word, turn_started, lambda: not stream_started):
                 result = play()
                 # cardShuffle: a model stuck in its tool loop hands the turn to the next card.
-                while (result.response_text == MAX_TURNS_REPLY and isinstance(self.provider, CardShuffle)
+                while (result.ran_out and isinstance(self.provider, CardShuffle)
                        and self.provider.redeal(f"{self.provider.dealt} hit max tool turns")):
                     result = play()
             self._current_status = None
             self.last_result = result
-            trace.record("turn_end", ran_out=result.response_text == MAX_TURNS_REPLY, rounds=result.num_turns,
+            trace.record("turn_end", ran_out=result.ran_out, rounds=result.num_turns,
                          model=self.provider.dealt if isinstance(self.provider, CardShuffle) else model_ref(self.provider, self.model))
 
             # Record usage to cost tracker; cardShuffle reports each real model it dealt.
@@ -2291,7 +2291,7 @@ class ClydeREPL:
             if self.headless:
                 pass   # `clyde -p` prints the answer itself, on stdout
             else:
-                if result.response_text == MAX_TURNS_REPLY:
+                if result.ran_out:
                     self.console.print(f"[dim]Hit the {max_turns}-tool-turn limit mid-task. Say 'continue' to pick up where it left"
                                        f" off, or raise the limit under /settings → Tool turns.[/dim]", markup=False)
                 if self.stream and stream_started:

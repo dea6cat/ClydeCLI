@@ -341,6 +341,27 @@ class TestAgentLoop(unittest.TestCase):
         self.assertEqual(self._run(provider, conversation).response_text, "")
         self.assertEqual(len(provider.requests), 4)   # the reply, then 3 asks again
 
+    def test_out_of_tool_turns_the_model_wraps_up_in_text_with_no_tools(self):
+        conversation = Conversation()
+        conversation.add_user_message("refactor everything")
+        provider = FakeProvider(*[reply(tool_calls=[("Glob", {"pattern": f"*{i}.py"}, f"g{i}")]) for i in range(2)],
+                                reply("Done: scanned the files. Left: the edits. Next: say continue."))
+
+        result = self._run(provider, conversation, max_turns=2)
+
+        self.assertTrue(result.ran_out)
+        self.assertEqual(result.response_text, "Done: scanned the files. Left: the edits. Next: say continue.")
+        self.assertFalse(provider.requests[-1]["tools"])   # no tools offered
+        self.assertIn("used every tool turn", str(provider.requests[-1]))
+
+    def test_out_of_tool_turns_with_no_wrap_up_still_says_so(self):
+        from src.agent.agent_loop import MAX_TURNS_REPLY
+        conversation = Conversation()
+        conversation.add_user_message("refactor everything")
+        provider = FakeProvider(*[reply(tool_calls=[("Glob", {"pattern": f"*{i}.py"}, f"g{i}")]) for i in range(2)])
+        result = self._run(provider, conversation, max_turns=2)   # the provider has nothing left for the wrap-up
+        self.assertEqual((result.response_text, result.ran_out), (MAX_TURNS_REPLY, True))
+
     def test_an_error_followed_by_a_success_resets_the_counter(self):
         conversation = Conversation()
         conversation.add_user_message("read hello.py")
