@@ -8,6 +8,7 @@ Uses Clyde's own provider stack to review flagged content.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any
 
 from src.providers.types import Conversation, Message
@@ -113,15 +114,17 @@ def enhance_with_llm(
         # No need for LLM review if static scan is clean
         return scan_result
     
-    # Collect all flagged content
-    flagged_content = []
-    for finding in scan_result.findings:
-        flagged_content.append(f"[{finding.rule_id} {finding.severity}] {finding.message}")
-    
+    # The static findings, then the flagged files themselves: the rule ids alone give the model nothing to judge.
+    flagged_content = [f"[{f.rule_id} {f.severity}] {f.file_path}:{f.line_number}: {f.message}" for f in scan_result.findings]
     if not flagged_content:
         return scan_result
-    
-    # Send to LLM for review
+    for path in dict.fromkeys(f.file_path for f in scan_result.findings):
+        try:
+            flagged_content.append(f"\n--- {path} ---\n{Path(path).read_text(encoding='utf-8', errors='replace')}")
+        except OSError:
+            continue
+
+    # Send to LLM for review (review_with_llm keeps the first 16,000 characters)
     content_to_review = "\n".join(flagged_content)
     llm_result = review_with_llm(content_to_review, provider, model)
     

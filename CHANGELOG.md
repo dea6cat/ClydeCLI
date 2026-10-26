@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The in-house skill scanner passed skills it never read. It skipped any file whose full path contained `build`, `dist`, `vendor` or `venv`, so a skill under a `build…` plugin folder, or one named like `distill`, came back SAFE with no findings: three BuildPartner skills that SkillSpector blocks were SAFE. It now skips only SkillSpector's tool folders (`.git`, `node_modules`, `.venv`…) below the skill. It also caught `eval()`/`exec()` only as a bare statement (`x = eval(input())` passed), missed `rm -rf /…`, and never read `.mjs`, `.cjs`, `.jsx`, `.tsx`, `.bat`, `.cmd`, `.pl` or `.lua` files. The LLM review now reads the flagged files, not only the rule ids. No skill SkillSpector blocked on the test corpus comes back SAFE, wherever it is installed.
 - A rate-limited request (HTTP 429) got the same backoff as any transient blip — 1, 2, 4 seconds — which a rate window always outlives, so every retry burned and the turn died with "retried 3×, still failing". A 429 without a `Retry-After` now waits 5 seconds and doubles up to the same 30-second ceiling a `Retry-After` is capped at; providers that send the header were already fine.
 
 ## [0.7.0] - 2026-10-22
