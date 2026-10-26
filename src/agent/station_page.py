@@ -830,78 +830,117 @@ function atmosphere(svg, defs, B, pal, theme, uid) {   // light and dust over ev
 }
 
 // ---- the crew: pixel people --------------------------------------------------------------------------------------------
-const CELL = 3, SKIN = "#e8b98a", SKIN2 = "#c99468";
+const CELL = 2.4, SW = 16, SH = 28;   // a person is a grid of 16 x 28 cells, each CELL px
+const SKINS = [["#e8b98a", "#c99468"], ["#c68642", "#a06a30"], ["#8d5524", "#6e4118"], ["#f1c27d", "#d4a05c"], ["#ffdbac", "#e0b98a"]];
+const HAIRS = ["#3a2a1a", "#1a1a1a", "#7a4a20", "#b0762a", "#555560"];
 const LOOKS = {
-  clyde:   { coat: "#2d3a5a", shirt: "#e8e0d0", tie: "#8a2433", pants: "#1c2236", hat: "#1f2740", hair: "#2a1a10", kind: "cap" },
-  bonnie:  { coat: "#b33a3a", shirt: "#f2e8e0", tie: null, pants: "#3a2a2a", hat: "#8a2433", hair: "#4a2b1a", kind: "beret", long: true },
-  master:  { coat: "#c99a2e", shirt: "#f4ecd2", tie: "#3a2a14", pants: "#3a3020", hat: "#3a2a14", hair: "#222", kind: "bowler" },
-  advisor: { coat: "#6a4c93", shirt: "#e8e0f0", tie: "#bdbdbd", pants: "#2b2440", hat: null, hair: "#bdbdbd", kind: "glasses" },
+  clyde:   { skin: 0, coat: "#2d3a5a", shirt: "#e8e0d0", tie: "#8a2433", pants: "#1c2236", hat: "#1f2740", hair: "#2a1a10", kind: "cap" },
+  bonnie:  { skin: 3, coat: "#b33a3a", shirt: "#f2e8e0", tie: null, pants: "#3a2a2a", hat: "#8a2433", hair: "#4a2b1a", kind: "beret", long: true },
+  master:  { skin: 1, coat: "#c99a2e", shirt: "#f4ecd2", tie: "#3a2a14", pants: "#3a3020", hat: "#3a2a14", hair: "#222", kind: "bowler" },
+  advisor: { skin: 4, coat: "#6a4c93", shirt: "#e8e0f0", tie: "#bdbdbd", pants: "#2b2440", hat: null, hair: "#bdbdbd", kind: "glasses" },
 };
 const WORKERS = ["#2f8f83", "#d17a22", "#3b78c2", "#8a5fb0", "#b05f5f", "#5fa86a", "#c2b13b", "#4f6d7a"];
 function lookFor(name, theme) {
-  const base = LOOKS[name] || { coat: WORKERS[(parseInt(number(name) || "1", 10) - 1) % WORKERS.length], shirt: "#d8d8d8", tie: null, pants: "#2a2f3a", hat: "#e0b020", hair: "#3a2a1a", kind: "hardhat" };
-  return { ...base, theme };
+  const n = parseInt(number(name) || "1", 10) - 1;
+  const base = LOOKS[name] || { skin: n % 5, coat: WORKERS[n % WORKERS.length], shirt: "#d8d8d8", tie: null, pants: "#2a2f3a", hat: ["#e0b020", "#d8d8d8", "#e0702a"][n % 3], hair: HAIRS[(n + 2) % HAIRS.length], kind: "hardhat" };
+  const tone = SKINS[base.skin % SKINS.length];
+  return { ...base, theme, skin: tone[0], skin2: tone[1] };
 }
-function personFrame(look, pose, f, blink) {   // one pose as a grid of cells on 12 x 22: [x, y, w, h, colour]
-  const c = [], r = (x, y, w, h, col) => c.push([x, y, w, h, col]);
-  const walking = pose === "walk", working = pose === "work" || pose === "check", carrying = pose === "carry";
-  const phase = walking ? f % 4 : 0, bob = walking && phase % 2 ? -1 : (pose === "idle" && f === 1 ? 0 : 0), legA = phase === 0 ? 1 : phase === 2 ? -1 : 0;
-  const top = bob;   // everything above the legs rides the bob
-  // legs and boots
-  const lx = 3, rx = 6;
-  r(lx, 16 + legA * 0, 3, 4 - Math.max(0, legA), look.pants); r(rx, 16 + (legA < 0 ? 0 : 0), 3, 4 - Math.max(0, -legA), look.pants);
-  r(lx - (legA > 0 ? 0 : 0), 20 - Math.max(0, legA), 3, 2, "#15151a"); r(rx, 20 - Math.max(0, -legA), 3, 2, "#15151a");
-  if (look.theme === "steam") r(lx, 17, 3, 1, "#c0773a");
-  // body
-  r(2, 9 + top, 8, 7, look.coat); r(5, 9 + top, 2, 6, look.shirt); if (look.tie) r(5.5, 10 + top, 1, 4, look.tie);
-  r(2, 9 + top, 2, 3, shade(look.coat, 18)); r(8, 9 + top, 2, 3, shade(look.coat, -18)); r(2, 15 + top, 8, 1, shade(look.coat, -35));
-  if (look.theme === "steam") { r(2, 14 + top, 8, 1, "#c0773a"); r(5, 14 + top, 2, 1, "#ffd166"); }
-  if (look.theme === "cyber") { r(2, 9 + top, 8, 1, "#19e3ff"); r(2, 12 + top, 1, 3, "#ff2bd6"); }
-  if (look.theme === "city" && look.kind !== "glasses") { r(3, 10 + top, 1, 5, shade(look.coat, -40)); r(8, 10 + top, 1, 5, shade(look.coat, -40)); }   // braces
+function personFrame(look, pose, f, blink, view) {   // one pose as cells on 16 x 28: [x, y, w, h, colour]; view "front" faces the viewer, "back" faces away
+  const c = [], r = (x, y, w, h, col) => c.push([x, y, w, h, col]), back = view === "back", th = look.theme;
+  const walking = pose === "walk", working = pose === "work", checking = pose === "check", carrying = pose === "carry";
+  const phase = walking ? f % 4 : 0, top = walking ? (phase % 2 ? -0.5 : 0) : (pose === "idle" && f === 1 ? -0.5 : 0);
+  const swing = phase === 0 ? 1 : phase === 2 ? -1 : 0, skin = look.skin, skin2 = look.skin2, coat = look.coat, lit = shade(coat, 16), dim = shade(coat, -20), deep = shade(coat, -38);
+  const hairDark = shade(look.hair, -30), neon = "#19e3ff", brass = "#c0773a", boot = "#16161c";
+  // legs and boots: the leg that is forward is shorter in the picture, the other plants its foot
+  for (const [x, lift, shadeSide] of [[4, swing > 0 ? 1 : 0, 6], [9, swing < 0 ? 1 : 0, 11]]) {
+    r(x, 21, 3, 5 - lift, look.pants); r(shadeSide, 21, 1, 5 - lift, shade(look.pants, shadeSide === 6 ? -14 : -22));
+    r(x - 0.3, 26 - lift, 3.6, 2, boot); r(x - 0.3, 27.4 - lift, 3.6, 0.6, "#000");
+    if (th === "steam") r(x - 0.3, 25 - lift, 3.6, 1, brass); else if (th === "cyber") r(x - 0.3, 27.6 - lift, 3.6, 0.4, neon);
+  }
+  // torso
+  r(3, 12 + top, 10, 9, coat); r(3, 12 + top, 2, 9, lit); r(11, 12 + top, 2, 9, dim); r(3, 20 + top, 10, 1, deep); r(2.5, 11.6 + top, 11, 1.2, lit);
+  r(3, 19.6 + top, 10, 1, "#1c1410"); r(7.3, 19.6 + top, 1.4, 1, th === "steam" ? "#ffd166" : "#d0b050");
+  if (back) { r(7.75, 12.8 + top, 0.5, 6.8, deep); r(7.2, 17 + top, 1.6, 2.6, deep); r(6, 11.6 + top, 4, 1.2, shade(look.shirt, -14)); }
+  else {
+    r(6.4, 12 + top, 3.2, 7.6, look.shirt); r(6, 12 + top, 0.6, 7.6, deep); r(9.4, 12 + top, 0.6, 7.6, deep); r(6.2, 11.8 + top, 1.4, 1.6, shade(look.shirt, -12)); r(8.4, 11.8 + top, 1.4, 1.6, shade(look.shirt, -12));
+    if (look.tie) { r(7.5, 13 + top, 1, 5.4, look.tie); r(7.3, 12.4 + top, 1.4, 1.1, shade(look.tie, 18)); }
+    r(4, 16 + top, 2, 0.5, deep); if (look.tie) r(4, 15.4 + top, 1.5, 0.6, look.shirt);
+    if (th === "city" && look.kind !== "glasses") { r(4.6, 12 + top, 0.8, 7.6, "#3a2a1a"); r(10.6, 12 + top, 0.8, 7.6, "#3a2a1a"); }
+    if (th === "cyber") r(10, 14 + top, 1.5, 1.5, "#00f5d4");
+  }
+  if (th === "steam") { r(2.5, 11.4 + top, 2.4, 1.4, brass); r(3.3, 11.8 + top, 0.8, 0.6, "#ffd166"); }
+  if (th === "cyber") { r(3, 12 + top, 10, 0.5, neon); if (!back) r(3, 13 + top, 0.7, 5, "#ff2bd6"); else r(6, 12.6 + top, 4, 0.4, neon); }
   // arms
-  if (working) { const s = f % 2; r(0, 10 + top + s, 2, 4, look.coat); r(10, 10 + top + (1 - s), 2, 4, look.coat); r(0, 14 + top + s, 2, 1, SKIN); r(10, 14 + top + (1 - s), 2, 1, SKIN); }
-  else if (carrying) { r(0, 5 + top, 2, 6, look.coat); r(10, 5 + top, 2, 6, look.coat); r(0, 4 + top, 2, 1, SKIN); r(10, 4 + top, 2, 1, SKIN); }
-  else { const sw = walking ? (phase === 0 ? 1 : phase === 2 ? -1 : 0) : 0; r(0, 9 + top + sw, 2, 6, look.coat); r(10, 9 + top - sw, 2, 6, look.coat); r(0, 15 + top + sw, 2, 1, SKIN); r(10, 15 + top - sw, 2, 1, SKIN); }
-  // head
-  r(5, 8 + top, 2, 1, SKIN2); r(3, 2 + top, 6, 6, SKIN); r(2, 4 + top, 1, 2, SKIN2); r(9, 4 + top, 1, 2, SKIN2); r(3, 7 + top, 6, 1, SKIN2);
-  if (blink) { r(4, 5 + top, 1, 1, "#4a2a1a"); r(7, 5 + top, 1, 1, "#4a2a1a"); } else { r(4, 4 + top, 1, 2, "#1a1a22"); r(7, 4 + top, 1, 2, "#1a1a22"); r(4, 4 + top, 1, 1, "#fff"); r(7, 4 + top, 1, 1, "#fff"); }
-  r(5, 6 + top, 2, 1, "#a0604a");
-  if (look.kind === "glasses") { r(3, 4 + top, 3, 1, "#333"); r(6, 4 + top, 3, 1, "#333"); r(5, 4 + top, 1, 1, "#333"); }
-  // hair, hats and gear
-  if (look.long) { r(2, 3 + top, 1, 7, look.hair); r(9, 3 + top, 1, 7, look.hair); }
-  if (look.kind === "beret") { r(2, 0 + top, 7, 2, look.hat); r(3, -1 + top, 5, 1, look.hat); r(3, 2 + top, 6, 1, look.hair); }
-  else if (look.kind === "bowler") { r(3, -1 + top, 6, 2, look.hat); r(2, 1 + top, 8, 1, look.hat); r(3, 1 + top, 6, 1, shade(look.hat, 25)); }
-  else if (look.kind === "hardhat") { r(3, 0 + top, 6, 2, look.hat); r(2, 2 + top, 8, 1, look.hat); r(3, 0 + top, 6, 1, shade(look.hat, 30)); }
-  else if (look.kind === "glasses") { r(3, 1 + top, 6, 2, look.hair); r(2, 3 + top, 1, 2, look.hair); r(9, 3 + top, 1, 2, look.hair); }
-  else { r(3, 0 + top, 6, 2, look.hat); r(3, 2 + top, 8, 1, look.hat); r(3, 2 + top, 6, 1, look.hair); }   // a flat cap with a peak
-  if (look.theme === "city" && look.kind !== "beret" && look.kind !== "glasses") r(2, 2 + top, 8, 1, shade(look.hat || look.coat, -25));   // a hat band
-  if (look.theme === "steam") { r(3, 2 + top, 2, 2, "#c0773a"); r(7, 2 + top, 2, 2, "#c0773a"); r(4, 2 + top, 1, 1, "#9ff0e6"); r(7, 2 + top, 1, 1, "#9ff0e6"); }   // goggles pushed up
-  if (look.theme === "cyber") { r(3, 4 + top, 6, 2, "#19e3ff"); r(3, 4 + top, 6, 1, "#fff"); }   // a visor
+  const sa = walking ? (phase === 0 ? -1 : phase === 2 ? 1 : 0) : 0, cuff = th === "steam" ? brass : look.shirt;
+  const arm = (x, y, len, side) => { r(x, y, 2, len, coat); r(x + (side ? 1.4 : 0), y, 0.6, len, side ? dim : lit); r(x, y + len - 1, 2, 1, cuff); };
+  if (carrying) {
+    arm(1, 12 + top, 6, 0); arm(13, 12 + top, 6, 1);
+    if (!back) { r(3, 15 + top, 10, 7, "#a8782f"); r(3, 15 + top, 10, 1, "#c89a4a"); r(3, 21 + top, 10, 1, "#7a5420"); r(7.4, 15 + top, 1.2, 7, "#d8b060"); r(1.6, 18 + top, 1.8, 1.6, skin); r(12.6, 18 + top, 1.8, 1.6, skin); }
+    else { r(2.2, 16 + top, 1.6, 5, "#a8782f"); r(12.2, 16 + top, 1.6, 5, "#7a5420"); r(1, 18.5 + top, 2, 1.5, skin); r(13, 18.5 + top, 2, 1.5, skin); }
+  } else if (checking) {
+    arm(1, 12 + top, 7, 0); arm(13, 12 + top, 5, 1); r(1, 19 + top, 2, 1.5, skin);
+    if (!back) { r(9.6, 12.6 + top, 4.4, 6, "#8a6a3a"); r(10.1, 13.2 + top, 3.4, 4.8, "#f4ecd2"); r(10.6, 14.2 + top, 2.4, 0.4, "#777"); r(10.6, 15.4 + top, 2, 0.4, "#777"); r(10.6, 16.6 + top, 2.4, 0.4, "#777"); r(12.6, 17.6 + top, 1.6, 1.6, skin); }
+    else r(13, 17 + top, 2, 1.5, skin);
+  } else if (working && !back) {
+    const s = f % 2;
+    r(1, 12 + top, 2, 5, coat); r(13, 12 + top, 2, 5, dim); r(3, 16 + top, 3.4, 1.8, lit); r(9.6, 16 + top, 3.4, 1.8, dim); r(1, 16 + top, 2, 1, cuff); r(13, 16 + top, 2, 1, cuff);
+    r(5.8, 17 + top + s * 0.8, 1.8, 1.5, skin); r(8.6, 17 + top + (1 - s) * 0.8, 1.8, 1.5, skin);
+  } else {
+    const s = working ? f % 2 : 0;
+    arm(1, 12 + top + sa, 7, 0); arm(13, 12 + top - sa, 7, 1); r(1, 19 + top + sa + s, 2, 1.6, skin); r(13, 19 + top - sa - s, 2, 1.6, skin);
+  }
+  // neck and head
+  r(7, 11 + top, 2, 1.6, skin2);
+  if (back) {
+    r(4, 3 + top, 8, 8, look.hair); r(3, 6 + top, 1, 3, skin2); r(12, 6 + top, 1, 3, skin2); r(4, 9.6 + top, 8, 1.4, hairDark); r(5, 4 + top, 3, 1, shade(look.hair, 22));
+    if (look.long) { r(3, 4 + top, 10, 9, look.hair); r(3, 11 + top, 10, 2, hairDark); r(5, 5 + top, 3, 1, shade(look.hair, 22)); }
+  } else {
+    r(4, 3 + top, 8, 8, skin); r(11, 4 + top, 1, 6, skin2); r(5, 10 + top, 6, 1, skin2); r(3, 6 + top, 1, 3, skin2); r(12, 6 + top, 1, 3, skin2);
+    r(4, 3 + top, 8, 2, look.hair); r(3, 4 + top, 1, 3, look.hair); r(12, 4 + top, 1, 3, look.hair);
+    r(5, 5.6 + top, 2.2, 0.5, hairDark); r(8.8, 5.6 + top, 2.2, 0.5, hairDark);
+    if (blink) { r(5.4, 7.6 + top, 1.6, 0.5, hairDark); r(9, 7.6 + top, 1.6, 0.5, hairDark); }
+    else { r(5.4, 6.6 + top, 1.6, 2, "#15151c"); r(9, 6.6 + top, 1.6, 2, "#15151c"); r(5.4, 6.6 + top, 0.8, 0.8, "#fff"); r(9, 6.6 + top, 0.8, 0.8, "#fff"); }
+    r(7.4, 8 + top, 1.2, 1.2, skin2); r(6.8, 9.6 + top, 2.4, 0.5, "#9a5040");
+    if (look.kind === "glasses") { for (const x of [5, 8.6]) { r(x, 6 + top, 2.8, 0.4, "#222"); r(x, 8.4 + top, 2.8, 0.4, "#222"); r(x, 6 + top, 0.4, 2.8, "#222"); r(x + 2.4, 6 + top, 0.4, 2.8, "#222"); } r(7.8, 6.6 + top, 0.8, 0.4, "#222"); r(6.4, 9 + top, 3.2, 0.6, look.hair); }
+    if (look.long) { r(3, 4 + top, 1.6, 9, look.hair); r(11.4, 4 + top, 1.6, 9, look.hair); }
+  }
+  // hats and hair
+  const hat = look.hat;
+  if (look.kind === "cap") { r(3.5, 1 + top, 9, 3, hat); r(4.5, 1 + top, 6, 1, shade(hat, 22)); if (!back) r(3, 3.6 + top, 10, 1, shade(hat, -28)); else r(7.5, 0.4 + top, 1, 0.6, shade(hat, 30)); }
+  else if (look.kind === "beret") { r(3, 1.4 + top, 10, 2.6, hat); r(4, 0.6 + top, 7, 1, hat); r(7.6, 0.1 + top, 1, 0.7, shade(hat, -20)); r(4.6, 1.4 + top, 4, 0.7, shade(hat, 25)); if (!back) r(3, 3.6 + top, 10, 0.6, look.hair); }
+  else if (look.kind === "bowler") { r(5, 0.4 + top, 6, 3, hat); r(4, 2 + top, 8, 1.2, hat); r(5.4, 0.9 + top, 2, 0.7, shade(hat, 30)); r(4, 2.6 + top, 8, 0.7, "#111"); r(2.5, 3.2 + top, 11, 1, shade(hat, -16)); }
+  else if (look.kind === "hardhat") { r(4, 1 + top, 8, 3, hat); r(7, 0.4 + top, 2, 1, shade(hat, 18)); r(5, 1.6 + top, 2, 0.8, shade(hat, 35)); r(3, 3.6 + top, 10, 1, shade(hat, -18)); }
+  else { r(4, 2 + top, 8, 2.4, look.hair); r(5, 1.6 + top, 3, 1, shade(look.hair, 22)); }   // the advisor: swept-back hair, no hat
+  if (th === "steam" && look.kind !== "glasses") { if (!back) { r(5, 2.6 + top, 2.5, 1.5, brass); r(8.5, 2.6 + top, 2.5, 1.5, brass); r(5.4, 3 + top, 1.7, 0.8, "#9ff0e6"); r(8.9, 3 + top, 1.7, 0.8, "#9ff0e6"); } r(4, 3.2 + top, 8, 0.4, "#5a3a1a"); }
+  if (th === "cyber" && !back) { r(4.4, 6.2 + top, 7.2, 2.2, neon); r(4.4, 6.2 + top, 7.2, 0.7, "#bff8ff"); }
   return c;
 }
 const POSES = { idle: 3, walk: 4, work: 2, check: 2, carry: 2 };
 function personItem(name, role, theme) {
-  const look = lookFor(name, theme), g = sv("g", { class: "sprite", "data-sprite": name }), frames = {};
-  const body = sv("g", { transform: "translate(" + (-6 * CELL) + " " + (-22 * CELL) + ")" });
-  for (const pose in POSES) {
-    frames[pose] = [];
-    for (let f = 0; f < POSES[pose]; f++) {
-      const fg = sv("g", { style: "display:none" });
-      for (const [x, y, w, h, col] of personFrame(look, pose, pose === "idle" ? Math.min(f, 1) : f, pose === "idle" && f === 2)) fg.append(sv("rect", { x: x * CELL, y: y * CELL, width: w * CELL, height: h * CELL, fill: col, "shape-rendering": "crispEdges" }));
+  const look = lookFor(name, theme), g = sv("g", { class: "sprite", "data-sprite": name }), cache = {};
+  const body = sv("g", { transform: "translate(" + (-SW / 2 * CELL) + " " + (-SH * CELL) + ")" });
+  function frameOf(view, pose, f) {   // a frame is drawn the first time it is needed: a person is a few hundred rectangles
+    const key = view + ":" + pose + ":" + f;
+    if (!cache[key]) {
+      const fg = sv("g", { style: "display:none" }), cells = personFrame(look, pose, pose === "idle" ? Math.min(f, 1) : f, pose === "idle" && f === 2, view), grow = 0.45;
+      for (const [x, y, w, h] of cells) fg.append(sv("rect", { x: (x - grow) * CELL, y: (y - grow) * CELL, width: (w + grow * 2) * CELL, height: (h + grow * 2) * CELL, fill: "#0b0b12", opacity: 0.9, "shape-rendering": "crispEdges" }));   // the outline
+      for (const [x, y, w, h, col] of cells) fg.append(sv("rect", { x: x * CELL, y: y * CELL, width: w * CELL, height: h * CELL, fill: col, "shape-rendering": "crispEdges" }));
       body.append(fg);
-      frames[pose].push(fg);
+      cache[key] = fg;
     }
+    return cache[key];
   }
   const flip = sv("g", { class: "flip" });
   flip.append(body);
   const shadowEl = sv("ellipse", { cx: 0, cy: 1, rx: 17, ry: 6, fill: "#000", opacity: 0.4 });
-  const tag = sv("g", { transform: "translate(0 " + (-22 * CELL - 5) + ")" });
+  const tag = sv("g", { transform: "translate(0 " + (-SH * CELL - 5) + ")" });
   const label = sv("text", { y: 3, class: "name", fill: "#fff", stroke: "#000" }, name);
-  const bubble = sv("g", { transform: "translate(0 " + (-22 * CELL - 24) + ")" });
+  const bubble = sv("g", { transform: "translate(0 " + (-SH * CELL - 24) + ")" });
   tag.append(sv("rect", { x: -(name.length * 3.6 + 6), y: -9, width: name.length * 7.2 + 12, height: 14, rx: 3, fill: "#000", opacity: 0.6 }), label);
   g.append(shadowEl, flip, tag, bubble);
   g.append(sv("title", {}, name));
-  return { name, role, g, flip, frames, bubble, shown: null, bubbleKind: null, title: g.lastChild };
+  return { name, role, g, flip, frameOf, bubble, shown: null, shownEl: null, facing: [1, "front"], bubbleKind: null, title: g.lastChild };
 }
 function setBubble(person, kind, pal) {
   if (person.bubbleKind === kind) return;
@@ -1021,13 +1060,16 @@ function tickScene(scene, now) {
     const moving = pose === "walk";
     if (!moving && s.carry) pose = "carry";
     const frame = pose === "walk" ? Math.floor(now * 8) % 4 : pose === "work" || pose === "check" ? Math.floor(now * 5) % 2 : pose === "carry" ? Math.floor(now * 3) % 2 : (Math.floor(now * 2) % 9 === 0 ? 2 : Math.floor(now * 0.8) % 2);
-    const key = pose + ":" + frame;
+    const heading = iso(s.dir[0], s.dir[1]);   // a person faces the way they walk: toward the viewer or away, left or right; standing still they keep their last facing
+    if (Math.abs(heading[0]) > 0.1 || Math.abs(heading[1]) > 0.1) person.facing = [heading[0] < -0.1 ? -1 : 1, heading[1] < -0.1 ? "back" : "front"];
+    const [face, view] = person.facing, key = view + ":" + pose + ":" + frame;
     if (person.shown !== key) {
-      if (person.shown) { const [pp, ff] = person.shown.split(":"); person.frames[pp][+ff].style.display = "none"; }
-      person.frames[pose][frame].style.display = "";
+      if (person.shownEl) person.shownEl.style.display = "none";
+      person.shownEl = person.frameOf(view, pose, frame);
+      person.shownEl.style.display = "";
       person.shown = key;
     }
-    const screen = iso(s.pos[0], s.pos[1]), face = iso(s.dir[0], s.dir[1])[0] < -0.1 ? -1 : 1;
+    const screen = iso(s.pos[0], s.pos[1]);
     person.at = s.pos;
     person.g.setAttribute("transform", "translate(" + screen[0].toFixed(1) + " " + (screen[1] + (moving ? 0 : bob * 0.5)).toFixed(1) + ")");
     person.flip.setAttribute("transform", "scale(" + face + " 1)");
@@ -1103,8 +1145,9 @@ function mapSection(run) {
   return left;
 }
 function portrait(name, doing) {   // the same pixel person as in the scene, in a small well with a lamp
-  const look = lookFor(name, state.theme), svg = sv("svg", { viewBox: "0 0 12 22", "shape-rendering": "crispEdges", "aria-hidden": "true" });
-  for (const [x, y, w, h, col] of personFrame(look, "idle", 0, false)) svg.append(sv("rect", { x, y: y + 1, width: w, height: h, fill: col }));
+  const look = lookFor(name, state.theme), svg = sv("svg", { viewBox: "0 0 16 29", "shape-rendering": "crispEdges", "aria-hidden": "true" }), cells = personFrame(look, "idle", 0, false, "front");
+  for (const [x, y, w, h] of cells) svg.append(sv("rect", { x: x - 0.4, y: y + 0.6, width: w + 0.8, height: h + 0.8, fill: "#0b0b12", opacity: 0.9 }));
+  for (const [x, y, w, h, col] of cells) svg.append(sv("rect", { x, y: y + 1, width: w, height: h, fill: col }));
   const well = el("div", "portrait");
   well.append(svg, el("span", "lamp " + dotClass(doing)));
   return well;
