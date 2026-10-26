@@ -20,6 +20,7 @@ from rich.live import Live
 from rich.table import Table
 from rich.text import Text
 
+from src.agent import station_layout
 from src.agent.runs import Run
 
 _ENDED = ("done", "failed", "stopped")
@@ -64,9 +65,10 @@ def snapshot(run: Run) -> dict[str, Any]:
     status = state.get("status", "?")
     clyde = f"waiting on you for {len(asks)} request{'s' if len(asks) != 1 else ''}" if asks else _CLYDE.get(status, status)
     usd, unpriced = run.total_spend()
+    spend = {"usd": usd, "unpriced": unpriced}
     return {"id": run.id, "task": state.get("task") or "", "status": status, "started": state.get("started"),
             "clyde": clyde, "crew": crew, "asks": [{k: a.get(k) for k in ("id", "who", "tool", "message", "t")} for a in asks],
-            "spend": {"usd": usd, "unpriced": unpriced}, "events": len(events)}
+            "spend": spend, "events": len(events), "layout": station_layout.build(state, events, asks, crew, clyde, spend)}
 
 
 def _crew(run: Run) -> list[tuple[str, str, str]]:

@@ -31,7 +31,7 @@ from src.providers.types import Conversation, Message
 from src.security.git_safe import git_cmd, git_env
 from src.tool_system.context import ToolContext
 from src.tool_system.permissions import ToolPermissionContext
-from src.tool_system.tools.agent import run_agent
+from src.tool_system.tools.agent import offered_tools, run_agent
 
 _PATCH_CHARS = 20_000      # of one worker's patch shown to the advisor
 _SUMMARY_CHARS = 6_000     # of one worker's final answer shown to the advisor and the master
@@ -270,6 +270,21 @@ def _work(run: Run, name: str, role: RoleAssignment, provider: Any, prompt: str,
     return out
 
 
+def _record_tools(run: Run, plan: OrchestrationPlan, names: list[str], registry: Any, parent: ToolContext) -> None:
+    """Record what each member was given to work with, so what the station shows as a capability is on record: a native
+    worker the tools its loop is offered, a CLI worker its adapter's list, and a master or advisor model call none."""
+    def given(role: RoleAssignment, advisor: bool) -> list[str]:
+        if role.harness.kind == "cli":
+            return cli_workers.granted_tools(role.provider_name, advisor)
+        return [] if advisor else offered_tools(registry, AgentType(GENERAL, "orchestrated worker"), parent.permission_rules)
+
+    run.event("master", "tools", tools=[])
+    if plan.advisor:
+        run.event("advisor", "tools", tools=given(plan.advisor, True))
+    for name, role in zip(names, plan.workers):
+        run.event(name, "tools", tools=given(role, False))
+
+
 def orchestrate(plan: OrchestrationPlan, spec: str, *, workspace: Path, parent: ToolContext, registry: Any,
                 providers: dict[str, Any], on_approval: Callable[[dict[str, Any]], bool] | None = None,
                 cancel: threading.Event | None = None, on_start: Callable[[Run], None] | None = None) -> Outcome | str:
@@ -286,6 +301,7 @@ def orchestrate(plan: OrchestrationPlan, spec: str, *, workspace: Path, parent: 
     run = Run.create(plan.task, {"master": plan.master.ref, "advisor": plan.advisor.ref if plan.advisor else None,
                                  "workers": [{"name": n, "model": w.ref} for n, w in zip(names, plan.workers)], "kinds": kinds})
     run.update(spec=spec, repo=str(root), workspaces={})
+    _record_tools(run, plan, names, registry, parent)
     if on_start:
         on_start(run)   # e.g. open the tmux panes: the run and its team are already recorded
 

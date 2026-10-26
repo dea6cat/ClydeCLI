@@ -93,6 +93,10 @@ class EndToEnd(unittest.TestCase):
             self.assertIn((who, "started"), kinds)
             self.assertIn((who, "finished"), kinds)
             self.assertIn((who, "constraint"), kinds)   # the rule a native worker really runs under is on record
+        tools = {e["who"]: e["tools"] for e in run.events() if e["kind"] == "tools"}
+        self.assertEqual((tools["master"], tools["advisor"]), ([], []))   # a model call with no tools
+        self.assertTrue({"Read", "Write", "Edit", "Bash", "Grep"} <= set(tools["worker-1"]))
+        self.assertTrue(not {"Agent", "TeamCreate", "TeamDelete"} & set(tools["worker-1"]))   # a worker can't start agents of its own
         self.assertEqual(run.state()["roles"]["kinds"], {"master": "provider", "advisor": "provider", "worker-1": "provider", "worker-2": "provider"})
         self.assertEqual({r["who"] for r in run.ledger()}, {"master", "advisor", "worker-1", "worker-2"})
         out = land(run, approve=True)
@@ -210,7 +214,7 @@ class EndToEnd(unittest.TestCase):
 
         outcome = orchestrate(plan, "s", workspace=self.repo, parent=ToolContext(workspace_root=self.repo),
                               registry=build_default_registry(), providers=providers, on_start=on_start)
-        self.assertEqual(seen, [("worker-1", ["created"], 0)])
+        self.assertEqual(seen, [("worker-1", ["created", "tools", "tools"], 0)])   # the grants are on record before anything runs
         land(outcome.run, approve=False)
 
     def test_a_worker_that_fails_is_reported_and_the_others_still_finish(self):
