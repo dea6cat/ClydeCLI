@@ -25,6 +25,7 @@ from ..startup.setup import run_setup
 from .engine import CommandContext, CommandResult, LocalCommandResult
 from .registry import CommandRegistry, get_command_registry, list_commands
 from .types import Command, CommandType, CompactionResult, LocalCommand, PromptCommand
+from ..agent import briefing
 
 
 # Official Claude Code /init prompts (Simplified)
@@ -753,6 +754,211 @@ def map_command_call(args: str, context: CommandContext) -> LocalCommandResult:
         return LocalCommandResult(type="text", value=str(e))
 
 
+def brief_command_call(args: str, context: CommandContext) -> LocalCommandResult:
+    """Handle /brief - interview the user to turn a vague request into a complete spec.
+
+    Usage:
+        /brief <request>          Start a new briefing session
+        /brief continue           Continue an existing briefing (answer the pending question)
+        /brief spec                 Show the completed spec
+        /brief clear                Clear the current briefing state
+    """
+    from ..agent import briefing
+    from ..config import clyde_home
+
+    provider = context.provider
+    model = context.model
+    if provider is None or model is None:
+        return LocalCommandResult(type="text", value="Error: /brief needs a model. Set one with /model first.")
+
+    word, _, rest = args.strip().partition(" ")
+    word = word.strip().lower()
+    rest = rest.strip()
+
+    if word == "clear":
+        briefing.clear_state()
+        return LocalCommandResult(type="text", value="Briefing cleared. Start a new one with /brief <request>.")
+
+    if word == "spec":
+        state = briefing.load_state()
+        if state is None or not state.complete or not state.spec:
+            return LocalCommandResult(
+                type="text",
+                value="No completed spec found. Run /brief <request> to start a briefing.",
+            )
+        return LocalCommandResult(type="text", value=state.spec)
+
+    # Load existing state or start a new one
+    state = briefing.load_state()
+    if word == "continue":
+        if state is None or state.complete:
+            return LocalCommandResult(
+                type="text",
+                value="No active briefing to continue. Start one with /brief <request>.",
+            )
+    else:
+        # New briefing: word + rest is the initial request
+        initial_request = (word + " " + rest).strip() if word else rest
+        if not initial_request:
+            return LocalCommandResult(
+                type="text",
+                value="Usage: /brief <request> | continue | spec | clear",
+            )
+        state = briefing.start_briefing(initial_request)
+
+    # Ask questions until complete or user answers one question per invocation
+    if state.complete and state.spec:
+        return LocalCommandResult(type="text", value=state.spec)
+
+    # Ask the next question
+    from src.agent.conversation import Conversation
+
+    conversation = Conversation()
+    question, state = briefing.ask_next_question(provider, model, conversation, state)
+
+    if briefing._is_ready(question) or state.complete:
+        # Spec is ready
+        briefing.save_state(state)
+        return LocalCommandResult(type="text", value=state.spec or "")
+
+    # Print the question and read the answer
+    print(f"\n[bold]{question}[/bold]")
+    answer = input("Answer > ").strip()
+    if not answer:
+        return LocalCommandResult(type="text", value="No answer given. Briefing paused. Run /brief continue to resume.")
+
+    state = briefing.record_answer(state, answer)
+    briefing.save_state(state)
+
+    # Check if we should ask another question immediately or wait for next invocation
+    # For now, ask one question per invocation to keep it interactive
+    return LocalCommandResult(
+        type="text",
+        value=f"Question recorded. Run /brief continue to answer the next question.",
+    )
+
+
+def harness_command_call(args: str, context: CommandContext) -> LocalCommandResult:
+    """Handle /harness - list discovered agent harnesses, CLI tools, MCP servers, and local models."""
+    from ..agent.harness import discover_all, format_harness_table
+
+    word, _, rest = args.strip().partition(" ")
+    word = word.strip().lower()
+
+    if word == "list" or not word:
+        harnesses = discover_all()
+        return LocalCommandResult(type="text", value=format_harness_table(harnesses))
+
+    # Show details for a specific harness
+    harnesses = discover_all()
+    from ..agent.harness import harness_by_name
+    h = harness_by_name(harnesses, rest)
+    if h is None:
+        return LocalCommandResult(
+            type="text",
+            value=f"Harness '{rest}' not found. Run /harness list to see available harnesses.",
+        )
+    models_str = ", ".join(m.model_id for m in h.models) or "none"
+    return LocalCommandResult(
+        type="text",
+        value=(
+            f"# {h.name}\n"
+            f"Kind: {h.kind}\n"
+            f"Description: {h.description}\n"
+            f"Models: {models_str}\n"
+            f"{f'Binary: {h.binary}' if h.binary else ''}\n"
+            f"{f'Config: {h.config_path}' if h.config_path else ''}"
+        ),
+    )
+
+
+def orchestrate_command_call(args: str, context: CommandContext) -> LocalCommandResult:
+    """Handle /orchestrate - master/advisor/worker orchestration over discovered harnesses."""
+    import asyncio
+
+    from ..agent import briefing
+    from ..agent.harness import discover_all, harness_by_name, select_models_for_harness
+    from ..agent.orchestration import build_plan, format_plan, orchestrate, OrchestrationPlan
+
+    word, _, rest = args.strip().partition(" ")
+    word = word.strip().lower()
+
+    if word == "plan":
+        # /orchestrate plan <master> <master_model> <advisor> <advisor_model> <worker1> <worker1_model> ...
+        parts = rest.split()
+        if len(parts) < 2:
+            return LocalCommandResult(
+                type="text",
+                value="Usage: /orchestrate plan <master> [master_model] <advisor> [advisor_model] <worker1> [worker1_model] ...",
+            )
+        master_name = parts[0]
+        master_model = parts[1] if len(parts) > 1 else None
+        advisor_name = parts[2] if len(parts) > 2 else None
+        advisor_model = parts[3] if len(parts) > 3 else None
+        worker_pairs = []
+        i = 4
+        while i < len(parts):
+            w_name = parts[i]
+            w_model = parts[i + 1] if i + 1 < len(parts) else None
+            worker_pairs.append((w_name, w_model))
+            i += 2 if i + 1 < len(parts) else 1
+
+        state = briefing.load_state()
+        plan = build_plan(
+            task="",
+            master_name=master_name,
+            master_model=master_model,
+            advisor_name=advisor_name,
+            advisor_model=advisor_model,
+            worker_pairs=worker_pairs,
+            briefing_state=state,
+        )
+        if isinstance(plan, str):
+            return LocalCommandResult(type="text", value=plan)
+        return LocalCommandResult(type="text", value=format_plan(plan))
+
+    if word == "run":
+        # /orchestrate run <task> --master <name> <model> --advisor <name> <model> --worker <name> <model> ...
+        # Simple version: use existing plan state or parse inline
+        # For now, require a plan to exist first
+        state = briefing.load_state()
+        # Find the most recent plan - stored in orchestration state
+        from ..agent.harness import discover_all
+        harnesses = discover_all()
+        return LocalCommandResult(
+            type="text",
+            value=(
+                "Orchestration run requires a plan first. Use:\n"
+                "  /orchestrate plan <master> [<model>] [<advisor> [<model>]] <worker1> [<model1>] ...\n"
+                "Then run the orchestration via the /orchestrate command with a task."
+            ),
+        )
+
+    # /orchestrate <task> - start briefing then orchestrate
+    if not rest:
+        return LocalCommandResult(
+            type="text",
+            value=(
+                "Usage:\n"
+                "  /orchestrate <task>                    Start briefing for a task\n"
+                "  /orchestrate plan <master> [<model>] [<advisor> [<model>]] <worker1> [<model1>] ...\n"
+                "  /harness list                          See available harnesses and models\n"
+            ),
+        )
+
+    # Start briefing for this task
+    state = briefing.start_briefing(rest)
+    briefing.save_state(state)
+    return LocalCommandResult(
+        type="text",
+        value=(
+            f"Starting briefing for: {rest}\n"
+            f"Run /brief continue to answer Clyde's clarifying questions.\n"
+            f"Once the spec is complete, use /orchestrate plan to set up master/advisor/worker roles.\n"
+        ),
+    )
+
+
 # Command definitions
 HELP_COMMAND = LocalCommand(
     name="help",
@@ -832,6 +1038,27 @@ MAP_COMMAND = LocalCommand(
     supports_non_interactive=True,
 )
 
+BRIEF_COMMAND = LocalCommand(
+    name="brief",
+    description="Interview the user to turn a vague request into a complete spec before anything is built",
+    argument_hint="<request> | continue | spec | clear",
+    supports_non_interactive=True,
+)
+
+HARNESS_COMMAND = LocalCommand(
+    name="harness",
+    description="List discovered agent harnesses, CLI tools, MCP servers, and local models",
+    argument_hint="list | <name>",
+    supports_non_interactive=True,
+)
+
+ORCHESTRATE_COMMAND = LocalCommand(
+    name="orchestrate",
+    description="Run master/advisor/worker orchestration over discovered harnesses",
+    argument_hint="<task> | plan <master> <advisor> <workers> | run",
+    supports_non_interactive=True,
+)
+
 INIT_COMMAND = PromptCommand(
     name="init",
     description="Initialize new CLYDE.md file(s) and optional skills/hooks with codebase documentation",
@@ -901,6 +1128,12 @@ def execute_command_sync(cmd_name: str, args: str, context: CommandContext) -> t
             result = check_command_call(args, context)
         elif cmd is MAP_COMMAND:
             result = map_command_call(args, context)
+        elif cmd is BRIEF_COMMAND:
+            result = brief_command_call(args, context)
+        elif cmd is HARNESS_COMMAND:
+            result = harness_command_call(args, context)
+        elif cmd is ORCHESTRATE_COMMAND:
+            result = orchestrate_command_call(args, context)
         else:
             return False, None, f"Command not implemented for sync execution: {cmd_name}"
 
@@ -921,6 +1154,9 @@ DOCTOR_COMMAND.set_call(doctor_command_call)
 PROXY_COMMAND.set_call(proxy_command_call)
 CHECK_COMMAND.set_call(check_command_call)
 MAP_COMMAND.set_call(map_command_call)
+BRIEF_COMMAND.set_call(brief_command_call)
+HARNESS_COMMAND.set_call(harness_command_call)
+ORCHESTRATE_COMMAND.set_call(orchestrate_command_call)
 
 
 def get_builtin_commands() -> list[Command]:
@@ -937,6 +1173,9 @@ def get_builtin_commands() -> list[Command]:
         PROXY_COMMAND,
         CHECK_COMMAND,
         MAP_COMMAND,
+        BRIEF_COMMAND,
+        HARNESS_COMMAND,
+        ORCHESTRATE_COMMAND,
         INIT_COMMAND,
         REVIEW_COMMAND,
     ]

@@ -920,6 +920,8 @@ class ClydeREPL:
             conversation=self.session.conversation,
             cost_tracker=self.cost_tracker,
             history=self.history_log,
+            provider=self.provider,
+            model=self.model,
         )
 
         # Merge new commands with built-in list for completion
