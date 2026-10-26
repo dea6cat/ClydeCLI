@@ -100,23 +100,21 @@ class ScanResult:
 
 # File extensions to scan
 CODE_EXTENSIONS = {
-    ".py", ".js", ".ts", ".sh", ".bash", ".zsh", ".ps1", ".rb",
-    ".go", ".java", ".c", ".cpp", ".php", ".yaml", ".yml", ".json",
+    ".py", ".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx", ".sh", ".bash", ".zsh", ".ps1", ".bat", ".cmd",
+    ".rb", ".pl", ".lua", ".go", ".java", ".c", ".cpp", ".php", ".yaml", ".yml", ".json",
     ".toml", ".md", ".txt", "",  # "" for files without extension
 }
 
-# Files to skip
-SKIP_FILES = {
-    "__pycache__", ".pyc", ".pyo", ".git", ".svn", ".hg",
-    "node_modules", "vendor", "venv", ".venv", "dist", "build",
-}
+# Folders to skip, by name, below the scanned folder: SkillSpector's _SKIP_DIRS. Matched against the path's
+# parts relative to the skill, never its full path: a skill under ~/…/build/ or named "distill" is still read.
+SKIP_DIRS = frozenset({".git", "__pycache__", "node_modules", ".venv", "venv", ".tox", ".pytest_cache"})
 
 
-def should_scan_file(path: Path) -> bool:
-    """Check if a file should be scanned based on its extension."""
-    if any(skip in str(path) for skip in SKIP_FILES):
+def should_scan_file(path: Path, root: Path) -> bool:
+    """Check if a file should be scanned: a code or text extension, outside a skipped folder under `root`."""
+    if any(part in SKIP_DIRS for part in path.relative_to(root).parts[:-1]):
         return False
-    return path.suffix.lower() in CODE_EXTENSIONS or path.suffix == ""
+    return path.suffix.lower() in CODE_EXTENSIONS
 
 
 def check_whitespace_padding(content: str, file_path: str) -> list[Finding]:
@@ -196,19 +194,17 @@ def check_ast_python(content: str, file_path: str) -> list[Finding]:
         return findings
 
     for node in ast.walk(tree):
-        # AST1: exec()
-        if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call):
-            if isinstance(node.value.func, ast.Name):
-                if node.value.func.id in DANGEROUS_BUILTINS:
-                    findings.append(Finding(
-                        rule_id="AST1" if node.value.func.id == "exec" else "AST2",
-                        severity="CRITICAL",
-                        category="Tool Misuse",
-                        message=f"Found dangerous call to {node.value.func.id}()",
-                        file_path=file_path,
-                        line_number=node.lineno,
-                        confidence=0.95,
-                    ))
+        # AST1/AST2: exec(), eval() and friends, wherever the call sits (`x = eval(input())` too)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in DANGEROUS_BUILTINS:
+            findings.append(Finding(
+                rule_id="AST1" if node.func.id == "exec" else "AST2",
+                severity="CRITICAL",
+                category="Tool Misuse",
+                message=f"Found dangerous call to {node.func.id}()",
+                file_path=file_path,
+                line_number=node.lineno,
+                confidence=0.95,
+            ))
 
         # AST4: subprocess calls
         if isinstance(node, ast.Call):
@@ -272,7 +268,7 @@ def scan_skill_folder(skill_path: Path) -> ScanResult:
 
     # Scan all files in the skill folder
     for file_path in skill_path.rglob("*"):
-        if file_path.is_file() and should_scan_file(file_path):
+        if file_path.is_file() and should_scan_file(file_path, skill_path):
             all_findings.extend(scan_file(file_path))
 
     # Calculate score and recommendation
