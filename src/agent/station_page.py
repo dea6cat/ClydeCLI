@@ -546,6 +546,15 @@ function drawFloors(layer, defs, p, pal, theme, uid) {
     // scuffs and stains: a few darker patches, always in the same places
     for (let s = 0; s < r.w * r.d / 18; s++) { const c = P(r.x + hash(ri, s) * r.w, r.y + hash(ri + 5, s) * r.d, 0); layer.append(sv("ellipse", { cx: c[0], cy: c[1], rx: 8 + hash(ri, s + 9) * 14, ry: 3 + hash(ri, s + 3) * 5, fill: "#000", opacity: 0.1 })); }
   });
+  for (const r of rooms) {   // a runner down each doorway's aisle, and a threshold plate in the door
+    const bay = r.kind === "bay";
+    if (!bay && r.kind !== "outbox") continue;
+    const run = bay ? [r.x + p.BW / 2 - 1.4, r.y + 0.4, 2.8, 8.4] : [r.x + 0.4, r.y + 2.1, 4.2, 1.8], door = bay ? [r.x + p.BW / 2 - 1, r.y, 2, 0.35] : [r.x, r.y + 2, 0.35, 2];
+    const box4 = (a, k) => [P(a[0] + k, a[1] + k, 0), P(a[0] + a[2] - k, a[1] + k, 0), P(a[0] + a[2] - k, a[1] + a[3] - k, 0), P(a[0] + k, a[1] + a[3] - k, 0)];
+    poly(layer, box4(run, 0), pal.rug1, { opacity: 0.85 });
+    poly(layer, box4(run, 0.18), "none", { stroke: pal.rug2, "stroke-width": 1.6, opacity: 0.7 });
+    poly(layer, box4(door, 0), pal.metal, { stroke: shade(pal.metal, -40), "stroke-width": 1 });
+  }
   const deck = p.rooms.deck;   // the deck's rug under the planning table
   const rug = [deck.x + 9, deck.y + 3.6, 8.4, 6.2];
   poly(layer, [P(rug[0], rug[1], 0), P(rug[0] + rug[2], rug[1], 0), P(rug[0] + rug[2], rug[1] + rug[3], 0), P(rug[0], rug[1] + rug[3], 0)], pal.rug1);
@@ -653,6 +662,7 @@ function drawWall(layer, defs, r, side, pal, theme, uid, gap) {
   if (gap) {   // the door frame
     for (const u of [gap[0], gap[1] - 0.14]) wq(layer, side, r, u, 0, u + 0.14, 50, pal.trim);
     wq(layer, side, r, gap[0], 44, gap[1], 52, shade(pal.trim, -10));
+    wc(layer, side, r, (gap[0] + gap[1]) / 2, 48, 2.6, theme === "cyber" ? pal.neonB : pal.lamp, { class: "flick amb" });   // the lamp over the door
   }
 }
 function drawWalls(layer, defs, p, pal, theme, uid) {
@@ -701,10 +711,15 @@ function chair(g, x, y, pal, theme) {   // an office chair: a five-spoke base, a
   g.append(sv("line", { x1: c[0], y1: c[1] - 2, x2: s[0], y2: s[1], stroke: "#222", "stroke-width": 2.4 }), sv("ellipse", { cx: s[0], cy: s[1], rx: 9, ry: 4.6, fill: tone }), sv("ellipse", { cx: s[0], cy: s[1] - 1.6, rx: 9, ry: 4.4, fill: shade(tone, 14) }),
            sv("path", { d: "M" + (back[0] - 8) + " " + (back[1] + 3) + "Q" + back[0] + " " + (back[1] - 8) + " " + (back[0] + 8) + " " + (back[1] + 3) + "L" + (back[0] + 7) + " " + (back[1] + 11) + "L" + (back[0] - 7) + " " + (back[1] + 11) + "Z", fill: shade(tone, -8), stroke: shade(tone, 30), "stroke-width": 0.8 }));
 }
+function cable(g, x, y, wallY, pal, theme) {   // a lead from a machine to the wall, lying on the floor
+  const a = P(x, y, 0), b = P(x + 0.5, wallY + 0.04, 0), m = [(a[0] + b[0]) / 2 + 7, (a[1] + b[1]) / 2 + 3], d = "M" + a[0].toFixed(1) + " " + a[1].toFixed(1) + "Q" + m[0].toFixed(1) + " " + m[1].toFixed(1) + " " + b[0].toFixed(1) + " " + b[1].toFixed(1);
+  g.append(sv("path", { d, fill: "none", stroke: "#000", "stroke-width": 3.6, opacity: 0.45 }), sv("path", { d, fill: "none", stroke: theme === "cyber" ? pal.neonA : "#2b2b30", "stroke-width": 2 }), sv("rect", { x: b[0] - 2, y: b[1] - 3, width: 4, height: 5, fill: pal.metal }));
+}
 function furnitureGroup(f, pal, theme, now, defs, uid) {
   const g = sv("g", {}), [x, y, w, d] = f.box, o = f.obj, wood = pal.wood, dark = pal.dark, metal = pal.metal;
   const fresh = o && o.last && now - o.last < 4, busy = fresh ? "blink" : "", id = "fg" + uid + f.family + Math.round(x * 3 + y * 5);
   shadow(g, x, y, w, d);
+  if (f.room && y - f.room.y < 2.6 && f.family !== "crate") cable(g, x + w * 0.5, y, f.room.y, pal, theme);
   switch (f.family) {
     case "read": {   // filing cabinet / chart rack / data terminal
       const body = theme === "city" ? pal.steel : theme === "steam" ? shade(metal, -10) : dark;
@@ -723,6 +738,8 @@ function furnitureGroup(f, pal, theme, now, defs, uid) {
         if (fresh) glow(g, defs, x + w * 0.45, y + d * 0.35, 25, 26, pal.screen, id + "s", "flick amb"); }
       else { box(g, x + w * 0.3, y + d * 0.18, 1.1, 0.14, 21, 16, "#05050f"); box(g, x + w * 0.36, y + d * 0.2, 0.3, 0.3, 17, 4, pal.metal, true); screenFace(g, x + w * 0.3 + 0.08, y + d * 0.18 + 0.14, 0.94, 23, 12, pal, f.family === "desk" ? 0 : 2, fresh, Math.round(x * 3 + y)); box(g, x + w * 0.35, y + d * 0.58, 1, 0.34, 17, 1.4, pal.neonB, true);
         if (fresh) glow(g, defs, x + w * 0.5, y + d * 0.3, 24, 30, pal.screen, id + "c", "flick amb"); }
+      box(g, x + w * 0.72, y + d * 0.18, 0.7, 0.5, 17, 1.6, pal.paper, true); box(g, x + w * 0.74, y + d * 0.22, 0.7, 0.5, 18.6, 1.4, shade(pal.paper, -10), true);   // a stack of paper
+      box(g, x + 0.3, y + d * 0.6, 0.32, 0.32, 17, 3.2, theme === "city" ? "#d8d0c0" : shade(pal.metal, 10), true);   // a mug
       if (f.family === "desk") { chair(g, x + w * 0.45, y + d + 0.75, pal, theme);
         if (f.laneState) { const on = f.laneState === "lit"; box(g, x + w - 1.1, y + d - 0.9, 0.8, 0.6, 17, 2, on ? pal.accent : shade(pal.dark, 20)); if (on) glow(g, defs, x + w - 0.7, y + d - 0.6, 22, 30, pal.accent, id + "tray", "flick amb"); } }   // the handoff tray: lit once that handoff was recorded
       break; }
