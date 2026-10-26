@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import http.client
 import json
+import re
 import tempfile
 import threading
 import time
@@ -45,7 +46,7 @@ class StationWebCase(unittest.TestCase):
             headers["Content-Type"] = ctype
         conn.request(method, path, body=data, headers=headers)
         response = conn.getresponse()
-        text = response.read().decode()
+        text = response.read().decode(errors="replace")   # a picture is bytes, not text
         out = response.status, dict(response.getheaders()), text
         conn.close()
         return out
@@ -108,6 +109,27 @@ class TestAuth(StationWebCase):
     def test_the_page_builds_its_view_with_text_nodes_only(self):
         self.assertNotIn("innerHTML", station_web.PAGE)   # event text carries paths and model output: never parsed as markup
         self.assertNotIn("eval(", station_web.PAGE)
+
+
+class TestArt(StationWebCase):
+    def test_a_picture_is_served_only_to_the_browser_that_opened_the_link_and_only_from_the_art_folder(self):
+        cookie = self.login()
+        status, headers, _ = self.request("GET", "/assets/desk.png", cookie=cookie)
+        self.assertEqual((status, headers["Content-Type"]), (200, "image/png"))
+        self.assertEqual(self.request("GET", "/assets/desk.png")[0], 403)   # no cookie, no picture
+        for bad in ("/assets/nothing.png", "/assets/../station_page.py", "/assets/%2e%2e/station_page.py", "/assets/desk.png/../../station_web.py", "/assets/LICENSE-cozy-space-station.txt"):
+            self.assertEqual(self.request("GET", bad, cookie=cookie)[0], 404, bad)
+
+    def test_every_picture_the_page_asks_for_exists_and_its_size_is_known(self):
+        names = set(re.findall(r'(?:fit|sprite)\("([a-z\-]+)"', station_web.PAGE))
+        for line in station_web.PAGE.splitlines():
+            if line.startswith(("const FAMILY_SPRITE", "const PLANTS", "const CREW_FILE")):
+                names |= set(re.findall(r'"([a-z]+(?:-[a-z]+)+)"', line))
+        self.assertGreater(len(names), 10)
+        for name in names:
+            self.assertTrue((station_web.ART / f"{name}.png").is_file(), name)
+        self.assertEqual(station_web.PAGE.count("__SPRITES__"), 0)   # the server filled the sizes in
+        self.assertTrue((station_web.ART / "LICENSE-cozy-space-station.txt").is_file())   # the licence travels with the art
 
 
 class TestState(StationWebCase):

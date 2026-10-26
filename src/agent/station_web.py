@@ -16,12 +16,14 @@ from __future__ import annotations
 import hmac
 import http.cookies
 import json
+import re
 import secrets
 import sys
 import threading
 import time
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
@@ -33,6 +35,8 @@ DEFAULT_PORT = 8765   # not 8080: that one is Bonnie's
 MAX_BODY = 64 * 1024
 LONG_POLL_S = 25
 _POLL_STEP_S = 0.4
+ART = Path(__file__).parent / "station_art"
+_ART_PATH = re.compile(r"/assets/([a-z0-9\-]+\.png)")   # the only paths that are served, so no `..` can reach elsewhere
 _PAGE_EVENTS = 500   # at most this many rows in one /api/events answer
 _CSP = "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; form-action 'none'; frame-ancestors 'none'"
 
@@ -66,7 +70,8 @@ def make_server(host: str = "127.0.0.1", port: int = 0) -> ThreadingHTTPServer:
             self.send_response(status)
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(body)))
-            self.send_header("Cache-Control", "no-store")
+            if "Cache-Control" not in (extra or {}):
+                self.send_header("Cache-Control", "no-store")
             self.send_header("Content-Security-Policy", _CSP)
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Referrer-Policy", "no-referrer")
@@ -128,10 +133,26 @@ def make_server(host: str = "127.0.0.1", port: int = 0) -> ThreadingHTTPServer:
             query = parse_qs(url.query)
             if url.path == "/":
                 self._page(query.get("k", [""])[0])
+            elif url.path.startswith("/assets/"):
+                self._asset(url.path)
             elif not url.path.startswith("/api/"):
                 self._json(404, {"error": "not found"})
             elif self._guard(api=True):
                 self._api(url.path, query)
+
+        def _asset(self, path: str) -> None:
+            """A picture of the station, served only to the browser that opened the link, only from the station_art folder."""
+            if not self._guard(api=False):
+                return
+            if not self._has_session():
+                self._json(403, {"error": "open the link `clyde station web` printed"})
+                return
+            match = _ART_PATH.fullmatch(path)
+            file = ART / match[1] if match else None
+            if file is None or not file.is_file():
+                self._json(404, {"error": "not found"})
+                return
+            self._send(200, file.read_bytes(), "image/png", {"Cache-Control": "private, max-age=3600"})
 
         def _page(self, key: str) -> None:
             if not self._guard(api=False):

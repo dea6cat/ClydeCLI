@@ -1,6 +1,6 @@
-"""The station's page: one HTML string with its CSS and JS inline (no outside scripts, fonts or images: it works offline).
+"""The station's page: one HTML string with its CSS and JS inline, and the pictures it shows from station_art/ (served from this machine: it works offline).
 
-Three views of the same recorded state: the station (an isometric pixel-art scene of rooms, furniture and crew, drawn in code),
+Three views of the same recorded state: the station (a top-down scene of rooms, furniture and crew: floors and walls drawn in code, furniture and crew from the Cozy Space Station sprites),
 the member cards with their approvals, and the event feed.
 
 The scene shows only what the run recorded. Rooms, furniture and hallways come from station_layout.py. Every movement of the
@@ -13,6 +13,10 @@ Everything else that moves (clouds, rain, searchlights, flickering lamps) is sce
 Everything is set with textContent and attributes, never parsed as markup: event text carries paths, commands and model output.
 """
 from __future__ import annotations
+
+import json
+import struct
+from pathlib import Path
 
 PAGE = r"""<!doctype html>
 <html lang="en">
@@ -116,7 +120,7 @@ button.act:focus-visible, .card:focus-visible, select:focus-visible { outline: 2
 .cards-gone { display: none; }
 /* The station. The scene is SVG built in code; a theme sets the look and the words (THEMES, below). */
 .map { overflow-x: auto; margin: 0 0 10px; border-radius: 10px; border: 1px solid var(--line); background: #000; }   /* a phone scrolls the scene, not the page */
-.map svg { display: block; min-width: 640px; width: 100%; height: auto; touch-action: none; cursor: grab; }
+.map svg { display: block; min-width: 640px; width: 100%; height: auto; max-height: calc(100vh - 150px); touch-action: none; cursor: grab; }   /* the whole station fits the window; letterboxing shows the map's own black */
 .map svg:active { cursor: grabbing; }
 .map text { font-family: ui-monospace, Menlo, Consolas, monospace; paint-order: stroke; stroke-linejoin: round; }
 .map .name { font-size: 11.5px; font-weight: 700; text-anchor: middle; }
@@ -139,6 +143,7 @@ button.act:focus-visible, .card:focus-visible, select:focus-visible { outline: 2
 @keyframes mote { from { transform: translate(0, 0); } to { transform: translate(40px, -60px); } }
 @keyframes bars { 0%, 100% { transform: scaleX(1); } 50% { transform: scaleX(.45); } }
 @keyframes glint { 0%, 70% { opacity: 0; } 80% { opacity: .9; } 100% { opacity: 0; } }
+@keyframes drive { from { transform: translateX(-120px); } to { transform: translateX(120px); } }
 @keyframes marquee { from { transform: translateX(0); } to { transform: translateX(-40px); } }
 .amb { transform-box: fill-box; }
 .blink { animation: blink 1.4s steps(1) infinite; } .blink2 { animation: blink 1.1s steps(1) infinite .3s; } .blink3 { animation: blink 1.9s steps(1) infinite .7s; }
@@ -148,12 +153,13 @@ button.act:focus-visible, .card:focus-visible, select:focus-visible { outline: 2
 .rain { animation: rain 1.1s linear infinite; }
 .puff { animation: puff 3s ease-out infinite; transform-origin: center; transform-box: fill-box; }
 .sweep { animation: sweep 9s ease-in-out infinite alternate; }
+.drive { animation: drive 24s linear infinite alternate; }
 .twinkle { animation: twinkle 3s ease-in-out infinite; }
 .mote { animation: mote 14s linear infinite; }
 .bars { animation: bars 2.2s ease-in-out infinite; transform-origin: left center; transform-box: fill-box; }
 .glint { animation: glint 5s linear infinite; }
 @media (prefers-reduced-motion: reduce) {
-  .portrait .lamp, .dot, .map .lane.waiting, .amb, .blink, .blink2, .blink3, .flick, .flick2, .drift, .drift2, .spin, .spinr, .rain, .puff, .sweep, .twinkle, .mote, .bars, .glint { animation: none !important; }
+  .portrait .lamp, .dot, .map .lane.waiting, .amb, .blink, .blink2, .blink3, .flick, .flick2, .drift, .drift2, .spin, .spinr, .rain, .puff, .sweep, .twinkle, .mote, .bars, .glint, .drive { animation: none !important; }
 }
 </style>
 </head>
@@ -320,10 +326,9 @@ function walkerState(trips, home, t) {
 // </motion>
 
 // <geometry>
-// ---- geometry: tile space and the isometric projection ---------------------------------------------------------------
-const TW = 64, TH = 32, WALL = 60, SLAB = 9;
-function iso(x, y) { return [(x - y) * TW / 2, (x + y) * TH / 2]; }
-function P(x, y, z) { const p = iso(x, y); return [p[0], p[1] - (z || 0)]; }
+// ---- geometry: tile space; the station is seen from above, one tile is T px ----------------------------------------------
+const T = 44;
+function pos(x, y) { return [x * T, y * T]; }
 function pts(list) { return list.map((p) => p[0].toFixed(1) + "," + p[1].toFixed(1)).join(" "); }
 function shade(hex, pct) {
   const n = parseInt(hex.slice(1), 16), f = pct / 100;
@@ -397,13 +402,16 @@ function plan(layout) {
 }
 function bounds(p) {
   let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
-  const take = (x, y, z) => { const q = P(x, y, z); x0 = Math.min(x0, q[0]); x1 = Math.max(x1, q[0]); y0 = Math.min(y0, q[1]); y1 = Math.max(y1, q[1]); };
-  for (const r of Object.values(p.rooms)) { take(r.x, r.y, WALL + 40); take(r.x + r.w, r.y, WALL); take(r.x, r.y + r.d, WALL); take(r.x + r.w, r.y + r.d, -SLAB); }
-  return [x0 - 50, y0 - 40, x1 + 50, y1 + 40];
+  for (const r of Object.values(p.rooms)) { x0 = Math.min(x0, r.x); y0 = Math.min(y0, r.y); x1 = Math.max(x1, r.x + r.w); y1 = Math.max(y1, r.y + r.d); }
+  const X0 = x0 * T - 120, Y0 = y0 * T - 110, X1 = x1 * T + 120, Y1 = y1 * T + 110, want = (Y1 - Y0) * 1.8, extra = Math.max(0, (want - (X1 - X0)) / 2);   // wide enough to fill a landscape window with the world around the station
+  return [X0 - extra, Y0, X1 + extra, Y1];
 }
 // </geometry>
 
-// ---- the world outside: a backdrop per theme (scenery only: it says nothing about the run) --------------------------------
+// ---- the station seen from above: a world, floors, walls, then the Cozy Space Station sprites (CC-BY 4.0, Bramble & Byte) for furniture and crew ----
+const SPR = __SPRITES__;   // each sprite's natural size [w, h], read from the files by the server
+const WT = 9;   // wall thickness, px
+const FX = { grain: "", grime: "", soft: "" };
 function gradient(defs, id, stops, attrs) {
   const g = sv(attrs && attrs.r ? "radialGradient" : "linearGradient", attrs || { x1: 0, y1: 0, x2: 0, y2: 1 });
   g.setAttribute("id", id);
@@ -411,553 +419,152 @@ function gradient(defs, id, stops, attrs) {
   defs.append(g);
   return "url(#" + id + ")";
 }
-function skyline(layer, B, base, hmin, hmax, color, seed, pal, windows, neon) {
-  const [x0, , x1] = B;
-  let x = x0 - 20, i = 0;
-  while (x < x1 + 20) {
-    const w = 38 + hash(seed, i) * 60, h = hmin + hash(seed + 7, i) * (hmax - hmin);
-    layer.append(sv("rect", { x: x, y: base - h, width: w, height: h + 140, fill: color }));
-    if (hash(seed + 3, i) > 0.55) { layer.append(sv("rect", { x: x + w * 0.2, y: base - h - 22, width: w * 0.6, height: 22, fill: color }), sv("rect", { x: x + w * 0.42, y: base - h - 52, width: 3, height: 30, fill: color })); }
-    if (hash(seed + 5, i) > 0.7) layer.append(sv("circle", { cx: x + w * 0.43 + 1.5, cy: base - h - 52, r: 2.5, fill: "#ff4d4d", class: "blink amb" }));
-    if (windows) for (let wy = base - h + 10; wy < base - 6; wy += 13) for (let wx = x + 6; wx < x + w - 8; wx += 11)
-      if (hash(Math.floor(wx), Math.floor(wy)) > 0.62) layer.append(sv("rect", { x: wx, y: wy, width: 5, height: 7, fill: neon ? (hash(wx, wy + 1) > 0.5 ? pal.neonA : pal.neonB) : pal.win, opacity: 0.55 + hash(wx + 1, wy) * 0.4 }));
-    x += w + 2 + hash(seed + 9, i) * 6;
-    i++;
-  }
-}
-function backdrop(svg, defs, B, pal, theme, uid) {
-  const [x0, y0, x1, y1] = B, w = x1 - x0, h = y1 - y0, layer = sv("g", { "aria-hidden": "true" });
-  layer.append(sv("rect", { x: x0, y: y0, width: w, height: h, fill: gradient(defs, "sky" + uid, [[0, pal.sky1], [0.7, pal.sky2], [1, shade(pal.sky2, -30)]]) }));
-  const base = y0 + h * 0.66;
-  if (theme === "city") {
-    for (let i = 0; i < 70; i++) layer.append(sv("circle", { cx: x0 + hash(1, i) * w, cy: y0 + hash(2, i) * h * 0.5, r: 0.6 + hash(3, i) * 1.4, fill: "#fff", opacity: 0.8, class: "twinkle amb", style: "animation-delay:" + (hash(4, i) * 3).toFixed(1) + "s" }));
-    layer.append(sv("circle", { cx: x0 + w * 0.82, cy: y0 + h * 0.16, r: 58, fill: gradient(defs, "moonhalo" + uid, [[0, "#fff6d8", 0.5], [1, "#fff6d8", 0]], { r: "50%" }) }), sv("circle", { cx: x0 + w * 0.82, cy: y0 + h * 0.16, r: 26, fill: "#fff1c4" }), sv("circle", { cx: x0 + w * 0.82 - 8, cy: y0 + h * 0.16 - 5, r: 5, fill: "#e8dba8", opacity: 0.8 }));
-    for (const [bx, by] of [[x0 + w * 0.12, base], [x0 + w * 0.9, base]]) {
-      const beam = sv("g", { class: "sweep amb", style: "transform-origin:" + bx + "px " + by + "px" });
-      beam.append(sv("polygon", { points: pts([[bx - 8, by], [bx + 8, by], [bx + 70, by - h * 0.7], [bx - 70, by - h * 0.7]]), fill: gradient(defs, "beam" + uid + bx, [[0, "#fff6d8", 0.4], [1, "#fff6d8", 0]]) }));
-      layer.append(beam);
-    }
-    skyline(layer, B, base - 10, 60, 170, shade(pal.bldg, 18), 11, pal, false, false);
-    skyline(layer, B, base + 40, 70, 230, pal.bldg, 23, pal, true, false);
-  } else if (theme === "steam") {
-    layer.append(sv("circle", { cx: x0 + w * 0.2, cy: base - 30, r: 150, fill: gradient(defs, "sunhalo" + uid, [[0, "#ffd9a0", 0.9], [0.4, "#ff9a4a", 0.45], [1, "#ff9a4a", 0]], { r: "50%" }) }), sv("circle", { cx: x0 + w * 0.2, cy: base - 30, r: 46, fill: "#ffe6b8" }));
-    for (let i = 0; i < 6; i++) {
-      const cx = x0 + hash(5, i) * w, cy = y0 + h * (0.12 + hash(6, i) * 0.38), cloud = sv("g", { class: (i % 2 ? "drift" : "drift2") + " amb", style: "animation-delay:-" + (hash(7, i) * 60).toFixed(0) + "s" });
-      for (let k = 0; k < 5; k++) cloud.append(sv("ellipse", { cx: cx + (k - 2) * 34, cy: cy + (k % 2) * 8, rx: 46 + hash(8, i + k) * 20, ry: 16 + hash(9, i + k) * 8, fill: "#ffc58a", opacity: 0.32 }));
-      layer.append(cloud);
-    }
-    for (let i = 0; i < 2; i++) {
-      const ax = x0 + w * (0.3 + i * 0.4), ay = y0 + h * (0.22 + i * 0.12), ship = sv("g", { class: (i ? "drift2" : "drift") + " amb", opacity: 0.85 });
-      ship.append(sv("ellipse", { cx: ax, cy: ay, rx: 70, ry: 20, fill: "#3a2a20" }), sv("ellipse", { cx: ax, cy: ay - 5, rx: 62, ry: 9, fill: "#5a3d28", opacity: 0.6 }), sv("rect", { x: ax - 20, y: ay + 18, width: 40, height: 12, rx: 3, fill: "#2a1d15" }),
-                  sv("polygon", { points: pts([[ax + 62, ay], [ax + 92, ay - 18], [ax + 92, ay + 18]]), fill: "#3a2a20" }), sv("circle", { cx: ax - 70, cy: ay, r: 5, fill: "#c0773a", class: "spin amb" }));
-      layer.append(ship);
-    }
-    for (const [gx, gy, gr, cls] of [[x0 + 20, y0 + h * 0.42, 170, "spin"], [x1 - 10, y0 + h * 0.62, 210, "spinr"], [x0 + w * 0.5, y1 + 40, 190, "spin"]]) {
-      const gear = sv("g", { class: cls + " amb", opacity: 0.55 });
-      const teeth = 14, pointsList = [];
-      for (let t = 0; t < teeth * 2; t++) { const a = t / (teeth * 2) * Math.PI * 2, r = gr * (t % 2 ? 1 : 0.86); pointsList.push([gx + Math.cos(a) * r, gy + Math.sin(a) * r]); }
-      gear.append(sv("polygon", { points: pts(pointsList), fill: "#2a1d15", stroke: "#c0773a", "stroke-width": 3 }), sv("circle", { cx: gx, cy: gy, r: gr * 0.55, fill: "none", stroke: "#c0773a", "stroke-width": 3 }), sv("circle", { cx: gx, cy: gy, r: gr * 0.14, fill: "#c0773a" }));
-      for (let s = 0; s < 6; s++) { const a = s / 6 * Math.PI * 2; gear.append(sv("line", { x1: gx, y1: gy, x2: gx + Math.cos(a) * gr * 0.55, y2: gy + Math.sin(a) * gr * 0.55, stroke: "#c0773a", "stroke-width": 4 })); }
-      layer.append(gear);
-    }
-    skyline(layer, B, base + 30, 30, 90, shade(pal.bldg, -10), 31, pal, true, false);
-  } else {
-    layer.append(sv("circle", { cx: x0 + w * 0.5, cy: base - 70, r: 170, fill: gradient(defs, "neonsun" + uid, [[0, "#ff2bd6"], [1, "#ff9a3d"]], { x1: 0, y1: 0, x2: 0, y2: 1 }) }));
-    for (let s = 0; s < 9; s++) layer.append(sv("rect", { x: x0 + w * 0.5 - 180, y: base - 70 + s * 17 - 20, width: 360, height: 2 + s * 1.5, fill: pal.sky2 }));
-    for (let g = 0; g < 14; g++) layer.append(sv("line", { x1: x0 + w * 0.5 + (g - 7) * 120, y1: base + 60, x2: x0 + w * 0.5 + (g - 7) * 460, y2: y1, stroke: pal.neonA, "stroke-width": 1, opacity: 0.18 }));
-    skyline(layer, B, base - 8, 70, 200, shade(pal.bldg, 14), 41, pal, true, true);
-    skyline(layer, B, base + 50, 80, 260, pal.bldg, 53, pal, true, true);
-    for (const [bx, by, txt, col] of [[x0 + w * 0.1, y0 + h * 0.25, "CLYDE", pal.neonA], [x0 + w * 0.88, y0 + h * 0.36, "24H", pal.neonB], [x0 + w * 0.7, y0 + h * 0.14, "▲ NET", pal.neonA]]) {
-      layer.append(sv("rect", { x: bx - 46, y: by - 18, width: 92, height: 34, rx: 4, fill: "#0b0620", stroke: col, "stroke-width": 2, class: "flick amb" }), sv("text", { x: bx, y: by + 5, class: "sign flick2 amb", fill: col, stroke: "none", style: "font-size:16px" }, txt));
-    }
-    for (let i = 0; i < 90; i++) layer.append(sv("line", { x1: 0, y1: 0, x2: -4, y2: 24, transform: "translate(" + (x0 + hash(61, i) * w).toFixed(0) + " " + (y0 + hash(62, i) * h).toFixed(0) + ")", stroke: "#9fd8ff", "stroke-width": 1, opacity: 0.35, class: "rain amb", style: "animation-delay:-" + (hash(63, i) * 1.1).toFixed(2) + "s" }));
-  }
-  layer.append(sv("rect", { x: x0, y: y1 - 160, width: w, height: 160, fill: gradient(defs, "haze" + uid, [[0, pal.sky2, 0], [1, pal.sky2, 0.55]]) }));   // haze under the station
-  svg.append(layer);
-}
-
-// ---- rooms: floors, walls and what hangs on them -----------------------------------------------------------------------
-function tileLines(r) {   // the grout between tiles, as one path
-  let d = "";
-  for (let i = 0; i <= r.w; i++) { const a = iso(r.x + i, r.y), b = iso(r.x + i, r.y + r.d); d += "M" + a[0].toFixed(1) + " " + a[1].toFixed(1) + "L" + b[0].toFixed(1) + " " + b[1].toFixed(1); }
-  for (let j = 0; j <= r.d; j++) { const a = iso(r.x, r.y + j), b = iso(r.x + r.w, r.y + j); d += "M" + a[0].toFixed(1) + " " + a[1].toFixed(1) + "L" + b[0].toFixed(1) + " " + b[1].toFixed(1); }
-  return d;
-}
-const FX = { shadow: "", grain: "", grime: "" };
-function materials(defs, uid) {   // grain, grime and a soft shadow: filters the browser draws, so no image ships
+function materials(defs, uid) {   // grain, grime and a soft shadow: filters the browser draws
   const make = (id, build) => { const f = sv("filter", { id, x: "-10%", y: "-10%", width: "120%", height: "120%", "color-interpolation-filters": "sRGB" }); build(f); defs.append(f); return "url(#" + id + ")"; };
-  const noise = (freq, oct, seed, a, b) => (f) => f.append(sv("feTurbulence", { type: "fractalNoise", baseFrequency: freq, numOctaves: oct, seed, result: "n" }), sv("feColorMatrix", { in: "n", type: "matrix", values: "0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  " + a + " 0 0 0 " + b, result: "m" }), sv("feComposite", { in: "m", in2: "SourceAlpha", operator: "in" }));   // the noise stays inside the shape it is laid on
+  const noise = (freq, oct, seed, a, b) => (f) => f.append(sv("feTurbulence", { type: "fractalNoise", baseFrequency: freq, numOctaves: oct, seed, result: "n" }), sv("feColorMatrix", { in: "n", type: "matrix", values: "0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  " + a + " 0 0 0 " + b, result: "m" }), sv("feComposite", { in: "m", in2: "SourceAlpha", operator: "in" }));
   FX.grain = make("grain" + uid, noise("0.85", 2, 4, 1.6, -0.55));
-  FX.grime = make("grime" + uid, noise("0.045", 3, 11, 2.4, -1.05));
-  FX.shadow = make("soft" + uid, (f) => f.append(sv("feGaussianBlur", { stdDeviation: 3.2 })));
+  FX.grime = make("grime" + uid, noise("0.03", 3, 11, 2.4, -1.05));
+  FX.soft = make("soft" + uid, (f) => f.append(sv("feGaussianBlur", { stdDeviation: 5 })));
 }
-function slabFaces(layer, r, pal) {   // a floor has thickness: the faces toward the viewer
-  layer.append(sv("polygon", { points: pts([P(r.x, r.y + r.d, 0), P(r.x + r.w, r.y + r.d, 0), P(r.x + r.w, r.y + r.d, -SLAB), P(r.x, r.y + r.d, -SLAB)]), fill: shade(pal.corr, -25) }),
-               sv("polygon", { points: pts([P(r.x + r.w, r.y, 0), P(r.x + r.w, r.y + r.d, 0), P(r.x + r.w, r.y + r.d, -SLAB), P(r.x + r.w, r.y, -SLAB)]), fill: shade(pal.corr, -45) }));
+const TINT = { city: "sepia(0.55) saturate(1.1) brightness(0.96)", steam: "sepia(0.7) saturate(1.3) hue-rotate(-12deg) brightness(0.92)", cyber: "hue-rotate(205deg) saturate(1.25) brightness(0.78) contrast(1.1)" };   // the same sprites, seen in each theme's light
+function sprite(name, x, y, w, h, theme, extra) { return sv("image", { href: "/assets/" + name + ".png", x, y, width: w, height: h, style: "filter:" + TINT[theme], ...(extra || {}) }); }
+function fit(name, bx, by, bw, bh, theme, extra) {   // a sprite as large as fits the box, bottom centre on the box's bottom edge
+  const [w, h] = SPR[name], k = Math.min(bw * 1.25 / w, bh * 1.5 / h);   // a little larger than its box: the art has air around it
+  return sprite(name, bx + bw / 2 - w * k / 2, by + bh - h * k, w * k, h * k, theme, extra);
 }
-function drawFloors(layer, defs, p, pal, theme, uid) {
-  const rooms = Object.values(p.rooms);
-  for (const r of rooms) slabFaces(layer, r, pal);
-  for (const c of p.corridors) slabFaces(layer, c, pal);   // all the thickness first, so a floor always covers the faces inside a junction
-  const corrA = shade(pal.floorA, theme === "cyber" ? 40 : -4), corrB = shade(pal.floorB, theme === "cyber" ? 28 : -14);
-  p.corridors.forEach((c, ci) => {   // walkways: a grating floor, never the colour of the sky behind it
-    const W = Math.max(1, Math.round(c.w)), D = Math.max(1, Math.round(c.d)), buckets = {};
-    for (let i = 0; i < W; i++) for (let j = 0; j < D; j++) {
-      const q = [iso(c.x + i, c.y + j), iso(c.x + i + 1, c.y + j), iso(c.x + i + 1, c.y + j + 1), iso(c.x + i, c.y + j + 1)], k = (i + j) % 2;
-      buckets[k] = (buckets[k] || "") + "M" + q.map((v) => v[0].toFixed(1) + " " + v[1].toFixed(1)).join("L") + "Z";
-    }
-    for (const k in buckets) layer.append(sv("path", { d: buckets[k], fill: k === "0" ? corrA : corrB }));
-    layer.append(sv("path", { d: tileLines({ x: c.x, y: c.y, w: W, d: D }), stroke: pal.grout, "stroke-width": 1, opacity: 0.55, fill: "none" }));
-    const flat = [P(c.x, c.y, 0), P(c.x + c.w, c.y, 0), P(c.x + c.w, c.y + c.d, 0), P(c.x, c.y + c.d, 0)];
-    layer.append(sv("polygon", { points: pts(flat), fill: "#000", filter: FX.grain, opacity: 0.22 }));
-  });
-  for (const [a, b] of p.edges) {   // a rail along each long side, with a light set into it every so often
-    const A = P(a[0], a[1], 0), B = P(b[0], b[1], 0), A2 = P(a[0], a[1], 9), B2 = P(b[0], b[1], 9);
-    layer.append(sv("polygon", { points: pts([A, B, B2, A2]), fill: shade(pal.trim, -30), opacity: 0.9 }), sv("line", { x1: A2[0], y1: A2[1], x2: B2[0], y2: B2[1], stroke: pal.trim, "stroke-width": 2 }));
-    const len = Math.hypot(b[0] - a[0], b[1] - a[1]), steps = Math.max(1, Math.floor(len / 1.5));
-    for (let t = 0; t <= steps; t++) {
-      const k = steps ? t / steps : 0, q = P(a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, 11);
-      layer.append(sv("circle", { cx: q[0], cy: q[1], r: 2.4, fill: theme === "cyber" ? pal.neonB : pal.lamp, class: "blink" + (t % 3 ? String(t % 3 + 1) : "") + " amb" }));
-    }
-  }
-  rooms.forEach((r, ri) => {
-    const buckets = {};
-    for (let i = 0; i < Math.round(r.w); i++) for (let j = 0; j < Math.round(r.d); j++) {
-      const q = [iso(r.x + i, r.y + j), iso(r.x + i + 1, r.y + j), iso(r.x + i + 1, r.y + j + 1), iso(r.x + i, r.y + j + 1)];
-      const parity = (i + j) % 2, jit = Math.floor(hash(ri * 97 + i, j) * 4), key = parity * 4 + jit;
-      buckets[key] = (buckets[key] || "") + "M" + q.map((v) => v[0].toFixed(1) + " " + v[1].toFixed(1)).join("L") + "Z";
-    }
-    for (const key in buckets) layer.append(sv("path", { d: buckets[key], fill: shade(+key >= 4 ? pal.floorB : pal.floorA, ((+key % 4) - 1.5) * 4) }));
-    layer.append(sv("path", { d: tileLines(r), stroke: pal.grout, "stroke-width": 1, opacity: 0.45, fill: "none" }));
-    layer.append(sv("path", { d: tileLines(r), stroke: "#fff", "stroke-width": 1, opacity: theme === "cyber" ? 0.08 : 0.1, fill: "none", transform: "translate(1.2 1)" }));   // each plate has a lit edge
-    let rivets = "";
-    for (let i = 0; i < Math.round(r.w); i++) for (let j = 0; j < Math.round(r.d); j++) for (const [a, b] of [[0.14, 0.14], [0.86, 0.14], [0.14, 0.86], [0.86, 0.86]]) { const c = iso(r.x + i + a, r.y + j + b); rivets += "M" + c[0].toFixed(1) + " " + c[1].toFixed(1) + "h0"; }
-    layer.append(sv("path", { d: rivets, stroke: shade(pal.grout, 55), "stroke-width": 2.2, "stroke-linecap": "round", opacity: 0.55, fill: "none" }));
-    for (let k = 0; k < 2; k++) {   // a vent grating, set into a plate
-      const i = Math.floor(hash(ri + 31, k) * (r.w - 2)) + 1, j = Math.floor(hash(ri + 37, k) * (r.d - 2)) + 1, q = [iso(r.x + i + 0.12, r.y + j + 0.12), iso(r.x + i + 0.88, r.y + j + 0.12), iso(r.x + i + 0.88, r.y + j + 0.88), iso(r.x + i + 0.12, r.y + j + 0.88)];
-      layer.append(sv("polygon", { points: pts(q), fill: shade(pal.grout, -30), opacity: 0.8 }));
-      let slats = ""; for (let t = 1; t < 6; t++) { const a = iso(r.x + i + 0.12 + t * 0.126, r.y + j + 0.12), b = iso(r.x + i + 0.12 + t * 0.126, r.y + j + 0.88); slats += "M" + a[0].toFixed(1) + " " + a[1].toFixed(1) + "L" + b[0].toFixed(1) + " " + b[1].toFixed(1); }
-      layer.append(sv("path", { d: slats, stroke: shade(pal.floorA, 25), "stroke-width": 1.4, opacity: 0.7, fill: "none" }));
-    }
-    const edgeA = [P(r.x + 0.4, r.y + r.d - 0.4, 0), P(r.x + r.w - 0.4, r.y + r.d - 0.4, 0), P(r.x + r.w - 0.4, r.y + 0.4, 0)];   // a hazard inlay along the two near edges
-    layer.append(sv("polyline", { points: pts(edgeA), fill: "none", stroke: "#000", "stroke-width": 4, opacity: 0.4 }), sv("polyline", { points: pts(edgeA), fill: "none", stroke: theme === "cyber" ? pal.neonB : "#e8c020", "stroke-width": 3, "stroke-dasharray": "7 7", opacity: 0.5 }));
-    const top = [P(r.x, r.y, 0), P(r.x + r.w, r.y, 0), P(r.x + r.w, r.y + r.d, 0), P(r.x, r.y + r.d, 0)];
-    layer.append(sv("polygon", { points: pts(top), fill: "#000", filter: FX.grain, opacity: 0.2 }), sv("polygon", { points: pts(top), fill: "#000", filter: FX.grime, opacity: 0.24 }));
-    // scuffs and stains: a few darker patches, always in the same places
-    for (let s = 0; s < r.w * r.d / 18; s++) { const c = P(r.x + hash(ri, s) * r.w, r.y + hash(ri + 5, s) * r.d, 0); layer.append(sv("ellipse", { cx: c[0], cy: c[1], rx: 8 + hash(ri, s + 9) * 14, ry: 3 + hash(ri, s + 3) * 5, fill: "#000", opacity: 0.1 })); }
-  });
-  for (const r of rooms) {   // a runner down each doorway's aisle, and a threshold plate in the door
-    const bay = r.kind === "bay";
-    if (!bay && r.kind !== "outbox") continue;
-    const run = bay ? [r.x + p.BW / 2 - 1.4, r.y + 0.4, 2.8, 8.4] : [r.x + 0.4, r.y + 2.1, 4.2, 1.8], door = bay ? [r.x + p.BW / 2 - 1, r.y, 2, 0.35] : [r.x, r.y + 2, 0.35, 2];
-    const box4 = (a, k) => [P(a[0] + k, a[1] + k, 0), P(a[0] + a[2] - k, a[1] + k, 0), P(a[0] + a[2] - k, a[1] + a[3] - k, 0), P(a[0] + k, a[1] + a[3] - k, 0)];
-    poly(layer, box4(run, 0), pal.rug1, { opacity: 0.85 });
-    poly(layer, box4(run, 0.18), "none", { stroke: pal.rug2, "stroke-width": 1.6, opacity: 0.7 });
-    poly(layer, box4(door, 0), pal.metal, { stroke: shade(pal.metal, -40), "stroke-width": 1 });
-  }
-  const deck = p.rooms.deck;   // the deck's rug under the planning table
-  const rug = [deck.x + 9, deck.y + 3.6, 8.4, 6.2];
-  poly(layer, [P(rug[0], rug[1], 0), P(rug[0] + rug[2], rug[1], 0), P(rug[0] + rug[2], rug[1] + rug[3], 0), P(rug[0], rug[1] + rug[3], 0)], pal.rug1);
-  poly(layer, [P(rug[0] + 0.35, rug[1] + 0.35, 0), P(rug[0] + rug[2] - 0.35, rug[1] + 0.35, 0), P(rug[0] + rug[2] - 0.35, rug[1] + rug[3] - 0.35, 0), P(rug[0] + 0.35, rug[1] + rug[3] - 0.35, 0)], "none", { stroke: pal.rug2, "stroke-width": 3 });
-  const mid = [rug[0] + rug[2] / 2, rug[1] + rug[3] / 2];
-  poly(layer, [P(mid[0], mid[1] - 2.2, 0), P(mid[0] + 3.4, mid[1], 0), P(mid[0], mid[1] + 2.2, 0), P(mid[0] - 3.4, mid[1], 0)], "none", { stroke: pal.rug2, "stroke-width": 2, opacity: 0.8 });
-  for (const r of rooms) {   // hazard stripes where a corridor comes in
-    const spots = r.kind === "bay" ? [[r.x + p.BW / 2 - 1, r.y + 0.05, 2, 0.5]] : r.kind === "outbox" ? [[r.x + 0.05, r.y + 2, 0.5, 2]] : [];
-    for (const s of spots) for (let k = 0; k < 8; k++) {
-      const a = r.kind === "outbox" ? [s[0], s[1] + k * 0.25, 0.5, 0.25] : [s[0] + k * 0.25, s[1], 0.25, 0.5];
-      if (k % 2) poly(layer, [P(a[0], a[1], 0), P(a[0] + a[2], a[1], 0), P(a[0] + a[2], a[1] + a[3], 0), P(a[0], a[1] + a[3], 0)], "#e8c020", { opacity: 0.85 });
-    }
-  }
-}
-function W(side, r, u, z) { return side === "ne" ? P(u, r.y, z) : P(r.x, u, z); }   // a spot on a room's back wall: along it in tiles, up it in px
-function wq(layer, side, r, u0, z0, u1, z1, fill, extra) { return poly(layer, [W(side, r, u0, z0), W(side, r, u1, z0), W(side, r, u1, z1), W(side, r, u0, z1)], fill, extra); }
-function wc(layer, side, r, u, z, rad, fill, extra) {   // a circle on the wall plane
-  const list = [];
-  for (let a = 0; a < 16; a++) { const t = a / 16 * Math.PI * 2; list.push(W(side, r, u + Math.cos(t) * rad / 35.8, z + Math.sin(t) * rad)); }
-  return poly(layer, list, fill, extra);
-}
-const PX = 1 / 35.8;   // one pixel along a wall, in tiles
-function wallDecor(layer, defs, side, r, u, pal, theme, k, uid, deckTitle) {
-  const d = (n) => n * PX;
+function ground(svg, defs, B, pal, theme, uid) {   // what lies around the station: a street, a sea of cloud, a neon grid; scenery only
+  const [x0, y0, x1, y1] = B, w = x1 - x0, h = y1 - y0, layer = sv("g", { "aria-hidden": "true" });
+  layer.append(sv("rect", { x: x0, y: y0, width: w, height: h, fill: gradient(defs, "sky" + uid, [[0, pal.sky1], [1, theme === "steam" ? mixc(pal.sky2, "#10181c", 0.5) : pal.sky2]]) }));
   if (theme === "city") {
-    if (k === 0) {   // an arched window onto the night, with curtains
-      wq(layer, side, r, u - d(13), 17, u + d(13), 42, "#0f1a36", { stroke: pal.trim, "stroke-width": 2 });
-      const arch = []; for (let a = 0; a <= 8; a++) { const t = Math.PI * a / 8; arch.push(W(side, r, u + Math.cos(t) * d(13), 42 + Math.sin(t) * 9)); }
-      poly(layer, arch, "#0f1a36", { stroke: pal.trim, "stroke-width": 2 });
-      for (let i = 0; i < 6; i++) { const c = W(side, r, u - d(10) + hash(uid, i + Math.floor(u)) * d(20), 20 + hash(i, uid) * 20); layer.append(sv("circle", { cx: c[0], cy: c[1], r: 1.4, fill: pal.win, opacity: 0.9 })); }
-      wq(layer, side, r, u - d(0.8), 17, u + d(0.8), 50, pal.trim); wq(layer, side, r, u - d(13), 30, u + d(13), 31.6, pal.trim);
-      wq(layer, side, r, u - d(16), 15, u + d(16), 17.5, shade(pal.trim, 12));
-      wq(layer, side, r, u - d(17), 16, u - d(11), 52, "#7a1f2b"); wq(layer, side, r, u + d(11), 16, u + d(17), 52, "#7a1f2b");
-      wq(layer, side, r, u - d(15), 16, u - d(13.5), 52, "#9a2f3b"); wq(layer, side, r, u + d(13.5), 16, u + d(15), 52, "#9a2f3b");
-    } else if (k === 1) {   // a framed picture
-      wq(layer, side, r, u - d(11), 26, u + d(11), 49, pal.trim);
-      wq(layer, side, r, u - d(9), 28, u + d(9), 47, hash(uid, Math.floor(u)) > 0.5 ? "#3a5a6a" : "#6a4a3a");
-      wq(layer, side, r, u - d(5), 30, u + d(5), 38, shade(pal.paper, -20), { opacity: 0.8 });
-      wc(layer, side, r, u, 41, 3.5, pal.paper, { opacity: 0.8 });
-    } else {   // a wall lamp with its pool of light
-      wq(layer, side, r, u - d(2), 30, u + d(2), 40, pal.metal);
-      wc(layer, side, r, u, 44, 6, pal.lamp, { class: "flick amb" });
-      wc(layer, side, r, u, 44, 20, gradient(defs, "glow" + uid + Math.floor(u * 3) + side, [[0, pal.lamp, 0.45], [1, pal.lamp, 0]], { r: "50%" }), { class: "flick2 amb" });
-    }
+    for (let gx = Math.ceil(x0 / 352) * 352; gx < x1; gx += 352) layer.append(sv("rect", { x: gx - 18, y: y0, width: 36, height: h, fill: "#0b0e1a", opacity: 0.55 }), sv("line", { x1: gx, x2: gx, y1: y0, y2: y1, stroke: pal.neonB, "stroke-width": 1.5, "stroke-dasharray": "14 18", opacity: 0.4 }));
+    for (let gy = Math.ceil(y0 / 352) * 352; gy < y1; gy += 352) layer.append(sv("rect", { x: x0, y: gy - 18, width: w, height: 36, fill: "#0b0e1a", opacity: 0.55 }), sv("line", { x1: x0, x2: x1, y1: gy, y2: gy, stroke: pal.neonB, "stroke-width": 1.5, "stroke-dasharray": "14 18", opacity: 0.4 }));
+    for (let i = 0; i < 40; i++) { const lx = x0 + hash(91, i) * w, ly = y0 + hash(92, i) * h; layer.append(sv("circle", { cx: lx, cy: ly, r: 34, fill: gradient(defs, "sl" + uid + i, [[0, pal.lamp, 0.32], [1, pal.lamp, 0]], { r: "50%" }), class: "flick2 amb" }), sv("circle", { cx: lx, cy: ly, r: 3, fill: pal.lamp })); }
+    for (let c = 0; c < 8; c++) { const cy = Math.ceil(y0 / 352) * 352 + Math.floor(hash(93, c) * 3) * 352, car = sv("g", { class: "drive amb", style: "animation-duration:" + (14 + hash(94, c) * 20).toFixed(0) + "s;animation-delay:-" + (hash(95, c) * 30).toFixed(0) + "s" }), cx = x0 + hash(96, c) * w; car.append(sv("circle", { cx, cy: cy - 5, r: 4, fill: "#fff6d8" }), sv("circle", { cx: cx + 16, cy: cy - 5, r: 4, fill: "#fff6d8" }), sv("circle", { cx: cx - 14, cy: cy - 5, r: 3, fill: "#ff4d4d" })); layer.append(car); }
   } else if (theme === "steam") {
-    if (k === 0) {   // a brass-ringed porthole
-      wc(layer, side, r, u, 36, 15, pal.metal); wc(layer, side, r, u, 36, 11.5, shade(pal.metal, -35));
-      wc(layer, side, r, u, 36, 10, gradient(defs, "port" + uid + Math.floor(u * 3) + side, [[0, "#9ff0e6"], [1, "#2a7a88"]], { r: "60%" }));
-      for (let b = 0; b < 8; b++) { const t = b / 8 * Math.PI * 2, c = W(side, r, u + Math.cos(t) * 13 * PX, 36 + Math.sin(t) * 13); layer.append(sv("circle", { cx: c[0], cy: c[1], r: 1.3, fill: shade(pal.metal, 30) })); }
-      wq(layer, side, r, u - d(5), 36, u + d(1), 40, "#fff", { class: "glint amb", opacity: 0.0 });
-    } else if (k === 1) {   // a pipe run with a valve wheel and a puff of steam
-      wq(layer, side, r, u - d(26), 30, u + d(26), 38, shade(pal.metal, -20)); wq(layer, side, r, u - d(26), 34, u + d(26), 38, shade(pal.metal, 20), { opacity: 0.7 });
-      for (const o of [-24, 24]) wq(layer, side, r, u + d(o) - d(3), 27, u + d(o) + d(3), 41, pal.metal);
-      wc(layer, side, r, u, 46, 7, "none", { stroke: pal.metal, "stroke-width": 2.5 }); wq(layer, side, r, u - d(0.8), 39, u + d(0.8), 53, pal.metal); wq(layer, side, r, u - d(7), 45, u + d(7), 47, pal.metal);
-      const c = W(side, r, u + d(16), 40); layer.append(sv("circle", { cx: c[0], cy: c[1], r: 5, fill: "#fff", opacity: 0.0, class: "puff amb" }), sv("circle", { cx: c[0] + 2, cy: c[1], r: 4, fill: "#fff", class: "puff amb", style: "animation-delay:1.2s", opacity: 0.6 }));
-    } else {   // a pressure gauge on a riveted plate
-      wq(layer, side, r, u - d(13), 22, u + d(13), 48, shade(pal.metal, -30), { stroke: pal.metal, "stroke-width": 1.5 });
-      wc(layer, side, r, u, 36, 10, pal.paper); wc(layer, side, r, u, 36, 10, "none", { stroke: pal.metal, "stroke-width": 2.5 });
-      const ang = (hash(uid, Math.floor(u)) * 1.6 - 0.8), n = W(side, r, u + Math.sin(ang) * 8 * PX, 36 + Math.cos(ang) * 8), c = W(side, r, u, 36);
-      layer.append(sv("line", { x1: c[0], y1: c[1], x2: n[0], y2: n[1], stroke: "#b32", "stroke-width": 1.6 }));
-      for (const [a, b] of [[-11, 24], [11, 24], [-11, 46], [11, 46]]) { const q = W(side, r, u + d(a), b); layer.append(sv("circle", { cx: q[0], cy: q[1], r: 1.3, fill: shade(pal.metal, 30) })); }
-    }
+    for (let i = 0; i < 70; i++) layer.append(sv("path", { d: "M" + (x0 + hash(81, i) * w).toFixed(0) + " " + (y0 + hash(82, i) * h).toFixed(0) + "q12 -8 24 0t24 0", stroke: "#9fd8c8", "stroke-width": 1.4, fill: "none", opacity: 0.22, class: "twinkle amb", style: "animation-delay:-" + (hash(83, i) * 3).toFixed(1) + "s" }));
+    for (let i = 0; i < 7; i++) { const cloud = sv("g", { class: (i % 2 ? "drift" : "drift2") + " amb", style: "animation-delay:-" + (hash(87, i) * 60).toFixed(0) + "s" }), cx = x0 + hash(85, i) * w, cy = y0 + hash(86, i) * h; for (let k = 0; k < 5; k++) cloud.append(sv("ellipse", { cx: cx + (k - 2) * 60, cy: cy + (k % 2) * 14, rx: 90 + hash(88, i + k) * 40, ry: 28 + hash(89, i + k) * 14, fill: "#ffc58a", opacity: 0.16 })); layer.append(cloud); }
   } else {
-    if (k === 0) {   // a neon tube
-      const col = hash(uid, Math.floor(u * 2)) > 0.5 ? pal.neonA : pal.neonB;
-      wq(layer, side, r, u - d(5), 8, u + d(5), 54, col, { opacity: 0.18, class: "flick amb" }); wq(layer, side, r, u - d(1.6), 10, u + d(1.6), 52, col, { class: "flick amb" }); wq(layer, side, r, u - d(0.6), 10, u + d(0.6), 52, "#fff", { opacity: 0.8 });
-    } else if (k === 1) {   // a wall screen with scrolling bars
-      wq(layer, side, r, u - d(15), 22, u + d(15), 46, "#05050f", { stroke: pal.trim, "stroke-width": 2 });
-      for (let b = 0; b < 4; b++) { const a = W(side, r, u - d(11), 27 + b * 5), e = W(side, r, u - d(11) + d(8 + hash(uid + b, Math.floor(u)) * 14), 27 + b * 5); layer.append(sv("line", { x1: a[0], y1: a[1], x2: e[0], y2: e[1], stroke: b % 2 ? pal.neonA : pal.neonB, "stroke-width": 2.2, class: "bars amb", style: "animation-delay:" + (b * 0.4) + "s" })); }
-      wc(layer, side, r, u + d(10), 41, 2.2, pal.neonA, { class: "blink amb" });
-    } else {   // a vent and a sagging cable
-      wq(layer, side, r, u - d(10), 16, u + d(10), 34, "#05050f", { stroke: pal.metal, "stroke-width": 1.5 });
-      for (let b = 0; b < 5; b++) wq(layer, side, r, u - d(8), 18 + b * 3.2, u + d(8), 19.4 + b * 3.2, shade(pal.metal, -20));
-      const a = W(side, r, u - d(24), 50), m = W(side, r, u, 36), e = W(side, r, u + d(24), 50);
-      layer.append(sv("path", { d: "M" + a[0].toFixed(1) + " " + a[1].toFixed(1) + "Q" + m[0].toFixed(1) + " " + (m[1] + 6).toFixed(1) + " " + e[0].toFixed(1) + " " + e[1].toFixed(1), fill: "none", stroke: pal.neonA, "stroke-width": 2, opacity: 0.85 }));
-    }
+    for (let gx = Math.ceil(x0 / 88) * 88; gx < x1; gx += 88) layer.append(sv("line", { x1: gx, x2: gx, y1: y0, y2: y1, stroke: pal.neonA, "stroke-width": 1, opacity: 0.14 }));
+    for (let gy = Math.ceil(y0 / 88) * 88; gy < y1; gy += 88) layer.append(sv("line", { x1: x0, x2: x1, y1: gy, y2: gy, stroke: pal.neonB, "stroke-width": 1, opacity: 0.14 }));
+    for (let i = 0; i < 12; i++) layer.append(sv("circle", { cx: x0 + hash(71, i) * w, cy: y0 + hash(72, i) * h, r: 40 + hash(73, i) * 60, fill: gradient(defs, "ng" + uid + i, [[0, i % 2 ? pal.neonA : pal.neonB, 0.22], [1, pal.neonA, 0]], { r: "50%" }), class: "flick2 amb" }));
+    for (let i = 0; i < 90; i++) layer.append(sv("line", { x1: 0, y1: 0, x2: -4, y2: 24, transform: "translate(" + (x0 + hash(61, i) * w).toFixed(0) + " " + (y0 + hash(62, i) * h).toFixed(0) + ")", stroke: "#9fd8ff", "stroke-width": 1, opacity: 0.3, class: "rain amb", style: "animation-delay:-" + (hash(63, i) * 1.1).toFixed(2) + "s" }));
   }
-}
-function drawWall(layer, defs, r, side, pal, theme, uid, gap) {
-  const n = side === "ne" ? r.w : r.d, start = side === "ne" ? r.x : r.y, base = side === "ne" ? pal.wallR : pal.wallL;
-  const edges = [];
-  for (let i = 0; i < n; i++) {
-    const u = start + i;
-    if (gap && u >= gap[0] - 0.01 && u + 1 <= gap[1] + 0.01) continue;
-    wq(layer, side, r, u, 0, u + 1, WALL, i % 2 ? shade(base, -3) : base);
-    if (theme === "city") for (let s = 0; s < 4; s++) wq(layer, side, r, u + 0.1 + s * 0.22, 21, u + 0.16 + s * 0.22, WALL - 8, "#fff", { opacity: 0.07 });   // wallpaper stripes
-    else if (theme === "steam") for (const z of [10, 52]) for (const t of [0.12, 0.88]) { const c = W(side, r, u + t, z); layer.append(sv("circle", { cx: c[0], cy: c[1], r: 1.6, fill: shade(pal.trim, 20), opacity: 0.8 })); }
-    else { wq(layer, side, r, u + 0.05, 6, u + 0.95, 7.2, pal.trim, { opacity: 0.35 }); const c = W(side, r, u + 0.5, 12); layer.append(sv("circle", { cx: c[0], cy: c[1], r: 1.2, fill: i % 2 ? pal.neonA : pal.neonB, class: "blink" + (i % 3 ? "2" : "") + " amb" })); }
-    wq(layer, side, r, u, 0, u + 1, 20, shade(base, -16));   // wainscot
-    wq(layer, side, r, u + 0.08, 5, u + 0.46, 17.5, shade(base, -24), { opacity: 0.7 }); wq(layer, side, r, u + 0.54, 5, u + 0.92, 17.5, shade(base, -24), { opacity: 0.7 });   // raised panels
-    wq(layer, side, r, u + 0.08, 16.6, u + 0.46, 17.5, "#fff", { opacity: 0.07 }); wq(layer, side, r, u + 0.54, 16.6, u + 0.92, 17.5, "#fff", { opacity: 0.07 });
-    if (theme === "steam") { wq(layer, side, r, u, 47, u + 1, 51, shade(pal.metal, -35)); wq(layer, side, r, u, 49.4, u + 1, 51, shade(pal.metal, 25), { opacity: 0.6 }); wq(layer, side, r, u + 0.45, 45, u + 0.55, 53, pal.metal); }   // a brass conduit with a clamp
-    else if (theme === "cyber") { wq(layer, side, r, u, 4, u + 1, 5.6, pal.neonB, { opacity: 0.8, class: "blink2 amb" }); wq(layer, side, r, u + 0.5, 21, u + 0.52, WALL - 8, "#000", { opacity: 0.35 }); }   // a lit skirting and panel seams
-    wq(layer, side, r, u, 0, u + 1, 4, shade(base, -34));    // baseboard
-    wq(layer, side, r, u, 19, u + 1, 21.5, pal.trim);        // rail
-    wq(layer, side, r, u, WALL - 7, u + 1, WALL, pal.trim); wq(layer, side, r, u, WALL - 2.4, u + 1, WALL, shade(pal.trim, 28));   // crown
-    wq(layer, side, r, u, 0, u + 1, 16, "#000", { opacity: 0.12 });   // light fall-off toward the floor
-    edges.push(u);
-  }
-  for (const u of edges) { const a = W(side, r, u, 0), b = W(side, r, u, WALL); layer.append(sv("line", { x1: a[0], y1: a[1], x2: b[0], y2: b[1], stroke: "#000", "stroke-width": 1, opacity: 0.16 })); }
-  for (const u of edges) {
-    const i = u - start;
-    if (i % 3 === 1) wallDecor(layer, defs, side, r, u + 0.5, pal, theme, Math.floor(i / 3) % 3, uid + (side === "ne" ? 1 : 2) + Math.floor(r.x * 7 + r.y * 13));
-  }
-  if (gap) {   // the door frame
-    for (const u of [gap[0], gap[1] - 0.14]) wq(layer, side, r, u, 0, u + 0.14, 50, pal.trim);
-    wq(layer, side, r, gap[0], 44, gap[1], 52, shade(pal.trim, -10));
-    wc(layer, side, r, (gap[0] + gap[1]) / 2, 48, 2.6, theme === "cyber" ? pal.neonB : pal.lamp, { class: "flick amb" });   // the lamp over the door
-  }
-}
-function drawWalls(layer, defs, p, pal, theme, uid) {
-  for (const r of Object.values(p.rooms)) {
-    const doorX = r.kind === "bay" ? [r.x + p.BW / 2 - 1, r.x + p.BW / 2 + 1] : null, doorY = r.kind === "outbox" ? [r.y + 2, r.y + 4] : null;
-    drawWall(layer, defs, r, "ne", pal, theme, uid, doorX);
-    drawWall(layer, defs, r, "nw", pal, theme, uid, doorY);
-  }
-}
-
-// ---- furniture and props ----------------------------------------------------------------------------------------------
-function box(g, x, y, w, d, z0, h, color, soft) {   // a cuboid: top, the face toward the viewer's left, the face toward its right
-  g.append(sv("polygon", { points: pts([P(x, y + d, z0), P(x + w, y + d, z0), P(x + w, y + d, z0 + h), P(x, y + d, z0 + h)]), fill: shade(color, -14) }),
-           sv("polygon", { points: pts([P(x + w, y, z0), P(x + w, y + d, z0), P(x + w, y + d, z0 + h), P(x + w, y, z0 + h)]), fill: shade(color, -32) }),
-           sv("polygon", { points: pts([P(x, y, z0 + h), P(x + w, y, z0 + h), P(x + w, y + d, z0 + h), P(x, y + d, z0 + h)]), fill: color }));
-  if (soft) return;
-  g.append(sv("polyline", { points: pts([P(x, y + d, z0 + h), P(x + w, y + d, z0 + h), P(x + w, y, z0 + h)]), fill: "none", stroke: shade(color, 35), "stroke-width": 1, opacity: 0.6 }));
-  if (h < 8) return;
-  const ao = Math.min(h * 0.35, 5), lip = Math.min(1.6, h * 0.2);   // a solid is lit from above: a dark band where it meets the floor, a bright lip on its top edge
-  g.append(sv("polygon", { points: pts([P(x, y + d, z0), P(x + w, y + d, z0), P(x + w, y + d, z0 + ao), P(x, y + d, z0 + ao)]), fill: "#000", opacity: 0.2 }),
-           sv("polygon", { points: pts([P(x + w, y, z0), P(x + w, y + d, z0), P(x + w, y + d, z0 + ao), P(x + w, y, z0 + ao)]), fill: "#000", opacity: 0.28 }),
-           sv("polygon", { points: pts([P(x, y + d, z0 + h - lip), P(x + w, y + d, z0 + h - lip), P(x + w, y + d, z0 + h), P(x, y + d, z0 + h)]), fill: "#fff", opacity: 0.16 }),
-           sv("polygon", { points: pts([P(x + w, y, z0 + h - lip), P(x + w, y + d, z0 + h - lip), P(x + w, y + d, z0 + h), P(x + w, y, z0 + h)]), fill: "#fff", opacity: 0.08 }),
-           sv("polyline", { points: pts([P(x + w, y + d, z0 + 0.5), P(x + w, y + d, z0 + h)]), fill: "none", stroke: "#fff", "stroke-width": 1, opacity: 0.2 }));
-}
-function shadow(g, x, y, w, d) { poly(g, [P(x + 0.1, y + 0.1, 0), P(x + w + 0.8, y + 0.1, 0), P(x + w + 0.8, y + d + 0.8, 0), P(x + 0.1, y + d + 0.8, 0)], "#000", { opacity: 0.42, filter: FX.shadow }); }
-function led(g, x, y, z, color, cls) { const c = P(x, y, z); g.append(sv("circle", { cx: c[0], cy: c[1], r: 2, fill: color, class: cls || "", opacity: 0.95 })); }
-function glow(g, defs, x, y, z, r, color, id, cls) { const c = P(x, y, z); g.append(sv("circle", { cx: c[0], cy: c[1], r, fill: gradient(defs, id, [[0, color, 0.5], [1, color, 0]], { r: "50%" }), class: cls || "" })); }
-function screenFace(g, x, y, w, z0, h, pal, kind, fresh, seed) {   // a display on a front face: a radar, a graph or lines of text
-  const q = (u, z) => P(x + u * w, y, z0 + z * h), face = [q(0, 0), q(1, 0), q(1, 1), q(0, 1)], col = pal.screen, on = fresh ? 1 : 0.55;
-  g.append(sv("polygon", { points: pts(face), fill: "#03060c", stroke: shade(pal.metal, -5), "stroke-width": 1.2 }), sv("polygon", { points: pts(face), fill: col, opacity: 0.1 * on }));
-  if (kind === 0) {   // radar: two rings, cross hairs and a few blips
-    for (const rad of [0.3, 0.17]) { const ring = []; for (let a = 0; a < 18; a++) { const t = a / 18 * Math.PI * 2; ring.push(q(0.5 + Math.cos(t) * rad * 0.8, 0.5 + Math.sin(t) * rad * 1.5)); } g.append(sv("polygon", { points: pts(ring), fill: "none", stroke: col, "stroke-width": 0.9, opacity: 0.8 * on })); }
-    g.append(sv("polyline", { points: pts([q(0.5, 0.08), q(0.5, 0.92)]), stroke: col, "stroke-width": 0.7, opacity: 0.6 * on }), sv("polyline", { points: pts([q(0.1, 0.5), q(0.9, 0.5)]), stroke: col, "stroke-width": 0.7, opacity: 0.6 * on }));
-    for (let b = 0; b < 3; b++) { const c = q(0.3 + hash(seed, b) * 0.4, 0.25 + hash(b, seed) * 0.5); g.append(sv("circle", { cx: c[0], cy: c[1], r: 1.3, fill: "#fff", class: "blink" + (b ? String(b + 1) : "") + " amb" })); }
-  } else if (kind === 1) {   // a graph
-    const line = []; for (let i = 0; i <= 8; i++) line.push(q(0.08 + i * 0.105, 0.2 + hash(seed + i, i * 3) * 0.6));
-    g.append(sv("polyline", { points: pts(line), fill: "none", stroke: col, "stroke-width": 1.2, opacity: on }), sv("polyline", { points: pts([q(0.08, 0.15), q(0.92, 0.15)]), stroke: col, "stroke-width": 0.6, opacity: 0.5 * on }));
-  } else {   // text
-    for (let l = 0; l < 4; l++) g.append(sv("polyline", { points: pts([q(0.1, 0.8 - l * 0.2), q(0.1 + (0.25 + hash(seed, l) * 0.6) * 0.8, 0.8 - l * 0.2)]), stroke: l % 3 === 2 ? pal.accent : col, "stroke-width": 1.2, opacity: 0.85 * on }));
-  }
-}
-function chair(g, x, y, pal, theme) {   // an office chair: a five-spoke base, a post, a seat and a back
-  const c = P(x, y, 0), s = P(x, y, 9), back = P(x - 0.05, y - 0.35, 17), tone = theme === "city" ? "#5a2b2b" : shade(pal.dark, 22);
-  for (let k = 0; k < 5; k++) { const t = k / 5 * Math.PI * 2 + 0.3; g.append(sv("line", { x1: c[0], y1: c[1] - 2, x2: c[0] + Math.cos(t) * 8, y2: c[1] - 2 + Math.sin(t) * 3.6, stroke: "#111", "stroke-width": 1.6 })); }
-  g.append(sv("line", { x1: c[0], y1: c[1] - 2, x2: s[0], y2: s[1], stroke: "#222", "stroke-width": 2.4 }), sv("ellipse", { cx: s[0], cy: s[1], rx: 9, ry: 4.6, fill: tone }), sv("ellipse", { cx: s[0], cy: s[1] - 1.6, rx: 9, ry: 4.4, fill: shade(tone, 14) }),
-           sv("path", { d: "M" + (back[0] - 8) + " " + (back[1] + 3) + "Q" + back[0] + " " + (back[1] - 8) + " " + (back[0] + 8) + " " + (back[1] + 3) + "L" + (back[0] + 7) + " " + (back[1] + 11) + "L" + (back[0] - 7) + " " + (back[1] + 11) + "Z", fill: shade(tone, -8), stroke: shade(tone, 30), "stroke-width": 0.8 }));
-}
-function cable(g, x, y, wallY, pal, theme) {   // a lead from a machine to the wall, lying on the floor
-  const a = P(x, y, 0), b = P(x + 0.5, wallY + 0.04, 0), m = [(a[0] + b[0]) / 2 + 7, (a[1] + b[1]) / 2 + 3], d = "M" + a[0].toFixed(1) + " " + a[1].toFixed(1) + "Q" + m[0].toFixed(1) + " " + m[1].toFixed(1) + " " + b[0].toFixed(1) + " " + b[1].toFixed(1);
-  g.append(sv("path", { d, fill: "none", stroke: "#000", "stroke-width": 3.6, opacity: 0.45 }), sv("path", { d, fill: "none", stroke: theme === "cyber" ? pal.neonA : "#2b2b30", "stroke-width": 2 }), sv("rect", { x: b[0] - 2, y: b[1] - 3, width: 4, height: 5, fill: pal.metal }));
-}
-function furnitureGroup(f, pal, theme, now, defs, uid) {
-  const g = sv("g", {}), [x, y, w, d] = f.box, o = f.obj, wood = pal.wood, dark = pal.dark, metal = pal.metal;
-  const fresh = o && o.last && now - o.last < 4, busy = fresh ? "blink" : "", id = "fg" + uid + f.family + Math.round(x * 3 + y * 5);
-  shadow(g, x, y, w, d);
-  if (f.room && y - f.room.y < 2.6 && f.family !== "crate") cable(g, x + w * 0.5, y, f.room.y, pal, theme);
-  switch (f.family) {
-    case "read": {   // filing cabinet / chart rack / data terminal
-      const body = theme === "city" ? pal.steel : theme === "steam" ? shade(metal, -10) : dark;
-      box(g, x, y, w, d, 0, 36, body);
-      for (let i = 0; i < 3; i++) { for (let k = 0; k < Math.floor(w); k++) { const fx = x + 0.12 + k * (w / Math.floor(w)), fw = w / Math.floor(w) - 0.24; box(g, fx, y + d - 0.02, fw, 0.04, 3 + i * 11, 9, shade(body, 10), true); g.append(sv("line", { x1: P(fx + fw * 0.35, y + d, 7.5 + i * 11)[0], y1: P(fx + fw * 0.35, y + d, 7.5 + i * 11)[1], x2: P(fx + fw * 0.65, y + d, 7.5 + i * 11)[0], y2: P(fx + fw * 0.65, y + d, 7.5 + i * 11)[1], stroke: theme === "cyber" ? pal.neonB : pal.paper, "stroke-width": 2 })); } }
-      if (theme === "cyber") { screenFace(g, x + 0.2, y + d, Math.max(1, w - 0.4), 22, 11, pal, 2, fresh, Math.round(x * 5 + y)); for (let i = 0; i < 5; i++) led(g, x + 0.3 + i * 0.5, y + d, 34, i % 2 ? pal.neonA : pal.neonB, busy || "blink" + (i % 3 ? "2" : "3")); }
-      else for (let i = 0; i < 4; i++) box(g, x + 0.2 + i * (w - 0.4) / 4, y + 0.15, (w - 0.4) / 4 - 0.1, d * 0.6, 36, 6 + (i % 3) * 3, [pal.accent, pal.paper, pal.metal, pal.screen][i]);
-      break; }
-    case "write": case "desk": {   // typewriter desk / brass press / fabricator
-      box(g, x, y, w, d, 0, 17, wood); box(g, x + 0.1, y + 0.1, 0.5, d - 0.2, 0, 14, shade(wood, -22), true); box(g, x + w - 0.6, y + 0.1, 0.5, d - 0.2, 0, 14, shade(wood, -22), true);
-      for (let k = 0; k < 2; k++) box(g, x + w - 0.58, y + 0.2 + k * (d / 2 - 0.1), 0.02, d / 2 - 0.4, 3 + k * 0, 5, shade(wood, -45), true);
-      if (theme === "city") { box(g, x + w * 0.3, y + d * 0.2, 1.0, 0.8, 17, 6, dark); box(g, x + w * 0.3 + 0.1, y + d * 0.2, 0.8, 0.1, 23, 4, "#222"); box(g, x + w * 0.3 + 0.15, y + d * 0.2 + 0.15, 0.7, 0.04, 23, 8, pal.paper, true);
-        for (let k = 0; k < 4; k++) box(g, x + w * 0.3 + 0.1 + k * 0.2, y + d * 0.2 + 0.5, 0.12, 0.12, 23, 1.5, "#ddd", true); }
-      else if (theme === "steam") { box(g, x + w * 0.25, y + d * 0.2, 1.3, 0.9, 17, 4, metal); box(g, x + w * 0.3, y + d * 0.28, 0.2, 0.2, 21, 12, shade(metal, -20), true);
-        box(g, x + w * 0.3, y + d * 0.18, 1.1, 0.14, 21, 16, shade(pal.dark, 10)); screenFace(g, x + w * 0.3 + 0.08, y + d * 0.18 + 0.14, 0.94, 23, 12, pal, f.family === "desk" ? 1 : 2, fresh, Math.round(x * 3 + y)); box(g, x + w * 0.62, y + d * 0.55, 0.5, 0.3, 17, 1.6, pal.paper, true);
-        if (fresh) glow(g, defs, x + w * 0.45, y + d * 0.35, 25, 26, pal.screen, id + "s", "flick amb"); }
-      else { box(g, x + w * 0.3, y + d * 0.18, 1.1, 0.14, 21, 16, "#05050f"); box(g, x + w * 0.36, y + d * 0.2, 0.3, 0.3, 17, 4, pal.metal, true); screenFace(g, x + w * 0.3 + 0.08, y + d * 0.18 + 0.14, 0.94, 23, 12, pal, f.family === "desk" ? 0 : 2, fresh, Math.round(x * 3 + y)); box(g, x + w * 0.35, y + d * 0.58, 1, 0.34, 17, 1.4, pal.neonB, true);
-        if (fresh) glow(g, defs, x + w * 0.5, y + d * 0.3, 24, 30, pal.screen, id + "c", "flick amb"); }
-      box(g, x + w * 0.72, y + d * 0.18, 0.7, 0.5, 17, 1.6, pal.paper, true); box(g, x + w * 0.74, y + d * 0.22, 0.7, 0.5, 18.6, 1.4, shade(pal.paper, -10), true);   // a stack of paper
-      box(g, x + 0.3, y + d * 0.6, 0.32, 0.32, 17, 3.2, theme === "city" ? "#d8d0c0" : shade(pal.metal, 10), true);   // a mug
-      if (f.family === "desk") { chair(g, x + w * 0.45, y + d + 0.75, pal, theme);
-        if (f.laneState) { const on = f.laneState === "lit"; box(g, x + w - 1.1, y + d - 0.9, 0.8, 0.6, 17, 2, on ? pal.accent : shade(pal.dark, 20)); if (on) glow(g, defs, x + w - 0.7, y + d - 0.6, 22, 30, pal.accent, id + "tray", "flick amb"); } }   // the handoff tray: lit once that handoff was recorded
-      break; }
-    case "shell": {   // safe / boiler valve / root console
-      if (theme === "city") { box(g, x, y, w, d, 0, 26, pal.steel); const c = P(x + w - 0.04, y + d * 0.5, 14); g.append(sv("circle", { cx: c[0], cy: c[1], r: 6, fill: "#cfd6cf", stroke: "#333", "stroke-width": 1.5 }), sv("line", { x1: c[0], y1: c[1], x2: c[0] + 3, y2: c[1] - 3, stroke: "#222", "stroke-width": 1.5 })); box(g, x + w - 0.04, y + d * 0.2, 0.08, 0.15, 6, 14, "#333", true); }
-      else if (theme === "steam") { box(g, x, y, w, d, 0, 20, shade(metal, -25)); for (let k = 0; k < 2; k++) { const c = P(x + 0.5 + k * 0.9, y + d * 0.5, 30); g.append(sv("rect", { x: c[0] - 2, y: c[1], width: 4, height: 10, fill: metal }), sv("circle", { cx: c[0], cy: c[1], r: 7, fill: "none", stroke: pal.accent, "stroke-width": 2.5 }), sv("line", { x1: c[0] - 7, y1: c[1], x2: c[0] + 7, y2: c[1], stroke: pal.accent, "stroke-width": 2 })); }
-        if (fresh) { const c = P(x + w * 0.5, y + d * 0.5, 40); g.append(sv("circle", { cx: c[0], cy: c[1], r: 6, fill: "#fff", class: "puff amb", opacity: 0.6 })); } }
-      else { box(g, x, y, w, d, 0, 22, dark); box(g, x + 0.1, y + 0.1, w - 0.2, d - 0.2, 22, 3, pal.metal); for (let i = 0; i < 6; i++) led(g, x + 0.2 + (i % 3) * 0.55, y + d + 0.0, 8 + Math.floor(i / 3) * 6, [pal.neonA, pal.neonB, pal.screen][i % 3], busy || "blink" + (i % 3 ? "2" : "3"));
-        box(g, x + 0.2, y + 0.3, 1.4, 0.12, 25, 12, "#05050f"); screenFace(g, x + 0.28, y + 0.42, 1.24, 27, 8, pal, 0, fresh, Math.round(x * 7 + y)); }
-      break; }
-    case "web": {   // radio set / signal lamp / uplink
-      box(g, x, y, w, d, 0, 22, theme === "city" ? wood : metal); const c = P(x + w / 2, y + d + 0.0, 13);
-      g.append(sv("circle", { cx: c[0] - 5, cy: c[1], r: 4.5, fill: pal.paper, stroke: "#333" }), sv("circle", { cx: c[0] + 5, cy: c[1], r: 4.5, fill: pal.paper, stroke: "#333" }), sv("rect", { x: c[0] - 8, y: c[1] + 6, width: 16, height: 5, fill: shade(wood, -35) }));
-      const t = P(x + w / 2, y + d / 2, 22), t2 = P(x + w / 2, y + d / 2, 64);
-      g.append(sv("line", { x1: t[0], y1: t[1], x2: t2[0], y2: t2[1], stroke: pal.metal, "stroke-width": 2 }), sv("circle", { cx: t2[0], cy: t2[1], r: 3, fill: pal.lamp, class: busy || "blink2" }));
-      if (fresh) for (const [r, dl] of [[10, 0], [18, 0.4]]) g.append(sv("circle", { cx: t2[0], cy: t2[1], r, fill: "none", stroke: pal.accent, "stroke-width": 1.5, class: "puff amb", style: "animation-delay:" + dl + "s" }));
-      break; }
-    case "mcp": {   // switchboard / speaking tubes / mesh node
-      box(g, x, y, w, d, 0, 32, theme === "city" ? wood : dark);
-      for (let r = 0; r < 4; r++) for (let k = 0; k < 3; k++) { const c = P(x + w, y + 0.3 + k * (d - 0.5) / 3, 8 + r * 6); g.append(sv("circle", { cx: c[0], cy: c[1], r: 2, fill: "#05050f", stroke: pal.metal, "stroke-width": 1 })); }
-      for (let k = 0; k < 4; k++) { const a = P(x + w, y + 0.4 + k * 0.5, 14 + (k % 2) * 6), b = P(x + w + 0.8, y + 0.9 + k * 0.5, 2); g.append(sv("path", { d: "M" + a[0].toFixed(1) + " " + a[1].toFixed(1) + "Q" + (a[0] + 6) + " " + (b[1] - 6) + " " + b[0].toFixed(1) + " " + b[1].toFixed(1), fill: "none", stroke: [pal.accent, pal.lamp, pal.screen, pal.neonA][k], "stroke-width": 2 })); }
-      for (let k = 0; k < 3; k++) led(g, x + w, y + 0.5 + k * 0.7, 36, [pal.accent, pal.lamp, pal.screen][k], busy || "blink" + (k + 1 > 1 ? k + 1 : ""));
-      break; }
-    case "other": {   // cupboard / locker
-      box(g, x, y, w, d, 0, 32, theme === "cyber" ? pal.steel : wood);
-      for (let k = 0; k < 2; k++) { box(g, x + 0.12 + k * (w / 2), y + d - 0.02, w / 2 - 0.24, 0.04, 3, 26, shade(theme === "cyber" ? pal.steel : wood, 10), true); const c = P(x + (k ? 0.12 : w - 0.12) + (k ? 0 : -0.0) + (k ? w / 2 - 0.3 : w / 2 - 0.3 - w / 2 + 0.3), y + d, 16); g.append(sv("circle", { cx: c[0], cy: c[1], r: 1.6, fill: metal })); }
-      break; }
-    case "approvals": {   // signing desk / helm / gatekeeper
-      box(g, x, y, w, d, 0, 17, wood); for (let k = 0; k < 4; k++) box(g, x + 0.35, y + 0.25, 0.9, 0.7, 17 + k * 0.7, 0.7, k % 2 ? pal.paper : shade(pal.paper, -8), true);
-      box(g, x + 1.5, y + 0.3, 0.3, 0.3, 17, 6, dark); const lamp = P(x + w - 0.5, y + 0.5, 30), on = o && o.pending;
-      g.append(sv("rect", { x: lamp[0] - 1, y: lamp[1], width: 2, height: 13, fill: metal }), sv("polygon", { points: pts([[lamp[0] - 7, lamp[1]], [lamp[0] + 7, lamp[1]], [lamp[0] + 4, lamp[1] - 7], [lamp[0] - 4, lamp[1] - 7]]), fill: on ? pal.wait : shade(pal.lamp, -40), class: on ? "flick amb" : "" }));
-      if (on) glow(g, defs, x + w - 0.5, y + 0.5, 20, 34, pal.wait, id + "p", "flick2 amb");
-      if (theme === "steam") { const c = P(x + w * 0.5, y + d, 24); g.append(sv("circle", { cx: c[0], cy: c[1], r: 7, fill: "none", stroke: pal.accent, "stroke-width": 2.5 })); }
-      break; }
-    case "ledger": {   // cash register / pressure gauge / credit meter
-      box(g, x, y, w, d, 0, 14, metal); box(g, x + 0.3, y + 0.2, w - 0.6, d - 0.3, 14, 9, shade(metal, -25)); screenFace(g, x + 0.4, y + d - 0.1, w - 0.8, 15, 7, pal, 1, !!(o && o.usd > 0), Math.round(x + y));
-      for (let k = 0; k < 6; k++) box(g, x + 0.4 + k * 0.28, y + d - 0.5, 0.2, 0.2, 14, 1.4, k % 2 ? "#ddd" : "#999", true);
-      if (o && o.usd > 0) led(g, x + w - 0.3, y + 0.4, 25, pal.accent, "blink");
-      break; }
-    case "table": {   // the planning table, with a map on it
-      box(g, x, y, w, d, 0, 12, wood); box(g, x + 0.35, y + 0.3, w - 0.7, d - 0.6, 12, 1, pal.paper, true);
-      const a = P(x + 0.7, y + 0.6, 13), b = P(x + w - 0.8, y + d - 0.6, 13);
-      g.append(sv("path", { d: "M" + a[0] + " " + a[1] + "l30 12l24 -8l22 14", fill: "none", stroke: pal.dim, "stroke-width": 1.5 }), sv("circle", { cx: b[0], cy: b[1], r: 3, fill: pal.wait }));
-      if (theme !== "city") for (const rad of [0.9, 1.5, 2.1]) { const ring = []; for (let k = 0; k < 24; k++) { const t = k / 24 * Math.PI * 2; ring.push(P(x + w / 2 + Math.cos(t) * rad, y + d / 2 + Math.sin(t) * rad * 0.7, 13)); } g.append(sv("polygon", { points: pts(ring), fill: "none", stroke: pal.screen, "stroke-width": 1, opacity: 0.55 - rad * 0.1, class: "blink3 amb" })); }
-      for (const [cx, cy] of [[x + 0.3, y - 0.5], [x + w - 1.2, y - 0.5], [x + 0.3, y + d + 0.2], [x + w - 1.2, y + d + 0.2]]) { box(g, cx, cy, 0.8, 0.8, 0, 8, shade(wood, -20), true); box(g, cx, cy, 0.8, 0.12, 8, 9, shade(wood, -20), true); }
-      break; }
-    case "crate": {   // the outbox: crates, lit when work has landed
-      box(g, x, y, w, d, 0, 14, wood); for (let k = 0; k < 3; k++) box(g, x + 0.05, y + d - 0.02, w - 0.1, 0.04, 2 + k * 4, 1.4, shade(wood, -35), true);
-      box(g, x + 0.3, y + 0.3, w - 0.9, d - 0.9, 14, 13, o && o.state === "landed" ? pal.accent : shade(wood, -8)); if (o && o.state === "landed") glow(g, defs, x + w / 2, y + d / 2, 20, 46, pal.accent, id + "l", "flick amb");
-      break; }
-  }
-  if (fresh) g.append(sv("ellipse", { cx: P(x + w / 2, y + d / 2, 0)[0], cy: P(x + w / 2, y + d / 2, 0)[1] + 2, rx: 40, ry: 15, fill: "none", stroke: pal.accent, "stroke-width": 3, opacity: 0.85, class: "blink amb" }));
-  if (o && f.family !== "crate") {   // a count plate: how often it was used; amber dot: it asked you; red dot: denied or failed
-    const top = P(x + w / 2, y + d / 2, 58), n = f.family === "ledger" ? "$" + o.usd.toFixed(3) : f.family === "approvals" ? o.asked : o.used;
-    g.append(sv("rect", { x: top[0] - 15, y: top[1] - 8, width: 30, height: 12, rx: 3, fill: pal.dark, stroke: pal.trim, "stroke-width": 1, opacity: 0.92 }), sv("text", { x: top[0], y: top[1] + 1.5, class: "badge-n", fill: pal.ink, stroke: "none" }, String(n)));
-    if (o.pending || (o.asked && f.family !== "approvals")) g.append(sv("circle", { cx: top[0] - 17, cy: top[1] - 6, r: 4, fill: pal.wait, stroke: "#000", "stroke-width": 1 }));
-    if (o.denied || o.failed) g.append(sv("circle", { cx: top[0] + 17, cy: top[1] - 6, r: 4, fill: pal.bad, stroke: "#000", "stroke-width": 1 }));
-  }
-  return g;
-}
-function propGroup(kind, x, y, pal, theme, defs, uid, size) {   // scenery: it says nothing about the run
-  const g = sv("g", {}), id = "pr" + uid + kind + Math.round(x * 3 + y * 7);
-  shadow(g, x - 0.2, y - 0.2, 1, 1);
-  if (kind === "plant") {
-    box(g, x - 0.3, y - 0.3, 0.7, 0.7, 0, 8, "#7a4a2a", true);
-    const c = P(x + 0.05, y + 0.05, 12);
-    for (const [dx, dy, rr, col] of [[0, -14, 8, "#2f7a3a"], [-9, -8, 7, "#3a8a44"], [9, -8, 7, "#2a6a34"], [-4, -20, 6, "#3f9a4c"], [5, -17, 6, "#2f7a3a"]]) g.append(sv("ellipse", { cx: c[0] + dx, cy: c[1] + dy, rx: rr, ry: rr * 1.25, fill: col }));
-  } else if (kind === "lamp") {
-    box(g, x - 0.1, y - 0.1, 0.25, 0.25, 0, 5, pal.metal, true);
-    const c = P(x, y, 5), t = P(x, y, 44);
-    g.append(sv("line", { x1: c[0], y1: c[1], x2: t[0], y2: t[1], stroke: pal.metal, "stroke-width": 2.5 }), sv("polygon", { points: pts([[t[0] - 9, t[1] + 2], [t[0] + 9, t[1] + 2], [t[0] + 5, t[1] - 9], [t[0] - 5, t[1] - 9]]), fill: pal.lamp, class: "flick amb" }));
-    g.append(sv("ellipse", { cx: P(x, y, 0)[0], cy: P(x, y, 0)[1], rx: 56, ry: 24, fill: gradient(defs, id, [[0, pal.lamp, 0.4], [1, pal.lamp, 0]], { r: "50%" }), class: "flick2 amb" }));
-  } else if (kind === "crates") {
-    box(g, x, y, 1.2, 1.1, 0, 12, pal.wood); box(g, x + 0.1, y + 0.1, 0.9, 0.8, 12, 10, shade(pal.wood, 8));
-    for (let k = 0; k < 2; k++) box(g, x + 0.05, y + 1.08, 1.1, 0.04, 2 + k * 5, 1.4, shade(pal.wood, -35), true);
-  } else if (kind === "tank") {   // a barrel, a boiler or a server rack
-    if (theme === "steam") {
-      const c = P(x + 0.3, y + 0.3, 0);
-      g.append(sv("rect", { x: c[0] - 13, y: c[1] - 38, width: 26, height: 38, fill: shade(pal.metal, -25) }), sv("ellipse", { cx: c[0], cy: c[1], rx: 13, ry: 6, fill: shade(pal.metal, -25) }), sv("ellipse", { cx: c[0], cy: c[1] - 38, rx: 13, ry: 6, fill: shade(pal.metal, 5) }));
-      for (const z of [10, 28]) g.append(sv("rect", { x: c[0] - 13, y: c[1] - z - 2, width: 26, height: 3, fill: pal.metal }));
-      g.append(sv("circle", { cx: c[0], cy: c[1] - 22, r: 5, fill: pal.paper, stroke: pal.metal, "stroke-width": 1.5 }), sv("circle", { cx: c[0], cy: c[1] - 44, r: 4, fill: "#fff", opacity: 0.5, class: "puff amb" }));
-    } else if (theme === "cyber") {
-      box(g, x, y, 0.9, 0.9, 0, 44, pal.dark);
-      for (let r = 0; r < 7; r++) { led(g, x + 0.2, y + 0.9, 6 + r * 5.5, r % 2 ? pal.neonA : pal.neonB, "blink" + (r % 3 ? (r % 3 + 1) : "")); led(g, x + 0.6, y + 0.9, 6 + r * 5.5, pal.screen, "blink" + (r % 2 ? "2" : "3")); }
-    } else {
-      const c = P(x + 0.3, y + 0.3, 0);
-      g.append(sv("rect", { x: c[0] - 11, y: c[1] - 28, width: 22, height: 28, fill: shade(pal.wood, -5) }), sv("ellipse", { cx: c[0], cy: c[1], rx: 11, ry: 5, fill: shade(pal.wood, -20) }), sv("ellipse", { cx: c[0], cy: c[1] - 28, rx: 11, ry: 5, fill: shade(pal.wood, 12) }));
-      for (const z of [7, 20]) g.append(sv("rect", { x: c[0] - 11, y: c[1] - z - 1, width: 22, height: 2.5, fill: pal.metal }));
-    }
-  } else if (kind === "bookcase") {
-    const len = size || 3.4;
-    box(g, x, y, 0.9, len, 0, 46, pal.wood);
-    for (let r = 0; r < 4; r++) for (let k = 0; k < Math.floor(len / 0.4); k++) { const col = [pal.accent, pal.rug1, pal.screen, pal.paper, pal.metal][Math.floor(hash(r, k + Math.round(y)) * 5)]; box(g, x + 0.85, y + 0.12 + k * 0.4, 0.05, 0.3, 4 + r * 10, 8 - (k % 3), col, true); }
-  } else if (kind === "coat") {
-    const c = P(x, y, 0), t = P(x, y, 52);
-    g.append(sv("line", { x1: c[0], y1: c[1], x2: t[0], y2: t[1], stroke: pal.wood, "stroke-width": 3 }), sv("polygon", { points: pts([[t[0] - 9, t[1] + 4], [t[0] + 9, t[1] + 4], [t[0] + 12, t[1] + 28], [t[0] - 12, t[1] + 28]]), fill: shade(pal.rug1, 5) }), sv("ellipse", { cx: t[0], cy: t[1] - 2, rx: 8, ry: 3.5, fill: pal.dark }));
-  }
-  return g;
-}
-function atmosphere(svg, defs, B, pal, theme, uid) {   // light and dust over everything
-  const [x0, y0, x1, y1] = B, w = x1 - x0, h = y1 - y0, layer = sv("g", { "aria-hidden": "true", "pointer-events": "none" });
-  layer.append(sv("rect", { x: x0, y: y0, width: w, height: h, fill: gradient(defs, "vig" + uid, [[0.55, "#000", 0], [1, "#000", 0.6]], { r: "75%" }) }));
-  for (let i = 0; i < 26; i++) layer.append(sv("circle", { cx: x0 + hash(71, i) * w, cy: y0 + h * 0.3 + hash(72, i) * h * 0.65, r: 1 + hash(73, i) * 1.6, fill: theme === "cyber" ? pal.neonB : pal.lamp, opacity: 0.25, class: "mote amb", style: "animation-delay:-" + (hash(74, i) * 14).toFixed(1) + "s;animation-duration:" + (10 + hash(75, i) * 10).toFixed(0) + "s" }));
   svg.append(layer);
 }
-
-// ---- the crew: pixel people --------------------------------------------------------------------------------------------
-const CELL = 2.4, SW = 16, SH = 28;   // a person is a grid of 16 x 28 cells, each CELL px
-const SKINS = [["#e8b98a", "#c99468"], ["#c68642", "#a06a30"], ["#8d5524", "#6e4118"], ["#f1c27d", "#d4a05c"], ["#ffdbac", "#e0b98a"]];
-const HAIRS = ["#3a2a1a", "#1a1a1a", "#7a4a20", "#b0762a", "#555560"];
-const LOOKS = {
-  clyde:   { skin: 0, coat: "#2d3a5a", shirt: "#e8e0d0", tie: "#8a2433", pants: "#1c2236", hat: "#1f2740", hair: "#2a1a10", kind: "cap" },
-  bonnie:  { skin: 3, coat: "#b33a3a", shirt: "#f2e8e0", tie: null, pants: "#3a2a2a", hat: "#8a2433", hair: "#4a2b1a", kind: "beret", long: true },
-  master:  { skin: 1, coat: "#c99a2e", shirt: "#f4ecd2", tie: "#3a2a14", pants: "#3a3020", hat: "#3a2a14", hair: "#222", kind: "bowler" },
-  advisor: { skin: 4, coat: "#6a4c93", shirt: "#e8e0f0", tie: "#bdbdbd", pants: "#2b2440", hat: null, hair: "#bdbdbd", kind: "glasses" },
-};
-const WORKERS = ["#2f8f83", "#d17a22", "#3b78c2", "#8a5fb0", "#b05f5f", "#5fa86a", "#c2b13b", "#4f6d7a"];
-function lookFor(name, theme) {
-  const n = parseInt(number(name) || "1", 10) - 1;
-  const base = LOOKS[name] || { skin: n % 5, coat: WORKERS[n % WORKERS.length], shirt: "#d8d8d8", tie: null, pants: "#2a2f3a", hat: ["#e0b020", "#d8d8d8", "#e0702a"][n % 3], hair: HAIRS[(n + 2) % HAIRS.length], kind: "hardhat" };
-  const tone = SKINS[base.skin % SKINS.length];
-  return { ...base, theme, skin: tone[0], skin2: tone[1] };
-}
-function personFrame(look, pose, f, blink, view) {   // one pose as cells on 16 x 28: [x, y, w, h, colour]; view "front" faces the viewer, "back" faces away
-  const c = [], r = (x, y, w, h, col) => c.push([x, y, w, h, col]), back = view === "back", th = look.theme;
-  const walking = pose === "walk", working = pose === "work", checking = pose === "check", carrying = pose === "carry";
-  const phase = walking ? f % 4 : 0, top = walking ? (phase % 2 ? -0.5 : 0) : (pose === "idle" && f === 1 ? -0.5 : 0);
-  const swing = phase === 0 ? 1 : phase === 2 ? -1 : 0, skin = look.skin, skin2 = look.skin2, coat = look.coat, lit = shade(coat, 16), dim = shade(coat, -20), deep = shade(coat, -38);
-  const hairDark = shade(look.hair, -30), neon = "#19e3ff", brass = "#c0773a", boot = "#16161c";
-  // legs and boots: the leg that is forward is shorter in the picture, the other plants its foot
-  for (const [x, lift, shadeSide] of [[4, swing > 0 ? 1 : 0, 6], [9, swing < 0 ? 1 : 0, 11]]) {
-    r(x, 21, 3, 5 - lift, look.pants); r(shadeSide, 21, 1, 5 - lift, shade(look.pants, shadeSide === 6 ? -14 : -22));
-    r(x - 0.3, 26 - lift, 3.6, 2, boot); r(x - 0.3, 27.4 - lift, 3.6, 0.6, "#000");
-    if (th === "steam") r(x - 0.3, 25 - lift, 3.6, 1, brass); else if (th === "cyber") r(x - 0.3, 27.6 - lift, 3.6, 0.4, neon);
-  }
-  // torso
-  r(3, 12 + top, 10, 9, coat); r(3, 12 + top, 2, 9, lit); r(11, 12 + top, 2, 9, dim); r(3, 20 + top, 10, 1, deep); r(2.5, 11.6 + top, 11, 1.2, lit);
-  r(3, 19.6 + top, 10, 1, "#1c1410"); r(7.3, 19.6 + top, 1.4, 1, th === "steam" ? "#ffd166" : "#d0b050");
-  if (back) { r(7.75, 12.8 + top, 0.5, 6.8, deep); r(7.2, 17 + top, 1.6, 2.6, deep); r(6, 11.6 + top, 4, 1.2, shade(look.shirt, -14)); }
-  else {
-    r(6.4, 12 + top, 3.2, 7.6, look.shirt); r(6, 12 + top, 0.6, 7.6, deep); r(9.4, 12 + top, 0.6, 7.6, deep); r(6.2, 11.8 + top, 1.4, 1.6, shade(look.shirt, -12)); r(8.4, 11.8 + top, 1.4, 1.6, shade(look.shirt, -12));
-    if (look.tie) { r(7.5, 13 + top, 1, 5.4, look.tie); r(7.3, 12.4 + top, 1.4, 1.1, shade(look.tie, 18)); }
-    r(4, 16 + top, 2, 0.5, deep); if (look.tie) r(4, 15.4 + top, 1.5, 0.6, look.shirt);
-    if (th === "city" && look.kind !== "glasses") { r(4.6, 12 + top, 0.8, 7.6, "#3a2a1a"); r(10.6, 12 + top, 0.8, 7.6, "#3a2a1a"); }
-    if (th === "cyber") r(10, 14 + top, 1.5, 1.5, "#00f5d4");
-  }
-  if (th === "steam") { r(2.5, 11.4 + top, 2.4, 1.4, brass); r(3.3, 11.8 + top, 0.8, 0.6, "#ffd166"); }
-  if (th === "cyber") { r(3, 12 + top, 10, 0.5, neon); if (!back) r(3, 13 + top, 0.7, 5, "#ff2bd6"); else r(6, 12.6 + top, 4, 0.4, neon); }
-  // arms
-  const sa = walking ? (phase === 0 ? -1 : phase === 2 ? 1 : 0) : 0, cuff = th === "steam" ? brass : look.shirt;
-  const arm = (x, y, len, side) => { r(x, y, 2, len, coat); r(x + (side ? 1.4 : 0), y, 0.6, len, side ? dim : lit); r(x, y + len - 1, 2, 1, cuff); };
-  if (carrying) {
-    arm(1, 12 + top, 6, 0); arm(13, 12 + top, 6, 1);
-    if (!back) { r(3, 15 + top, 10, 7, "#a8782f"); r(3, 15 + top, 10, 1, "#c89a4a"); r(3, 21 + top, 10, 1, "#7a5420"); r(7.4, 15 + top, 1.2, 7, "#d8b060"); r(1.6, 18 + top, 1.8, 1.6, skin); r(12.6, 18 + top, 1.8, 1.6, skin); }
-    else { r(2.2, 16 + top, 1.6, 5, "#a8782f"); r(12.2, 16 + top, 1.6, 5, "#7a5420"); r(1, 18.5 + top, 2, 1.5, skin); r(13, 18.5 + top, 2, 1.5, skin); }
-  } else if (checking) {
-    arm(1, 12 + top, 7, 0); arm(13, 12 + top, 5, 1); r(1, 19 + top, 2, 1.5, skin);
-    if (!back) { r(9.6, 12.6 + top, 4.4, 6, "#8a6a3a"); r(10.1, 13.2 + top, 3.4, 4.8, "#f4ecd2"); r(10.6, 14.2 + top, 2.4, 0.4, "#777"); r(10.6, 15.4 + top, 2, 0.4, "#777"); r(10.6, 16.6 + top, 2.4, 0.4, "#777"); r(12.6, 17.6 + top, 1.6, 1.6, skin); }
-    else r(13, 17 + top, 2, 1.5, skin);
-  } else if (working && !back) {
-    const s = f % 2;
-    r(1, 12 + top, 2, 5, coat); r(13, 12 + top, 2, 5, dim); r(3, 16 + top, 3.4, 1.8, lit); r(9.6, 16 + top, 3.4, 1.8, dim); r(1, 16 + top, 2, 1, cuff); r(13, 16 + top, 2, 1, cuff);
-    r(5.8, 17 + top + s * 0.8, 1.8, 1.5, skin); r(8.6, 17 + top + (1 - s) * 0.8, 1.8, 1.5, skin);
-  } else {
-    const s = working ? f % 2 : 0;
-    arm(1, 12 + top + sa, 7, 0); arm(13, 12 + top - sa, 7, 1); r(1, 19 + top + sa + s, 2, 1.6, skin); r(13, 19 + top - sa - s, 2, 1.6, skin);
-  }
-  // neck and head
-  r(7, 11 + top, 2, 1.6, skin2);
-  if (back) {
-    r(4, 3 + top, 8, 8, look.hair); r(3, 6 + top, 1, 3, skin2); r(12, 6 + top, 1, 3, skin2); r(4, 9.6 + top, 8, 1.4, hairDark); r(5, 4 + top, 3, 1, shade(look.hair, 22));
-    if (look.long) { r(3, 4 + top, 10, 9, look.hair); r(3, 11 + top, 10, 2, hairDark); r(5, 5 + top, 3, 1, shade(look.hair, 22)); }
-  } else {
-    r(4, 3 + top, 8, 8, skin); r(11, 4 + top, 1, 6, skin2); r(5, 10 + top, 6, 1, skin2); r(3, 6 + top, 1, 3, skin2); r(12, 6 + top, 1, 3, skin2);
-    r(4, 3 + top, 8, 2, look.hair); r(3, 4 + top, 1, 3, look.hair); r(12, 4 + top, 1, 3, look.hair);
-    r(5, 5.6 + top, 2.2, 0.5, hairDark); r(8.8, 5.6 + top, 2.2, 0.5, hairDark);
-    if (blink) { r(5.4, 7.6 + top, 1.6, 0.5, hairDark); r(9, 7.6 + top, 1.6, 0.5, hairDark); }
-    else { r(5.4, 6.6 + top, 1.6, 2, "#15151c"); r(9, 6.6 + top, 1.6, 2, "#15151c"); r(5.4, 6.6 + top, 0.8, 0.8, "#fff"); r(9, 6.6 + top, 0.8, 0.8, "#fff"); }
-    r(7.4, 8 + top, 1.2, 1.2, skin2); r(6.8, 9.6 + top, 2.4, 0.5, "#9a5040");
-    if (look.kind === "glasses") { for (const x of [5, 8.6]) { r(x, 6 + top, 2.8, 0.4, "#222"); r(x, 8.4 + top, 2.8, 0.4, "#222"); r(x, 6 + top, 0.4, 2.8, "#222"); r(x + 2.4, 6 + top, 0.4, 2.8, "#222"); } r(7.8, 6.6 + top, 0.8, 0.4, "#222"); r(6.4, 9 + top, 3.2, 0.6, look.hair); }
-    if (look.long) { r(3, 4 + top, 1.6, 9, look.hair); r(11.4, 4 + top, 1.6, 9, look.hair); }
-  }
-  // hats and hair
-  const hat = look.hat;
-  if (look.kind === "cap") { r(3.5, 1 + top, 9, 3, hat); r(4.5, 1 + top, 6, 1, shade(hat, 22)); if (!back) r(3, 3.6 + top, 10, 1, shade(hat, -28)); else r(7.5, 0.4 + top, 1, 0.6, shade(hat, 30)); }
-  else if (look.kind === "beret") { r(3, 1.4 + top, 10, 2.6, hat); r(4, 0.6 + top, 7, 1, hat); r(7.6, 0.1 + top, 1, 0.7, shade(hat, -20)); r(4.6, 1.4 + top, 4, 0.7, shade(hat, 25)); if (!back) r(3, 3.6 + top, 10, 0.6, look.hair); }
-  else if (look.kind === "bowler") { r(5, 0.4 + top, 6, 3, hat); r(4, 2 + top, 8, 1.2, hat); r(5.4, 0.9 + top, 2, 0.7, shade(hat, 30)); r(4, 2.6 + top, 8, 0.7, "#111"); r(2.5, 3.2 + top, 11, 1, shade(hat, -16)); }
-  else if (look.kind === "hardhat") { r(4, 1 + top, 8, 3, hat); r(7, 0.4 + top, 2, 1, shade(hat, 18)); r(5, 1.6 + top, 2, 0.8, shade(hat, 35)); r(3, 3.6 + top, 10, 1, shade(hat, -18)); }
-  else { r(4, 2 + top, 8, 2.4, look.hair); r(5, 1.6 + top, 3, 1, shade(look.hair, 22)); }   // the advisor: swept-back hair, no hat
-  if (th === "steam" && look.kind !== "glasses") { if (!back) { r(5, 2.6 + top, 2.5, 1.5, brass); r(8.5, 2.6 + top, 2.5, 1.5, brass); r(5.4, 3 + top, 1.7, 0.8, "#9ff0e6"); r(8.9, 3 + top, 1.7, 0.8, "#9ff0e6"); } r(4, 3.2 + top, 8, 0.4, "#5a3a1a"); }
-  if (th === "cyber" && !back) { r(4.4, 6.2 + top, 7.2, 2.2, neon); r(4.4, 6.2 + top, 7.2, 0.7, "#bff8ff"); }
-  return c;
-}
-const POSES = { idle: 3, walk: 4, work: 2, check: 2, carry: 2 };
-function personItem(name, role, theme) {
-  const look = lookFor(name, theme), g = sv("g", { class: "sprite", "data-sprite": name }), cache = {};
-  const body = sv("g", { transform: "translate(" + (-SW / 2 * CELL) + " " + (-SH * CELL) + ")" });
-  function frameOf(view, pose, f) {   // a frame is drawn the first time it is needed: a person is a few hundred rectangles
-    const key = view + ":" + pose + ":" + f;
-    if (!cache[key]) {
-      const fg = sv("g", { style: "display:none" }), cells = personFrame(look, pose, pose === "idle" ? Math.min(f, 1) : f, pose === "idle" && f === 2, view), grow = 0.45;
-      for (const [x, y, w, h] of cells) fg.append(sv("rect", { x: (x - grow) * CELL, y: (y - grow) * CELL, width: (w + grow * 2) * CELL, height: (h + grow * 2) * CELL, fill: "#0b0b12", opacity: 0.9, "shape-rendering": "crispEdges" }));   // the outline
-      for (const [x, y, w, h, col] of cells) fg.append(sv("rect", { x: x * CELL, y: y * CELL, width: w * CELL, height: h * CELL, fill: col, "shape-rendering": "crispEdges" }));
-      body.append(fg);
-      cache[key] = fg;
+function mixc(a, b, t) { const p = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)), x = p(a), y = p(b); return "#" + x.map((v, i) => Math.round(v + (y[i] - v) * t).toString(16).padStart(2, "0")).join(""); }
+function rect(layer, x, y, w, h, fill, extra) { const n = sv("rect", { x, y, width: w, height: h, fill, ...(extra || {}) }); layer.append(n); return n; }
+function floors(layer, defs, p, pal, theme, uid) {
+  for (const r of Object.values(p.rooms)) { const q = [r.x * T, r.y * T, r.w * T, r.d * T]; rect(layer, q[0] - 6, q[1] - 2, q[2] + 12, q[3] + 14, "#000", { opacity: 0.45, filter: FX.soft, rx: 10 }); }   // a soft shadow under each room
+  const plates = (r, ri, a, b, grout, kind) => {
+    const W = Math.round(r.w), D = Math.round(r.d), x = r.x * T, y = r.y * T;
+    rect(layer, x, y, W * T, D * T, a);
+    let alt = "", lines = "", rivets = "";
+    for (let i = 0; i < W; i++) for (let j = 0; j < D; j++) {
+      if ((i + j) % 2) alt += "M" + (x + i * T) + " " + (y + j * T) + "h" + T + "v" + T + "h-" + T + "Z";
+      for (const [u, v] of [[0.12, 0.12], [0.88, 0.12], [0.12, 0.88], [0.88, 0.88]]) rivets += "M" + (x + (i + u) * T).toFixed(1) + " " + (y + (j + v) * T).toFixed(1) + "h0";
     }
-    return cache[key];
+    for (let i = 0; i <= W; i++) lines += "M" + (x + i * T) + " " + y + "v" + D * T;
+    for (let j = 0; j <= D; j++) lines += "M" + x + " " + (y + j * T) + "h" + W * T;
+    layer.append(sv("path", { d: alt, fill: b }), sv("path", { d: lines, stroke: grout, "stroke-width": 1.2, opacity: 0.5, fill: "none" }), sv("path", { d: lines, stroke: "#fff", "stroke-width": 1, opacity: 0.08, fill: "none", transform: "translate(1 1)" }), sv("path", { d: rivets, stroke: shade(grout, 55), "stroke-width": 2.4, "stroke-linecap": "round", opacity: 0.5, fill: "none" }));
+    if (kind === "room") for (let k = 0; k < 2; k++) {   // a vent grating set into a plate
+      const i = Math.floor(hash(ri + 31, k) * (W - 2)) + 1, j = Math.floor(hash(ri + 37, k) * (D - 2)) + 1, vx = x + i * T + 6, vy = y + j * T + 6;
+      let slats = ""; for (let t = 1; t < 6; t++) slats += "M" + (vx + t * 5.4) + " " + vy + "v" + (T - 12);
+      rect(layer, vx, vy, T - 12, T - 12, shade(grout, -30), { opacity: 0.8, rx: 2 }); layer.append(sv("path", { d: slats, stroke: shade(a, 25), "stroke-width": 1.6, opacity: 0.7, fill: "none" }));
+    }
+    rect(layer, x, y, W * T, D * T, "#000", { filter: FX.grain, opacity: 0.2 }); rect(layer, x, y, W * T, D * T, "#000", { filter: FX.grime, opacity: 0.24 });
+  };
+  p.corridors.forEach((c, ci) => plates({ x: c.x, y: c.y, w: c.w, d: c.d }, 90 + ci, shade(pal.floorA, theme === "cyber" ? 40 : -4), shade(pal.floorB, theme === "cyber" ? 28 : -14), pal.grout, "corridor"));
+  Object.values(p.rooms).forEach((r, ri) => {
+    plates(r, ri, pal.floorA, pal.floorB, pal.grout, "room");
+    const x = r.x * T, y = r.y * T, w = r.w * T, d = r.d * T;
+    rect(layer, x + 14, y + 14, w - 28, d - 28, "none", { stroke: "#000", "stroke-width": 4, opacity: 0.35 });
+    rect(layer, x + 14, y + 14, w - 28, d - 28, "none", { stroke: theme === "cyber" ? pal.neonB : "#e8c020", "stroke-width": 3, "stroke-dasharray": "9 9", opacity: 0.5 });   // a hazard inlay inside the walls
+  });
+  const deck = p.rooms.deck, rug = [deck.x + 9, deck.y + 3.4, 8.4, 6.4];   // the deck's rug under the planning table
+  rect(layer, rug[0] * T, rug[1] * T, rug[2] * T, rug[3] * T, pal.rug1, { rx: 6 }); rect(layer, rug[0] * T + 12, rug[1] * T + 12, rug[2] * T - 24, rug[3] * T - 24, "none", { stroke: pal.rug2, "stroke-width": 3, rx: 4, opacity: 0.8 });
+  for (const r of Object.values(p.rooms)) {   // a runner down each doorway's aisle
+    if (r.kind !== "bay" && r.kind !== "outbox") continue;
+    const run = r.kind === "bay" ? [r.x + p.BW / 2 - 1.4, r.y + 0.4, 2.8, 8.4] : [r.x + 0.4, r.y + 2.1, 4.2, 1.8];
+    rect(layer, run[0] * T, run[1] * T, run[2] * T, run[3] * T, pal.rug1, { opacity: 0.85, rx: 4 }); rect(layer, run[0] * T + 8, run[1] * T + 8, run[2] * T - 16, run[3] * T - 16, "none", { stroke: pal.rug2, "stroke-width": 2, opacity: 0.7, rx: 3 });
   }
-  const flip = sv("g", { class: "flip" });
-  flip.append(body);
-  const shadowEl = sv("ellipse", { cx: 0, cy: 1, rx: 17, ry: 6, fill: "#000", opacity: 0.4 });
-  const tag = sv("g", { transform: "translate(0 " + (-SH * CELL - 5) + ")" });
-  const label = sv("text", { y: 3, class: "name", fill: "#fff", stroke: "#000" }, name);
-  const bubble = sv("g", { transform: "translate(0 " + (-SH * CELL - 24) + ")" });
-  tag.append(sv("rect", { x: -(name.length * 3.6 + 6), y: -9, width: name.length * 7.2 + 12, height: 14, rx: 3, fill: "#000", opacity: 0.6 }), label);
-  g.append(shadowEl, flip, tag, bubble);
-  g.append(sv("title", {}, name));
-  return { name, role, g, flip, frameOf, bubble, shown: null, shownEl: null, facing: [1, "front"], bubbleKind: null, title: g.lastChild };
+  for (const [a, b] of p.edges) {   // a rail along each long side of a corridor, with a light every so often
+    const A = pos(a[0], a[1]), Bq = pos(b[0], b[1]);
+    layer.append(sv("line", { x1: A[0], y1: A[1], x2: Bq[0], y2: Bq[1], stroke: shade(pal.trim, -30), "stroke-width": 7 }), sv("line", { x1: A[0], y1: A[1], x2: Bq[0], y2: Bq[1], stroke: pal.trim, "stroke-width": 2.4 }));
+    const len = Math.hypot(Bq[0] - A[0], Bq[1] - A[1]), steps = Math.max(1, Math.floor(len / 66));
+    for (let t = 0; t <= steps; t++) { const k = steps ? t / steps : 0; layer.append(sv("circle", { cx: A[0] + (Bq[0] - A[0]) * k, cy: A[1] + (Bq[1] - A[1]) * k, r: 2.8, fill: theme === "cyber" ? pal.neonB : pal.lamp, class: "blink" + (t % 3 ? String(t % 3 + 1) : "") + " amb" })); }
+  }
+}
+function doorsOf(p, r) {   // where a room's wall has a doorway: [side, from, to] in tiles along that side
+  if (r.kind === "deck") return [["s", p.deckCx - 1, p.deckCx + 1], ["e", 5, 7]];
+  if (r.kind === "bay") return [["n", r.x + p.BW / 2 - 1, r.x + p.BW / 2 + 1]];
+  return [["w", 5, 7]];
+}
+function walls(layer, defs, p, pal, theme, uid) {
+  for (const r of Object.values(p.rooms)) {
+    const doors = doorsOf(p, r), x = r.x * T, y = r.y * T, w = r.w * T, d = r.d * T, runs = [];
+    const cut = (side, from, to, fixed) => {   // the stretches of one side that are wall, once the doorways are taken out
+      const gaps = doors.filter((q) => q[0] === side).map((q) => [q[1] * T, q[2] * T]).sort((a, b) => a[0] - b[0]);
+      let at = from; for (const [a, b] of gaps.concat([[to, to]])) { if (a > at) runs.push(side === "n" || side === "s" ? [at, fixed - WT / 2, a - at, WT] : [fixed - WT / 2, at, WT, a - at]); at = b; }
+    };
+    cut("n", x - WT / 2, x + w + WT / 2, y); cut("s", x - WT / 2, x + w + WT / 2, y + d); cut("w", y + WT / 2, y + d - WT / 2, x); cut("e", y + WT / 2, y + d - WT / 2, x + w);
+    for (const q of runs) rect(layer, q[0] + 3, q[1] + 4, q[2], q[3], "#000", { opacity: 0.4, filter: FX.soft });
+    for (const q of runs) {
+      rect(layer, q[0], q[1], q[2], q[3], pal.wallL, { stroke: "#000", "stroke-width": 1.2, "stroke-opacity": 0.5 });
+      const horiz = q[2] > q[3];
+      rect(layer, q[0], q[1], horiz ? q[2] : 2.4, horiz ? 2.4 : q[3], pal.trim, { opacity: 0.9 });   // a bright edge on the wall's top
+      if (theme === "city") for (let t = 20; t < (horiz ? q[2] : q[3]) - 12; t += 44) { if (horiz) rect(layer, q[0] + t, q[1] + 3, 18, 3.4, pal.win, { opacity: 0.8 }); else rect(layer, q[0] + 3, q[1] + t, 3.4, 18, pal.win, { opacity: 0.8 }); }
+      else if (theme === "steam") for (let t = 22; t < (horiz ? q[2] : q[3]) - 12; t += 44) layer.append(sv("circle", { cx: horiz ? q[0] + t : q[0] + WT / 2, cy: horiz ? q[1] + WT / 2 : q[1] + t, r: 3.2, fill: pal.metal, stroke: "#000", "stroke-width": 0.6 }));
+      else for (let t = 14; t < (horiz ? q[2] : q[3]) - 8; t += 44) { if (horiz) rect(layer, q[0] + t, q[1] + 3, 26, 2.6, pal.neonB, { opacity: 0.85, class: "blink2 amb" }); else rect(layer, q[0] + 3, q[1] + t, 2.6, 26, pal.neonB, { opacity: 0.85, class: "blink2 amb" }); }
+    }
+    for (const [side, a, b] of doors) {   // a door frame, and a lamp over it
+      const A = side === "n" || side === "s" ? [a * T, (side === "n" ? y : y + d)] : [(side === "w" ? x : x + w), a * T], Bq = side === "n" || side === "s" ? [b * T, A[1]] : [A[0], b * T];
+      for (const q of [A, Bq]) layer.append(sv("circle", { cx: q[0], cy: q[1], r: 6, fill: pal.trim, stroke: "#000", "stroke-width": 1 }));
+      layer.append(sv("circle", { cx: (A[0] + Bq[0]) / 2, cy: (A[1] + Bq[1]) / 2, r: 4, fill: theme === "cyber" ? pal.neonB : pal.lamp, class: "flick amb" }));
+    }
+  }
+}
+const FAMILY_SPRITE = { read: "file-cabinet", write: "writer-desk", shell: "console", web: "comm-booth", mcp: "server-rack", other: "crate", approvals: "dual-monitor-desk", ledger: "counter", desk: "desk", table: "meeting-table", crate: "crate" };
+const PLANTS = ["plant-fern", "plant-ficus", "plant-flowering", "plant-monstera", "plant-snake-plant"];
+function furnitureSprite(f, pal, theme, now, defs, uid) {
+  const g = sv("g", {}), [x, y, w, d] = f.box, o = f.obj, id = "fg" + uid + f.family + Math.round(x * 3 + y * 5), fresh = o && o.last && now - o.last < 4;
+  const bx = x * T, by = y * T, bw = w * T, bh = d * T;
+  rect(g, bx + 4, by + bh * 0.55, bw - 4, bh * 0.5, "#000", { opacity: 0.4, filter: FX.soft, rx: 8 });
+  g.append(fit(FAMILY_SPRITE[f.family] || "crate", bx, by, bw, bh + 6, theme));
+  if (f.family === "approvals" && o && o.pending) g.append(sv("circle", { cx: bx + bw / 2, cy: by + bh / 2, r: 46, fill: gradient(defs, id + "p", [[0, pal.wait, 0.5], [1, pal.wait, 0]], { r: "50%" }), class: "flick2 amb" }));
+  if (f.lane && f.laneState) { const on = f.laneState === "lit"; g.append(sv("circle", { cx: bx + bw - 10, cy: by + 12, r: 5, fill: on ? pal.accent : shade(pal.dark, 20), stroke: "#000", "stroke-width": 1, class: on ? "flick amb" : "" })); }   // the handoff tray: lit once that handoff was recorded
+  if (f.family === "crate" && o && o.state === "landed") g.append(sv("circle", { cx: bx + bw / 2, cy: by + bh / 2, r: 56, fill: gradient(defs, id + "l", [[0, pal.accent, 0.55], [1, pal.accent, 0]], { r: "50%" }), class: "flick amb" }));
+  if (fresh) g.append(sv("rect", { x: bx - 6, y: by - 6, width: bw + 12, height: bh + 12, rx: 10, fill: "none", stroke: pal.accent, "stroke-width": 3, opacity: 0.85, class: "blink amb" }));
+  if (o && f.family !== "crate") {   // a count plate: how often it was used; amber dot: it asked you; red dot: denied or failed
+    const n = f.family === "ledger" ? "$" + o.usd.toFixed(3) : f.family === "approvals" ? o.asked : o.used, cx = bx + bw / 2, cy = by - 4;
+    g.append(sv("rect", { x: cx - 17, y: cy - 9, width: 34, height: 15, rx: 4, fill: pal.dark, stroke: pal.trim, "stroke-width": 1, opacity: 0.94 }), sv("text", { x: cx, y: cy + 2, class: "badge-n", fill: pal.ink, stroke: "none" }, String(n)));
+    if (o.pending || (o.asked && f.family !== "approvals")) g.append(sv("circle", { cx: cx - 20, cy: cy - 7, r: 4.5, fill: pal.wait, stroke: "#000", "stroke-width": 1 }));
+    if (o.denied || o.failed) g.append(sv("circle", { cx: cx + 20, cy: cy - 7, r: 4.5, fill: pal.bad, stroke: "#000", "stroke-width": 1 }));
+  }
+  return g;
+}
+function propSprite(kind, x, y, pal, theme, defs, uid, size) {   // scenery: it says nothing about the run
+  const g = sv("g", {}), px = x * T, py = y * T, id = "pr" + uid + kind + Math.round(x * 3 + y * 7);
+  if (kind === "plant") g.append(fit(PLANTS[Math.floor(hash(Math.round(x * 3), Math.round(y * 5)) * PLANTS.length)], px - 26, py - 36, 62, 62, theme));
+  else if (kind === "lamp") g.append(sv("circle", { cx: px, cy: py, r: 56, fill: gradient(defs, id, [[0, pal.lamp, 0.4], [1, pal.lamp, 0]], { r: "50%" }), class: "flick2 amb" }), sv("circle", { cx: px, cy: py, r: 6, fill: pal.lamp, stroke: "#000", "stroke-width": 1.2 }));
+  else if (kind === "crates") g.append(fit("crate", px - 6, py - 30, 54, 54, theme), fit("crate", px + 34, py - 18, 44, 44, theme));
+  else if (kind === "tank") g.append(fit("water-cooler", px - 10, py - 40, 36, 66, theme));
+  else if (kind === "bookcase") { const len = (size || 3.4) * T, n = Math.max(1, Math.floor(len / 40)); for (let i = 0; i < n; i++) g.append(fit("bookshelf", px - 6, py + i * (len / n), 50, len / n + 14, theme)); }
+  else if (kind === "coat") g.append(fit("clothes-rack", px - 18, py - 40, 56, 56, theme));
+  return g;
+}
+const CREW_FILE = { clyde: "crew-bridge-white", bonnie: "crew-commander-red", master: "crew-navy", advisor: "crew-lab-coat" }, WORKER_FILES = ["crew-teal", "crew-gray", "crew-plum", "crew-slate"];
+const CREW_K = 0.72;   // a person is drawn this fraction of the sprite's natural size
+function crewFile(name) { return CREW_FILE[name] || WORKER_FILES[(parseInt(number(name) || "1", 10) - 1) % WORKER_FILES.length]; }
+function personItem(name, role, theme) {
+  const file = crewFile(name), [sw, sh] = SPR[file], w = sw * CREW_K, h = sh * CREW_K, g = sv("g", { class: "sprite", "data-sprite": name });
+  const flip = sv("g", { class: "flip" }), body = sv("g", {}), carry = sv("g", { style: "display:none" });
+  body.append(sprite(file, -w / 2, -h, w, h, theme, { class: "crew-img" }));
+  carry.append(sv("rect", { x: -13, y: -h * 0.42, width: 26, height: 18, rx: 2, fill: "#a8782f", stroke: "#0b0b12", "stroke-width": 1.6 }), sv("rect", { x: -2, y: -h * 0.42, width: 4, height: 18, fill: "#d8b060" }));
+  flip.append(body, carry);
+  const shadowEl = sv("ellipse", { cx: 0, cy: -2, rx: 16, ry: 6, fill: "#000", opacity: 0.32 }), tag = sv("g", { transform: "translate(0 " + (-h - 8) + ")" }), bubble = sv("g", { transform: "translate(0 " + (-h - 28) + ")" });
+  tag.append(sv("rect", { x: -(name.length * 3.6 + 6), y: -9, width: name.length * 7.2 + 12, height: 14, rx: 3, fill: "#000", opacity: 0.6 }), sv("text", { y: 3, class: "name", fill: "#fff", stroke: "#000" }, name));
+  g.append(shadowEl, flip, tag, bubble, sv("title", {}, name));
+  return { name, role, g, flip, body, carry, bubble, face: 1, bubbleKind: null, title: g.lastChild };
 }
 function setBubble(person, kind, pal) {
   if (person.bubbleKind === kind) return;
@@ -985,49 +592,49 @@ function buildScene(run) {
   const defs = sv("defs", {});
   svg.append(defs);
   materials(defs, uid);
-  backdrop(svg, defs, B, pal, theme, uid);
-  const floors = sv("g", {}), laneLayer = sv("g", {}), walls = sv("g", {}), items = sv("g", {}), signs = sv("g", {});
-  drawFloors(floors, defs, p, pal, theme, uid);
+  ground(svg, defs, B, pal, theme, uid);
+  const floorLayer = sv("g", {}), laneLayer = sv("g", {}), wallLayer = sv("g", {}), items = sv("g", {}), signs = sv("g", {});
+  floors(floorLayer, defs, p, pal, theme, uid);
   const order = { dark: 0, lit: 1, waiting: 2, refused: 3 };   // the strongest state is drawn last where lanes share a corridor
   const laneColor = { dark: pal.dim, lit: pal.accent, waiting: pal.wait, refused: pal.bad }, described = [];
   for (const lane of layout.hallways.slice().sort((a, b) => order[a.state] - order[b.state])) {
     const path = p.lanes[lane.id] || p.lanes[lane.kind];
-    if (!path) continue;   // the two inside the deck are shown as a lamp on the desk instead (furnitureGroup)
-    const proj = path.map((q) => iso(q[0], q[1])), color = laneColor[lane.state];
-    const line = sv("polyline", { points: pts(proj), class: "lane " + lane.state, stroke: color, "stroke-width": lane.state === "dark" ? 2.5 : 3.5,
-      "stroke-dasharray": lane.state === "dark" ? "2 8" : lane.state === "waiting" ? "10 8" : "none", opacity: lane.state === "dark" ? 0.55 : 0.95 });
+    if (!path) continue;   // the two inside the deck are shown as a lamp on the desk instead
+    const proj = path.map((q) => pos(q[0], q[1])), color = laneColor[lane.state];
+    const line = sv("polyline", { points: pts(proj), class: "lane " + lane.state, stroke: color, "stroke-width": lane.state === "dark" ? 3 : 5, "stroke-linejoin": "round",
+      "stroke-dasharray": lane.state === "dark" ? "3 11" : lane.state === "waiting" ? "14 10" : "none", opacity: lane.state === "dark" ? 0.6 : 0.95 });
     line.append(sv("title", {}, laneTitle(lane, words)));
     laneLayer.append(line);
-    if (lane.state === "lit") laneLayer.append(sv("polyline", { points: pts(proj), class: "lane", stroke: color, "stroke-width": 8, opacity: 0.14 }));
+    if (lane.state === "lit") laneLayer.append(sv("polyline", { points: pts(proj), class: "lane", stroke: color, "stroke-width": 14, opacity: 0.14, "stroke-linejoin": "round" }));
     if (lane.state !== "dark") {   // chevrons along it, pointing the way the work goes
       const toward = lane.from === "deck" || lane.kind === "landing" ? 1 : -1;   // task and landing go away from the deck; results and approvals come back
-      const tiles = []; for (let i = 1; i < path.length; i++) { const a = path[i - 1], b = path[i], len = Math.hypot(b[0] - a[0], b[1] - a[1]); for (let t = 1; t < len; t += 1.6) tiles.push([a[0] + (b[0] - a[0]) * t / len, a[1] + (b[1] - a[1]) * t / len, (b[0] - a[0]) * toward, (b[1] - a[1]) * toward]); }
-      for (const [x, y, dx, dy] of tiles) {
-        const c = iso(x, y), d = iso(dx, dy), n = Math.hypot(d[0], d[1]) || 1, ux = d[0] / n, uy = d[1] / n;
-        laneLayer.append(sv("polygon", { points: pts([[c[0] + ux * 5, c[1] + uy * 5], [c[0] - ux * 3 - uy * 3.5, c[1] - uy * 3 + ux * 3.5], [c[0] - ux * 3 + uy * 3.5, c[1] - uy * 3 - ux * 3.5]]), fill: color, opacity: 0.9, class: lane.state === "waiting" ? "blink amb" : "" }));
+      for (let i = 1; i < path.length; i++) {
+        const a = path[i - 1], b = path[i], len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+        for (let t = 1; t < len; t += 1.6) {
+          const c = pos(a[0] + (b[0] - a[0]) * t / len, a[1] + (b[1] - a[1]) * t / len), ux = (b[0] - a[0]) / len * toward, uy = (b[1] - a[1]) / len * toward;
+          laneLayer.append(sv("polygon", { points: pts([[c[0] + ux * 8, c[1] + uy * 8], [c[0] - ux * 5 - uy * 6, c[1] - uy * 5 + ux * 6], [c[0] - ux * 5 + uy * 6, c[1] - uy * 5 - ux * 6]]), fill: color, opacity: 0.9, class: lane.state === "waiting" ? "blink amb" : "" }));
+        }
       }
     }
   }
   for (const lane of layout.hallways) described.push(laneTitle(lane, words));
-  drawWalls(walls, defs, p, pal, theme, uid);
-  for (const r of Object.values(p.rooms)) {   // room signs, on the NE wall
-    const title = r.kind === "deck" ? words.deck : r.kind === "outbox" ? words.outbox : words.bay + " " + number(r.id);
-    const c = P(r.x + (r.kind === "bay" ? 2.2 : r.w / 2), r.y, WALL - 18), half = title.length * 3.6 + 12;
-    signs.append(sv("rect", { x: c[0] - half, y: c[1] - 10, width: half * 2, height: 19, rx: 3, fill: pal.dark, stroke: pal.trim, "stroke-width": 2 }), sv("rect", { x: c[0] - half + 3, y: c[1] - 7, width: half * 2 - 6, height: 13, rx: 2, fill: "none", stroke: pal.trim, "stroke-width": 0.8, opacity: 0.6 }),
-                 sv("text", { x: c[0], y: c[1] + 4, class: "sign", fill: pal.ink, stroke: "none" }, title));
+  walls(wallLayer, defs, p, pal, theme, uid);
+  for (const r of Object.values(p.rooms)) {   // each room's sign, on its top wall
+    const title = r.kind === "deck" ? words.deck : r.kind === "outbox" ? words.outbox : words.bay + " " + number(r.id), half = title.length * 3.6 + 12, cx = r.x * T + 20 + half, cy = r.y * T - 22;
+    signs.append(sv("rect", { x: cx - half, y: cy - 10, width: half * 2, height: 19, rx: 3, fill: pal.dark, stroke: pal.trim, "stroke-width": 2 }), sv("text", { x: cx, y: cy + 4, class: "sign", fill: pal.ink, stroke: "none" }, title));
   }
-  const dyn = [];   // everything that can pass in front of or behind something else: furniture, scenery and crew
+  const dyn = [];   // everything that can pass in front of or behind something else: furniture, scenery and crew, back to front
   for (const f of p.furniture) {
     if (f.lane) { const l = layout.hallways.find((h) => h.id === f.lane); f.laneState = l ? l.state : null; if (l) described.push(laneTitle(l, words)); }
-    const g = furnitureGroup(f, pal, theme, now, defs, uid), tip = f.obj && f.obj.tools ? words[f.family] + ": " + f.obj.tools.join(", ") + " · used " + f.obj.used + " · asked " + f.obj.asked + " (allowed " + f.obj.allowed + ", denied " + f.obj.denied + ")" + (f.obj.failed ? " · failed " + f.obj.failed : "")
+    const g = furnitureSprite(f, pal, theme, now, defs, uid), tip = f.obj && f.obj.tools ? words[f.family] + ": " + f.obj.tools.join(", ") + " · used " + f.obj.used + " · asked " + f.obj.asked + " (allowed " + f.obj.allowed + ", denied " + f.obj.denied + ")" + (f.obj.failed ? " · failed " + f.obj.failed : "")
       : f.family === "approvals" ? words.approvals + ": asked " + f.obj.asked + " · allowed " + f.obj.allowed + " · denied " + f.obj.denied + " · waiting " + f.obj.pending
       : f.family === "ledger" ? words.ledger + ": $" + f.obj.usd.toFixed(4) + (f.obj.unpriced ? " + " + f.obj.unpriced + " unpriced" : "")
       : f.family === "crate" ? words.outbox + ": " + f.obj.state : f.lane && f.laneState ? words[f.lane] + " tray: " + { dark: "not used yet", lit: "used", waiting: "waiting", refused: "refused" }[f.laneState] : (words[f.family] || f.family);
     g.append(sv("title", {}, tip));
     if (f.obj) described.push((f.room.kind === "bay" ? words.bay + " " + number(f.room.id) : f.room.kind === "deck" ? words.deck : words.outbox) + ": " + tip);
-    dyn.push({ el: g, depth: () => f.box[0] + f.box[2] / 2 + f.box[1] + f.box[3] / 2 });
+    dyn.push({ el: g, depth: () => f.box[1] + f.box[3] });
   }
-  for (const [kind, x, y, size] of p.props) dyn.push({ el: propGroup(kind, x, y, pal, theme, defs, uid, size), depth: () => x + y + (size || 1) / 2 });
+  for (const [kind, x, y, size] of p.props) dyn.push({ el: propSprite(kind, x, y, pal, theme, defs, uid, size), depth: () => y + (kind === "bookcase" ? size || 1 : 0.5) });
   const deck = layout.rooms.find((r) => r.id === "deck"), cards = {};
   for (const m of deck.members) cards[m.name] = m;
   for (const room of layout.rooms) for (const m of room.members || []) cards[m.name] = m;
@@ -1044,10 +651,10 @@ function buildScene(run) {
   for (const person of people) {
     if (person.name === "clyde" || person.name === "bonnie") trips[person.name] = orchestratorTrips(events, person.name, p, liveFrom);
     else if (p.rooms[person.name]) trips[person.name] = workerTrips(events, person.name, p, liveFrom);
-    dyn.push({ el: person.g, person, depth: () => (person.at ? person.at[0] + person.at[1] : 0) });
+    dyn.push({ el: person.g, person, depth: () => (person.at ? person.at[1] : 0) });
   }
-  svg.append(floors, laneLayer, walls, signs, items);
-  atmosphere(svg, defs, B, pal, theme, uid);
+  svg.append(floorLayer, laneLayer, wallLayer, items, signs);
+  svg.append(rect(sv("g", { "aria-hidden": "true", "pointer-events": "none" }), x0, y0, x1 - x0, y1 - y0, gradient(defs, "vig" + uid, [[0.6, "#000", 0], [1, "#000", 0.55]], { r: "75%" })).parentNode);
   const scene = { runId: run.id, svg, items, dyn, people, trips, p, pal, layout, order: [], base: { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } };
   for (const d of dyn) items.append(d.el);
   tickScene(scene, now);
@@ -1068,7 +675,7 @@ function personBubble(person, s, doing) {
   return null;
 }
 function tickScene(scene, now) {
-  const { p, pal } = scene, bob = REDUCED ? 0 : Math.sin(now * 2.4) * 1.0;
+  const { p, pal } = scene;
   for (const person of scene.people) {
     const name = person.name, home = p.homes[name], trips = scene.trips[name], doing = person.card.doing || "";
     const s = trips ? walkerState(trips, home, now) : { pos: home, dir: [0, 0], pose: "idle", carry: null, bubble: null };
@@ -1076,20 +683,19 @@ function tickScene(scene, now) {
     if (pose === "idle" && /using|working|splitting|reviewing|writing the report|tasks handed/.test(doing) && !/waiting/.test(doing)) pose = "work";
     const moving = pose === "walk";
     if (!moving && s.carry) pose = "carry";
-    const frame = pose === "walk" ? Math.floor(now * 8) % 4 : pose === "work" || pose === "check" ? Math.floor(now * 5) % 2 : pose === "carry" ? Math.floor(now * 3) % 2 : (Math.floor(now * 2) % 9 === 0 ? 2 : Math.floor(now * 0.8) % 2);
-    const heading = iso(s.dir[0], s.dir[1]);   // a person faces the way they walk: toward the viewer or away, left or right; standing still they keep their last facing
-    if (Math.abs(heading[0]) > 0.1 || Math.abs(heading[1]) > 0.1) person.facing = [heading[0] < -0.1 ? -1 : 1, heading[1] < -0.1 ? "back" : "front"];
-    const [face, view] = person.facing, key = view + ":" + pose + ":" + frame;
-    if (person.shown !== key) {
-      if (person.shownEl) person.shownEl.style.display = "none";
-      person.shownEl = person.frameOf(view, pose, frame);
-      person.shownEl.style.display = "";
-      person.shown = key;
+    if (Math.abs(s.dir[0]) > 0.05) person.face = s.dir[0] < 0 ? -1 : 1;   // they face the way they walk, and keep it when they stop
+    let dy = 0, rot = 0, squash = 1;
+    if (!REDUCED) {
+      if (moving) { dy = -Math.abs(Math.sin(now * 13)) * 4; rot = Math.sin(now * 13) * 3; }
+      else if (pose === "work" || pose === "check") { dy = -Math.abs(Math.sin(now * 9)) * 1.5; rot = Math.sin(now * 9) * 2; }
+      else squash = 1 + Math.sin(now * 2.2) * 0.012;
     }
-    const screen = iso(s.pos[0], s.pos[1]);
+    const at = pos(s.pos[0], s.pos[1]);
     person.at = s.pos;
-    person.g.setAttribute("transform", "translate(" + screen[0].toFixed(1) + " " + (screen[1] + (moving ? 0 : bob * 0.5)).toFixed(1) + ")");
-    person.flip.setAttribute("transform", "scale(" + face + " 1)");
+    person.g.setAttribute("transform", "translate(" + at[0].toFixed(1) + " " + at[1].toFixed(1) + ")");
+    person.flip.setAttribute("transform", "scale(" + person.face + " 1)");
+    person.body.setAttribute("transform", "translate(0 " + dy.toFixed(1) + ") rotate(" + rot.toFixed(1) + ") scale(1 " + squash.toFixed(3) + ")");
+    person.carry.style.display = pose === "carry" ? "" : "none";
     setBubble(person, personBubble(person, s, doing) || (s.carry && !s.bubble ? s.carry : null), pal);
   }
   const sorted = scene.dyn.slice().sort((a, b) => a.depth() - b.depth()), ids = sorted.map((d) => scene.dyn.indexOf(d)).join(",");
@@ -1145,7 +751,7 @@ function legend() {
     item.append(el("i", cls), document.createTextNode(text));
     box.append(item);
   }
-  box.append(el("span", "", "Furniture is a capability the member was given; its plate counts how often it was used. Crew walk only when something was recorded: a worker to the furniture for a tool it used, Clyde with a task or an approval request, Bonnie to collect a result. Clouds, rain, lamps and neon are only scenery. Drag to pan, Ctrl-scroll or the + and − keys to zoom."));
+  box.append(el("span", "", "Furniture is a capability the member was given; its plate counts how often it was used. Crew walk only when something was recorded: a worker to the furniture for a tool it used, Clyde with a task or an approval request, Bonnie to collect a result. Clouds, rain, lamps and neon are only scenery. Drag to pan, Ctrl-scroll or the + and − keys to zoom. Furniture and crew art: \"Cozy Space Station\" by Bramble & Byte (CC-BY 4.0)."));
   return box;
 }
 function mapSection(run) {
@@ -1161,10 +767,9 @@ function mapSection(run) {
   left.append(stage, text, legend());
   return left;
 }
-function portrait(name, doing) {   // the same pixel person as in the scene, in a small well with a lamp
-  const look = lookFor(name, state.theme), svg = sv("svg", { viewBox: "0 0 16 29", "shape-rendering": "crispEdges", "aria-hidden": "true" }), cells = personFrame(look, "idle", 0, false, "front");
-  for (const [x, y, w, h] of cells) svg.append(sv("rect", { x: x - 0.4, y: y + 0.6, width: w + 0.8, height: h + 0.8, fill: "#0b0b12", opacity: 0.9 }));
-  for (const [x, y, w, h, col] of cells) svg.append(sv("rect", { x, y: y + 1, width: w, height: h, fill: col }));
+function portrait(name, doing) {   // the same person as in the scene, in a small well with a lamp
+  const file = crewFile(name), [w, h] = SPR[file], svg = sv("svg", { viewBox: "0 0 " + w + " " + h, "aria-hidden": "true" });
+  svg.append(sprite(file, 0, 0, w, h, state.theme));
   const well = el("div", "portrait");
   well.append(svg, el("span", "lamp " + dotClass(doing)));
   return well;
@@ -1296,3 +901,15 @@ requestAnimationFrame(loop);
 </body>
 </html>
 """
+
+
+def _sprite_sizes() -> dict[str, list[int]]:
+    """The natural size [width, height] of each sprite in station_art/, read from its PNG header, so the page can fit it to a box."""
+    sizes = {}
+    for file in sorted((Path(__file__).parent / "station_art").glob("*.png")):
+        head = file.read_bytes()[:24]
+        sizes[file.stem] = list(struct.unpack(">II", head[16:24]))
+    return sizes
+
+
+PAGE = PAGE.replace("__SPRITES__", json.dumps(_sprite_sizes(), separators=(",", ":")))

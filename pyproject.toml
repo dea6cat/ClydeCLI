@@ -67,3 +67,5 @@ include = ["src*"]
 # Ship the vendored code's MIT license text with it (attribution travels with the code).
 [tool.setuptools.package-data]
 "src.vendor.whichllm" = ["LICENSE"]
+# The station's pictures ("Cozy Space Station" by Bramble & Byte, CC-BY 4.0) with their licence text.
+"src.agent" = ["station_art/*.png", "station_art/LICENSE-cozy-space-station.txt"]
