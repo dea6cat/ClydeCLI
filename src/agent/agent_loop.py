@@ -120,6 +120,13 @@ class AgentLoopResult:
     num_turns: int = 0
 
 
+# After N consecutive failing tool calls (different calls each time, so the repeat guard
+# does not catch them) the model is burning tokens on nothing: stop and tell it to change
+# approach or talk to the user.
+_MAX_CONSECUTIVE_TOOL_ERRORS = 5
+_STALLED_REPLY = "The tool calls keep failing (different arguments each time). Stop digging: change your approach, use a different tool, or tell me what is blocking you."
+
+
 ToolEventHandler = Callable[[ToolEvent], None]
 TextChunkHandler = Callable[[str], None]
 
@@ -339,6 +346,7 @@ def run_agent_loop(
     last_user_visible_message: str | None = None
     repeat_guard = RepeatGuard()
     run_stats = {"tool_calls": 0, "tool_errors": 0, "repeats_refused": 0, "first_input_tokens": 0}
+    consecutive_errors = 0
 
     def record_run(outcome: str, turns: int) -> None:
         if not telemetry.enabled():
@@ -452,9 +460,11 @@ def run_agent_loop(
                 conversation.add_tool_result_message(tool_id, result_output, is_error=result.is_error)
                 repeat_guard.record(tool_name, tool_input, result_output)
                 run_stats["tool_errors"] += bool(result.is_error)
+                consecutive_errors = consecutive_errors + 1 if result.is_error else 0
             except Exception as e:
                 error_str = f"Error: {e}"
                 run_stats["tool_errors"] += 1
+                consecutive_errors += 1
                 if isinstance(e, RepeatedCall):
                     run_stats["repeats_refused"] += 1
                 else:
@@ -472,6 +482,9 @@ def run_agent_loop(
         if repeat_guard.stuck:
             record_run("stuck", turn_count)
             return AgentLoopResult(response_text=repeat_guard.stop_reply(), usage=_usage_or_none(), num_turns=turn_count)
+        if consecutive_errors >= _MAX_CONSECUTIVE_TOOL_ERRORS:
+            record_run("stalled", turn_count)
+            return AgentLoopResult(response_text=_STALLED_REPLY, usage=_usage_or_none(), num_turns=turn_count)
         # Checked once the turn's tool results are in, so the saved session has no call without its result. A stop the
         # caller asked for, like an interrupt: no "run" telemetry (its outcome words are fixed in the Worker's schema).
         if max_tokens and spent > max_tokens:

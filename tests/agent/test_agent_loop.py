@@ -223,6 +223,30 @@ class TestAgentLoop(unittest.TestCase):
             self._run(provider, conversation)
         self.assertEqual(len(provider.requests), 1)
 
+    def test_five_different_failing_tool_calls_in_a_row_stop_the_turn(self):
+        """Different bad calls each time: the repeat guard does not fire, but the consecutive-error guard does."""
+        conversation = Conversation()
+        conversation.add_user_message("read some files")
+        provider = FakeProvider(*[reply(tool_calls=[("Read", {"bogus_path": f"f{i}.txt"}, f"id{i}")]) for i in range(5)])
+
+        result = self._run(provider, conversation)
+
+        self.assertTrue(result.response_text.startswith("The tool calls keep failing"), result.response_text)
+        self.assertEqual(len(provider.requests), 5)   # stopped after the fifth failing call
+
+    def test_an_error_followed_by_a_success_resets_the_counter(self):
+        conversation = Conversation()
+        conversation.add_user_message("read hello.py")
+        provider = FakeProvider(
+            reply(tool_calls=[("Read", {"bogus_path": "nope.txt"}, "id1")]),
+            reply(tool_calls=[("Write", {"file_path": str(self.hello), "content": "x"}, "id2")]),
+            reply("done"),
+        )
+
+        result = self._run(provider, conversation)
+
+        self.assertEqual(result.response_text, "done")
+
 
 if __name__ == "__main__":
     unittest.main()
