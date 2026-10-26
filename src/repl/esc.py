@@ -4,11 +4,15 @@ While active, a background thread reads the terminal in cbreak mode. A lone Esc 
 process SIGINT, so it takes exactly the path Ctrl+C does (KeyboardInterrupt in the main thread,
 which also breaks out of a blocking network read). Escape sequences such as arrow keys, which
 also start with Esc, are ignored. Prompts that need the keyboard mid-turn pause the watcher.
+
+The watcher is the only reader of the terminal during a turn, so it also keeps what the user types (take_typed):
+the REPL queues those lines for the next turn. Before, it read them to look for Esc and threw them away.
 """
 
 from __future__ import annotations
 
 import os
+import re
 import select
 import signal
 import sys
@@ -23,6 +27,7 @@ except ImportError:  # pragma: no cover - Windows: Ctrl+C only
     termios = tty = None  # type: ignore[assignment]
 
 ESC = b"\x1b"
+_KEY_SEQUENCE = re.compile(rb"\x1b(?:\[[0-9;?]*[ -/]*[@-~]|O.)")   # arrow keys, F-keys: not text
 SEQUENCE_GAP = 0.05  # bytes that follow Esc this quickly belong to a key sequence (arrows, F-keys)
 
 
@@ -32,6 +37,20 @@ class EscWatcher:
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
         self._saved = None
+        self._typed = bytearray()   # what was typed while watching, minus key sequences
+        self._typed_lock = threading.Lock()
+
+    def take_typed(self) -> str:
+        """Everything typed since the last call (partial lines too), and forget it."""
+        with self._typed_lock:
+            text, self._typed = bytes(self._typed), bytearray()
+        return text.decode("utf-8", errors="replace")
+
+    def _keep(self, data: bytes) -> None:
+        text = _KEY_SEQUENCE.sub(b"", data).replace(ESC, b"")
+        if text:
+            with self._typed_lock:
+                self._typed += text
 
     def _usable(self) -> bool:
         try:
@@ -49,6 +68,7 @@ class EscWatcher:
             except OSError:
                 return
             if data != ESC:
+                self._keep(data)
                 continue
             more, _, _ = select.select([fd], [], [], SEQUENCE_GAP)
             if more:
