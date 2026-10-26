@@ -43,6 +43,7 @@ REVIEW_SYSTEM = """You are the advisor. Review the workers' results against the 
 missing or risky, do the changes collide. Be specific and short. You cannot run anything; judge from the summaries and patches."""
 REPORT_SYSTEM = """You are the master. Write the final report for the user in a few short paragraphs: what was done, what
 the advisor flagged, what remains. End with a last line that is exactly VERDICT: APPROVE or VERDICT: REVISE."""
+NATIVE_CONSTRAINT = "edits inside its own worktree are free; commands, and anything outside the worktree, ask you"
 WORKER_PROMPT = """You work alone in your own git worktree; the rest of the team cannot see it. Do your task with the
 tools you have, then finish with a short summary of what you changed and anything you could not do. Do not ask the
 user questions: decide, and say what you assumed."""
@@ -236,6 +237,8 @@ def _work(run: Run, name: str, role: RoleAssignment, provider: Any, prompt: str,
     out: dict[str, Any] = {"name": name, "ok": False, "summary": "", "patch": "", "files": []}
     history = History()
     run.event(name, "started", model=role.ref, worktree=str(worktree))
+    if role.harness.kind != "cli":   # a CLI worker states its own in _run_cli
+        run.event(name, "constraint", note=NATIVE_CONSTRAINT)
 
     def on_event(event: Any) -> None:
         if event.kind in ("tool_use", "tool_error"):
@@ -278,8 +281,10 @@ def orchestrate(plan: OrchestrationPlan, spec: str, *, workspace: Path, parent: 
         return root
     cancel = cancel or threading.Event()
     names = [f"worker-{i + 1}" for i in range(len(plan.workers))]
+    kinds = {"master": plan.master.harness.kind, "advisor": plan.advisor.harness.kind if plan.advisor else None,
+             **{n: w.harness.kind for n, w in zip(names, plan.workers)}}   # provider (Clyde's own loop) or cli
     run = Run.create(plan.task, {"master": plan.master.ref, "advisor": plan.advisor.ref if plan.advisor else None,
-                                 "workers": [{"name": n, "model": w.ref} for n, w in zip(names, plan.workers)]})
+                                 "workers": [{"name": n, "model": w.ref} for n, w in zip(names, plan.workers)], "kinds": kinds})
     run.update(spec=spec, repo=str(root), workspaces={})
     if on_start:
         on_start(run)   # e.g. open the tmux panes: the run and its team are already recorded

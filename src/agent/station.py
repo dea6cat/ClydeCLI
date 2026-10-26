@@ -5,6 +5,7 @@
     clyde station ls           every run, newest first
     clyde station watch [id] [--who NAME]   the event stream, one line each (one team member's with --who)
     clyde station panes [id]   open a tmux window: the live view and a pane per team member
+    clyde station web          the same state in a browser on localhost (agent/station_web.py)
     clyde station approve|deny [id]   answer the oldest pending request, across the active runs or in one run
 
 It shows only what the run recorded: a crew member's state comes from its last event, and spend from the ledger.
@@ -28,42 +29,61 @@ _STATE = {"splitting": "splitting the task", "split": "tasks handed out", "revie
           "finished": "finished", "failed": "failed"}
 
 
-def _crew(run: Run) -> list[tuple[str, str, str]]:
-    """(name, model, what it is doing) for the master, advisor and each worker, from the events so far."""
-    roles = run.state().get("roles") or {}
+_CLYDE = {"planning": "briefing the team", "running": "watching the workers", "reviewing": "waiting for the review",
+          "awaiting_approval": "waiting for your decision", "done": "landed the work", "stopped": "stopped", "failed": "run failed"}
+
+
+def _doing(event: dict[str, Any] | None) -> str:
+    if event is None:
+        return "idle"
+    if event["kind"] == "tool_use":
+        return f"using {event.get('tool', '?')}"
+    if event["kind"] == "tool_error":
+        return f"{event.get('tool', '?')} failed"
+    return _STATE.get(event["kind"], event["kind"])
+
+
+def snapshot(run: Run) -> dict[str, Any]:
+    """Everything the station shows about a run, from its files alone: the terminal table and the web view both read this,
+    so neither can show what the run did not record."""
+    state, events = run.state(), run.events()
+    roles = state.get("roles") or {}
+    kinds = roles.get("kinds") or {}
     people = [("master", roles.get("master") or "")]
     if roles.get("advisor"):
         people.append(("advisor", roles["advisor"]))
     people += [(w["name"], w["model"]) for w in roles.get("workers", [])]
     last: dict[str, dict[str, Any]] = {}
-    for e in run.events():
+    constraint: dict[str, str] = {}
+    for e in events:
         last[e["who"]] = e
-    out = []
-    for name, model in people:
-        e = last.get(name)
-        if e is None:
-            doing = "idle"
-        elif e["kind"] == "tool_use":
-            doing = f"using {e.get('tool', '?')}"
-        elif e["kind"] == "tool_error":
-            doing = f"{e.get('tool', '?')} failed"
-        else:
-            doing = _STATE.get(e["kind"], e["kind"])
-        out.append((name, model, doing))
-    return out
+        if e["kind"] == "constraint":
+            constraint[e["who"]] = e.get("note", "")
+    crew = [{"name": n, "model": m, "kind": kinds.get(n), "doing": _doing(last.get(n)), "constraint": constraint.get(n)} for n, m in people]
+    asks = run.pending()
+    status = state.get("status", "?")
+    clyde = f"waiting on you for {len(asks)} request{'s' if len(asks) != 1 else ''}" if asks else _CLYDE.get(status, status)
+    usd, unpriced = run.total_spend()
+    return {"id": run.id, "task": state.get("task") or "", "status": status, "started": state.get("started"),
+            "clyde": clyde, "crew": crew, "asks": [{k: a.get(k) for k in ("id", "who", "tool", "message", "t")} for a in asks],
+            "spend": {"usd": usd, "unpriced": unpriced}, "events": len(events)}
+
+
+def _crew(run: Run) -> list[tuple[str, str, str]]:
+    """(name, model, what it is doing) for the master, advisor and each worker."""
+    return [(c["name"], c["model"], c["doing"]) for c in snapshot(run)["crew"]]
 
 
 def render(run: Run) -> Table:
-    state = run.state()
-    usd, unpriced = run.total_spend()
-    spend = f"${usd:.4f}" + (f" + {unpriced} unpriced" if unpriced else "")
-    table = Table(box=None, pad_edge=False, header_style="bold", title=f"{run.id} · {state.get('status', '?')} · {spend}",
-                  caption=(state.get("task") or "")[:100], title_justify="left", caption_justify="left")
+    snap = snapshot(run)
+    spend = f"${snap['spend']['usd']:.4f}" + (f" + {snap['spend']['unpriced']} unpriced" if snap["spend"]["unpriced"] else "")
+    table = Table(box=None, pad_edge=False, header_style="bold", title=f"{run.id} · {snap['status']} · {spend}",
+                  caption=snap["task"][:100], title_justify="left", caption_justify="left")
     for col in ("WHO", "MODEL", "DOING"):
         table.add_column(col)
-    for name, model, doing in _crew(run):
-        table.add_row(name, model, Text(doing, style="yellow" if "approval" in doing else ""))
-    for ask in run.pending():
+    for c in snap["crew"]:
+        table.add_row(c["name"], c["model"], Text(c["doing"], style="yellow" if "approval" in c["doing"] else ""))
+    for ask in snap["asks"]:
         table.add_row("", Text(f"{ask['who']} asks to use {ask['tool']}: {ask['message'][:60]}", style="yellow"), f"clyde station approve {run.id}")
     return table
 
@@ -83,7 +103,7 @@ def _active() -> list[Run]:
     return live or runs[:1]
 
 
-def _select(run_id: str | None) -> list[Run]:
+def select_runs(run_id: str | None) -> list[Run]:
     if run_id:
         run = Run.open(run_id)
         return [run] if run else []
@@ -100,7 +120,7 @@ def command(console: Console, action: str, target: str | None, once: bool = Fals
             s = run.state()
             console.print(f"{run.id}  {s.get('status', '?'):18} {(s.get('task') or '')[:60]}", markup=False)
         return 0
-    runs = _select(target)
+    runs = select_runs(target)
     if not runs:
         console.print("No runs yet. Start one with /orchestrate in clyde.", markup=False)
         return 1
@@ -138,7 +158,7 @@ def command(console: Console, action: str, target: str | None, once: bool = Fals
         with Live(_show(runs), console=console, refresh_per_second=2) as live:
             while any(r.state().get("status") not in _SETTLED for r in runs):
                 time.sleep(0.5)
-                runs = _select(target)   # a run started meanwhile joins the view
+                runs = select_runs(target)   # a run started meanwhile joins the view
                 live.update(_show(runs))
             live.update(_show(runs))
     except KeyboardInterrupt:
