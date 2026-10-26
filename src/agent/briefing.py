@@ -9,19 +9,20 @@ synthesizes a structured spec and offers to hand it to the orchestration system
 from __future__ import annotations
 
 import json
-import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
-from src.agent.conversation import Conversation, Message
 from src.config import clyde_home
 from src.providers.base import stream_with_retry
-from src.providers.convert import to_canonical
+from src.providers.types import Conversation, Message
 
 MAX_QUESTIONS = 10
 MAX_ANSWER_CHARS = 4000
-BRIEFING_DIR = clyde_home() / "briefing"
+
+
+def briefing_dir() -> Path:
+    return clyde_home() / "briefing"
 
 
 @dataclass(frozen=True)
@@ -51,66 +52,28 @@ BRIEFING_SYNTHESIZE = """Turn this briefing into a single well-formed spec. Incl
 success criteria, and any open decisions. Answer with only the spec, no preamble."""
 
 
-def _message_text(message: Message) -> str:
-    if isinstance(message.content, str):
-        return message.content
-    return "\n".join(
-        b.text for b in message.content if getattr(b, "type", None) == "text" and getattr(b, "text", None)
-    )
+def _model_text(provider: Any, model: str, prompt: str) -> str:
+    request = Conversation(system_prompt=BRIEFING_SYSTEM, messages=[Message.user(prompt)])
+    return stream_with_retry(provider, request, model, (), lambda _c: None, reasoning="off").message.text or ""
 
 
-def _briefing_transcript(conversation: Conversation) -> str:
-    """The briefing portion of the conversation as USER/CLYDE text."""
-    lines: list[str] = []
-    for m in conversation.messages:
-        role = "USER" if m.role == "user" else "CLYDE"
-        text = _message_text(m).strip()
-        if text:
-            lines.append(f"{role}: {text}")
-    return "\n\n".join(lines)
-
-
-def _ask_question(provider: Any, model: str, transcript: str, state: BriefingState) -> str:
-    """Ask Clyde for the next clarifying question (or READY + spec if complete)."""
-    prompt = (
-        BRIEFING_CONTINUE if state.questions_asked else BRIEFING_SYSTEM
-    )
-    prompt += f"\n\nOriginal request:\n{state.initial_request}\n\nBriefing so far:\n{transcript}"
-    request = to_canonical(
-        Conversation.from_dict({"messages": [{"role": "user", "content": prompt}]}),
-        BRIEFING_SYSTEM,
-        flatten_tools=True,
-    )
-    response = stream_with_retry(provider, request, model, (), lambda _c: None, reasoning="off")
-    return response.message.text or ""
+def _transcript(state: BriefingState) -> str:
+    lines: list[str] = [f"Original request: {state.initial_request}"]
+    for i, q in enumerate(state.questions_asked):
+        lines.append(f"Q: {q}")
+        if i < len(state.answers):
+            lines.append(f"A: {state.answers[i]}")
+    return "\n".join(lines)
 
 
 def _is_ready(text: str) -> bool:
-    return "READY" in text.splitlines()
+    return "READY" in (line.strip() for line in text.splitlines())
 
 
 def synthesize_spec(provider: Any, model: str, state: BriefingState) -> str:
     """Produce the final well-formed spec from a completed briefing."""
-    transcript = _briefing_transcript_from_state(state)
-    prompt = (
-        BRIEFING_SYNTHESIZE
-        + f"\n\nOriginal request:\n{state.initial_request}\n\nBriefing transcript:\n{transcript}"
-    )
-    request = to_canonical(
-        Conversation.from_dict({"messages": [{"role": "user", "content": prompt}]}),
-        BRIEFING_SYSTEM,
-        flatten_tools=True,
-    )
-    response = stream_with_retry(provider, request, model, (), lambda _c: None, reasoning="off")
-    return response.message.text or ""
-
-
-def _briefing_transcript_from_state(state: BriefingState) -> str:
-    lines: list[str] = [f"Original request: {state.initial_request}"]
-    for q, a in zip(state.questions_asked, state.answers):
-        lines.append(f"Q: {q}")
-        lines.append(f"A: {a}")
-    return "\n".join(lines)
+    text = _model_text(provider, model, f"{BRIEFING_SYNTHESIZE}\n\nBriefing:\n{_transcript(state)}")
+    return "\n".join(line for line in text.splitlines() if line.strip() != "READY").strip()   # the marker is for us, not the spec
 
 
 def start_briefing(initial_request: str) -> BriefingState:
@@ -118,46 +81,24 @@ def start_briefing(initial_request: str) -> BriefingState:
     return BriefingState(initial_request=initial_request)
 
 
-def ask_next_question(
-    provider: Any, model: str, conversation: Conversation, state: BriefingState
-) -> tuple[str, BriefingState]:
-    """Ask the next clarifying question. Returns (question, updated state)."""
-    transcript = _briefing_transcript(conversation)
-    text = _ask_question(provider, model, transcript, state)
-    if _is_ready(text):
-        # Clyde says the spec is complete; synthesize it.
+def ask_next_question(provider: Any, model: str, state: BriefingState) -> tuple[str, BriefingState]:
+    """Ask the next clarifying question. Returns (question, updated state); when Clyde says the spec is complete,
+    the first item is the synthesized spec and the state is complete. After MAX_QUESTIONS the spec is written from
+    what is known, so a briefing always ends."""
+    prompt = BRIEFING_CONTINUE if state.questions_asked else BRIEFING_SYSTEM
+    text = "" if len(state.questions_asked) >= MAX_QUESTIONS else _model_text(provider, model, f"{prompt}\n\nBriefing so far:\n{_transcript(state)}")
+    if len(state.questions_asked) >= MAX_QUESTIONS or _is_ready(text):
         spec = synthesize_spec(provider, model, state)
-        state = BriefingState(
-            initial_request=state.initial_request,
-            questions_asked=state.questions_asked,
-            answers=state.answers,
-            spec=spec,
-            complete=True,
-        )
-        return spec, state
-    # Clyde asked a question; record it.
-    question = text.replace("READY", "").strip()
-    state = BriefingState(
-        initial_request=state.initial_request,
-        questions_asked=[*state.questions_asked, question],
-        answers=state.answers,
-        spec=state.spec,
-        complete=False,
-    )
-    return question, state
+        return spec, replace(state, spec=spec, complete=True)
+    question = "\n".join(line for line in text.splitlines() if line.strip() != "READY").strip()
+    return question, replace(state, questions_asked=[*state.questions_asked, question])
 
 
 def record_answer(state: BriefingState, answer: str) -> BriefingState:
     """Record the user's answer to the last question."""
     if not state.questions_asked or len(state.answers) >= len(state.questions_asked):
         return state
-    return BriefingState(
-        initial_request=state.initial_request,
-        questions_asked=state.questions_asked,
-        answers=[*state.answers, answer],
-        spec=state.spec,
-        complete=state.complete,
-    )
+    return replace(state, answers=[*state.answers, answer[:MAX_ANSWER_CHARS]])
 
 
 def parse_briefing_args(args: str) -> str | None:
@@ -169,10 +110,9 @@ def parse_briefing_args(args: str) -> str | None:
 # --- File persistence for multi-turn briefing sessions ---
 
 def _state_path(session_id: str | None = None) -> Path:
-    BRIEFING_DIR.mkdir(parents=True, exist_ok=True)
-    if session_id:
-        return BRIEFING_DIR / f"{session_id}.json"
-    return BRIEFING_DIR / "current.json"
+    folder = briefing_dir()
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder / (f"{session_id}.json" if session_id else "current.json")
 
 
 def save_state(state: BriefingState, session_id: str | None = None) -> Path:
