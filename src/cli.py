@@ -78,7 +78,7 @@ Examples:
   clyde --debug                       Start REPL and print trace events (model/tool calls) to stderr
   clyde luv bonnie [PORT]              Start Bonnie, Clyde's luv accomplice, on localhost (default port 8080)
   bonnie luv clyde                     Start Clyde in the terminal, from Bonnie's side (same as `clyde`)
-  clyde login                         Connect a provider and pick a default model
+  clyde login [PROVIDER]              Connect a provider and pick a default model
   clyde logout openai                 Remove a saved API key
   clyde config                        Show current configuration
   clyde setup                         First-run onboarding: provider, other agents' hooks and skills, PATH
@@ -130,7 +130,8 @@ Examples:
                         help='Speak the Agent Client Protocol on stdio so an editor (Zed, JetBrains) can run Clyde')
 
     subparsers = parser.add_subparsers(dest='command', help='Available commands')
-    subparsers.add_parser('login', help='Connect a provider and pick a default model')
+    login_parser = subparsers.add_parser('login', help='Connect a provider and pick a default model')
+    login_parser.add_argument('provider', nargs='?', help='skip the provider question: clyde login mistral')
     logout_parser = subparsers.add_parser('logout', help='Remove a saved API key')
     logout_parser.add_argument('provider', help='Provider name, e.g. openai')
     subparsers.add_parser('config', help='Show current configuration')
@@ -273,7 +274,7 @@ Examples:
     if args.list_models:
         return list_models()
     if args.command == 'login':
-        return handle_login()
+        return handle_login(args.provider)
     if args.command == 'logout':
         return handle_logout(args.provider)
     if args.command == 'setup':
@@ -477,15 +478,17 @@ def run_login_flow(console: Console, registry: dict, default_provider: str = "an
     return ref
 
 
-def handle_login():
-    """Interactive provider configuration."""
+def handle_login(provider: str | None = None):
+    """Interactive provider configuration; `provider` (clyde login mistral) skips the provider question."""
     from src.providers import build_registry, keys
 
     console = Console()
     console.print("\n[bold #4eba65]ClydeCLI - Connect a provider[/bold #4eba65]\n")
     keys.load_into_env()
     registry = build_registry()
-    return 0 if run_login_flow(console, registry) else 1
+    if provider and provider not in _login_choices(registry):
+        console.print(f"[yellow]No provider called {provider!r}; pick one below.[/yellow]")
+    return 0 if run_login_flow(console, registry, provider=provider) else 1
 
 
 def _clyde_bin_on_path() -> bool:
