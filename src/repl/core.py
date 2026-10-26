@@ -1246,6 +1246,7 @@ class ClydeREPL:
                         self._refresh_completer()
                         # Dynamic prompt based on multiline mode
                         prefill, self._prefill = getattr(self, "_prefill", ""), ""
+                        prefill, self._input_buffer = prefill + self._input_buffer, ""   # half a line typed during the turn
                         user_input = self.prompt_session.prompt(
                             self._prompt_message,
                             multiline=self.multiline_mode,
@@ -1298,33 +1299,30 @@ class ClydeREPL:
     def _drain_queued_input(self) -> list[str]:
         """Read any complete lines the user typed while a turn was running.
 
-        Uses select + os.read on stdin (non-blocking), so it returns whatever lines are
-        already sitting in the tty buffer without waiting for more. EscWatcher may be
-        active at the same time (cbreak mode); os.read on the same fd from both threads
-        is safe because select reports readability and each os.read consumes what it gets.
-        Any partial line (no trailing newline) stays in the buffer for the next drain.
-        Returns [] when stdin has no fileno (e.g. under pytest).
+        During a turn the Esc watcher is the only reader of the keyboard and keeps what it reads
+        (take_typed); whatever is still in the tty buffer is read here without waiting (select +
+        os.read), so it returns at once. Any partial line (no trailing newline) stays in the buffer, and the next prompt starts with it.
         """
-        lines: list[str] = []
+        self._input_buffer += self._esc.take_typed()   # what the Esc watcher kept: it reads the keyboard during a turn
         try:
             fd = sys.stdin.fileno()
         except (OSError, AttributeError, io.UnsupportedOperation):
-            return lines
+            fd = None
         try:
-            while select.select([fd], [], [], 0)[0]:
+            while fd is not None and select.select([fd], [], [], 0)[0]:
                 try:
                     data = os.read(fd, 4096)
                 except OSError:
                     break
                 if not data:
                     break
-                text = data.decode("utf-8", errors="replace")
-                self._input_buffer += text
-                while "\n" in self._input_buffer:
-                    line, self._input_buffer = self._input_buffer.split("\n", 1)
-                    lines.append(line.rstrip("\r"))
+                self._input_buffer += data.decode("utf-8", errors="replace")
         except (OSError, ValueError):
             pass
+        lines: list[str] = []
+        while "\n" in self._input_buffer:
+            line, self._input_buffer = self._input_buffer.split("\n", 1)
+            lines.append(line.rstrip("\r"))
         return lines
 
     def _start_cron_watch(self) -> None:
