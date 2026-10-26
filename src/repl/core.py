@@ -410,7 +410,7 @@ class ClydeREPL:
         for loaded in self.plugins:
             for warning in loaded.warnings:
                 self.console.print(warning, style="yellow", markup=False)
-        self.tool_context = ToolContext(workspace_root=Path.cwd(), hooks=hooks, permission_rules=load_rules(),
+        self.tool_context = ToolContext(workspace_root=Path.cwd(), hooks=hooks, permission_rules=self._project_rules(Path.cwd()),
                                         output_style_name=get_output_style(), confirm_edits=True)
         self._mcp_servers, self._mcp_errors = servers, {}
         self._connect_mcp_servers(servers)
@@ -1823,6 +1823,28 @@ class ClydeREPL:
         self.console.print(Markdown(text))
         self.console.print()
         return True
+
+    def _project_rules(self, root: Path) -> dict[str, list[str]]:
+        """The user's permission rules plus this project's .clyde/settings.json ones. Its deny and ask rules apply at once;
+        its allow rules come from the repository, so they apply only once you have said yes to that exact list."""
+        from rich.prompt import Confirm
+        from src.tool_system.permission_rules import (merge_project_rules, project_settings_path, project_trust,
+                                                      set_project_trust)
+        rules, path = load_rules(), project_settings_path(root)
+        if not path.is_file():
+            return rules
+        project = load_rules(path)
+        trusted = bool(project["allow"]) and project_trust(root, project["allow"])
+        if project["allow"] and trusted is None and not self.headless:
+            self.console.print(f"\nThis project's {path.relative_to(root)} lets these run without asking:", highlight=False)
+            for rule in project["allow"]:
+                self.console.print(f"  {rule}", markup=False, highlight=False)
+            trusted = Confirm.ask("They come from the repository. Trust them?", default=False, console=self.console)
+            set_project_trust(root, project["allow"], trusted)
+        elif project["allow"] and trusted is None:
+            self.console.print(f"[yellow]Not using the allow rules in this project's {path.relative_to(root)}: "
+                               "start clyde here interactively once to trust them.[/yellow]")
+        return merge_project_rules(rules, project, bool(trusted))
 
     def _project_mcp_servers(self, root: Path, taken: set[str]) -> dict[str, dict[str, Any]]:
         """The project's .mcp.json servers you've said yes to, asking about any new or changed entry."""

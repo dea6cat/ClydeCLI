@@ -17,6 +17,7 @@ from . import trace
 from ..tool_system.registry import ToolRegistry
 from ..tool_system.context import ToolContext
 from ..tool_system.hooks import run_lifecycle
+from ..tool_system.permission_rules import bare_denied
 from ..memory import memory_prompt
 from ..tool_system.plan_file import PLAN_SHAPE, plan_prompt, read_plan
 from ..context_system.microcompact import trim_old_tool_results
@@ -357,7 +358,10 @@ def run_agent_loop(
         AgentLoopResult with final text response, usage info, and turn count
     """
     tool_context.provider, tool_context.model = provider, model
-    all_specs = tool_registry.list_specs()
+    rules = getattr(tool_context, "permission_rules", None) or {"deny": []}
+    # A tool denied by bare name (`Bash`, `mcp__github__*`) is not shown at all, as Claude Code does: the model can't
+    # spend turns calling it, and its definition costs no prompt tokens.
+    all_specs = [s for s in tool_registry.list_specs() if not bare_denied(s.name, rules)]
     known_tools = tuple(s.name for s in all_specs)   # every tool runs when called; only some are sent (deferral.py)
     style_name = getattr(tool_context, "output_style_name", None)
     style_dir = getattr(tool_context, "output_style_dir", None)

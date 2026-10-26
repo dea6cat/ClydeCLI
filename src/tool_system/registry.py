@@ -239,7 +239,9 @@ class ToolRegistry:
         target = _edit_target(spec, call.input, context) if context.confirm_edits else None
         if target is not None and permission_result.behavior.value == "allow":
             permission_result = PermissionResult.ask(f"{spec.name} wants to change {_shown(target, context)}")   # hold mode
-        auto = context.auto_approve and not _is_major(spec, call.input, context)
+        if ruling == "ask" and permission_result.behavior.value == "allow":   # an ask rule: always a prompt
+            permission_result = PermissionResult.ask(f"{spec.name}: an ask rule in settings wants your yes")
+        auto = context.auto_approve and not _is_major(spec, call.input, context) and ruling != "ask"
         if permission_result.behavior.value == "ask" and (ruling == "allow" or auto):
             if auto and ruling != "allow":
                 trace.record("permission_auto", tool=spec.name, message=permission_result.message)

@@ -246,6 +246,17 @@ class TestAgentLoop(unittest.TestCase):
         self.assertEqual(result.response_text, "First half, second half.")
         self.assertIn("cut off at the output token limit", str(provider.requests[1]))
 
+    def test_a_tool_denied_by_bare_name_is_not_sent_to_the_model(self):
+        self.context.permission_rules = {"allow": [], "ask": [], "deny": ["WebFetch"]}
+        conversation = Conversation()
+        conversation.add_user_message("hi")
+        provider = FakeProvider(reply("Hello."))
+        with patch.dict("os.environ", {"CLYDE_ALL_TOOLS": "1"}):   # every tool sent, so only the rule can drop it
+            self._run(provider, conversation)
+        sent = {t["name"] if isinstance(t, dict) else t.name for t in provider.requests[0]["tools"]}
+        self.assertNotIn("WebFetch", sent)
+        self.assertIn("Read", sent)
+
     def _hooks(self, event, command):
         return {event: [{"matcher": "", "hooks": [{"command": command, "timeout": 10}]}]}
 
