@@ -751,6 +751,18 @@ class ClydeREPL:
             if not question_text or not isinstance(options, list) or len(options) < 2:
                 continue
 
+            from src.ui import picker
+            if picker._interactive():   # the arrow-key question, as Claude Code draws it; numbers below without a terminal
+                header = str(q.get("header", "")).strip()
+                picked = picker.ask(header, question_text, [o for o in options if isinstance(o, dict)], multi=multi)
+                answers[question_text] = (
+                    "The user would rather talk this over than pick an answer; ask what they have in mind."
+                    if picked == picker.CHAT else
+                    "The user dismissed the question without answering." if picked is None else picked)
+                shown = "chat about it" if picked == picker.CHAT else "no answer" if picked is None else picked
+                self.console.print(Text.assemble(("  ☐ ", "dim"), (header or question_text, "dim"), ("  " + shown, "bold")))
+                continue
+
             self.console.print(f"\n[bold]{question_text}[/bold]")
             labels: list[str] = []
             for i, opt in enumerate(options, start=1):
