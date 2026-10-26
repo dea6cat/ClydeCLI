@@ -14,6 +14,7 @@ Everything is set with textContent and attributes, never parsed as markup: event
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import struct
@@ -410,6 +411,8 @@ function bounds(p) {
 // </geometry>
 
 // ---- the station seen from above: a world, floors, walls, then the Cozy Space Station sprites (CC-BY 4.0, Bramble & Byte) for furniture and crew ----
+const ART_V = "__ARTV__";   // changes whenever a picture does, so a browser never shows an old one from its cache
+function artUrl(name) { return "/assets/" + name + ".png?v=" + ART_V; }
 const SPR = __SPRITES__;   // each sprite's natural size [w, h], read from the files by the server
 const WT = 14;   // wall thickness, px
 const FX = { grain: "", grime: "", soft: "" };
@@ -428,7 +431,7 @@ function materials(defs, uid) {   // grain, grime and a soft shadow: filters the
   FX.soft = make("soft" + uid, (f) => f.append(sv("feGaussianBlur", { stdDeviation: 5 })));
 }
 const TINT = { city: "sepia(0.55) saturate(1.1) brightness(0.96)", steam: "sepia(0.7) saturate(1.3) hue-rotate(-12deg) brightness(0.92)", cyber: "hue-rotate(205deg) saturate(1.25) brightness(0.78) contrast(1.1)" };   // the same sprites, seen in each theme's light
-function sprite(name, x, y, w, h, theme, extra) { return sv("image", { href: "/assets/" + name + ".png", x, y, width: w, height: h, style: "filter:" + TINT[theme], ...(extra || {}) }); }
+function sprite(name, x, y, w, h, theme, extra) { return sv("image", { href: artUrl(name), x, y, width: w, height: h, style: "filter:" + TINT[theme], ...(extra || {}) }); }
 function fit(name, bx, by, bw, bh, theme, extra) {   // a sprite as large as fits the box, bottom centre on the box's bottom edge
   const [w, h] = SPR[name], k = Math.min(bw * 1.25 / w, bh * 1.5 / h);   // a little larger than its box: the art has air around it
   return sprite(name, bx + bw / 2 - w * k / 2, by + bh - h * k, w * k, h * k, theme, extra);
@@ -632,10 +635,10 @@ function propSprite(kind, x, y, pal, theme, defs, uid, size) {   // scenery: it 
 }
 const CREW = __CREW__;   // each crew pack's frames: pack -> animation -> direction -> frame count (station_art/<pack>-<animation>-<direction>-<nn>.png), filled in by the server
 const FIGURE = {   // each pack's idle picture facing south: [picture width, height, then the left, top, right and bottom of the figure in it]
-  rogue: [84, 84, 17, 12, 65, 71], paladin: [156, 156, 37, 15, 117, 140], reaper: [256, 256, 90, 65, 165, 190], hunter: [256, 256, 94, 66, 161, 187], admiral: [84, 84, 12, 12, 71, 71] };
+  rogue: [84, 84, 17, 9, 65, 71], paladin: [156, 156, 37, 9, 117, 140], reaper: [256, 256, 90, 65, 165, 190], hunter: [256, 256, 94, 63, 161, 187], admiral: [84, 84, 12, 10, 71, 71] };
 const CREW_H = 80;   // every figure is drawn this tall, standing on its spot
-const CREW_PACK = { clyde: ["rogue", 0], bonnie: ["paladin", 0], master: ["admiral", 0], advisor: ["hunter", 0] };
-const WORKER_PACKS = [["reaper", 0], ["rogue", 160], ["paladin", 200], ["reaper", 120]];   // a pack and a hue shift, so each worker looks different
+const CREW_PACK = { clyde: ["rogue", 0], bonnie: ["hunter", 0], master: ["admiral", 0], advisor: ["paladin", 0] };
+const WORKER_PACKS = [["reaper", 0], ["rogue", 160], ["admiral", 200], ["reaper", 120]];   // a pack and a hue shift, so each worker looks different
 const MIRROR = { west: "east", "south-west": "south-east", "north-west": "north-east" };
 function crewPack(name) { return CREW_PACK[name] || WORKER_PACKS[(parseInt(number(name) || "1", 10) - 1) % WORKER_PACKS.length]; }
 function crewBox(pack) { const [w, h, x0, y0, x1, y1] = FIGURE[pack], k = CREW_H / (y1 - y0 + 1); return { w: w * k, h: h * k, x: -(x0 + x1 + 1) / 2 * k, y: -(y1 + 1) * k }; }
@@ -653,12 +656,12 @@ function preload(pack, anim, dir) {   // fetch a whole animation the first time 
   if (PRELOADED[key]) return;
   PRELOADED[key] = true;
   const probe = crewFrame(pack, anim, dir, 0);
-  for (let f = 0; f < probe.n; f++) new Image().src = "/assets/" + crewFrame(pack, anim, dir, f).file + ".png";
+  for (let f = 0; f < probe.n; f++) new Image().src = artUrl(crewFrame(pack, anim, dir, f).file);
 }
 function personItem(name, role, theme) {
   const [pack, hue] = crewPack(name), box = crewBox(pack), g = sv("g", { class: "sprite", "data-sprite": name }), body = sv("g", {}), mirror = sv("g", {}), carry = sv("g", { style: "display:none" });
   const img = sv("image", { x: box.x, y: box.y, width: box.w, height: box.h, "image-rendering": "pixelated", style: hue ? "filter:hue-rotate(" + hue + "deg)" : "" });
-  img.setAttribute("href", "/assets/" + crewFrame(pack, "idle", "south", 0).file + ".png");
+  img.setAttribute("href", artUrl(crewFrame(pack, "idle", "south", 0).file));
   mirror.append(img); body.append(mirror);
   carry.append(sv("rect", { x: -13, y: -CREW_H * 0.5, width: 26, height: 18, rx: 2, fill: "#a8782f", stroke: "#0b0b12", "stroke-width": 1.6 }), sv("rect", { x: -2, y: -CREW_H * 0.5, width: 4, height: 18, fill: "#d8b060" }));
   const shadowEl = sv("ellipse", { cx: 0, cy: -2, rx: 16, ry: 6, fill: "#000", opacity: 0.32 }), tag = sv("g", { transform: "translate(0 " + (-CREW_H - 8) + ")" }), bubble = sv("g", { transform: "translate(0 " + (-CREW_H - 28) + ")" });
@@ -670,7 +673,7 @@ function personItem(name, role, theme) {
     if (person.shown === fr.file + fr.flip) return;
     preload(pack, anim, dir);
     person.shown = fr.file + fr.flip;
-    img.setAttribute("href", "/assets/" + fr.file + ".png");
+    img.setAttribute("href", artUrl(fr.file));
     mirror.setAttribute("transform", fr.flip ? "scale(-1 1)" : "");
   };
   return person;
@@ -880,7 +883,7 @@ function mapSection(run) {
 function portrait(name, doing) {   // the same person as in the scene, in a small well with a lamp
   const [pack, hue] = crewPack(name), [w, h, x0, y0, x1, y1] = FIGURE[pack], vh = y1 - y0 + 6, vw = vh * 0.55, svg = sv("svg", { viewBox: [(x0 + x1 + 1) / 2 - vw / 2, y0 - 3, vw, vh].join(" "), "aria-hidden": "true" });
   const img = sv("image", { x: 0, y: 0, width: w, height: h, "image-rendering": "pixelated", style: hue ? "filter:hue-rotate(" + hue + "deg)" : "" });
-  img.setAttribute("href", "/assets/" + crewFrame(pack, "idle", "south", 0).file + ".png");
+  img.setAttribute("href", artUrl(crewFrame(pack, "idle", "south", 0).file));
   svg.append(img);
   const well = el("div", "portrait");
   well.append(svg, el("span", "lamp " + dotClass(doing)));
@@ -1028,6 +1031,12 @@ def _crew_index() -> dict[str, dict[str, dict[str, int]]]:
     return index
 
 
+def _art_version() -> str:
+    """A short fingerprint of the pictures in station_art/ (names and sizes), used to refresh a browser's cached copies."""
+    files = sorted((Path(__file__).parent / "station_art").glob("*.png"))
+    return hashlib.sha256("|".join(f"{f.name}:{f.stat().st_size}" for f in files).encode()).hexdigest()[:10]
+
+
 def _sprite_sizes() -> dict[str, list[int]]:
     """The natural size [width, height] of each sprite in station_art/, read from its PNG header, so the page can fit it to a box."""
     sizes = {}
@@ -1039,4 +1048,4 @@ def _sprite_sizes() -> dict[str, list[int]]:
     return sizes
 
 
-PAGE = PAGE.replace("__SPRITES__", json.dumps(_sprite_sizes(), separators=(",", ":"))).replace("__CREW__", json.dumps(_crew_index(), separators=(",", ":")))
+PAGE = PAGE.replace("__ARTV__", _art_version()).replace("__SPRITES__", json.dumps(_sprite_sizes(), separators=(",", ":"))).replace("__CREW__", json.dumps(_crew_index(), separators=(",", ":")))
