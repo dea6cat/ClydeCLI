@@ -188,7 +188,7 @@ const THEMES = {
       read: "Filing cabinet", write: "Typewriter", shell: "Safe", web: "Radio set", mcp: "Switchboard", other: "Cupboard",
       task: "Orders", results: "Reports", approvalsLane: "Messages", review: "Review", report: "Report", landing: "Delivery" } },
   steam: { name: "Steampunk ship",
-    pal: { bg: "#1d2b44", floorA: "#6b5545", floorB: "#5c4a3c", corr: "#3a2f28", grout: "#201710", wallL: "#2b565c", wallR: "#36737d", trim: "#c0773a", wood: "#9c5a2e", metal: "#c0773a", steel: "#7a8a8a",
+    pal: { bg: "#1d2b44", floorA: "#6b5545", floorB: "#5c4a3c", corr: "#3a2f28", grout: "#201710", wallL: "#2b565c", wallR: "#36737d", trim: "#c0773a", wood: "#3b484d", metal: "#c0773a", steel: "#7a8a8a",
            screen: "#8fe3d1", accent: "#f0a64a", lamp: "#ffd166", ink: "#e6efe9", paper: "#ead9b0", dark: "#1b2a2e", dim: "#6f8c89", wait: "#ffd166", bad: "#e5645f",
            sky1: "#1b2a52", sky2: "#e8924a", bldg: "#3a2a20", win: "#ffd166", rug1: "#3b2a1e", rug2: "#c0773a", neonA: "#ffd166", neonB: "#f0a64a" },
     words: { deck: "Bridge", bay: "Engine bay", outbox: "Cargo hatch", approvals: "Helm", ledger: "Pressure gauge", table: "Chart table",
@@ -483,6 +483,14 @@ function tileLines(r) {   // the grout between tiles, as one path
   for (let j = 0; j <= r.d; j++) { const a = iso(r.x, r.y + j), b = iso(r.x + r.w, r.y + j); d += "M" + a[0].toFixed(1) + " " + a[1].toFixed(1) + "L" + b[0].toFixed(1) + " " + b[1].toFixed(1); }
   return d;
 }
+const FX = { shadow: "", grain: "", grime: "" };
+function materials(defs, uid) {   // grain, grime and a soft shadow: filters the browser draws, so no image ships
+  const make = (id, build) => { const f = sv("filter", { id, x: "-10%", y: "-10%", width: "120%", height: "120%", "color-interpolation-filters": "sRGB" }); build(f); defs.append(f); return "url(#" + id + ")"; };
+  const noise = (freq, oct, seed, a, b) => (f) => f.append(sv("feTurbulence", { type: "fractalNoise", baseFrequency: freq, numOctaves: oct, seed, result: "n" }), sv("feColorMatrix", { in: "n", type: "matrix", values: "0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  " + a + " 0 0 0 " + b, result: "m" }), sv("feComposite", { in: "m", in2: "SourceAlpha", operator: "in" }));   // the noise stays inside the shape it is laid on
+  FX.grain = make("grain" + uid, noise("0.85", 2, 4, 1.6, -0.55));
+  FX.grime = make("grime" + uid, noise("0.045", 3, 11, 2.4, -1.05));
+  FX.shadow = make("soft" + uid, (f) => f.append(sv("feGaussianBlur", { stdDeviation: 3.2 })));
+}
 function slabFaces(layer, r, pal) {   // a floor has thickness: the faces toward the viewer
   layer.append(sv("polygon", { points: pts([P(r.x, r.y + r.d, 0), P(r.x + r.w, r.y + r.d, 0), P(r.x + r.w, r.y + r.d, -SLAB), P(r.x, r.y + r.d, -SLAB)]), fill: shade(pal.corr, -25) }),
                sv("polygon", { points: pts([P(r.x + r.w, r.y, 0), P(r.x + r.w, r.y + r.d, 0), P(r.x + r.w, r.y + r.d, -SLAB), P(r.x + r.w, r.y, -SLAB)]), fill: shade(pal.corr, -45) }));
@@ -500,6 +508,8 @@ function drawFloors(layer, defs, p, pal, theme, uid) {
     }
     for (const k in buckets) layer.append(sv("path", { d: buckets[k], fill: k === "0" ? corrA : corrB }));
     layer.append(sv("path", { d: tileLines({ x: c.x, y: c.y, w: W, d: D }), stroke: pal.grout, "stroke-width": 1, opacity: 0.55, fill: "none" }));
+    const flat = [P(c.x, c.y, 0), P(c.x + c.w, c.y, 0), P(c.x + c.w, c.y + c.d, 0), P(c.x, c.y + c.d, 0)];
+    layer.append(sv("polygon", { points: pts(flat), fill: "#000", filter: FX.grain, opacity: 0.22 }));
   });
   for (const [a, b] of p.edges) {   // a rail along each long side, with a light set into it every so often
     const A = P(a[0], a[1], 0), B = P(b[0], b[1], 0), A2 = P(a[0], a[1], 9), B2 = P(b[0], b[1], 9);
@@ -519,6 +529,20 @@ function drawFloors(layer, defs, p, pal, theme, uid) {
     }
     for (const key in buckets) layer.append(sv("path", { d: buckets[key], fill: shade(+key >= 4 ? pal.floorB : pal.floorA, ((+key % 4) - 1.5) * 4) }));
     layer.append(sv("path", { d: tileLines(r), stroke: pal.grout, "stroke-width": 1, opacity: 0.45, fill: "none" }));
+    layer.append(sv("path", { d: tileLines(r), stroke: "#fff", "stroke-width": 1, opacity: theme === "cyber" ? 0.08 : 0.1, fill: "none", transform: "translate(1.2 1)" }));   // each plate has a lit edge
+    let rivets = "";
+    for (let i = 0; i < Math.round(r.w); i++) for (let j = 0; j < Math.round(r.d); j++) for (const [a, b] of [[0.14, 0.14], [0.86, 0.14], [0.14, 0.86], [0.86, 0.86]]) { const c = iso(r.x + i + a, r.y + j + b); rivets += "M" + c[0].toFixed(1) + " " + c[1].toFixed(1) + "h0"; }
+    layer.append(sv("path", { d: rivets, stroke: shade(pal.grout, 55), "stroke-width": 2.2, "stroke-linecap": "round", opacity: 0.55, fill: "none" }));
+    for (let k = 0; k < 2; k++) {   // a vent grating, set into a plate
+      const i = Math.floor(hash(ri + 31, k) * (r.w - 2)) + 1, j = Math.floor(hash(ri + 37, k) * (r.d - 2)) + 1, q = [iso(r.x + i + 0.12, r.y + j + 0.12), iso(r.x + i + 0.88, r.y + j + 0.12), iso(r.x + i + 0.88, r.y + j + 0.88), iso(r.x + i + 0.12, r.y + j + 0.88)];
+      layer.append(sv("polygon", { points: pts(q), fill: shade(pal.grout, -30), opacity: 0.8 }));
+      let slats = ""; for (let t = 1; t < 6; t++) { const a = iso(r.x + i + 0.12 + t * 0.126, r.y + j + 0.12), b = iso(r.x + i + 0.12 + t * 0.126, r.y + j + 0.88); slats += "M" + a[0].toFixed(1) + " " + a[1].toFixed(1) + "L" + b[0].toFixed(1) + " " + b[1].toFixed(1); }
+      layer.append(sv("path", { d: slats, stroke: shade(pal.floorA, 25), "stroke-width": 1.4, opacity: 0.7, fill: "none" }));
+    }
+    const edgeA = [P(r.x + 0.4, r.y + r.d - 0.4, 0), P(r.x + r.w - 0.4, r.y + r.d - 0.4, 0), P(r.x + r.w - 0.4, r.y + 0.4, 0)];   // a hazard inlay along the two near edges
+    layer.append(sv("polyline", { points: pts(edgeA), fill: "none", stroke: "#000", "stroke-width": 4, opacity: 0.4 }), sv("polyline", { points: pts(edgeA), fill: "none", stroke: theme === "cyber" ? pal.neonB : "#e8c020", "stroke-width": 3, "stroke-dasharray": "7 7", opacity: 0.5 }));
+    const top = [P(r.x, r.y, 0), P(r.x + r.w, r.y, 0), P(r.x + r.w, r.y + r.d, 0), P(r.x, r.y + r.d, 0)];
+    layer.append(sv("polygon", { points: pts(top), fill: "#000", filter: FX.grain, opacity: 0.2 }), sv("polygon", { points: pts(top), fill: "#000", filter: FX.grime, opacity: 0.24 }));
     // scuffs and stains: a few darker patches, always in the same places
     for (let s = 0; s < r.w * r.d / 18; s++) { const c = P(r.x + hash(ri, s) * r.w, r.y + hash(ri + 5, s) * r.d, 0); layer.append(sv("ellipse", { cx: c[0], cy: c[1], rx: 8 + hash(ri, s + 9) * 14, ry: 3 + hash(ri, s + 3) * 5, fill: "#000", opacity: 0.1 })); }
   });
@@ -611,6 +635,10 @@ function drawWall(layer, defs, r, side, pal, theme, uid, gap) {
     else if (theme === "steam") for (const z of [10, 52]) for (const t of [0.12, 0.88]) { const c = W(side, r, u + t, z); layer.append(sv("circle", { cx: c[0], cy: c[1], r: 1.6, fill: shade(pal.trim, 20), opacity: 0.8 })); }
     else { wq(layer, side, r, u + 0.05, 6, u + 0.95, 7.2, pal.trim, { opacity: 0.35 }); const c = W(side, r, u + 0.5, 12); layer.append(sv("circle", { cx: c[0], cy: c[1], r: 1.2, fill: i % 2 ? pal.neonA : pal.neonB, class: "blink" + (i % 3 ? "2" : "") + " amb" })); }
     wq(layer, side, r, u, 0, u + 1, 20, shade(base, -16));   // wainscot
+    wq(layer, side, r, u + 0.08, 5, u + 0.46, 17.5, shade(base, -24), { opacity: 0.7 }); wq(layer, side, r, u + 0.54, 5, u + 0.92, 17.5, shade(base, -24), { opacity: 0.7 });   // raised panels
+    wq(layer, side, r, u + 0.08, 16.6, u + 0.46, 17.5, "#fff", { opacity: 0.07 }); wq(layer, side, r, u + 0.54, 16.6, u + 0.92, 17.5, "#fff", { opacity: 0.07 });
+    if (theme === "steam") { wq(layer, side, r, u, 47, u + 1, 51, shade(pal.metal, -35)); wq(layer, side, r, u, 49.4, u + 1, 51, shade(pal.metal, 25), { opacity: 0.6 }); wq(layer, side, r, u + 0.45, 45, u + 0.55, 53, pal.metal); }   // a brass conduit with a clamp
+    else if (theme === "cyber") { wq(layer, side, r, u, 4, u + 1, 5.6, pal.neonB, { opacity: 0.8, class: "blink2 amb" }); wq(layer, side, r, u + 0.5, 21, u + 0.52, WALL - 8, "#000", { opacity: 0.35 }); }   // a lit skirting and panel seams
     wq(layer, side, r, u, 0, u + 1, 4, shade(base, -34));    // baseboard
     wq(layer, side, r, u, 19, u + 1, 21.5, pal.trim);        // rail
     wq(layer, side, r, u, WALL - 7, u + 1, WALL, pal.trim); wq(layer, side, r, u, WALL - 2.4, u + 1, WALL, shade(pal.trim, 28));   // crown
@@ -640,11 +668,39 @@ function box(g, x, y, w, d, z0, h, color, soft) {   // a cuboid: top, the face t
   g.append(sv("polygon", { points: pts([P(x, y + d, z0), P(x + w, y + d, z0), P(x + w, y + d, z0 + h), P(x, y + d, z0 + h)]), fill: shade(color, -14) }),
            sv("polygon", { points: pts([P(x + w, y, z0), P(x + w, y + d, z0), P(x + w, y + d, z0 + h), P(x + w, y, z0 + h)]), fill: shade(color, -32) }),
            sv("polygon", { points: pts([P(x, y, z0 + h), P(x + w, y, z0 + h), P(x + w, y + d, z0 + h), P(x, y + d, z0 + h)]), fill: color }));
-  if (!soft) g.append(sv("polyline", { points: pts([P(x, y + d, z0 + h), P(x + w, y + d, z0 + h), P(x + w, y, z0 + h)]), fill: "none", stroke: shade(color, 35), "stroke-width": 1, opacity: 0.6 }));
+  if (soft) return;
+  g.append(sv("polyline", { points: pts([P(x, y + d, z0 + h), P(x + w, y + d, z0 + h), P(x + w, y, z0 + h)]), fill: "none", stroke: shade(color, 35), "stroke-width": 1, opacity: 0.6 }));
+  if (h < 8) return;
+  const ao = Math.min(h * 0.35, 5), lip = Math.min(1.6, h * 0.2);   // a solid is lit from above: a dark band where it meets the floor, a bright lip on its top edge
+  g.append(sv("polygon", { points: pts([P(x, y + d, z0), P(x + w, y + d, z0), P(x + w, y + d, z0 + ao), P(x, y + d, z0 + ao)]), fill: "#000", opacity: 0.2 }),
+           sv("polygon", { points: pts([P(x + w, y, z0), P(x + w, y + d, z0), P(x + w, y + d, z0 + ao), P(x + w, y, z0 + ao)]), fill: "#000", opacity: 0.28 }),
+           sv("polygon", { points: pts([P(x, y + d, z0 + h - lip), P(x + w, y + d, z0 + h - lip), P(x + w, y + d, z0 + h), P(x, y + d, z0 + h)]), fill: "#fff", opacity: 0.16 }),
+           sv("polygon", { points: pts([P(x + w, y, z0 + h - lip), P(x + w, y + d, z0 + h - lip), P(x + w, y + d, z0 + h), P(x + w, y, z0 + h)]), fill: "#fff", opacity: 0.08 }),
+           sv("polyline", { points: pts([P(x + w, y + d, z0 + 0.5), P(x + w, y + d, z0 + h)]), fill: "none", stroke: "#fff", "stroke-width": 1, opacity: 0.2 }));
 }
-function shadow(g, x, y, w, d) { poly(g, [P(x + 0.15, y + 0.15, 0), P(x + w + 0.7, y + 0.15, 0), P(x + w + 0.7, y + d + 0.7, 0), P(x + 0.15, y + d + 0.7, 0)], "#000", { opacity: 0.28 }); }
+function shadow(g, x, y, w, d) { poly(g, [P(x + 0.1, y + 0.1, 0), P(x + w + 0.8, y + 0.1, 0), P(x + w + 0.8, y + d + 0.8, 0), P(x + 0.1, y + d + 0.8, 0)], "#000", { opacity: 0.42, filter: FX.shadow }); }
 function led(g, x, y, z, color, cls) { const c = P(x, y, z); g.append(sv("circle", { cx: c[0], cy: c[1], r: 2, fill: color, class: cls || "", opacity: 0.95 })); }
 function glow(g, defs, x, y, z, r, color, id, cls) { const c = P(x, y, z); g.append(sv("circle", { cx: c[0], cy: c[1], r, fill: gradient(defs, id, [[0, color, 0.5], [1, color, 0]], { r: "50%" }), class: cls || "" })); }
+function screenFace(g, x, y, w, z0, h, pal, kind, fresh, seed) {   // a display on a front face: a radar, a graph or lines of text
+  const q = (u, z) => P(x + u * w, y, z0 + z * h), face = [q(0, 0), q(1, 0), q(1, 1), q(0, 1)], col = pal.screen, on = fresh ? 1 : 0.55;
+  g.append(sv("polygon", { points: pts(face), fill: "#03060c", stroke: shade(pal.metal, -5), "stroke-width": 1.2 }), sv("polygon", { points: pts(face), fill: col, opacity: 0.1 * on }));
+  if (kind === 0) {   // radar: two rings, cross hairs and a few blips
+    for (const rad of [0.3, 0.17]) { const ring = []; for (let a = 0; a < 18; a++) { const t = a / 18 * Math.PI * 2; ring.push(q(0.5 + Math.cos(t) * rad * 0.8, 0.5 + Math.sin(t) * rad * 1.5)); } g.append(sv("polygon", { points: pts(ring), fill: "none", stroke: col, "stroke-width": 0.9, opacity: 0.8 * on })); }
+    g.append(sv("polyline", { points: pts([q(0.5, 0.08), q(0.5, 0.92)]), stroke: col, "stroke-width": 0.7, opacity: 0.6 * on }), sv("polyline", { points: pts([q(0.1, 0.5), q(0.9, 0.5)]), stroke: col, "stroke-width": 0.7, opacity: 0.6 * on }));
+    for (let b = 0; b < 3; b++) { const c = q(0.3 + hash(seed, b) * 0.4, 0.25 + hash(b, seed) * 0.5); g.append(sv("circle", { cx: c[0], cy: c[1], r: 1.3, fill: "#fff", class: "blink" + (b ? String(b + 1) : "") + " amb" })); }
+  } else if (kind === 1) {   // a graph
+    const line = []; for (let i = 0; i <= 8; i++) line.push(q(0.08 + i * 0.105, 0.2 + hash(seed + i, i * 3) * 0.6));
+    g.append(sv("polyline", { points: pts(line), fill: "none", stroke: col, "stroke-width": 1.2, opacity: on }), sv("polyline", { points: pts([q(0.08, 0.15), q(0.92, 0.15)]), stroke: col, "stroke-width": 0.6, opacity: 0.5 * on }));
+  } else {   // text
+    for (let l = 0; l < 4; l++) g.append(sv("polyline", { points: pts([q(0.1, 0.8 - l * 0.2), q(0.1 + (0.25 + hash(seed, l) * 0.6) * 0.8, 0.8 - l * 0.2)]), stroke: l % 3 === 2 ? pal.accent : col, "stroke-width": 1.2, opacity: 0.85 * on }));
+  }
+}
+function chair(g, x, y, pal, theme) {   // an office chair: a five-spoke base, a post, a seat and a back
+  const c = P(x, y, 0), s = P(x, y, 9), back = P(x - 0.05, y - 0.35, 17), tone = theme === "city" ? "#5a2b2b" : shade(pal.dark, 22);
+  for (let k = 0; k < 5; k++) { const t = k / 5 * Math.PI * 2 + 0.3; g.append(sv("line", { x1: c[0], y1: c[1] - 2, x2: c[0] + Math.cos(t) * 8, y2: c[1] - 2 + Math.sin(t) * 3.6, stroke: "#111", "stroke-width": 1.6 })); }
+  g.append(sv("line", { x1: c[0], y1: c[1] - 2, x2: s[0], y2: s[1], stroke: "#222", "stroke-width": 2.4 }), sv("ellipse", { cx: s[0], cy: s[1], rx: 9, ry: 4.6, fill: tone }), sv("ellipse", { cx: s[0], cy: s[1] - 1.6, rx: 9, ry: 4.4, fill: shade(tone, 14) }),
+           sv("path", { d: "M" + (back[0] - 8) + " " + (back[1] + 3) + "Q" + back[0] + " " + (back[1] - 8) + " " + (back[0] + 8) + " " + (back[1] + 3) + "L" + (back[0] + 7) + " " + (back[1] + 11) + "L" + (back[0] - 7) + " " + (back[1] + 11) + "Z", fill: shade(tone, -8), stroke: shade(tone, 30), "stroke-width": 0.8 }));
+}
 function furnitureGroup(f, pal, theme, now, defs, uid) {
   const g = sv("g", {}), [x, y, w, d] = f.box, o = f.obj, wood = pal.wood, dark = pal.dark, metal = pal.metal;
   const fresh = o && o.last && now - o.last < 4, busy = fresh ? "blink" : "", id = "fg" + uid + f.family + Math.round(x * 3 + y * 5);
@@ -654,7 +710,7 @@ function furnitureGroup(f, pal, theme, now, defs, uid) {
       const body = theme === "city" ? pal.steel : theme === "steam" ? shade(metal, -10) : dark;
       box(g, x, y, w, d, 0, 36, body);
       for (let i = 0; i < 3; i++) { for (let k = 0; k < Math.floor(w); k++) { const fx = x + 0.12 + k * (w / Math.floor(w)), fw = w / Math.floor(w) - 0.24; box(g, fx, y + d - 0.02, fw, 0.04, 3 + i * 11, 9, shade(body, 10), true); g.append(sv("line", { x1: P(fx + fw * 0.35, y + d, 7.5 + i * 11)[0], y1: P(fx + fw * 0.35, y + d, 7.5 + i * 11)[1], x2: P(fx + fw * 0.65, y + d, 7.5 + i * 11)[0], y2: P(fx + fw * 0.65, y + d, 7.5 + i * 11)[1], stroke: theme === "cyber" ? pal.neonB : pal.paper, "stroke-width": 2 })); } }
-      if (theme === "cyber") for (let i = 0; i < 5; i++) led(g, x + 0.3 + i * 0.5, y + d, 32, i % 2 ? pal.neonA : pal.neonB, busy || "blink" + (i % 3 ? "2" : "3"));
+      if (theme === "cyber") { screenFace(g, x + 0.2, y + d, Math.max(1, w - 0.4), 22, 11, pal, 2, fresh, Math.round(x * 5 + y)); for (let i = 0; i < 5; i++) led(g, x + 0.3 + i * 0.5, y + d, 34, i % 2 ? pal.neonA : pal.neonB, busy || "blink" + (i % 3 ? "2" : "3")); }
       else for (let i = 0; i < 4; i++) box(g, x + 0.2 + i * (w - 0.4) / 4, y + 0.15, (w - 0.4) / 4 - 0.1, d * 0.6, 36, 6 + (i % 3) * 3, [pal.accent, pal.paper, pal.metal, pal.screen][i]);
       break; }
     case "write": case "desk": {   // typewriter desk / brass press / fabricator
@@ -662,11 +718,12 @@ function furnitureGroup(f, pal, theme, now, defs, uid) {
       for (let k = 0; k < 2; k++) box(g, x + w - 0.58, y + 0.2 + k * (d / 2 - 0.1), 0.02, d / 2 - 0.4, 3 + k * 0, 5, shade(wood, -45), true);
       if (theme === "city") { box(g, x + w * 0.3, y + d * 0.2, 1.0, 0.8, 17, 6, dark); box(g, x + w * 0.3 + 0.1, y + d * 0.2, 0.8, 0.1, 23, 4, "#222"); box(g, x + w * 0.3 + 0.15, y + d * 0.2 + 0.15, 0.7, 0.04, 23, 8, pal.paper, true);
         for (let k = 0; k < 4; k++) box(g, x + w * 0.3 + 0.1 + k * 0.2, y + d * 0.2 + 0.5, 0.12, 0.12, 23, 1.5, "#ddd", true); }
-      else if (theme === "steam") { box(g, x + w * 0.3, y + d * 0.2, 1.2, 0.8, 17, 5, metal); box(g, x + w * 0.35, y + d * 0.25, 0.3, 0.3, 22, 14, shade(metal, -20)); box(g, x + w * 0.35 + 0.5, y + d * 0.25, 0.5, 0.3, 30, 3, metal); led(g, x + w * 0.5, y + d * 0.3, 27, pal.lamp, busy);
-        if (fresh) glow(g, defs, x + w * 0.45, y + d * 0.35, 25, 22, pal.accent, id + "s", "flick amb"); }
-      else { box(g, x + w * 0.36, y + d * 0.18, 1, 0.12, 17, 14, "#05050f"); box(g, x + w * 0.36 + 0.05, y + d * 0.18 + 0.12, 0.9, 0.02, 19, 10, fresh ? pal.screen : shade(pal.screen, -55), true); box(g, x + w * 0.4, y + d * 0.5, 0.8, 0.3, 17, 1.5, pal.neonB);
-        if (fresh) glow(g, defs, x + w * 0.5, y + d * 0.3, 24, 24, pal.screen, id + "c", "flick amb"); }
-      if (f.family === "desk") { box(g, x + 0.2, y + d + 0.1, 0.9, 0.9, 0, 9, shade(wood, -15)); box(g, x + 0.2, y + d + 0.1, 0.9, 0.12, 9, 12, shade(wood, -15), true);   // a chair
+      else if (theme === "steam") { box(g, x + w * 0.25, y + d * 0.2, 1.3, 0.9, 17, 4, metal); box(g, x + w * 0.3, y + d * 0.28, 0.2, 0.2, 21, 12, shade(metal, -20), true);
+        box(g, x + w * 0.3, y + d * 0.18, 1.1, 0.14, 21, 16, shade(pal.dark, 10)); screenFace(g, x + w * 0.3 + 0.08, y + d * 0.18 + 0.14, 0.94, 23, 12, pal, f.family === "desk" ? 1 : 2, fresh, Math.round(x * 3 + y)); box(g, x + w * 0.62, y + d * 0.55, 0.5, 0.3, 17, 1.6, pal.paper, true);
+        if (fresh) glow(g, defs, x + w * 0.45, y + d * 0.35, 25, 26, pal.screen, id + "s", "flick amb"); }
+      else { box(g, x + w * 0.3, y + d * 0.18, 1.1, 0.14, 21, 16, "#05050f"); box(g, x + w * 0.36, y + d * 0.2, 0.3, 0.3, 17, 4, pal.metal, true); screenFace(g, x + w * 0.3 + 0.08, y + d * 0.18 + 0.14, 0.94, 23, 12, pal, f.family === "desk" ? 0 : 2, fresh, Math.round(x * 3 + y)); box(g, x + w * 0.35, y + d * 0.58, 1, 0.34, 17, 1.4, pal.neonB, true);
+        if (fresh) glow(g, defs, x + w * 0.5, y + d * 0.3, 24, 30, pal.screen, id + "c", "flick amb"); }
+      if (f.family === "desk") { chair(g, x + w * 0.45, y + d + 0.75, pal, theme);
         if (f.laneState) { const on = f.laneState === "lit"; box(g, x + w - 1.1, y + d - 0.9, 0.8, 0.6, 17, 2, on ? pal.accent : shade(pal.dark, 20)); if (on) glow(g, defs, x + w - 0.7, y + d - 0.6, 22, 30, pal.accent, id + "tray", "flick amb"); } }   // the handoff tray: lit once that handoff was recorded
       break; }
     case "shell": {   // safe / boiler valve / root console
@@ -674,7 +731,7 @@ function furnitureGroup(f, pal, theme, now, defs, uid) {
       else if (theme === "steam") { box(g, x, y, w, d, 0, 20, shade(metal, -25)); for (let k = 0; k < 2; k++) { const c = P(x + 0.5 + k * 0.9, y + d * 0.5, 30); g.append(sv("rect", { x: c[0] - 2, y: c[1], width: 4, height: 10, fill: metal }), sv("circle", { cx: c[0], cy: c[1], r: 7, fill: "none", stroke: pal.accent, "stroke-width": 2.5 }), sv("line", { x1: c[0] - 7, y1: c[1], x2: c[0] + 7, y2: c[1], stroke: pal.accent, "stroke-width": 2 })); }
         if (fresh) { const c = P(x + w * 0.5, y + d * 0.5, 40); g.append(sv("circle", { cx: c[0], cy: c[1], r: 6, fill: "#fff", class: "puff amb", opacity: 0.6 })); } }
       else { box(g, x, y, w, d, 0, 22, dark); box(g, x + 0.1, y + 0.1, w - 0.2, d - 0.2, 22, 3, pal.metal); for (let i = 0; i < 6; i++) led(g, x + 0.2 + (i % 3) * 0.55, y + d + 0.0, 8 + Math.floor(i / 3) * 6, [pal.neonA, pal.neonB, pal.screen][i % 3], busy || "blink" + (i % 3 ? "2" : "3"));
-        box(g, x + 0.2, y + 0.3, 1.4, 0.7, 25, 1, "#05050f"); box(g, x + 0.3, y + 0.35, 1.2, 0.6, 26, 0.5, fresh ? pal.screen : shade(pal.screen, -60), true); }
+        box(g, x + 0.2, y + 0.3, 1.4, 0.12, 25, 12, "#05050f"); screenFace(g, x + 0.28, y + 0.42, 1.24, 27, 8, pal, 0, fresh, Math.round(x * 7 + y)); }
       break; }
     case "web": {   // radio set / signal lamp / uplink
       box(g, x, y, w, d, 0, 22, theme === "city" ? wood : metal); const c = P(x + w / 2, y + d + 0.0, 13);
@@ -701,7 +758,7 @@ function furnitureGroup(f, pal, theme, now, defs, uid) {
       if (theme === "steam") { const c = P(x + w * 0.5, y + d, 24); g.append(sv("circle", { cx: c[0], cy: c[1], r: 7, fill: "none", stroke: pal.accent, "stroke-width": 2.5 })); }
       break; }
     case "ledger": {   // cash register / pressure gauge / credit meter
-      box(g, x, y, w, d, 0, 14, metal); box(g, x + 0.3, y + 0.2, w - 0.6, d - 0.3, 14, 9, shade(metal, -25)); box(g, x + 0.4, y + 0.25, w - 0.8, 0.1, 18, 5, pal.screen);
+      box(g, x, y, w, d, 0, 14, metal); box(g, x + 0.3, y + 0.2, w - 0.6, d - 0.3, 14, 9, shade(metal, -25)); screenFace(g, x + 0.4, y + d - 0.1, w - 0.8, 15, 7, pal, 1, !!(o && o.usd > 0), Math.round(x + y));
       for (let k = 0; k < 6; k++) box(g, x + 0.4 + k * 0.28, y + d - 0.5, 0.2, 0.2, 14, 1.4, k % 2 ? "#ddd" : "#999", true);
       if (o && o.usd > 0) led(g, x + w - 0.3, y + 0.4, 25, pal.accent, "blink");
       break; }
@@ -709,6 +766,7 @@ function furnitureGroup(f, pal, theme, now, defs, uid) {
       box(g, x, y, w, d, 0, 12, wood); box(g, x + 0.35, y + 0.3, w - 0.7, d - 0.6, 12, 1, pal.paper, true);
       const a = P(x + 0.7, y + 0.6, 13), b = P(x + w - 0.8, y + d - 0.6, 13);
       g.append(sv("path", { d: "M" + a[0] + " " + a[1] + "l30 12l24 -8l22 14", fill: "none", stroke: pal.dim, "stroke-width": 1.5 }), sv("circle", { cx: b[0], cy: b[1], r: 3, fill: pal.wait }));
+      if (theme !== "city") for (const rad of [0.9, 1.5, 2.1]) { const ring = []; for (let k = 0; k < 24; k++) { const t = k / 24 * Math.PI * 2; ring.push(P(x + w / 2 + Math.cos(t) * rad, y + d / 2 + Math.sin(t) * rad * 0.7, 13)); } g.append(sv("polygon", { points: pts(ring), fill: "none", stroke: pal.screen, "stroke-width": 1, opacity: 0.55 - rad * 0.1, class: "blink3 amb" })); }
       for (const [cx, cy] of [[x + 0.3, y - 0.5], [x + w - 1.2, y - 0.5], [x + 0.3, y + d + 0.2], [x + w - 1.2, y + d + 0.2]]) { box(g, cx, cy, 0.8, 0.8, 0, 8, shade(wood, -20), true); box(g, cx, cy, 0.8, 0.12, 8, 9, shade(wood, -20), true); }
       break; }
     case "crate": {   // the outbox: crates, lit when work has landed
@@ -870,6 +928,7 @@ function buildScene(run) {
   const svg = sv("svg", { viewBox: [x0, y0, x1 - x0, y1 - y0].map((v) => v.toFixed(0)).join(" "), role: "img", "aria-label": "Station for " + (run.task || run.id) + ", " + THEMES[theme].name });
   const defs = sv("defs", {});
   svg.append(defs);
+  materials(defs, uid);
   backdrop(svg, defs, B, pal, theme, uid);
   const floors = sv("g", {}), laneLayer = sv("g", {}), walls = sv("g", {}), items = sv("g", {}), signs = sv("g", {});
   drawFloors(floors, defs, p, pal, theme, uid);
