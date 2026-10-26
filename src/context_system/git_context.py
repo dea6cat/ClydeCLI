@@ -4,6 +4,7 @@ import subprocess
 from pathlib import Path
 
 from ..security.git_safe import git_cmd, git_env
+from .context_cache import cut
 from .models import GitContext
 
 _MAX_STATUS_CHARS = 2_000
@@ -26,8 +27,8 @@ def collect_git_context(workspace_root: str | Path) -> GitContext:
         branch = _read_git_text(repo_root, "rev-parse", "--short", "HEAD")
 
     status = _read_git_text(repo_root, "status", "--short", "--branch")
-    if status and len(status) > _MAX_STATUS_CHARS:
-        status = status[: _MAX_STATUS_CHARS - 32].rstrip() + "\n...[truncated]"
+    if status:
+        status = cut(status, _MAX_STATUS_CHARS)
 
     recent_commit = _read_git_text(repo_root, "log", "-1", "--oneline", "--decorate")
 

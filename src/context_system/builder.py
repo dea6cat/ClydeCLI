@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import re
 from dataclasses import replace
 from datetime import date
@@ -31,27 +32,40 @@ def build_context_prompt(
     if compact:
         summary = replace(summary, readme_path=None, readme_excerpt="")
 
-    sections: list[str] = []
+    # Stable sections first, the ones that change last: a provider caches the prompt up to its first changed byte, and
+    # Runtime Context (file counts, top-level entries, the date) and git status change with almost any edit. First,
+    # one new file left 0 of 2,351 context tokens cached on this repo.
+    sections = [
+        ("Project Instructions", _render_claude_md_section(claude_md, root)),
+        ("Project Summary", _render_project_summary_section(summary, root)),
+        ("Code Map", _render_code_map_section(root)),
+        ("Runtime Context", _render_workspace_section(workspace)),
+        ("Git Context", _render_git_section(git, root)),
+    ]
+    kept = [(name, "\n".join(lines)) for name, lines in sections if "\n".join(lines).strip()]
+    previous = _BUILDS.get(str(root), ((), ()))[1]
+    _BUILDS[str(root)] = (previous, tuple((name, hashlib.sha256(text.encode()).hexdigest(), text) for name, text in kept))
+    return "\n\n".join(text for _, text in kept)
 
-    sections.append("\n".join(_render_workspace_section(workspace)))
 
-    git_lines = _render_git_section(git, root)
-    if git_lines:
-        sections.append("\n".join(git_lines))
+# The sections of the last two prompts built per workspace, (name, sha256, text) each: what /context compares.
+_BUILDS: dict[str, tuple[tuple, tuple]] = {}
 
-    summary_lines = _render_project_summary_section(summary, root)
-    if summary_lines:
-        sections.append("\n".join(summary_lines))
 
-    map_lines = _render_code_map_section(root)
-    if map_lines:
-        sections.append("\n".join(map_lines))
-
-    md_lines = _render_claude_md_section(claude_md, root)
-    if md_lines:
-        sections.append("\n".join(md_lines))
-
-    return "\n\n".join(section for section in sections if section.strip())
+def section_report(workspace_root: str | Path) -> list[dict]:
+    """Each section of the last context prompt built for this workspace: its tokens, whether it was cut (and where the
+    rest is), and whether it is byte-identical to the build before. A provider caches the prompt up to the first change,
+    so a section is cache-aligned when it and every section before it are unchanged; [] before the first build."""
+    from .token_estimation import count_tokens
+    previous, current = _BUILDS.get(str(Path(workspace_root).expanduser().resolve()), ((), ()))
+    before = {name: sha for name, sha, _ in previous}
+    rows, aligned = [], bool(previous)
+    for name, sha, text in current:
+        stable = before.get(name) == sha if previous else None
+        aligned = aligned and bool(stable)
+        rows.append({"name": name, "tokens": count_tokens(text), "stable": stable, "aligned": aligned,
+                     "refs": re.findall(r'reference="(ctx:[0-9a-f]{16})"', text)})
+    return rows
 
 
 def _render_code_map_section(root: Path, hubs: int = 8) -> list[str]:

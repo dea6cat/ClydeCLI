@@ -9,14 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Ask the user the way Claude Code does: when the model uses AskUserQuestion, the REPL opens an arrow-key question with the header chip, each option's description, a row to answer in your own words, "Chat about this", Space to tick for multi-select, and the focused option's preview. Without a terminal the numbered prompt stays.
+- `UserPromptSubmit` and `Stop` hooks, in Claude Code's format. A `UserPromptSubmit` hook adds context to the prompt (its stdout, or `hookSpecificOutput.additionalContext`) or blocks it; a `Stop` hook keeps the turn going until its check passes, giving up after 8 blocks in a row.
+- Permission rules gain `ask` (always prompts, even for a read-only command or in auto-approve) and Claude Code's order: deny, then ask, then allow. A project's `.clyde/settings.json` rules apply too: its deny and ask rules at once, its allow rules once you trust that exact list. A tool denied by bare name (`WebFetch`, `mcp__github__*`) is no longer shown to the model.
+- After compaction, the 5 files the conversation most recently read or changed come back, re-read from disk; bigger ones as a path to read again. Asked a value from a file after a real compaction, ministral-8b answered 3 of 3, against 1 of 3 before.
+- Context cuts can be read back. When an instruction file, the README excerpt or git status is too long for the context prompt, the part left out used to be gone; now its full text is kept for 7 days in `~/.clyde/context_cache/` and the cut ends with a reference the new `RetrieveContext` tool reads. Every repo measured had at least one such cut, the global CLAUDE.md among them. The reference is a hash of the text, so the prompt stays byte-identical turn to turn. `/context` adds a section table: tokens, whether each section changed since the last turn, where the provider's prompt cache stops, and the references.
 - Answer a permission prompt in your own words: a model reads only your reply and allows the action when it is a plain yes ("sure, go ahead", "dale"). Anything else, a no, a question or a yes with a condition, holds that action and reaches Clyde as your words at its next step. The check is capped at 15 s and fails closed. In Bonnie, type the answer while the card waits and press Steer. It comes from the Discord bridge that was not kept. Live on Qwen2.5-Coder-3B: 12 of 12 replies read right, 0.1 s each.
 
 ### Changed
 
+- Out of tool turns, the model says what is done, what remains and what to do next, instead of the bare "[Max tool turns reached]" (still the fallback). `clyde -p` still reports it as an error, "ran out of tool rounds".
+- Tool output is held to each tool's limit with its head and its tail, and the whole of it is a `RetrieveContext` call away (paged, 50,000 characters at a time). Before, nothing enforced the limit and Bash kept only the first 20,000 characters, so a long failing run lost the error at its end: asked why such a run failed, ministral-8b now answers 3 of 3, against 0 of 3. Bash's limit is 30,000 characters per stream.
+- The context prompt puts its stable sections first and Runtime Context and git status last, so one new file no longer empties the provider's prompt cache: on this repo 2,113 of 2,359 context tokens stay cached, against 0.
+- Mistral's own model catalog decides each model's thinking levels, cached for 30 days, with the model families as the fallback offline.
 - The tool-turn limit is configurable: a Tool turns row in `/settings` (20, 40, 60 or 100; 20 as before) sets how many tool rounds one task may use, and a turn that reaches it now says so plainly — how many rounds it used, that `continue` picks up where it left off, and where the limit is raised — instead of the bare `[Max tool turns reached]`. `clyde -p --max-turns` is unchanged.
 
 ### Fixed
 
+- A second compaction no longer loses what the first one kept. The summarizer reads only the recent messages, so the previous summary and older requests dropped out of the new one; it now updates the previous summary and sees those requests. A decision made before two compactions was recalled 3 of 3 times, against 1 of 3 (the others made up a database).
+- A stream that drops after printing part of an answer is continued from where it stopped, not retried from the top, which printed it twice.
+- `clyde login mistral` works: the login command takes the provider name, as #65 announced.
+- Messages say "security scan", not SkillSpector, which the in-house scanner replaced.
+- `mistral-vibe-cli-with-tools`, the model behind Mistral Vibe's web search, is no longer offered in the model list.
+- Mistral models are handled the way Mistral Vibe handles them, and a little better. GLM on Mistral streams its reasoning as `thinking` fragments, which Clyde threw away: now they show as thinking while it works and go back with the earlier turns, so it keeps its plan across tool calls. `/think` reaches Mistral as `reasoning_effort`: medium, small and magistral think on `high` and stop on `off`; GLM, which always thinks, takes `low` for `off`; ministral, codestral and large, which reject the field, get none. A reply cut off at the output limit is continued, not thrown away as Vibe does: Clyde quotes where it stopped and joins the two without doubling the cut line. A reply with no answer text is asked for again, up to 3 times, before the "no answer" notice.
 - A rate-limited request (HTTP 429) got the same backoff as any transient blip — 1, 2, 4 seconds — which a rate window always outlives, so every retry burned and the turn died with "retried 3×, still failing". A 429 without a `Retry-After` now waits 5 seconds and doubles up to the same 30-second ceiling a `Retry-After` is capped at; providers that send the header were already fine.
 
 ## [0.7.0] - 2026-10-22

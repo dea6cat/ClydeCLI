@@ -121,7 +121,7 @@ from src.tool_system.mcp_client import connect_servers, load_servers, merge_serv
 from src.tool_system.defaults import build_default_registry
 from src.tool_system.protocol import ToolCall
 from src.tool_system.tools.cron import pop_due_jobs
-from src.agent.agent_loop import MAX_TURNS_REPLY, ToolEvent, run_agent_loop, summarize_tool_result, summarize_tool_use
+from src.agent.agent_loop import ToolEvent, run_agent_loop, summarize_tool_result, summarize_tool_use
 
 # New command system imports
 from src.command_system import (
@@ -421,7 +421,7 @@ class ClydeREPL:
         for loaded in self.plugins:
             for warning in loaded.warnings:
                 self.console.print(warning, style="yellow", markup=False)
-        self.tool_context = ToolContext(workspace_root=Path.cwd(), hooks=hooks, permission_rules=load_rules(),
+        self.tool_context = ToolContext(workspace_root=Path.cwd(), hooks=hooks, permission_rules=self._project_rules(Path.cwd()),
                                         output_style_name=get_output_style(), confirm_edits=True)
         self._mcp_servers, self._mcp_errors = servers, {}
         self._connect_mcp_servers(servers)
@@ -614,7 +614,7 @@ class ClydeREPL:
         tools = ToolRegistry([self.tool_registry.get(s.name) for s in self.tool_registry.list_specs() if s.name.lower() not in _NO_NESTING])
         result = run_agent_loop(copy.deepcopy(self.session.conversation), provider, model, tools, context,
                                 max_turns=_COUNCIL_MAX_TURNS, cancel=cancel, reasoning=self.reasoning, system_extra=self.system_extra)
-        if result.response_text == MAX_TURNS_REPLY:
+        if result.ran_out:
             raise ProviderError(provider.name, "ran out of reading turns")
         return ProviderResponse(message=Message.assistant(result.response_text), raw={}, usage=result.usage)
 
@@ -760,6 +760,18 @@ class ClydeREPL:
             options = q.get("options") or []
             multi = bool(q.get("multiSelect", False))
             if not question_text or not isinstance(options, list) or len(options) < 2:
+                continue
+
+            from src.ui import picker
+            if picker._interactive():   # the arrow-key question, as Claude Code draws it; numbers below without a terminal
+                header = str(q.get("header", "")).strip()
+                picked = picker.ask(header, question_text, [o for o in options if isinstance(o, dict)], multi=multi)
+                answers[question_text] = (
+                    "The user would rather talk this over than pick an answer; ask what they have in mind."
+                    if picked == picker.CHAT else
+                    "The user dismissed the question without answering." if picked is None else picked)
+                shown = "chat about it" if picked == picker.CHAT else "no answer" if picked is None else picked
+                self.console.print(Text.assemble(("  ☐ ", "dim"), (header or question_text, "dim"), ("  " + shown, "bold")))
                 continue
 
             self.console.print(f"\n[bold]{question_text}[/bold]")
@@ -1727,7 +1739,7 @@ class ClydeREPL:
             return
         env = skill_scan.llm_env(self.provider, self.model)
         self.console.print("LLM review: " + (f"on, with {model_ref(self.provider, self.model)} (this can take minutes; Ctrl+C stops it)"
-                                             if env else "off (no connected model SkillSpector can use), static scan only"))
+                                             if env else "off (no connected model the scan can use), static scan only"))
         from src.plugins import skill_dirs
 
         root = Path(self.tool_context.cwd or self.tool_context.workspace_root)
@@ -1873,6 +1885,28 @@ class ClydeREPL:
         self.console.print()
         return True
 
+    def _project_rules(self, root: Path) -> dict[str, list[str]]:
+        """The user's permission rules plus this project's .clyde/settings.json ones. Its deny and ask rules apply at once;
+        its allow rules come from the repository, so they apply only once you have said yes to that exact list."""
+        from rich.prompt import Confirm
+        from src.tool_system.permission_rules import (merge_project_rules, project_settings_path, project_trust,
+                                                      set_project_trust)
+        rules, path = load_rules(), project_settings_path(root)
+        if not path.is_file():
+            return rules
+        project = load_rules(path)
+        trusted = bool(project["allow"]) and project_trust(root, project["allow"])
+        if project["allow"] and trusted is None and not self.headless:
+            self.console.print(f"\nThis project's {path.relative_to(root)} lets these run without asking:", highlight=False)
+            for rule in project["allow"]:
+                self.console.print(f"  {rule}", markup=False, highlight=False)
+            trusted = Confirm.ask("They come from the repository. Trust them?", default=False, console=self.console)
+            set_project_trust(root, project["allow"], trusted)
+        elif project["allow"] and trusted is None:
+            self.console.print(f"[yellow]Not using the allow rules in this project's {path.relative_to(root)}: "
+                               "start clyde here interactively once to trust them.[/yellow]")
+        return merge_project_rules(rules, project, bool(trusted))
+
     def _project_mcp_servers(self, root: Path, taken: set[str]) -> dict[str, dict[str, Any]]:
         """The project's .mcp.json servers you've said yes to, asking about any new or changed entry."""
         from rich.prompt import Confirm
@@ -1920,10 +1954,10 @@ class ClydeREPL:
             verdict = skill_scan.check_mcp(name, clients[name].tools)
             if verdict.blocked:
                 clients.pop(name)
-                self.console.print(f"[red]MCP server '{name}' held back: SkillSpector says {verdict.recommendation} "
+                self.console.print(f"[red]MCP server '{name}' held back: the security scan says {verdict.recommendation} "
                                    f"(risk {verdict.score}).[/red] /skills scan shows why; /skills allow mcp:{name} lets it in.")
             elif verdict.recommendation == skill_scan.CAUTION:
-                self.console.print(f"[yellow]MCP server '{name}': SkillSpector says CAUTION (risk {verdict.score}); /skills scan shows why.[/yellow]")
+                self.console.print(f"[yellow]MCP server '{name}': the security scan says CAUTION (risk {verdict.score}); /skills scan shows why.[/yellow]")
         self.tool_context.mcp_clients = {**(self.tool_context.mcp_clients or {}), **clients}
         for warning in register_mcp_tools(self.tool_registry, clients):
             self.console.print(f"[yellow]{warning}[/yellow]", markup=True, highlight=False)
@@ -2289,12 +2323,12 @@ class ClydeREPL:
             with self._current_status, self._ticking(self._current_status, word, turn_started, lambda: not stream_started):
                 result = play()
                 # cardShuffle: a model stuck in its tool loop hands the turn to the next card.
-                while (result.response_text == MAX_TURNS_REPLY and isinstance(self.provider, CardShuffle)
+                while (result.ran_out and isinstance(self.provider, CardShuffle)
                        and self.provider.redeal(f"{self.provider.dealt} hit max tool turns")):
                     result = play()
             self._current_status = None
             self.last_result = result
-            trace.record("turn_end", ran_out=result.response_text == MAX_TURNS_REPLY, rounds=result.num_turns,
+            trace.record("turn_end", ran_out=result.ran_out, rounds=result.num_turns,
                          model=self.provider.dealt if isinstance(self.provider, CardShuffle) else model_ref(self.provider, self.model))
 
             # Record usage to cost tracker; cardShuffle reports each real model it dealt.
@@ -2318,7 +2352,7 @@ class ClydeREPL:
             if self.headless:
                 pass   # `clyde -p` prints the answer itself, on stdout
             else:
-                if result.response_text == MAX_TURNS_REPLY:
+                if result.ran_out:
                     self.console.print(f"[dim]Hit the {max_turns}-tool-turn limit mid-task. Say 'continue' to pick up where it left"
                                        f" off, or raise the limit under /settings → Tool turns.[/dim]", markup=False)
                 if self.stream and stream_started:
@@ -2552,7 +2586,7 @@ class ClydeREPL:
                   ("Goal", self.tool_context.goal or "none"),
                   ("MCP servers", f"{len(clients)} connected, {len(errors)} failed (/mcp)"),
                   ("Plugins", f"{len(self.plugins)} loaded (/plugins)"),
-                  ("SkillSpector", f"{len(skill_scan.cached_verdicts())} scanned, {len(held)} held back (/skills scan)")]
+                  ("Security scan", f"{len(skill_scan.cached_verdicts())} scanned, {len(held)} held back (/skills scan)")]
         settings_screen.show(settings_screen.Snapshot(status, settings_screen.session_usage(getattr(self.cost_tracker, "models", {})),
                                                       settings_screen.skill_footprint(plugins.enabled_plugins())))
 

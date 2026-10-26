@@ -150,6 +150,8 @@ async def compact_conversation(
         context_messages[0].get("role") != "user" or _has_tool_result(context_messages[0])
     ):
         context_messages.pop(0)
+    if earlier := _earlier_context(messages, len(context_messages)):
+        prompt += earlier
     summary_history = Conversation.from_dict(
         {"messages": [*context_messages, {"role": "user", "content": prompt}]}
     )
@@ -178,6 +180,8 @@ async def compact_conversation(
 
     if not summary_text:
         summary_text = _fallback_summary(messages)
+    if recent := _recent_files(messages):
+        summary_text += "\n\n" + recent
 
     # Step 6: Create boundary marker
     last_msg_uuid = None
@@ -245,6 +249,75 @@ async def compact_conversation(
         trigger=trigger,
         user_display_message=user_display,
     )
+
+
+# After compaction the files the model was working on come back as they are now, as Claude Code does (its 5 most
+# recent, files over 5,000 tokens as a path to read again). Instruction files and the plan need nothing: they are in
+# the system prompt, rebuilt every turn, so compaction never removes them.
+RECENT_FILES = 5
+RECENT_FILE_CHARS = 20_000   # about 5,000 tokens
+_FILE_TOOLS = ("read", "edit", "write", "notebookedit")
+
+
+def _recent_files(messages: list[Message]) -> str:
+    """The files the compacted turns read or changed, newest first, re-read from disk; empty when there are none."""
+    from pathlib import Path
+    from ..context_system.builder import _fence
+
+    blocks = [b for m in messages for b in (m.content if isinstance(m.content, list) else [])]
+    # Only calls that succeeded: a Read the user refused, or a secret file held back, must not come back from disk.
+    succeeded = {b.tool_use_id for b in blocks if getattr(b, "type", "") == "tool_result" and not b.is_error}
+    paths: list[str] = []
+    for block in reversed(blocks):
+        name, args = getattr(block, "name", ""), getattr(block, "input", None)
+        raw = args.get("file_path") or args.get("notebook_path") if isinstance(args, dict) else None
+        if getattr(block, "id", None) in succeeded and str(name).lower() in _FILE_TOOLS and isinstance(raw, str) \
+                and raw not in paths:
+            paths.append(raw)
+    parts = []
+    for raw in paths[:RECENT_FILES]:
+        try:
+            text = Path(raw).expanduser().read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue   # deleted or moved since: nothing to bring back
+        if len(text) > RECENT_FILE_CHARS:
+            parts.append(f"### {raw}\n({len(text):,} characters; read it again when you need it)")
+        else:
+            opening, closing = _fence(text)
+            parts.append(f"### {raw}\n{opening}\n{text}\n{closing}")
+    return "Files you were working with, as they are now:\n\n" + "\n\n".join(parts) if parts else ""
+
+
+_SUMMARY_LEAD = "This session is being continued from a previous conversation."   # messages._format_summary_text
+_EARLIER_CHARS = 8_000
+
+
+def _earlier_context(messages: list[Message], kept: int) -> str:
+    """What the summarizer would not see: it reads only the recent messages, so the previous summary and every user
+    request before them were left out of the new summary and lost. This hands it the previous summary to update
+    (Kilo's anchored summary) and those requests, first 300 characters each, about 8,000 in all."""
+    def text(message: Message) -> str:
+        if isinstance(message.content, str):
+            return message.content
+        return "\n".join(getattr(b, "text", "") for b in message.content if getattr(b, "type", "") == "text")
+
+    older = messages[: len(messages) - kept] if kept else list(messages)
+    previous = next((text(m) for m in older if m.role == "user" and text(m).startswith(_SUMMARY_LEAD)), "")
+    asked, used = [], 0
+    for m in older:
+        said = text(m).strip()
+        if m.role != "user" or not said or said.startswith(_SUMMARY_LEAD) or used > _EARLIER_CHARS:
+            continue
+        asked.append("- " + said[:300].replace("\n", " "))
+        used += len(asked[-1])
+    if not previous and not asked:
+        return ""
+    out = "\n\nWhat came before the messages above. Keep what is still true, and update it with them:"
+    if previous:
+        out += "\n\nPrevious summary:\n" + previous.removeprefix(_SUMMARY_LEAD).strip()
+    if asked:
+        out += "\n\nEarlier requests from the user:\n" + "\n".join(asked)
+    return out
 
 
 def _fallback_summary(messages: list[Message]) -> str:

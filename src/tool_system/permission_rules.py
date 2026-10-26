@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from src.config import clyde_home
 
+import fnmatch
+import hashlib
 import json
 import re
 import shlex
@@ -24,20 +26,66 @@ _RULE_RE = re.compile(r"^([^()]+?)\s*(?:\((.*)\))?$", re.DOTALL)
 _PATH_TOOLS = ("Edit", "Write", "Read", "Grep")
 
 
-# ponytail: user-level settings only; project rules need a workspace trust prompt first
 def settings_path() -> Path:
     return clyde_home() / "settings.json"
 
 
 def load_rules(path: Path | None = None) -> dict[str, list[str]]:
-    """`permissions.allow` / `permissions.deny` from the settings file; empty lists when missing or unreadable."""
+    """`permissions.allow` / `.ask` / `.deny` from a settings file; empty lists when missing or unreadable."""
     try:
         perms = json.loads((path or settings_path()).read_text(encoding="utf-8")).get("permissions", {})
     except (OSError, ValueError, AttributeError):
         perms = {}
     if not isinstance(perms, dict):
         perms = {}
-    return {key: [r for r in perms.get(key) or [] if isinstance(r, str)] for key in ("allow", "deny")}
+    return {key: [r for r in perms.get(key) or [] if isinstance(r, str)] for key in ("allow", "ask", "deny")}
+
+
+def project_settings_path(root: Path) -> Path:
+    return Path(root) / ".clyde" / "settings.json"
+
+
+def _approvals_path() -> Path:
+    return clyde_home() / "project_rule_approvals.json"
+
+
+def _approval_key(root: Path, allow: list[str]) -> str:
+    return f"{Path(root).resolve()}::{hashlib.sha256(json.dumps(sorted(allow)).encode()).hexdigest()[:16]}"
+
+
+def project_trust(root: Path, allow: list[str]) -> bool | None:
+    """True or False when this project's exact allow list was answered before; None when it is new or changed."""
+    try:
+        answers = json.loads(_approvals_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    value = answers.get(_approval_key(root, allow)) if isinstance(answers, dict) else None
+    return value if isinstance(value, bool) else None
+
+
+def set_project_trust(root: Path, allow: list[str], trusted: bool) -> None:
+    path = _approvals_path()
+    try:
+        answers = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        answers = {}
+    answers = answers if isinstance(answers, dict) else {}
+    answers[_approval_key(root, allow)] = trusted
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(answers, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def merge_project_rules(rules: dict[str, list[str]], project: dict[str, list[str]], trusted: bool) -> dict[str, list[str]]:
+    """A project's .clyde/settings.json rules on top of the user's, as Claude Code applies a shared settings file: its
+    deny and ask rules only take permission away, so they apply at once; its allow rules come from the repository and
+    could let a command run unasked, so they apply only once the user has trusted that exact list."""
+    return {"allow": rules["allow"] + (project["allow"] if trusted else []),
+            "ask": rules.get("ask", []) + project["ask"], "deny": rules["deny"] + project["deny"]}
+
+
+def bare_denied(tool: str, rules: dict[str, list[str]]) -> bool:
+    """A deny rule naming the tool alone (`Bash`, `WebFetch`, `mcp__github__*`): the model is not even shown it."""
+    return any("(" not in r and fnmatch.fnmatchcase(tool.lower(), r.strip().lower()) for r in rules["deny"])
 
 
 def save_allow_rule(rule: str, path: Path | None = None) -> None:
@@ -158,11 +206,15 @@ def _bash_parts(command: str) -> list[list[str]] | None:
 
 
 def check_rules(tool: str, tool_input: dict[str, Any], context: Any) -> str | None:
-    """'deny' or 'allow' when the saved rules decide this call, else None (fall back to the tool's own check)."""
+    """'deny', 'ask' or 'allow' when the saved rules decide this call, else None (fall back to the tool's own check).
+    As Claude Code: deny, then ask, then allow; an ask rule prompts even where an allow rule or read-only would not."""
     rules = context.permission_rules
+    ask = rules.get("ask", [])
     if tool != "Bash":
         if any(_matches(r, tool, tool_input, context, None) for r in rules["deny"]):
             return "deny"
+        if any(_matches(r, tool, tool_input, context, None) for r in ask):
+            return "ask"
         return "allow" if any(_matches(r, tool, tool_input, context, None) for r in rules["allow"]) else None
     command = tool_input.get("command")
     if not isinstance(command, str):
@@ -173,6 +225,8 @@ def check_rules(tool: str, tool_input: dict[str, Any], context: Any) -> str | No
     candidates = [_words(command)] + (parts or [])
     if any(_matches(r, tool, tool_input, context, w) for r in rules["deny"] for w in candidates):
         return "deny"
+    if any(_matches(r, tool, tool_input, context, w) for r in ask for w in candidates):
+        return "ask"
     if any(_matches(r, tool, tool_input, context, None) for r in rules["allow"]):  # bare `Bash`
         return "allow"
     if not parts or any(_part_needs_rule(p, rules["allow"], tool_input, context) for p in parts):
