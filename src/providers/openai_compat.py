@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 import re
+import time
 from typing import Callable
 
 from .base import ProviderError, ProviderResponse, cached_model_list, get_json, post_stream
@@ -43,10 +44,23 @@ _EFFORTS = ("low", "medium", "high")
 #   mistral    reasoning_effort, by family (probed 2026-10-26; the rest 400 "reasoning_effort is not enabled"):
 #              small/medium/magistral take none|high and think only when asked; zai-glm always thinks, takes
 #              low|high|max and 400s "none" ("low" thinks 0 tokens). Same mapping as Mistral Vibe.
+#              Mistral's model catalog (GET /v1/model-catalog?surface=vibe-code, what Vibe reads) names each model's
+#              levels; these families are the fallback when it is unreachable or leaves a model out (it lists 3 today).
+#              Temperature stays the server's: measured 2026-10-26 on tool tasks, ministral-3b scored 8/8 at its
+#              default, 5/8 at Vibe's 0.2 and at 0.7; ministral-8b and small 8/8 at all three.
 _MISTRAL_TOGGLED = ("mistral-small", "mistral-medium", "magistral", "mistral-vibe-cli-latest")
 _MISTRAL_GLM = ("zai-glm",)
-_MISTRAL_EFFORT = {"off": "none", "low": "none", "medium": "high", "high": "high", "on": "high"}
-_MISTRAL_GLM_EFFORT = {"off": "low", "low": "low", "medium": "high", "high": "high"}
+_CATALOG_TTL = 30 * 86_400   # as Vibe caches it; a failed fetch is cached too, so offline costs one try per run
+
+
+def _mistral_effort(levels: list[str], reasoning: str) -> str | None:
+    """The reasoning_effort for a /think level, from the levels a Mistral model takes. One that takes "none" thinks only
+    when asked (off/low -> none, the rest -> high); one that doesn't always thinks (off/low -> its lowest, "on" -> its
+    default). Same mapping as Mistral Vibe."""
+    top = "high" if "high" in levels else levels[-1]
+    if "none" in levels:
+        return {"off": "none", "low": "none", "medium": top, "high": top, "on": top}.get(reasoning)
+    return {"off": levels[0], "low": levels[0], "medium": top, "high": top}.get(reasoning)
 
 
 def _usage(raw: dict | None) -> dict | None:
@@ -101,8 +115,37 @@ class OpenAICompatProvider:
         if style == "cerebras":
             return m.startswith(_CEREBRAS_REASONING)
         if style == "mistral":
-            return m.startswith(_MISTRAL_TOGGLED + _MISTRAL_GLM)
+            return bool(self._mistral_levels(m))
         return style in ("openrouter", "deepseek")
+
+    def _mistral_levels(self, model: str) -> list[str]:
+        """The reasoning levels a Mistral model takes: its catalog entry, else its family's, else [] (no reasoning)."""
+        m = model.lower()
+        catalog = self._mistral_catalog()
+        if m in catalog:
+            return catalog[m]
+        if m.startswith(_MISTRAL_GLM):
+            return ["low", "high", "max"]
+        return ["none", "high"] if m.startswith(_MISTRAL_TOGGLED) else []
+
+    def _mistral_catalog(self) -> dict[str, list[str]]:
+        """Model id and alias -> reasoning levels, from Mistral's catalog; {} when it can't be read."""
+        cache = getattr(self, "_catalog_cache", None)
+        if cache is not None and time.monotonic() - cache[0] < _CATALOG_TTL:
+            return cache[1]
+        levels: dict[str, list[str]] = {}
+        try:
+            data = get_json(f"{self.base_url}/model-catalog?surface=vibe-code", headers=self._headers(), timeout=5,
+                            provider=self.name)
+            for entry in data.get("models") or []:
+                found = [str(x) for x in (entry.get("parameters") or {}).get("reasoning") or []]
+                for name in [entry.get("id"), *(entry.get("aliases") or [])]:
+                    if name and found:
+                        levels[str(name).lower()] = found
+        except Exception:   # offline, no key, or the endpoint moved: the families still answer
+            pass
+        self._catalog_cache = (time.monotonic(), levels)
+        return levels
 
     def _reasoning_fields(self, model: str, reasoning) -> dict:
         """This service's own request fields for a /think level; {} keeps its default."""
@@ -119,8 +162,8 @@ class OpenAICompatProvider:
             effort = {} if reasoning == "on" else {"reasoning_effort": "low" if reasoning == "low" else "high"}
             return {"thinking": {"type": "enabled"}, **effort}
         if style == "mistral":
-            table = _MISTRAL_GLM_EFFORT if model.lower().startswith(_MISTRAL_GLM) else _MISTRAL_EFFORT
-            return {"reasoning_effort": table[reasoning]} if reasoning in table else {}
+            effort = _mistral_effort(self._mistral_levels(model), reasoning)
+            return {"reasoning_effort": effort} if effort else {}
         if reasoning == "on":
             return {}
         if reasoning == "off":

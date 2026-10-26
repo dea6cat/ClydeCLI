@@ -150,8 +150,14 @@ class Mistral(unittest.TestCase):
     reasoning_effort is per family (others 400 on it). Same handling as Mistral Vibe's MistralMapper."""
 
     def setUp(self):
-        self._orig = oc.post_stream
+        self._orig, self._orig_get = oc.post_stream, oc.get_json
         self.sent = {}
+        self.catalog_reads = 0
+
+        def no_catalog(url, **kw):   # offline: the families answer
+            self.catalog_reads += 1
+            raise OSError("offline")
+        oc.get_json = no_catalog
 
         def fake(url, payload, **kw):
             self.sent.update(payload)
@@ -165,7 +171,25 @@ class Mistral(unittest.TestCase):
         oc.post_stream = fake
 
     def tearDown(self):
-        oc.post_stream = self._orig
+        oc.post_stream, oc.get_json = self._orig, self._orig_get
+
+    def test_the_catalog_names_new_models_and_a_failed_read_is_not_retried_every_turn(self):
+        p = registry.build_registry()["mistral"]
+        for _ in range(3):
+            p._reasoning_fields("zai-glm-5-3-flash", "off")
+        self.assertEqual(self.catalog_reads, 1)                     # offline: one try per run, not one per request
+
+        oc.get_json = lambda url, **kw: {"models": [
+            {"id": "mistral-huge-9", "aliases": ["huge-latest"], "parameters": {"reasoning": ["none", "high"]}},
+            {"id": "zai-glm-7", "parameters": {"reasoning": ["low", "high", "max"]}},
+            {"id": "ministral-3b-latest", "parameters": {}}]}
+        p = registry.build_registry()["mistral"]
+        f = p._reasoning_fields
+        self.assertEqual(f("mistral-huge-9", "off"), {"reasoning_effort": "none"})   # no family knows it
+        self.assertEqual(f("huge-latest", "high"), {"reasoning_effort": "high"})     # by alias
+        self.assertEqual(f("zai-glm-7", "off"), {"reasoning_effort": "low"})
+        self.assertEqual(f("ministral-3b-latest", "high"), {})
+        self.assertEqual(f("magistral-small-latest", "high"), {"reasoning_effort": "high"})  # not listed: family
 
     def test_thinking_fragments_are_thinking_not_dropped(self):
         conv = Conversation(system_prompt="s")
