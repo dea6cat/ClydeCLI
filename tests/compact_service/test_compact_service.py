@@ -174,6 +174,22 @@ class TestCompactConversation(unittest.TestCase):
         self.assertNotIn("sk-live-123", result.summary_text)   # a refused read never comes back from disk
         self.assertLess(result.summary_text.index("big.log"), result.summary_text.index("app.py"))   # newest first
 
+    def test_a_second_compaction_updates_the_previous_summary_instead_of_losing_it(self):
+        from src.compact_service.messages import create_compact_boundary_message, create_compact_summary_message
+        from src.compact_service.service import compact_conversation
+        older = [create_compact_boundary_message(trigger="auto", pre_compact_token_count=90_000),
+                 create_compact_summary_message("The database is Postgres 16; the user wants no ORMs.")]
+        newer = []
+        for i in range(15):   # more than the 20 recent messages the summarizer reads
+            newer += [Message(role="user", content=f"step {i}"), Message(role="assistant", content=f"did {i}")]
+        conv = self._make_conversation(older + newer)
+        provider = FakeProvider(reply("Updated summary."))
+
+        asyncio.run(compact_conversation(conv, provider, "fake-model"))
+
+        self.assertIn("Postgres 16", str(provider.requests[0]))   # the summarizer sees the old summary to update it
+        self.assertIn("step 0", str(provider.requests[0]))        # and the requests older than the recent messages
+
     def test_boundary_and_summary_inserted(self):
         """Boundary and summary messages are inserted into conversation."""
         from src.compact_service.service import compact_conversation
