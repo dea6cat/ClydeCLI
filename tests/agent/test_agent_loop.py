@@ -244,7 +244,7 @@ class TestAgentLoop(unittest.TestCase):
         result = self._run(provider, conversation)
 
         self.assertEqual(result.response_text, "First half, second half.")
-        self.assertIn("cut off at the output token limit", str(provider.requests[1]))
+        self.assertIn("cut off before it finished", str(provider.requests[1]))
 
     def test_a_tool_denied_by_bare_name_is_not_sent_to_the_model(self):
         self.context.permission_rules = {"allow": [], "ask": [], "deny": ["WebFetch"]}
