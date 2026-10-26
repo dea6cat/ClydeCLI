@@ -135,11 +135,14 @@ class Run:
     def events(self) -> list[dict[str, Any]]:
         return _read_lines(self.root / "events.jsonl")
 
-    def spend(self, who: str, ref: str, usage: dict[str, int] | None) -> None:
+    def spend(self, who: str, ref: str, usage: dict[str, int] | None, usd: float | None = None, *, always: bool = False) -> None:
+        """Record a call group. `usd` is a cost the model's own tool reported; without it the catalog price is used.
+        `always` writes the row even with no usage and no cost, so a CLI that reports nothing counts as unpriced."""
         from src.agent.cost_tracker import estimate_usd
         usage = {k: v for k, v in (usage or {}).items() if isinstance(v, int)}
-        if usage:
-            self._append("ledger.jsonl", {"t": time.time(), "who": who, "model": ref, "usage": usage, "usd": estimate_usd(ref, usage)})
+        if usage or usd is not None or always:
+            self._append("ledger.jsonl", {"t": time.time(), "who": who, "model": ref, "usage": usage,
+                                          "usd": usd if usd is not None else estimate_usd(ref, usage) if usage else None})
 
     def ledger(self) -> list[dict[str, Any]]:
         return _read_lines(self.root / "ledger.jsonl")

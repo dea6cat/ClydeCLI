@@ -36,28 +36,30 @@ def _which(name: str) -> str | None:
     return shutil.which(name)
 
 
-def discover_cli_harnesses() -> list[Harness]:
-    """Discover installed agent CLIs on PATH."""
+ADAPTED_CLIS = frozenset({"claude", "aider"})   # CLIs Clyde can run as workers (agent/cli_workers.py)
+
+
+def discover_cli_harnesses(provider_models: dict[str, list[str]] | None = None) -> list[Harness]:
+    """Agent CLIs on PATH. One with an adapter lists the models it takes (Claude Code: its aliases; aider: the connected
+    providers' models in litellm form); one without lists none, so it is shown but can't be picked."""
+    from src.agent import cli_workers
     known_clis = {
-        "claude": ("Claude Code", "cli"),
-        "gemini": ("Gemini CLI", "cli"),
-        "cursor": ("Cursor", "cli"),
-        "copilot": ("GitHub Copilot CLI", "cli"),
-        "codex": ("Codex CLI", "cli"),
-        "aider": ("Aider", "cli"),
-        "opencode": ("OpenCode", "cli"),
+        "claude": "Claude Code",
+        "gemini": "Gemini CLI",
+        "cursor": "Cursor",
+        "copilot": "GitHub Copilot CLI",
+        "codex": "Codex CLI",
+        "aider": "Aider",
+        "opencode": "OpenCode",
     }
     found: list[Harness] = []
-    for binary, (desc, kind) in known_clis.items():
+    for binary, desc in known_clis.items():
         path = _which(binary)
-        if path:
-            found.append(Harness(
-                name=binary,
-                kind=kind,
-                binary=path,
-                models=[HarnessModel(model_id="default", local=False)],
-                description=desc,
-            ))
+        if not path:
+            continue
+        ids = {"claude": list(cli_workers.CLAUDE_MODELS),
+               "aider": cli_workers.litellm_models(provider_models or {})}.get(binary, [])
+        found.append(Harness(name=binary, kind="cli", binary=path, models=[HarnessModel(model_id=m) for m in ids], description=desc))
     return found
 
 
@@ -103,7 +105,12 @@ def discover_clyde_skills() -> list[Harness]:
 
 
 LOCAL_PROVIDERS = frozenset({"ollama", "omlx"})
-RUNNABLE_KINDS = frozenset({"provider"})   # roles Clyde can run itself today; CLI harnesses come with their adapters
+RUNNABLE_KINDS = frozenset({"provider"})   # can lead (master, advisor) and work
+
+
+def can_work(harness: "Harness") -> bool:
+    """A provider runs as Clyde's own agent loop; a CLI only when it has an adapter and models to pick from."""
+    return harness.kind in RUNNABLE_KINDS or (harness.kind == "cli" and harness.name in ADAPTED_CLIS and bool(harness.models))
 _MODELS_SHOWN = 40
 
 
@@ -135,13 +142,10 @@ def discover_providers() -> list[Harness]:
 
 
 def discover_all() -> list[Harness]:
-    """Discover all available harnesses."""
-    harnesses: list[Harness] = []
-    harnesses.extend(discover_cli_harnesses())
-    harnesses.extend(discover_mcp_servers())
-    harnesses.extend(discover_clyde_skills())
-    harnesses.extend(discover_providers())
-    return harnesses
+    """Every available harness: the agent CLIs, MCP servers, Clyde skills and the connected providers."""
+    providers = discover_providers()
+    by_provider = {h.name.removeprefix("provider:"): [m.model_id for m in h.models] for h in providers}
+    return [*discover_cli_harnesses(by_provider), *discover_mcp_servers(), *discover_clyde_skills(), *providers]
 
 
 def format_harness_table(harnesses: list[Harness]) -> str:
