@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Clyde now requires certifi 2026.10.19 or later, the bundle of root certificates its HTTPS requests trust. That release drops the emSign ECC Root CA - G3 after eMudhra's weak-key incident; an older bundle kept trusting it, which left connections open to interception.
+
 ### Added
 
 - `/orchestrate <task>`: Clyde lists the connected providers with the models each really offers, you pick the master, an optional advisor and the workers, Clyde briefs you with questions until the request is a spec, and the team runs. Each worker is its own agent on its own git worktree, all at the same time, with its own transcript, spend and approvals: a command asks you (a read-only one does not), edits inside the worktree are free, and nothing leaves it until you approve; then the changed files and a `changes.patch` land in `~/.clyde/outbox/<run>/` and the project is never touched. A local model (Ollama, oMLX) among the workers makes them run one at a time. Other agent CLIs are listed but cannot run yet. Live with two workers, an advisor and a master on gemini-3.5-flash-lite: 43 s, the advisor caught a real mismatch between a worker's file and the spec.

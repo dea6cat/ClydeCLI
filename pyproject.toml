@@ -29,6 +29,8 @@ dependencies = [
     "rich",
     "prompt-toolkit",
     "tiktoken>=0.7.0",
+    # httpx trusts certifi's roots; 2026.10.19 drops emSign ECC Root CA - G3 (the eMudhra weak-key incident).
+    "certifi>=2026.10.19",
     # The Data tool's engine: profile and query CSV, Parquet and JSON files with read-only SQL.
     "duckdb>=1.5,<2",
     # Ranks local models by real benchmarks and how they fit the machine: our fork of github.com/Andyyyy64/whichllm (MIT)
