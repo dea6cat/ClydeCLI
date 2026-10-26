@@ -56,8 +56,22 @@ class Panes(unittest.TestCase):
         self.assertEqual(titles, ["overview", "advisor", "worker-1", "worker-2"])
         commands = dict(panes.pane_commands(run))
         self.assertIn(f"station watch {run.id} --who worker-2", commands["worker-2"])
-        self.assertTrue(commands["overview"].endswith(f"station {run.id}"))
+        self.assertTrue(commands["overview"].endswith(f"station show {run.id}"))
         self.assertEqual([t for t, _ in panes.pane_commands(self._run(advisor=False))], ["overview", "worker-1", "worker-2"])
+
+    def test_every_pane_command_is_accepted_by_the_real_cli(self):
+        # The fake tmux never runs a pane's command, so a wrong one (the overview once read the run id as the action) would
+        # only show as a dead pane. Run each through the real parser: argparse rejects with exit 2.
+        import shlex
+        import subprocess
+        run = self._run()
+        env = {**os.environ, "CLYDE_ACCEPT_LICENSE": "1", "HOME": str(self.root)}
+        with patch("src.agent.panes._clyde", return_value=[sys.executable, "-m", "src.cli"]):
+            commands = panes.pane_commands(run)
+        for title, command in commands:
+            done = subprocess.run([*shlex.split(command), "--once"] if title == "overview" else shlex.split(command),
+                                  capture_output=True, text=True, timeout=120, check=False, env=env, cwd=Path(__file__).resolve().parents[2])
+            self.assertNotEqual(done.returncode, 2, f"{title}: {done.stderr.strip()[:200]}")
 
     def test_outside_tmux_a_detached_session_is_made_and_the_attach_command_is_given(self):
         run = self._run()

@@ -32,7 +32,7 @@ def pane_commands(run: Run) -> list[tuple[str, str]]:
     clyde = _clyde()
     roles = run.state().get("roles") or {}
     members = (["advisor"] if roles.get("advisor") else []) + [w["name"] for w in roles.get("workers", [])]
-    panes = [("overview", shlex.join([*clyde, "station", run.id]))]
+    panes = [("overview", shlex.join([*clyde, "station", "show", run.id]))]
     panes += [(name, shlex.join([*clyde, "station", "watch", run.id, "--who", name])) for name in members]
     return panes
 
