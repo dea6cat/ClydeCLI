@@ -1666,7 +1666,7 @@ class ClydeREPL:
             return
         env = skill_scan.llm_env(self.provider, self.model)
         self.console.print("LLM review: " + (f"on, with {model_ref(self.provider, self.model)} (this can take minutes; Ctrl+C stops it)"
-                                             if env else "off (no connected model SkillSpector can use), static scan only"))
+                                             if env else "off (no connected model the scan can use), static scan only"))
         from src.plugins import skill_dirs
 
         root = Path(self.tool_context.cwd or self.tool_context.workspace_root)
@@ -1859,10 +1859,10 @@ class ClydeREPL:
             verdict = skill_scan.check_mcp(name, clients[name].tools)
             if verdict.blocked:
                 clients.pop(name)
-                self.console.print(f"[red]MCP server '{name}' held back: SkillSpector says {verdict.recommendation} "
+                self.console.print(f"[red]MCP server '{name}' held back: the security scan says {verdict.recommendation} "
                                    f"(risk {verdict.score}).[/red] /skills scan shows why; /skills allow mcp:{name} lets it in.")
             elif verdict.recommendation == skill_scan.CAUTION:
-                self.console.print(f"[yellow]MCP server '{name}': SkillSpector says CAUTION (risk {verdict.score}); /skills scan shows why.[/yellow]")
+                self.console.print(f"[yellow]MCP server '{name}': the security scan says CAUTION (risk {verdict.score}); /skills scan shows why.[/yellow]")
         self.tool_context.mcp_clients = {**(self.tool_context.mcp_clients or {}), **clients}
         for warning in register_mcp_tools(self.tool_registry, clients):
             self.console.print(f"[yellow]{warning}[/yellow]", markup=True, highlight=False)
@@ -2491,7 +2491,7 @@ class ClydeREPL:
                   ("Goal", self.tool_context.goal or "none"),
                   ("MCP servers", f"{len(clients)} connected, {len(errors)} failed (/mcp)"),
                   ("Plugins", f"{len(self.plugins)} loaded (/plugins)"),
-                  ("SkillSpector", f"{len(skill_scan.cached_verdicts())} scanned, {len(held)} held back (/skills scan)")]
+                  ("Security scan", f"{len(skill_scan.cached_verdicts())} scanned, {len(held)} held back (/skills scan)")]
         settings_screen.show(settings_screen.Snapshot(status, settings_screen.session_usage(getattr(self.cost_tracker, "models", {})),
                                                       settings_screen.skill_footprint(plugins.enabled_plugins())))
 

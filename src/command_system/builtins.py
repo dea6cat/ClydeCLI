@@ -630,7 +630,7 @@ def doctor_command_call(args: str, context: CommandContext) -> LocalCommandResul
     from ..security import skill_scan
     held = [k for k, v in skill_scan.cached_verdicts().items() if v.blocked]
     caution = [k for k, v in skill_scan.cached_verdicts().items() if v.recommendation == skill_scan.CAUTION]
-    lines.append(_check(not held, f"SkillSpector: {len(skill_scan.cached_verdicts())} item(s) scanned, {len(held)} held back"
+    lines.append(_check(not held, f"Security scan: {len(skill_scan.cached_verdicts())} item(s) scanned, {len(held)} held back"
                         + (f" ({', '.join(held)})" if held else "") + (f", {len(caution)} caution" if caution else ""),
                         "/skills scan shows why; /skills allow <kind:name> lets one in"))
     from ..skills.lint import lint_skills

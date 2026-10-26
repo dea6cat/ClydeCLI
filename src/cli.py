@@ -689,12 +689,12 @@ def _scan_plugin(console: Console, plugin):  # type: ignore[no-untyped-def]
         console.print("[dim]LLM review failed or timed out; static scan only.[/dim]")
         verdict = skill_scan.check("plugin", plugin.name, plugin.root)
     color = {"SAFE": "green", "CAUTION": "yellow", "DO_NOT_INSTALL": "red"}.get(verdict.recommendation, "dim")
-    console.print(f"  SkillSpector: [{color}]{verdict.recommendation}[/{color}] (risk {verdict.score}"
+    console.print(f"  Security scan: [{color}]{verdict.recommendation}[/{color}] (risk {verdict.score}"
                   f"{', LLM-reviewed' if verdict.llm else ', static scan'})")
     for finding in verdict.findings[:5]:
         console.print(f"    • {finding}", markup=False)
     if verdict.blocked:
-        console.print("  [red]SkillSpector recommends not installing it.[/red] Enabling it anyway records your approval.")
+        console.print("  [red]The security scan recommends not installing it.[/red] Enabling it anyway records your approval.")
     return verdict
 
 
