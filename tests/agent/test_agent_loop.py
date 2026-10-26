@@ -282,6 +282,27 @@ class TestAgentLoop(unittest.TestCase):
 
         self.assertEqual((result.response_text, len(provider.requests)), ("try 8", 9))
 
+    def test_the_users_prompt_is_never_a_turn_clyde_added(self):
+        from src.agent.agent_loop import _ANSWER_NUDGE, _HOOK_CONTEXT, _STOP_HOOK, _last_prompt
+        conversation = Conversation()
+        conversation.add_user_message("why does the build fail?")
+        for injected in (_HOOK_CONTEXT + "freeze", _STOP_HOOK + "run tests", _ANSWER_NUDGE):
+            conversation.add_user_message(injected)
+        self.assertEqual(_last_prompt(conversation), "why does the build fail?")
+
+    def test_the_stop_cap_counts_blocks_with_no_tool_call_between_them(self):
+        self.context.hooks = self._hooks("Stop", "echo 'not yet' >&2; exit 2")
+        conversation = Conversation()
+        conversation.add_user_message("fix it")
+        replies = [reply(f"try {i}") for i in range(7)]
+        replies += [reply(tool_calls=[("Glob", {"pattern": "*.py"}, "g1")])]          # work in between: count restarts
+        replies += [reply(f"again {i}") for i in range(12)]
+        provider = FakeProvider(*replies)
+
+        result = self._run(provider, conversation, max_turns=30)
+
+        self.assertEqual((result.response_text, len(provider.requests)), ("again 8", 17))
+
     def test_a_user_prompt_submit_hook_adds_context_or_blocks_the_prompt(self):
         self.context.hooks = self._hooks("UserPromptSubmit", "echo 'Release freeze: no merges today.'")
         conversation = Conversation()

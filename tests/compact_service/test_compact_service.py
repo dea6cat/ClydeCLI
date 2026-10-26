@@ -146,7 +146,7 @@ class TestCompactConversation(unittest.TestCase):
         self.assertIn("Conversation had", result.summary_text)
 
     def test_the_files_being_worked_on_come_back_after_compaction_as_they_are_now(self):
-        from src.agent.conversation import TextContentBlock, ToolUseContentBlock
+        from src.agent.conversation import TextContentBlock, ToolResultContentBlock, ToolUseContentBlock
         from src.compact_service.service import compact_conversation
         root = Path(self.tmpdir.name)
         (root / "app.py").write_text("print('v2')\n")          # changed since it was read
@@ -154,12 +154,15 @@ class TestCompactConversation(unittest.TestCase):
         big = root / "big.log"
         big.write_text("x" * 30_000)
         use = lambda tid, name, path: Message(role="assistant", content=[ToolUseContentBlock(id=tid, name=name, input={"file_path": str(path)})])
+        done = lambda tid, error=False: Message(role="user", content=[ToolResultContentBlock(tool_use_id=tid, content="…", is_error=error)])
+        (root / "secret.env").write_text("API_KEY=sk-live-123\n")
         conv = self._make_conversation([
             Message(role="user", content="Fix the app " * 20),
-            use("t1", "Read", root / "app.py"),
-            use("t2", "Edit", root / "notes.md"),
-            use("t3", "Read", big),
-            use("t4", "Read", root / "gone.py"),                  # deleted since
+            use("t1", "Read", root / "app.py"), done("t1"),
+            use("t2", "Edit", root / "notes.md"), done("t2"),
+            use("t3", "Read", big), done("t3"),
+            use("t4", "Read", root / "gone.py"), done("t4"),     # deleted since
+            use("t5", "Read", root / "secret.env"), done("t5", error=True),   # the user said no
             Message(role="assistant", content=[TextContentBlock(text="Done.")]),
         ])
         result = asyncio.run(compact_conversation(conv, FakeProvider(reply("We fixed the app.")), "fake-model"))
@@ -168,6 +171,7 @@ class TestCompactConversation(unittest.TestCase):
         self.assertIn("# Notes", result.summary_text)
         self.assertIn("30,000 characters; read it again", result.summary_text)
         self.assertNotIn("gone.py", result.summary_text)
+        self.assertNotIn("sk-live-123", result.summary_text)   # a refused read never comes back from disk
         self.assertLess(result.summary_text.index("big.log"), result.summary_text.index("app.py"))   # newest first
 
     def test_boundary_and_summary_inserted(self):

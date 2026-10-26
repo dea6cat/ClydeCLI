@@ -262,13 +262,16 @@ def _recent_files(messages: list[Message]) -> str:
     from pathlib import Path
     from ..context_system.builder import _fence
 
+    blocks = [b for m in messages for b in (m.content if isinstance(m.content, list) else [])]
+    # Only calls that succeeded: a Read the user refused, or a secret file held back, must not come back from disk.
+    succeeded = {b.tool_use_id for b in blocks if getattr(b, "type", "") == "tool_result" and not b.is_error}
     paths: list[str] = []
-    for message in reversed(messages):
-        for block in reversed(message.content if isinstance(message.content, list) else []):
-            name, args = getattr(block, "name", ""), getattr(block, "input", None)
-            raw = args.get("file_path") or args.get("notebook_path") if isinstance(args, dict) else None
-            if str(name).lower() in _FILE_TOOLS and isinstance(raw, str) and raw not in paths:
-                paths.append(raw)
+    for block in reversed(blocks):
+        name, args = getattr(block, "name", ""), getattr(block, "input", None)
+        raw = args.get("file_path") or args.get("notebook_path") if isinstance(args, dict) else None
+        if getattr(block, "id", None) in succeeded and str(name).lower() in _FILE_TOOLS and isinstance(raw, str) \
+                and raw not in paths:
+            paths.append(raw)
     parts = []
     for raw in paths[:RECENT_FILES]:
         try:

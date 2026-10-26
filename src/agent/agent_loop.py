@@ -299,12 +299,16 @@ def _small_local(provider: Provider) -> bool:
     return name == "omlx" or (name == "ollama" and getattr(provider, "api_key", None) is None)
 
 
+# What Clyde itself adds as user turns; never the user's prompt (local reply review, hooks and tool routing read it).
+_INJECTED = (_STEERING, _HOOK_CONTEXT, _STOP_HOOK, _CONTINUE_NUDGE, _ANSWER_NUDGE)
+
+
 def _last_prompt(conversation: Conversation) -> str:
     """What the user last typed (not a tool result, not a steering note). Reads the agent's own history (`content`)
     as well as canonical turns (`text`): the loop passes the first, and matching only the second left the prompt empty."""
     for message in reversed(conversation.messages):
         text = getattr(message, "text", None) or getattr(message, "content", None)
-        if message.role == Role.USER and isinstance(text, str) and text and not text.startswith(_STEERING):
+        if message.role == Role.USER and isinstance(text, str) and text and not text.startswith(_INJECTED):
             return text
     return ""
 
@@ -477,6 +481,7 @@ def run_agent_loop(
                 num_turns=turn_count,
             )
 
+        stop_blocks = 0   # as Claude Code: the Stop cap counts blocks with no tool call between them
         for tc in tool_calls:
             run_stats["tool_calls"] += 1
             tool_id = tc.id
