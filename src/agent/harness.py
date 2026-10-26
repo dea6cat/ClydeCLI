@@ -1,4 +1,4 @@
-"""Harness discovery: find installed agent CLIs, MCP servers, local models, and Clyde skills.
+"""Harness discovery: find installed agent CLIs, MCP servers, connected providers (with their real model lists), and Clyde skills.
 
 Each discovered harness is a delivery target that Clyde can open in a role
 (master, advisor, worker) with a specific model. The same harness can be
@@ -9,8 +9,6 @@ from __future__ import annotations
 import json
 import shutil
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any
 
 from src.config import clyde_home
 
@@ -63,47 +61,6 @@ def discover_cli_harnesses() -> list[Harness]:
     return found
 
 
-def discover_local_models() -> list[Harness]:
-    """Discover locally runnable models (Ollama, MLX, oMLX)."""
-    found: list[Harness] = []
-
-    # Ollama
-    if _which("ollama"):
-        found.append(Harness(
-            name="ollama",
-            kind="local_model",
-            binary=_which("ollama"),
-            models=[
-                HarnessModel(model_id="ollama:qwen2.5-coder:32b", local=True),
-                HarnessModel(model_id="ollama:codestral:22b", local=True),
-                HarnessModel(model_id="ollama:deepseek-coder-v2:236b", local=True),
-            ],
-            description="Ollama local models",
-        ))
-
-    # MLX
-    if _which("mlx"):
-        found.append(Harness(
-            name="mlx",
-            kind="local_model",
-            binary=_which("mlx"),
-            models=[HarnessModel(model_id="mlx:default", local=True)],
-            description="MLX local models (Apple Silicon)",
-        ))
-
-    # oMLX
-    if _which("omlx"):
-        found.append(Harness(
-            name="omlx",
-            kind="local_model",
-            binary=_which("omlx"),
-            models=[HarnessModel(model_id="omlx:default", local=True)],
-            description="oMLX local models",
-        ))
-
-    return found
-
-
 def discover_mcp_servers() -> list[Harness]:
     """Discover configured MCP servers from clyde config."""
     found: list[Harness] = []
@@ -145,18 +102,32 @@ def discover_clyde_skills() -> list[Harness]:
     return found
 
 
+LOCAL_PROVIDERS = frozenset({"ollama", "omlx"})
+RUNNABLE_KINDS = frozenset({"provider"})   # roles Clyde can run itself today; CLI harnesses come with their adapters
+_MODELS_SHOWN = 40
+
+
 def discover_providers() -> list[Harness]:
-    """Discover configured providers from Clyde's provider registry."""
+    """Connected providers with the models each one really offers (Ollama: what is installed)."""
     found: list[Harness] = []
     try:
-        from src.providers import build_registry
-        registry = build_registry()
-        for spec in registry.list_specs():
+        from src.providers import build_registry, keys, usable
+        from src.providers.card_shuffle import CardShuffle
+        keys.load_into_env()
+        for name, provider in usable(build_registry()).items():
+            if name == CardShuffle.name:   # a dealer over the others, not a model source
+                continue
+            try:
+                ids = provider.list_models()[:_MODELS_SHOWN]
+            except Exception:
+                continue
+            if not ids:
+                continue
             found.append(Harness(
-                name=f"provider:{spec.name}",
+                name=f"provider:{name}",
                 kind="provider",
-                models=[HarnessModel(model_id=spec.name, local=False)],
-                description=f"Provider: {spec.name}",
+                models=[HarnessModel(model_id=m, local=name in LOCAL_PROVIDERS) for m in ids],
+                description=f"Provider: {name}",
             ))
     except Exception:
         pass
@@ -167,7 +138,6 @@ def discover_all() -> list[Harness]:
     """Discover all available harnesses."""
     harnesses: list[Harness] = []
     harnesses.extend(discover_cli_harnesses())
-    harnesses.extend(discover_local_models())
     harnesses.extend(discover_mcp_servers())
     harnesses.extend(discover_clyde_skills())
     harnesses.extend(discover_providers())
