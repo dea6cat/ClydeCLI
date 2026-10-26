@@ -15,6 +15,7 @@ Everything is set with textContent and attributes, never parsed as markup: event
 from __future__ import annotations
 
 import json
+import re
 import struct
 from pathlib import Path
 
@@ -629,37 +630,50 @@ function propSprite(kind, x, y, pal, theme, defs, uid, size) {   // scenery: it 
   else if (kind === "coat") g.append(fit("clothes-rack", px - 18, py - 40, 56, 56, theme));
   return g;
 }
-const CREW_FILE = { master: "crew-navy", advisor: "crew-lab-coat" }, WORKER_FILES = ["crew-teal", "crew-gray", "crew-slate"];   // crew-commander-red carries a halo of its own, so it is left out
-const CREW_K = 0.72;   // a person is drawn this fraction of the sprite's natural size
-const ANDROIDS = new Set(["clyde", "bonnie"]), ANDROID_W = 52, ANDROID_H = 89;
-function androidFigure(name) {   // Clyde and Bonnie as chrome androids, an outlaw pair of our own design: a flat cap, scarf and amber eyes for him; a beret, a cable ponytail and magenta eyes for her
-  const g = sv("g", {}), her = name === "bonnie", metal = "#aeb8c4", hi = "#eaf1f8", mid = "#7d8999", dark = "#3a4350", eye = her ? "#ff2b8a" : "#ffb020", cloth = her ? "#8a2433" : "#1f2740", half = her ? 12 : 14;
-  const r = (x, y, w, h, fill, extra) => g.append(sv("rect", { x, y, width: w, height: h, fill, ...(extra || {}) }));
-  if (her) g.append(sv("path", { d: "M10 -78Q26 -74 22 -58Q20 -50 24 -44", fill: "none", stroke: dark, "stroke-width": 6, "stroke-linecap": "round" }), sv("path", { d: "M10 -78Q26 -74 22 -58Q20 -50 24 -44", fill: "none", stroke: mid, "stroke-width": 3.4, "stroke-linecap": "round" }), sv("circle", { cx: 24, cy: -43, r: 2.6, fill: eye, class: "blink amb" }));   // the cable ponytail
-  for (const lx of [-10, 3]) { r(lx, -25, 7, 19, metal, { rx: 3 }); r(lx, -25, 2.4, 19, hi, { rx: 1.2, opacity: 0.8 }); r(lx + 4.6, -25, 2.4, 19, mid, { rx: 1.2, opacity: 0.7 }); r(lx - 1.5, -7, 10, 7, dark, { rx: 3 }); r(lx, -17, 7, 1.6, dark, { opacity: 0.6 }); }   // legs and feet
-  for (const sx of [-1, 1]) { const x = sx < 0 ? -half - 7.5 : half + 0.5; r(x, -56, 7, 26, metal, { rx: 3.5 }); r(x + (sx < 0 ? 0 : 4.6), -56, 2.4, 26, sx < 0 ? hi : mid, { rx: 1.2, opacity: 0.75 }); r(x, -42, 7, 2, dark, { opacity: 0.6 }); g.append(sv("circle", { cx: x + 3.5, cy: -28.5, r: 4.4, fill: dark, stroke: mid, "stroke-width": 1 })); g.append(sv("circle", { cx: x + 3.5, cy: -56, r: 6, fill: metal, stroke: mid, "stroke-width": 1.2 })); }   // arms, hands and shoulder joints
-  r(-half, -58, half * 2, 34, metal, { rx: 6 }); r(-half, -58, 5, 34, hi, { rx: 2.5, opacity: 0.7 }); r(half - 5, -58, 5, 34, mid, { rx: 2.5, opacity: 0.6 }); r(-half, -30, half * 2, 5, dark, { rx: 2 });   // torso and belt
-  r(-8, -54, 16, 17, mid, { rx: 4, opacity: 0.55 }); g.append(sv("circle", { cx: 0, cy: -45, r: 6.4, fill: "#10161e", stroke: hi, "stroke-width": 1.2 }), sv("circle", { cx: 0, cy: -45, r: 3.4, fill: eye, class: "flick amb" }), sv("circle", { cx: 0, cy: -45, r: 9, fill: eye, opacity: 0.16 }));   // the chest core
-  if (!her) { r(-9, -61, 18, 4.5, cloth, { rx: 2 }); r(1, -58, 5, 15, cloth, { rx: 1.5 }); r(1, -58, 1.4, 15, "#fff", { opacity: 0.18 }); } else r(-6, -60, 12, 3, mid, { rx: 1.5 });   // his scarf, her collar
-  r(-half + 1, -88, half * 2 - 2, 29, metal, { rx: 10 }); r(-half + 1, -88, 5, 29, hi, { rx: 2.5, opacity: 0.6 }); r(half - 5, -88, 5, 29, mid, { rx: 2.5, opacity: 0.55 });   // head
-  r(-10, -78, 20, 10, "#0c1118", { rx: 4.5 }); for (const ex of [-5, 5]) g.append(sv("circle", { cx: ex, cy: -73, r: 6.4, fill: eye, opacity: 0.25 }), sv("circle", { cx: ex, cy: -73, r: 2.7, fill: eye, class: "blink amb" }), sv("circle", { cx: ex - 0.8, cy: -73.8, r: 0.9, fill: "#fff" }));   // the eyes
-  if (her) { r(-4, -63, 8, 2, eye, { rx: 1, opacity: 0.9 }); } else for (let k = 0; k < 4; k++) r(-5 + k * 2.8, -64, 1.4, 4, dark, { rx: 0.7 });   // a lip light, a jaw grille
-  for (const sx of [-1, 1]) g.append(sv("circle", { cx: sx * (half + 0.5), cy: -73, r: 2.4, fill: dark, stroke: mid, "stroke-width": 0.8 }));   // ear sensors
-  if (her) { g.append(sv("ellipse", { cx: 2, cy: -88.5, rx: 14.5, ry: 5.6, fill: cloth, stroke: "#4a1018", "stroke-width": 1 }), sv("ellipse", { cx: -3, cy: -90, rx: 6, ry: 2, fill: "#fff", opacity: 0.16 }), sv("rect", { x: 1, y: -95, width: 2, height: 4, rx: 1, fill: "#4a1018" })); }   // her beret
-  else { r(-14.5, -92, 29, 8, cloth, { rx: 5 }); r(-9, -92, 11, 2.4, "#fff", { opacity: 0.16, rx: 1.2 }); r(-15.5, -85, 31, 3, shade(cloth, -30), { rx: 1.5 }); }   // his flat cap and its peak
-  return g;
+const CREW = __CREW__;   // each crew pack's frames: pack -> animation -> direction -> frame count (station_art/<pack>-<animation>-<direction>-<nn>.png), filled in by the server
+const FIGURE = {   // each pack's idle picture facing south: [picture width, height, then the left, top, right and bottom of the figure in it]
+  rogue: [84, 84, 17, 12, 65, 71], paladin: [156, 156, 37, 15, 117, 140], reaper: [256, 256, 90, 65, 165, 190], hunter: [256, 256, 94, 66, 161, 187], admiral: [84, 84, 12, 12, 71, 71] };
+const CREW_H = 80;   // every figure is drawn this tall, standing on its spot
+const CREW_PACK = { clyde: ["rogue", 0], bonnie: ["paladin", 0], master: ["admiral", 0], advisor: ["hunter", 0] };
+const WORKER_PACKS = [["reaper", 0], ["rogue", 160], ["paladin", 200], ["reaper", 120]];   // a pack and a hue shift, so each worker looks different
+const MIRROR = { west: "east", "south-west": "south-east", "north-west": "north-east" };
+function crewPack(name) { return CREW_PACK[name] || WORKER_PACKS[(parseInt(number(name) || "1", 10) - 1) % WORKER_PACKS.length]; }
+function crewBox(pack) { const [w, h, x0, y0, x1, y1] = FIGURE[pack], k = CREW_H / (y1 - y0 + 1); return { w: w * k, h: h * k, x: -(x0 + x1 + 1) / 2 * k, y: -(y1 + 1) * k }; }
+function headingDir(dx, dy) { const names = ["east", "south-east", "south", "south-west", "west", "north-west", "north", "north-east"]; return names[((Math.round(Math.atan2(dy, dx) * 4 / Math.PI) % 8) + 8) % 8]; }
+function crewFrame(pack, anim, dir, f) {   // the picture for a pose: the animation if the pack has it facing that way, else the same animation from the mirrored side, else the pack standing still
+  let a = anim, d = dir, flip = false, table = CREW[pack][a] || {};
+  if (!table[d] && MIRROR[d] && table[MIRROR[d]]) { d = MIRROR[d]; flip = true; }
+  if (!table[d]) { a = "idle"; table = CREW[pack].idle; d = dir; flip = false; if (!table[d] && MIRROR[d]) { d = MIRROR[d]; flip = true; } }
+  const n = table[d] || 1;
+  return { file: pack + "-" + a + "-" + d + "-" + String(f % n).padStart(2, "0"), flip, n };
 }
-function crewFile(name) { return CREW_FILE[name] || WORKER_FILES[(parseInt(number(name) || "1", 10) - 1) % WORKER_FILES.length]; }
+const PRELOADED = {};
+function preload(pack, anim, dir) {   // fetch a whole animation the first time it is needed, so the next frame is already there
+  const key = pack + anim + dir;
+  if (PRELOADED[key]) return;
+  PRELOADED[key] = true;
+  const probe = crewFrame(pack, anim, dir, 0);
+  for (let f = 0; f < probe.n; f++) new Image().src = "/assets/" + crewFrame(pack, anim, dir, f).file + ".png";
+}
 function personItem(name, role, theme) {
-  const android = ANDROIDS.has(name), file = android ? null : crewFile(name), [sw, sh] = android ? [ANDROID_W / CREW_K, ANDROID_H / CREW_K] : SPR[file], w = sw * CREW_K, h = sh * CREW_K, g = sv("g", { class: "sprite", "data-sprite": name });
-  const flip = sv("g", { class: "flip" }), body = sv("g", {}), carry = sv("g", { style: "display:none" });
-  body.append(android ? androidFigure(name) : sprite(file, -w / 2, -h, w, h, theme, { class: "crew-img" }));
-  carry.append(sv("rect", { x: -13, y: -h * 0.42, width: 26, height: 18, rx: 2, fill: "#a8782f", stroke: "#0b0b12", "stroke-width": 1.6 }), sv("rect", { x: -2, y: -h * 0.42, width: 4, height: 18, fill: "#d8b060" }));
-  flip.append(body, carry);
-  const shadowEl = sv("ellipse", { cx: 0, cy: -2, rx: 16, ry: 6, fill: "#000", opacity: 0.32 }), tag = sv("g", { transform: "translate(0 " + (-h - 8) + ")" }), bubble = sv("g", { transform: "translate(0 " + (-h - 28) + ")" });
+  const [pack, hue] = crewPack(name), box = crewBox(pack), g = sv("g", { class: "sprite", "data-sprite": name }), body = sv("g", {}), mirror = sv("g", {}), carry = sv("g", { style: "display:none" });
+  const img = sv("image", { x: box.x, y: box.y, width: box.w, height: box.h, "image-rendering": "pixelated", style: hue ? "filter:hue-rotate(" + hue + "deg)" : "" });
+  img.setAttribute("href", "/assets/" + crewFrame(pack, "idle", "south", 0).file + ".png");
+  mirror.append(img); body.append(mirror);
+  carry.append(sv("rect", { x: -13, y: -CREW_H * 0.5, width: 26, height: 18, rx: 2, fill: "#a8782f", stroke: "#0b0b12", "stroke-width": 1.6 }), sv("rect", { x: -2, y: -CREW_H * 0.5, width: 4, height: 18, fill: "#d8b060" }));
+  const shadowEl = sv("ellipse", { cx: 0, cy: -2, rx: 16, ry: 6, fill: "#000", opacity: 0.32 }), tag = sv("g", { transform: "translate(0 " + (-CREW_H - 8) + ")" }), bubble = sv("g", { transform: "translate(0 " + (-CREW_H - 28) + ")" });
   tag.append(sv("rect", { x: -(name.length * 3.6 + 6), y: -9, width: name.length * 7.2 + 12, height: 14, rx: 3, fill: "#000", opacity: 0.6 }), sv("text", { y: 3, class: "name", fill: "#fff", stroke: "#000" }, name));
-  g.append(shadowEl, flip, tag, bubble, sv("title", {}, name));
-  return { name, role, g, flip, body, carry, bubble, face: 1, bubbleKind: null, title: g.lastChild };
+  g.append(shadowEl, body, carry, tag, bubble, sv("title", {}, name));
+  const person = { name, role, g, body, carry, bubble, pack, dir: "south", shown: "", bubbleKind: null, title: g.lastChild };
+  person.show = (dir, anim, f) => {   // set the picture for this pose; nothing happens when it is already showing
+    const fr = crewFrame(pack, anim, dir, f);
+    if (person.shown === fr.file + fr.flip) return;
+    preload(pack, anim, dir);
+    person.shown = fr.file + fr.flip;
+    img.setAttribute("href", "/assets/" + fr.file + ".png");
+    mirror.setAttribute("transform", fr.flip ? "scale(-1 1)" : "");
+  };
+  return person;
 }
 function setBubble(person, kind, pal) {
   if (person.bubbleKind === kind) return;
@@ -779,7 +793,8 @@ function tickScene(scene, now) {
     if (pose === "idle" && /using|working|splitting|reviewing|writing the report|tasks handed/.test(doing) && !/waiting/.test(doing)) pose = "work";
     const moving = pose === "walk";
     if (!moving && s.carry) pose = "carry";
-    if (Math.abs(s.dir[0]) > 0.05) person.face = s.dir[0] < 0 ? -1 : 1;   // they face the way they walk, and keep it when they stop
+    if (Math.abs(s.dir[0]) > 0.05 || Math.abs(s.dir[1]) > 0.05) person.dir = headingDir(s.dir[0], s.dir[1]);   // they face the way they walk, and keep it when they stop
+    person.show(person.dir, moving ? "walk" : "idle", Math.floor(now * (moving ? 10 : 5)));
     let dy = 0, rot = 0, squash = 1;
     if (!REDUCED) {
       if (moving) { dy = -Math.abs(Math.sin(now * 13)) * 4; rot = Math.sin(now * 13) * 3; }
@@ -789,7 +804,6 @@ function tickScene(scene, now) {
     const at = pos(s.pos[0], s.pos[1]);
     person.at = s.pos;
     person.g.setAttribute("transform", "translate(" + at[0].toFixed(1) + " " + at[1].toFixed(1) + ")");
-    person.flip.setAttribute("transform", "scale(" + person.face + " 1)");
     person.body.setAttribute("transform", "translate(0 " + dy.toFixed(1) + ") rotate(" + rot.toFixed(1) + ") scale(1 " + squash.toFixed(3) + ")");
     person.carry.style.display = pose === "carry" ? "" : "none";
     setBubble(person, personBubble(person, s, doing) || (s.carry && !s.bubble ? s.carry : null), pal);
@@ -847,7 +861,7 @@ function legend() {
     item.append(el("i", cls), document.createTextNode(text));
     box.append(item);
   }
-  box.append(el("span", "", "Furniture is a capability the member was given; its plate counts how often it was used. Crew walk only when something was recorded: a worker to the furniture for a tool it used, Clyde with a task or an approval request, Bonnie to collect a result. Clouds, rain, lamps and neon are only scenery. Drag to pan, Ctrl-scroll or the + and − keys to zoom. Furniture and crew art: \"Cozy Space Station\" by Bramble & Byte (CC-BY 4.0)."));
+  box.append(el("span", "", "Furniture is a capability the member was given; its plate counts how often it was used. Crew walk only when something was recorded: a worker to the furniture for a tool it used, Clyde with a task or an approval request, Bonnie to collect a result. Clouds, rain, lamps and neon are only scenery. Drag to pan, Ctrl-scroll or the + and − keys to zoom. Furniture art: \"Cozy Space Station\" by Bramble & Byte (CC-BY 4.0). Crew art: elie automata."));
   return box;
 }
 function mapSection(run) {
@@ -864,8 +878,10 @@ function mapSection(run) {
   return left;
 }
 function portrait(name, doing) {   // the same person as in the scene, in a small well with a lamp
-  const android = ANDROIDS.has(name), file = android ? null : crewFile(name), [w, h] = android ? [ANDROID_W, ANDROID_H] : SPR[file], svg = sv("svg", { viewBox: android ? "-" + w / 2 + " -" + (h + 4) + " " + w + " " + (h + 6) : "0 0 " + w + " " + h, "aria-hidden": "true" });
-  svg.append(android ? androidFigure(name) : sprite(file, 0, 0, w, h, state.theme));
+  const [pack, hue] = crewPack(name), [w, h, x0, y0, x1, y1] = FIGURE[pack], vh = y1 - y0 + 6, vw = vh * 0.55, svg = sv("svg", { viewBox: [(x0 + x1 + 1) / 2 - vw / 2, y0 - 3, vw, vh].join(" "), "aria-hidden": "true" });
+  const img = sv("image", { x: 0, y: 0, width: w, height: h, "image-rendering": "pixelated", style: hue ? "filter:hue-rotate(" + hue + "deg)" : "" });
+  img.setAttribute("href", "/assets/" + crewFrame(pack, "idle", "south", 0).file + ".png");
+  svg.append(img);
   const well = el("div", "portrait");
   well.append(svg, el("span", "lamp " + dotClass(doing)));
   return well;
@@ -999,13 +1015,28 @@ requestAnimationFrame(loop);
 """
 
 
+_CREW_FRAME = re.compile(r"(rogue|paladin|reaper|hunter|admiral)-(idle|walk)-([a-z\-]+)-(\d+)")
+
+
+def _crew_index() -> dict[str, dict[str, dict[str, int]]]:
+    """Which frames each crew pack has: pack -> animation -> direction -> how many, read from the file names in station_art/."""
+    index: dict[str, dict[str, dict[str, int]]] = {}
+    for file in sorted((Path(__file__).parent / "station_art").glob("*.png")):
+        if m := _CREW_FRAME.fullmatch(file.stem):
+            counts = index.setdefault(m[1], {}).setdefault(m[2], {})
+            counts[m[3]] = max(counts.get(m[3], 0), int(m[4]) + 1)
+    return index
+
+
 def _sprite_sizes() -> dict[str, list[int]]:
     """The natural size [width, height] of each sprite in station_art/, read from its PNG header, so the page can fit it to a box."""
     sizes = {}
     for file in sorted((Path(__file__).parent / "station_art").glob("*.png")):
+        if _CREW_FRAME.fullmatch(file.stem):
+            continue
         head = file.read_bytes()[:24]
         sizes[file.stem] = list(struct.unpack(">II", head[16:24]))
     return sizes
 
 
-PAGE = PAGE.replace("__SPRITES__", json.dumps(_sprite_sizes(), separators=(",", ":")))
+PAGE = PAGE.replace("__SPRITES__", json.dumps(_sprite_sizes(), separators=(",", ":"))).replace("__CREW__", json.dumps(_crew_index(), separators=(",", ":")))

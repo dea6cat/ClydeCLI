@@ -123,13 +123,28 @@ class TestArt(StationWebCase):
     def test_every_picture_the_page_asks_for_exists_and_its_size_is_known(self):
         names = set(re.findall(r'(?:fit|sprite)\("([a-z\-]+)"', station_web.PAGE))
         for line in station_web.PAGE.splitlines():
-            if line.startswith(("const FAMILY_SPRITE", "const PLANTS", "const CREW_FILE")):
+            if line.startswith(("const FAMILY_SPRITE", "const PLANTS")):
                 names |= set(re.findall(r'"([a-z]+(?:-[a-z]+)+)"', line))
         self.assertGreater(len(names), 10)
         for name in names:
             self.assertTrue((station_web.ART / f"{name}.png").is_file(), name)
-        self.assertEqual(station_web.PAGE.count("__SPRITES__"), 0)   # the server filled the sizes in
+        self.assertEqual(station_web.PAGE.count("__SPRITES__") + station_web.PAGE.count("__CREW__"), 0)   # the server filled the sizes and the crew frames in
         self.assertTrue((station_web.ART / "LICENSE-cozy-space-station.txt").is_file())   # the licence travels with the art
+
+
+class TestCrewArt(unittest.TestCase):
+    def test_every_crew_pack_stands_in_all_eight_directions_and_the_licence_and_credit_travel_with_it(self):
+        from src.agent import station_page
+        crew = station_page._crew_index()
+        self.assertEqual(set(crew), {"rogue", "paladin", "reaper", "hunter", "admiral"})
+        for pack, anims in crew.items():
+            self.assertEqual(len(anims["idle"]), 8, pack)   # a figure can face any way it walks
+            for files in ([f"{pack}-idle-{d}-00" for d in anims["idle"]]):
+                self.assertTrue((station_web.ART / f"{files}.png").is_file(), files)
+        self.assertTrue(crew["rogue"]["walk"] and crew["paladin"]["walk"] and crew["reaper"]["walk"])   # the packs that walk, walk
+        self.assertNotIn("walk", crew["hunter"])   # the bloodhunter only stands: the page falls back to her idle frames
+        self.assertIn("elie automata", (station_web.ART / "LICENSE-elie-automata.txt").read_text())
+        self.assertIn("elie automata", (station_web.ART.parents[2] / "THIRD_PARTY.md").read_text())
 
 
 class TestState(StationWebCase):
