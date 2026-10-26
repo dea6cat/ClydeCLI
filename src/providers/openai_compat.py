@@ -23,6 +23,7 @@ _NON_CHAT = (
     "rerank", "guard", "safety", "reward", "-parse", "nemoretriever", "nvclip",
     "bge-", "arctic-embed", "voxtral", "riva", "diffusion", "calibration",
     "topic-control", "detector", "-fim-", ":batch",  # OpenRouter batch variants reject chat requests
+    "vibe-cli-with-tools",   # Mistral's model behind Vibe's web-search tool; not in its chat catalog
 )
 
 
