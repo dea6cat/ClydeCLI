@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import re
 import threading
 import time
 from dataclasses import dataclass
@@ -125,6 +127,34 @@ class AgentLoopResult:
 # approach or talk to the user.
 _MAX_CONSECUTIVE_TOOL_ERRORS = 5
 _STALLED_REPLY = "The tool calls keep failing (different arguments each time). Stop digging: change your approach, use a different tool, or tell me what is blocking you."
+
+
+# A reply that stops at the output limit, or ends with no answer text (a reasoning model can spend its turn thinking),
+# is asked for again with feedback. Mistral Vibe does this for the cut-off case, 6 times, discarding the partial reply;
+# here the partial reply stays and the model continues it, so no tokens are thrown away.
+# ponytail: one shared cap for both cases; split it if a model needs more continuations than retries.
+_MAX_RECOVERIES = 3
+_CUT_OFF = ("length", "max_tokens")
+_CONTINUE_NUDGE = ("Your reply was cut off at the output token limit. Continue exactly where it stopped, without repeating "
+                   "it. Keep reasoning brief, and split long file contents or edits into several smaller tool calls.")
+_ANSWER_NUDGE = "Your last reply had no answer text. Answer now in plain text; keep any reasoning brief."
+
+
+def _continue(cut: str, more: str) -> str:
+    """A cut-off reply joined to its continuation. Asked not to, a model still restarts the line it was cut on, with the
+    same opening and sometimes other words (live, ministral-8b: "- September: Gradual- September: Mild and pleasant");
+    that partial line then goes and the continuation keeps its own."""
+    head, _, last = cut.rpartition("\n")
+    last, start = last.strip(), more.lstrip()
+    same = len(os.path.commonprefix([last, start]))
+    if last and same >= min(len(last), 10):   # ponytail: a 10-character shared opening means a restart; rare false match
+        return (head + "\n" if head else "") + start
+    # The cut line was a list item and the continuation opens the next one ("- May: sunny" then "- June: hot"):
+    # the model judged the cut item done, so the next one starts its own line instead of running on.
+    item = re.match(r"([-*•>|#]+|\d+[.)])\s", last)
+    if item and start.startswith(item.group(1)):
+        return cut.rstrip() + "\n" + start
+    return cut + more
 
 
 ToolEventHandler = Callable[[ToolEvent], None]
@@ -347,6 +377,7 @@ def run_agent_loop(
     repeat_guard = RepeatGuard()
     run_stats = {"tool_calls": 0, "tool_errors": 0, "repeats_refused": 0, "first_input_tokens": 0}
     consecutive_errors = 0
+    recoveries, carried = 0, ""   # carried: a cut-off reply's text, which the next reply continues
 
     def record_run(outcome: str, turns: int) -> None:
         if not telemetry.enabled():
@@ -395,6 +426,16 @@ def run_agent_loop(
         tool_calls = response.message.tool_calls
 
         if not tool_calls:
+            cut_off = response.done_reason in _CUT_OFF
+            empty = not final_assistant_content.strip() and last_user_visible_message is None
+            if (cut_off or empty) and recoveries < _MAX_RECOVERIES:
+                recoveries += 1
+                carried = _continue(carried, final_assistant_content)
+                # Where it stopped, quoted: told only to continue, ministral-8b skipped the line it was cut on 2 runs in 3.
+                stopped = f' It stopped at: "…{final_assistant_content[-80:]}"' if final_assistant_content.strip() else ""
+                conversation.add_user_message(_CONTINUE_NUDGE + stopped if cut_off else _ANSWER_NUDGE)
+                continue
+            final_assistant_content = _continue(carried, final_assistant_content)
             if final_assistant_content.strip() == "" and last_user_visible_message is not None:
                 final_assistant_content = last_user_visible_message
             if only is not None and (fixed := review_reply(_last_prompt(conversation), final_assistant_content, tool_context)):

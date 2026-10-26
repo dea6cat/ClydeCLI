@@ -234,6 +234,40 @@ class TestAgentLoop(unittest.TestCase):
         self.assertTrue(result.response_text.startswith("The tool calls keep failing"), result.response_text)
         self.assertEqual(len(provider.requests), 5)   # stopped after the fifth failing call
 
+    def test_a_reply_cut_off_at_the_output_limit_is_continued_not_discarded(self):
+        conversation = Conversation()
+        conversation.add_user_message("write the essay")
+        cut = reply("First half, ")
+        cut.done_reason = "length"
+        provider = FakeProvider(cut, reply("second half."))
+
+        result = self._run(provider, conversation)
+
+        self.assertEqual(result.response_text, "First half, second half.")
+        self.assertIn("cut off at the output token limit", str(provider.requests[1]))
+
+    def test_a_continuation_that_restarts_the_cut_line_is_not_doubled(self):
+        from src.agent.agent_loop import _continue
+        self.assertEqual(_continue("- May: warm\n- June:", "- June: Hot and dry.\n- July: hotter"),
+                         "- May: warm\n- June: Hot and dry.\n- July: hotter")   # live, ministral-8b
+        self.assertEqual(_continue("- Aug: hot\n- September: Gradual", "- September: Mild and pleasant."),
+                         "- Aug: hot\n- September: Mild and pleasant.")                  # restarted with other words
+        self.assertEqual(_continue("- April: mild\n- May: Pleasant and sunny", "- June: Hot and dry."),
+                         "- April: mild\n- May: Pleasant and sunny\n- June: Hot and dry.")   # next item, own line
+        self.assertEqual(_continue("Once upon", " a time"), "Once upon a time")
+
+    def test_a_reply_with_no_answer_text_is_asked_for_again_a_bounded_number_of_times(self):
+        conversation = Conversation()
+        conversation.add_user_message("hi")
+        provider = FakeProvider(reply(thinking="hmm"), reply("Hello."))
+        self.assertEqual(self._run(provider, conversation).response_text, "Hello.")
+
+        conversation = Conversation()
+        conversation.add_user_message("hi")
+        provider = FakeProvider(*[reply(thinking="hmm") for _ in range(6)])
+        self.assertEqual(self._run(provider, conversation).response_text, "")
+        self.assertEqual(len(provider.requests), 4)   # the reply, then 3 asks again
+
     def test_an_error_followed_by_a_success_resets_the_counter(self):
         conversation = Conversation()
         conversation.add_user_message("read hello.py")

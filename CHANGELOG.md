@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Mistral models are handled the way Mistral Vibe handles them, and a little better. GLM on Mistral streams its reasoning as `thinking` fragments, which Clyde threw away: now they show as thinking while it works and go back with the earlier turns, so it keeps its plan across tool calls. `/think` reaches Mistral as `reasoning_effort`: medium, small and magistral think on `high` and stop on `off`; GLM, which always thinks, takes `low` for `off`; ministral, codestral and large, which reject the field, get none. A reply cut off at the output limit is continued, not thrown away as Vibe does: Clyde quotes where it stopped and joins the two without doubling the cut line. A reply with no answer text is asked for again, up to 3 times, before the "no answer" notice.
 - A rate-limited request (HTTP 429) got the same backoff as any transient blip — 1, 2, 4 seconds — which a rate window always outlives, so every retry burned and the turn died with "retried 3×, still failing". A 429 without a `Retry-After` now waits 5 seconds and doubles up to the same 30-second ceiling a `Retry-After` is capped at; providers that send the header were already fine.
 
 ## [0.7.0] - 2026-10-22
