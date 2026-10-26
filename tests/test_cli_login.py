@@ -76,6 +76,18 @@ class TestRunLoginFlow(unittest.TestCase):
             ref = run_login_flow(Console(file=io.StringIO()), {"openai": provider}, provider="openai")
         self.assertEqual((ref, ask.call_count), ("openai:gpt-5.4", 1))       # only the model was asked
 
+    def test_clyde_login_takes_the_provider_on_the_command_line(self):
+        from src import cli
+        from src.install import license_gate
+        accepted = patch.object(license_gate, "ensure_accepted", return_value=True)
+        with accepted, patch("sys.argv", ["clyde", "login", "mistral"]), \
+                patch.object(cli, "run_login_flow", return_value="mistral:m") as flow:
+            self.assertEqual(cli.main(), 0)
+        self.assertEqual(flow.call_args.kwargs["provider"], "mistral")
+        with accepted, patch("sys.argv", ["clyde", "login"]), patch.object(cli, "run_login_flow", return_value=None) as flow:
+            self.assertEqual(cli.main(), 1)
+        self.assertIsNone(flow.call_args.kwargs["provider"])
+
 
 class TestCustomProvider(unittest.TestCase):
     """`custom` adds an OpenAI-compatible service: saved in settings.json, its key like any other."""

@@ -186,3 +186,115 @@ def pick(console: Any, title: str, choices: list[Choice], *, description: str = 
                                    key_bindings=keys, erase_when_done=True, input=input, output=output)
     with WATCHER.paused():
         return app.run()
+
+
+CHAT = "\0chat"   # ask(): the user picked "Chat about this" instead of an answer
+
+
+def render_question(header: str, question: str, options: list[dict], cursor: int, *, multi: bool, chosen: set[int],
+                    typed: str) -> list[tuple[str, str]]:
+    """One AskUserQuestion as prompt_toolkit fragments: the header chip, the question, each option with its
+    description, a row to type an answer, then "Chat about this", and the focused option's preview."""
+    n = len(options)
+    out: list[tuple[str, str]] = [(f"reverse fg:{_ACCENT}", f" ☐ {header} " if header else ""), ("", "\n\n")]
+    out += [(f"fg:{_ACCENT}", "▌ "), ("bold", question + "\n\n")]
+    for i, opt in enumerate(options):
+        on = i == cursor
+        out.append((f"fg:{_ACCENT}", "❯ " if on else "  "))
+        out.append((f"fg:{_ACCENT}" if on else f"fg:{_DIM}", f"{i + 1}. "))
+        if multi:
+            out.append(("", "[x] " if i in chosen else "[ ] "))
+        out.append((f"bold fg:{_ACCENT}" if on else "bold", str(opt.get("label", "")) + "\n"))
+        if opt.get("description"):
+            out.append((f"fg:{_DIM}", "     " + str(opt["description"]) + "\n"))
+    on = cursor == n
+    out.append((f"fg:{_ACCENT}", "❯ " if on else "  "))
+    out.append((f"fg:{_DIM}", f"{n + 1}. "))
+    if typed:
+        out.append(("", typed + ("█" if on else "")))
+    else:
+        out.append(("", "█") if on else (f"fg:{_DIM}", "Type something."))
+    out.append(("", "\n"))
+    out.append((f"fg:{_DIM}", "─" * 60 + "\n"))
+    on = cursor == n + 1
+    out.append((f"fg:{_ACCENT}", "❯ " if on else "  "))
+    out.append((f"fg:{_DIM}", f"{n + 2}. "))
+    out.append((f"bold fg:{_ACCENT}" if on else "", "Chat about this\n"))
+    preview = options[cursor].get("preview") if cursor < n else None
+    if preview:
+        out.append((f"fg:{_DIM}", "\n" + "\n".join("  │ " + line for line in str(preview).splitlines()) + "\n"))
+    out.append((f"fg:{_DIM}", "\n" + ("Space to tick · " if multi else "") +
+                "Enter to select · ↑/↓ to navigate · type to answer · Esc to cancel"))   # fits 80 columns
+    return out
+
+
+def ask(header: str, question: str, options: list[dict], *, multi: bool = False, input: Any = None,
+        output: Any = None) -> str | None:
+    """Put one AskUserQuestion to the user, the way Claude Code draws it. The picked label (several, comma-separated,
+    with `multi`), their own typed answer, CHAT when they would rather talk it over, or None on Esc."""
+    from prompt_toolkit import Application
+    from prompt_toolkit.key_binding import KeyBindings
+    from prompt_toolkit.layout import Layout, Window
+    from prompt_toolkit.layout.controls import FormattedTextControl
+
+    from src.repl.esc import WATCHER
+
+    n = len(options)
+    labels = [str(o.get("label", "")) for o in options]
+    state: dict[str, Any] = {"cursor": 0, "typed": "", "chosen": set()}
+    keys = KeyBindings()
+
+    def draw() -> list[tuple[str, str]]:
+        return render_question(header, question, options, state["cursor"], multi=multi, chosen=state["chosen"],
+                               typed=state["typed"])
+
+    @keys.add("up", eager=True)
+    def _up(event: Any) -> None:
+        state["cursor"] = max(0, state["cursor"] - 1)
+
+    @keys.add("down", eager=True)
+    def _down(event: Any) -> None:
+        state["cursor"] = min(n + 1, state["cursor"] + 1)
+
+    @keys.add("enter")
+    def _enter(event: Any) -> None:
+        at, typed = state["cursor"], state["typed"].strip()
+        if at == n + 1:
+            event.app.exit(result=CHAT)
+        elif multi:
+            picked = [labels[i] for i in sorted(state["chosen"])] or ([labels[at]] if at < n else [])
+            if picked or typed:
+                event.app.exit(result=", ".join(picked + ([typed] if typed else [])))
+        elif at < n:
+            event.app.exit(result=labels[at])
+        elif typed:
+            event.app.exit(result=typed)
+
+    @keys.add("escape", eager=True)
+    @keys.add("c-c")
+    def _cancel(event: Any) -> None:
+        event.app.exit(result=None)
+
+    @keys.add("backspace")
+    def _back(event: Any) -> None:
+        if state["cursor"] == n:
+            state["typed"] = state["typed"][:-1]
+
+    @keys.add("<any>")
+    def _type(event: Any) -> None:
+        ch = event.data
+        if not ch.isprintable():
+            return
+        if state["cursor"] == n:                       # on the answer row: it all goes into the answer
+            state["typed"] += ch
+        elif ch == " " and multi and state["cursor"] < n:
+            state["chosen"] ^= {state["cursor"]}
+        elif ch.isdigit() and 1 <= int(ch) <= n + 2:   # a row number jumps to that row
+            state["cursor"] = int(ch) - 1
+        elif ch.strip():                               # any other key starts an answer in the user's own words
+            state["cursor"], state["typed"] = n, state["typed"] + ch
+
+    app: Application = Application(layout=Layout(Window(FormattedTextControl(draw), dont_extend_height=True)),
+                                   key_bindings=keys, erase_when_done=True, input=input, output=output)
+    with WATCHER.paused():
+        return app.run()

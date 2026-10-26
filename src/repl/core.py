@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import queue
+
 from src.config import clyde_home
 
 try:
@@ -80,7 +82,9 @@ import threading
 import time
 from contextlib import contextmanager
 import re
+import select
 import sys
+import io
 import json
 from datetime import datetime
 from typing import Any
@@ -117,7 +121,7 @@ from src.tool_system.mcp_client import connect_servers, load_servers, merge_serv
 from src.tool_system.defaults import build_default_registry
 from src.tool_system.protocol import ToolCall
 from src.tool_system.tools.cron import pop_due_jobs
-from src.agent.agent_loop import MAX_TURNS_REPLY, ToolEvent, run_agent_loop, summarize_tool_result, summarize_tool_use
+from src.agent.agent_loop import ToolEvent, run_agent_loop, summarize_tool_result, summarize_tool_use
 
 # New command system imports
 from src.command_system import (
@@ -367,6 +371,10 @@ class ClydeREPL:
     # Esc cancels a running turn or command; prompts pause it (see src/repl/esc.py).
     _esc = WATCHER
 
+    # Input queue: user-typed lines collected while a turn/command is running, so requests
+    # are queued instead of lost. Drained before each prompt.
+    _input_queue: "queue.Queue[str]" = None  # type: ignore[assignment]
+
     def __init__(self, model: str | None = None, stream: bool = False,
                  resume: str | None = None, continue_last: bool = False, debug: bool = False,
                  console: Console | None = None, headless: bool = False):
@@ -384,6 +392,9 @@ class ClydeREPL:
         self._trace_options = {"enabled": session_config.get("trace", True) is not False, "live": debug}
         self.multiline_mode = False
         self.reasoning: str | None = None   # /think level; None keeps each model's default
+        self._input_queue = queue.Queue()   # user-typed lines collected while a turn runs
+        self._input_buffer = ""             # partial line leftover from draining stdin
+        self._input_reader: threading.Thread | None = None   # reads stdin while chat/command runs
 
         keys.load_into_env()
         self.registry = build_registry()
@@ -410,7 +421,7 @@ class ClydeREPL:
         for loaded in self.plugins:
             for warning in loaded.warnings:
                 self.console.print(warning, style="yellow", markup=False)
-        self.tool_context = ToolContext(workspace_root=Path.cwd(), hooks=hooks, permission_rules=load_rules(),
+        self.tool_context = ToolContext(workspace_root=Path.cwd(), hooks=hooks, permission_rules=self._project_rules(Path.cwd()),
                                         output_style_name=get_output_style(), confirm_edits=True)
         self._mcp_servers, self._mcp_errors = servers, {}
         self._connect_mcp_servers(servers)
@@ -603,7 +614,7 @@ class ClydeREPL:
         tools = ToolRegistry([self.tool_registry.get(s.name) for s in self.tool_registry.list_specs() if s.name.lower() not in _NO_NESTING])
         result = run_agent_loop(copy.deepcopy(self.session.conversation), provider, model, tools, context,
                                 max_turns=_COUNCIL_MAX_TURNS, cancel=cancel, reasoning=self.reasoning, system_extra=self.system_extra)
-        if result.response_text == MAX_TURNS_REPLY:
+        if result.ran_out:
             raise ProviderError(provider.name, "ran out of reading turns")
         return ProviderResponse(message=Message.assistant(result.response_text), raw={}, usage=result.usage)
 
@@ -749,6 +760,18 @@ class ClydeREPL:
             options = q.get("options") or []
             multi = bool(q.get("multiSelect", False))
             if not question_text or not isinstance(options, list) or len(options) < 2:
+                continue
+
+            from src.ui import picker
+            if picker._interactive():   # the arrow-key question, as Claude Code draws it; numbers below without a terminal
+                header = str(q.get("header", "")).strip()
+                picked = picker.ask(header, question_text, [o for o in options if isinstance(o, dict)], multi=multi)
+                answers[question_text] = (
+                    "The user would rather talk this over than pick an answer; ask what they have in mind."
+                    if picked == picker.CHAT else
+                    "The user dismissed the question without answering." if picked is None else picked)
+                shown = "chat about it" if picked == picker.CHAT else "no answer" if picked is None else picked
+                self.console.print(Text.assemble(("  ☐ ", "dim"), (header or question_text, "dim"), ("  " + shown, "bold")))
                 continue
 
             self.console.print(f"\n[bold]{question_text}[/bold]")
@@ -920,6 +943,8 @@ class ClydeREPL:
             conversation=self.session.conversation,
             cost_tracker=self.cost_tracker,
             history=self.history_log,
+            provider=self.provider,
+            model=self.model,
         )
 
         # Merge new commands with built-in list for completion
@@ -1207,16 +1232,26 @@ class ClydeREPL:
                     self._run_cron_job(self._cron_queue.pop(0))
                     continue
 
-                self._refresh_completer()
-                # Dynamic prompt based on multiline mode
-                # Using '❯' for a modern feel
-                prefill, self._prefill = getattr(self, "_prefill", ""), ""
-                user_input = self.prompt_session.prompt(
-                    self._prompt_message,
-                    multiline=self.multiline_mode,
-                    pre_run=self._start_cron_watch,
-                    default=prefill,   # /rewind puts the rewound message back for editing
-                )
+                # Use any input typed while the previous turn was running (queued input),
+                # then any newly drained input, before showing a fresh prompt.
+                if not self._input_queue.empty():
+                    user_input = self._input_queue.get()
+                else:
+                    queued = self._drain_queued_input()
+                    if queued:
+                        user_input = queued[0]
+                        for line in queued[1:]:
+                            self._input_queue.put(line)
+                    else:
+                        self._refresh_completer()
+                        # Dynamic prompt based on multiline mode
+                        prefill, self._prefill = getattr(self, "_prefill", ""), ""
+                        user_input = self.prompt_session.prompt(
+                            self._prompt_message,
+                            multiline=self.multiline_mode,
+                            pre_run=self._start_cron_watch,
+                            default=prefill,   # /rewind puts the rewound message back for editing
+                        )
                 if user_input is _CRON_WAKE:
                     continue
                 if user_input.strip():
@@ -1231,11 +1266,17 @@ class ClydeREPL:
                 if user_input.startswith('/'):
                     with self._esc.active():
                         self.handle_command(user_input)
+                    # drain anything typed during the command
+                    for line in self._drain_queued_input():
+                        self._input_queue.put(line)
                     continue
 
                 # Send to LLM; Esc (like Ctrl+C) cancels the turn
                 with self._esc.active():
                     self.chat(user_input)
+                # drain anything typed during the turn
+                for line in self._drain_queued_input():
+                    self._input_queue.put(line)
                 self.multiline_mode = False
 
             except KeyboardInterrupt:
@@ -1253,6 +1294,38 @@ class ClydeREPL:
             self._cron_queue.extend(pop_due_jobs(self.tool_context.crons, self._cron_checked_at, now))
             self._cron_checked_at = now
         return bool(self._cron_queue)
+
+    def _drain_queued_input(self) -> list[str]:
+        """Read any complete lines the user typed while a turn was running.
+
+        Uses select + os.read on stdin (non-blocking), so it returns whatever lines are
+        already sitting in the tty buffer without waiting for more. EscWatcher may be
+        active at the same time (cbreak mode); os.read on the same fd from both threads
+        is safe because select reports readability and each os.read consumes what it gets.
+        Any partial line (no trailing newline) stays in the buffer for the next drain.
+        Returns [] when stdin has no fileno (e.g. under pytest).
+        """
+        lines: list[str] = []
+        try:
+            fd = sys.stdin.fileno()
+        except (OSError, AttributeError, io.UnsupportedOperation):
+            return lines
+        try:
+            while select.select([fd], [], [], 0)[0]:
+                try:
+                    data = os.read(fd, 4096)
+                except OSError:
+                    break
+                if not data:
+                    break
+                text = data.decode("utf-8", errors="replace")
+                self._input_buffer += text
+                while "\n" in self._input_buffer:
+                    line, self._input_buffer = self._input_buffer.split("\n", 1)
+                    lines.append(line.rstrip("\r"))
+        except (OSError, ValueError):
+            pass
+        return lines
 
     def _start_cron_watch(self) -> None:
         """While the prompt is idle and empty, wake it up when a scheduled job comes due."""
@@ -1300,7 +1373,7 @@ class ClydeREPL:
                 'help', 'tools', 'tool',
                 'save', 'load', 'resume', 'multiline', 'stream', 'render-last',
                 'model', 'models', 'think', 'eval',
-                'skill', 'skills', 'mcp', 'debug', 'laya', 'council',
+                'skill', 'skills', 'mcp', 'debug', 'laya', 'council', 'brief', 'orchestrate',
                 'context', 'compact',  # These need special handling
                 'clear', 'reset', 'new',  # also clears the screen and redraws the banner
                 ''
@@ -1452,6 +1525,14 @@ class ClydeREPL:
                 self._pick_model()
             else:
                 self._switch_model(parts[1].strip())
+
+        elif cmd == '/brief' or cmd.startswith('/brief '):
+            from src.repl import orchestrate as orchestrate_ui
+            orchestrate_ui.brief(self, raw.partition(" ")[2])
+
+        elif cmd == '/orchestrate' or cmd.startswith('/orchestrate '):
+            from src.repl import orchestrate as orchestrate_ui
+            orchestrate_ui.orchestrate_cmd(self, raw.partition(" ")[2])
 
         elif cmd == '/models' or cmd.startswith('/models '):
             self._show_models(raw.split(maxsplit=1)[1].strip().lower() if " " in raw.strip() else "")
@@ -1666,7 +1747,7 @@ class ClydeREPL:
             return
         env = skill_scan.llm_env(self.provider, self.model)
         self.console.print("LLM review: " + (f"on, with {model_ref(self.provider, self.model)} (this can take minutes; Ctrl+C stops it)"
-                                             if env else "off (no connected model SkillSpector can use), static scan only"))
+                                             if env else "off (no connected model the scan can use), static scan only"))
         from src.plugins import skill_dirs
 
         root = Path(self.tool_context.cwd or self.tool_context.workspace_root)
@@ -1812,6 +1893,28 @@ class ClydeREPL:
         self.console.print()
         return True
 
+    def _project_rules(self, root: Path) -> dict[str, list[str]]:
+        """The user's permission rules plus this project's .clyde/settings.json ones. Its deny and ask rules apply at once;
+        its allow rules come from the repository, so they apply only once you have said yes to that exact list."""
+        from rich.prompt import Confirm
+        from src.tool_system.permission_rules import (merge_project_rules, project_settings_path, project_trust,
+                                                      set_project_trust)
+        rules, path = load_rules(), project_settings_path(root)
+        if not path.is_file():
+            return rules
+        project = load_rules(path)
+        trusted = bool(project["allow"]) and project_trust(root, project["allow"])
+        if project["allow"] and trusted is None and not self.headless:
+            self.console.print(f"\nThis project's {path.relative_to(root)} lets these run without asking:", highlight=False)
+            for rule in project["allow"]:
+                self.console.print(f"  {rule}", markup=False, highlight=False)
+            trusted = Confirm.ask("They come from the repository. Trust them?", default=False, console=self.console)
+            set_project_trust(root, project["allow"], trusted)
+        elif project["allow"] and trusted is None:
+            self.console.print(f"[yellow]Not using the allow rules in this project's {path.relative_to(root)}: "
+                               "start clyde here interactively once to trust them.[/yellow]")
+        return merge_project_rules(rules, project, bool(trusted))
+
     def _project_mcp_servers(self, root: Path, taken: set[str]) -> dict[str, dict[str, Any]]:
         """The project's .mcp.json servers you've said yes to, asking about any new or changed entry."""
         from rich.prompt import Confirm
@@ -1859,10 +1962,10 @@ class ClydeREPL:
             verdict = skill_scan.check_mcp(name, clients[name].tools)
             if verdict.blocked:
                 clients.pop(name)
-                self.console.print(f"[red]MCP server '{name}' held back: SkillSpector says {verdict.recommendation} "
+                self.console.print(f"[red]MCP server '{name}' held back: the security scan says {verdict.recommendation} "
                                    f"(risk {verdict.score}).[/red] /skills scan shows why; /skills allow mcp:{name} lets it in.")
             elif verdict.recommendation == skill_scan.CAUTION:
-                self.console.print(f"[yellow]MCP server '{name}': SkillSpector says CAUTION (risk {verdict.score}); /skills scan shows why.[/yellow]")
+                self.console.print(f"[yellow]MCP server '{name}': the security scan says CAUTION (risk {verdict.score}); /skills scan shows why.[/yellow]")
         self.tool_context.mcp_clients = {**(self.tool_context.mcp_clients or {}), **clients}
         for warning in register_mcp_tools(self.tool_registry, clients):
             self.console.print(f"[yellow]{warning}[/yellow]", markup=True, highlight=False)
@@ -2228,12 +2331,12 @@ class ClydeREPL:
             with self._current_status, self._ticking(self._current_status, word, turn_started, lambda: not stream_started):
                 result = play()
                 # cardShuffle: a model stuck in its tool loop hands the turn to the next card.
-                while (result.response_text == MAX_TURNS_REPLY and isinstance(self.provider, CardShuffle)
+                while (result.ran_out and isinstance(self.provider, CardShuffle)
                        and self.provider.redeal(f"{self.provider.dealt} hit max tool turns")):
                     result = play()
             self._current_status = None
             self.last_result = result
-            trace.record("turn_end", ran_out=result.response_text == MAX_TURNS_REPLY, rounds=result.num_turns,
+            trace.record("turn_end", ran_out=result.ran_out, rounds=result.num_turns,
                          model=self.provider.dealt if isinstance(self.provider, CardShuffle) else model_ref(self.provider, self.model))
 
             # Record usage to cost tracker; cardShuffle reports each real model it dealt.
@@ -2257,7 +2360,7 @@ class ClydeREPL:
             if self.headless:
                 pass   # `clyde -p` prints the answer itself, on stdout
             else:
-                if result.response_text == MAX_TURNS_REPLY:
+                if result.ran_out:
                     self.console.print(f"[dim]Hit the {max_turns}-tool-turn limit mid-task. Say 'continue' to pick up where it left"
                                        f" off, or raise the limit under /settings → Tool turns.[/dim]", markup=False)
                 if self.stream and stream_started:
@@ -2491,7 +2594,7 @@ class ClydeREPL:
                   ("Goal", self.tool_context.goal or "none"),
                   ("MCP servers", f"{len(clients)} connected, {len(errors)} failed (/mcp)"),
                   ("Plugins", f"{len(self.plugins)} loaded (/plugins)"),
-                  ("SkillSpector", f"{len(skill_scan.cached_verdicts())} scanned, {len(held)} held back (/skills scan)")]
+                  ("Security scan", f"{len(skill_scan.cached_verdicts())} scanned, {len(held)} held back (/skills scan)")]
         settings_screen.show(settings_screen.Snapshot(status, settings_screen.session_usage(getattr(self.cost_tracker, "models", {})),
                                                       settings_screen.skill_footprint(plugins.enabled_plugins())))
 

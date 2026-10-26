@@ -205,6 +205,14 @@ def connect(provider: str, key: str) -> None:
     _write(data)
 
 
+def saved_key(provider: str) -> str | None:
+    """The key `clyde login` saved for `provider`, or None. Unlike the environment, it can't be a stale export."""
+    try:
+        return _load().get(provider) or None
+    except KeysFileError:
+        return None
+
+
 def save_if_missing(provider: str, key: str) -> bool:
     """Persist a key only when none is saved yet (used by the config.json migration)."""
     data = _load()
