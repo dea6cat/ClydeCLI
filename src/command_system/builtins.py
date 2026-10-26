@@ -615,7 +615,7 @@ def doctor_command_call(args: str, context: CommandContext) -> LocalCommandResul
     else:
         lines.append(_check(True, f"Python {running}" + (f" (requires {spec}, not checked)" if spec else "")))
 
-    for dep in ("rich", "prompt-toolkit", "tiktoken", "skillspector"):
+    for dep in ("rich", "prompt-toolkit", "tiktoken"):
         try:
             lines.append(_check(True, f"{dep} {version(dep)}"))
         except PackageNotFoundError:
