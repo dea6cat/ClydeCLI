@@ -28,13 +28,16 @@ def _git(cwd, *args):
 
 class Plan(unittest.TestCase):
     def test_a_role_needs_a_runnable_harness_and_a_model_it_really_has(self):
-        harnesses = [_harness("provider:a", models=("m1", "m2")), _harness("claude", kind="cli", models=("default",))]
+        harnesses = [_harness("provider:a", models=("m1", "m2")), _harness("claude", kind="cli", models=("haiku",)),
+                     _harness("codex", kind="cli", models=())]
         ok = build_plan("t", ("provider:a", "m1"), ("provider:a", "m2"), [("provider:a", "m1"), ("provider:a", "m1")], harnesses)
         self.assertEqual([w.ref for w in ok.workers], ["a:m1", "a:m1"])
         self.assertEqual((ok.master.ref, ok.advisor.ref), ("a:m1", "a:m2"))
         self.assertIn("no model 'zzz'", build_plan("t", ("provider:a", "zzz"), None, [("provider:a", "m1")], harnesses))
         self.assertIn("not found", build_plan("t", ("provider:b", "m"), None, [("provider:a", "m1")], harnesses))
-        self.assertIn("cli harness", build_plan("t", ("provider:a", "m1"), None, [("claude", "default")], harnesses))
+        self.assertEqual(build_plan("t", ("provider:a", "m1"), None, [("claude", "haiku")], harnesses).workers[0].ref, "claude:haiku")
+        self.assertIn("can't run", build_plan("t", ("provider:a", "m1"), None, [("codex", "default")], harnesses))
+        self.assertIn("needs a provider model", build_plan("t", ("claude", "haiku"), None, [("provider:a", "m1")], harnesses))
         self.assertEqual(build_plan("t", ("provider:a", "m1"), None, [], harnesses), "No workers picked.")
 
     def test_a_local_model_in_the_plan_is_called_out(self):
@@ -193,6 +196,19 @@ class EndToEnd(unittest.TestCase):
         asked = [r["conversation"].messages[0].text for r in providers["m"].requests[:2]]
         self.assertNotIn("not the JSON asked for", asked[0])
         self.assertIn("not the JSON asked for", asked[1])
+        land(outcome.run, approve=False)
+
+    def test_on_start_runs_once_the_run_exists_and_before_any_model_call(self):
+        seen = []
+        providers = {"m": FakeProvider(reply('{"tasks": ["a"]}'), reply("ok\nVERDICT: APPROVE"), name="m"), "w1": FakeProvider(reply("x"), name="w1")}
+        plan = build_plan("t", ("provider:m", "m"), None, [("provider:w1", "m")], [_harness(f"provider:{n}") for n in providers])
+
+        def on_start(run):
+            seen.append((run.state()["roles"]["workers"][0]["name"], [e["kind"] for e in run.events()], len(providers["m"].requests)))
+
+        outcome = orchestrate(plan, "s", workspace=self.repo, parent=ToolContext(workspace_root=self.repo),
+                              registry=build_default_registry(), providers=providers, on_start=on_start)
+        self.assertEqual(seen, [("worker-1", ["created"], 0)])
         land(outcome.run, approve=False)
 
     def test_a_worker_that_fails_is_reported_and_the_others_still_finish(self):

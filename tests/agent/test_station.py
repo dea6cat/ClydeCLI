@@ -4,6 +4,7 @@ from __future__ import annotations
 import io
 import tempfile
 import threading
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -67,6 +68,32 @@ class Station(unittest.TestCase):
         thread.join(5)
         self.assertEqual(run.pending(), [])
         self.assertEqual(station.command(self._console(), "approve", run.id), 1)   # nothing left to answer
+
+    def test_every_active_run_is_shown_and_approve_answers_the_oldest_ask_across_them(self):
+        first, second = self._run(), self._run()
+        old = Run.create("long gone", {"master": "a:big", "workers": []})
+        old.set_status("done")
+        stale = Run.create("died with its session", {"master": "a:big", "workers": []})
+        stale.update(status="running", started=time.time() - 7 * 3600)
+        with patch("src.agent.runs.time.time", return_value=time.time() - 7 * 3600):
+            stale.event("clyde", "x")   # its last event is seven hours old
+        threads = []
+        for run in (first, second):
+            threads.append(self._waiting_ask(run))
+            threading.Event().wait(0.02)   # first's ask is older than second's
+        console = self._console()
+        console.print(station._show(station._select(None)))
+        out = self.buffer.getvalue()
+        self.assertIn(first.id, out)
+        self.assertIn(second.id, out)
+        self.assertNotIn(old.id, out)      # finished
+        self.assertNotIn(stale.id, out)    # left over from a dead session
+        self.assertEqual(station.command(self._console(), "approve", None), 0)
+        self.assertEqual(first.pending(), [])        # the oldest ask was the one answered
+        self.assertEqual(len(second.pending()), 1)
+        self.assertEqual(station.command(self._console(), "deny", second.id), 0)   # or name the run
+        for thread in threads:
+            thread.join(5)
 
     def test_ls_and_the_no_runs_message(self):
         console = self._console()

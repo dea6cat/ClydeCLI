@@ -1,10 +1,11 @@
 """`clyde station`: the live state of an orchestration run, read from its files (agent/runs.py).
 
-    clyde station              live view of the newest run, refreshed until it ends (Ctrl-C leaves it running)
+    clyde station              live view of every active run (the newest when none is), refreshed until they settle
     clyde station --once       the same, printed once
     clyde station ls           every run, newest first
-    clyde station watch [id]   the event stream, one line each
-    clyde station approve|deny [id]   answer the oldest pending request of a run
+    clyde station watch [id] [--who NAME]   the event stream, one line each (one team member's with --who)
+    clyde station panes [id]   open a tmux window: the live view and a pane per team member
+    clyde station approve|deny [id]   answer the oldest pending request, across the active runs or in one run
 
 It shows only what the run recorded: a crew member's state comes from its last event, and spend from the ledger.
 """
@@ -13,7 +14,7 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from rich.console import Console
+from rich.console import Console, Group
 from rich.live import Live
 from rich.table import Table
 from rich.text import Text
@@ -42,8 +43,10 @@ def _crew(run: Run) -> list[tuple[str, str, str]]:
         e = last.get(name)
         if e is None:
             doing = "idle"
-        elif e["kind"] in ("tool_use", "tool_error"):
+        elif e["kind"] == "tool_use":
             doing = f"using {e.get('tool', '?')}"
+        elif e["kind"] == "tool_error":
+            doing = f"{e.get('tool', '?')} failed"
         else:
             doing = _STATE.get(e["kind"], e["kind"])
         out.append((name, model, doing))
@@ -65,34 +68,60 @@ def render(run: Run) -> Table:
     return table
 
 
-def _latest(run_id: str | None) -> Run | None:
-    return Run.open(run_id) if run_id else next(iter(Run.all()), None)
+_STALE_S = 6 * 3600   # a run whose last event is older than this is left over from a session that died, not active
 
 
-def command(console: Console, action: str, target: str | None, once: bool = False) -> int:
+def _last_activity(run: Run) -> float:
+    events = run.events()
+    return events[-1]["t"] if events else run.state().get("started", 0)
+
+
+def _active() -> list[Run]:
+    """Every run still going (several /orchestrate runs can be open at once); the newest run when none is."""
+    runs = Run.all()
+    live = [r for r in runs if r.state().get("status") not in _ENDED and time.time() - _last_activity(r) < _STALE_S]
+    return live or runs[:1]
+
+
+def _select(run_id: str | None) -> list[Run]:
+    if run_id:
+        run = Run.open(run_id)
+        return [run] if run else []
+    return _active()
+
+
+def _show(runs: list[Run]) -> Group:
+    return Group(*[render(r) for r in runs])
+
+
+def command(console: Console, action: str, target: str | None, once: bool = False, who: str | None = None) -> int:
     if action == "ls":
         for run in Run.all():
             s = run.state()
             console.print(f"{run.id}  {s.get('status', '?'):18} {(s.get('task') or '')[:60]}", markup=False)
         return 0
-    run = _latest(target)
-    if run is None:
+    runs = _select(target)
+    if not runs:
         console.print("No runs yet. Start one with /orchestrate in clyde.", markup=False)
         return 1
     if action in ("approve", "deny"):
-        pending = run.pending()
-        if not pending:
+        waiting = sorted(((a, r) for r in runs for a in r.pending()), key=lambda pair: pair[0].get("t", 0))
+        if not waiting:
             console.print("Nothing is waiting.", markup=False)
             return 1
-        ask = pending[0]
+        ask, run = waiting[0]   # the oldest request, across every active run
         run.answer(ask["id"], action == "approve")
-        console.print(f"{action}d: {ask['who']} {ask['tool']}", markup=False)
+        console.print(f"{action}d: {ask['who']} {ask['tool']} (run {run.id})", markup=False)
+        return 0
+    if action == "panes":
+        from src.agent import panes
+        console.print(panes.open_panes(runs[0]), markup=False)
         return 0
     if action == "watch":
-        seen = 0
+        run, seen = runs[0], 0
         try:
             while True:
-                events = run.events()
+                events = [e for e in run.events() if who is None or e["who"] == who]
                 for e in events[seen:]:
                     detail = e.get("tool") or e.get("status") or e.get("note") or ""
                     console.print(f"{time.strftime('%H:%M:%S', time.localtime(e['t']))} {e['who']:10} {e['kind']} {detail}", markup=False)
@@ -103,14 +132,15 @@ def command(console: Console, action: str, target: str | None, once: bool = Fals
         except KeyboardInterrupt:
             return 0
     if once:
-        console.print(render(run))
+        console.print(_show(runs))
         return 0
     try:
-        with Live(render(run), console=console, refresh_per_second=2) as live:
-            while run.state().get("status") not in _SETTLED:
+        with Live(_show(runs), console=console, refresh_per_second=2) as live:
+            while any(r.state().get("status") not in _SETTLED for r in runs):
                 time.sleep(0.5)
-                live.update(render(run))
-            live.update(render(run))
+                runs = _select(target)   # a run started meanwhile joins the view
+                live.update(_show(runs))
+            live.update(_show(runs))
     except KeyboardInterrupt:
         pass
     return 0

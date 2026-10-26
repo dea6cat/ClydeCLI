@@ -23,7 +23,8 @@ from typing import Any, Callable
 
 from src.agent.agent_types import GENERAL, AgentType
 from src.agent.conversation import Conversation as History
-from src.agent.harness import LOCAL_PROVIDERS, RUNNABLE_KINDS, Harness, discover_all, harness_by_name
+from src.agent import cli_workers
+from src.agent.harness import LOCAL_PROVIDERS, RUNNABLE_KINDS, Harness, can_work, discover_all, harness_by_name
 from src.agent.runs import Run, outbox_dir
 from src.providers.base import stream_with_retry
 from src.providers.types import Conversation, Message
@@ -92,8 +93,10 @@ def build_plan(task: str, master: Picks | None, advisor: Picks | None, workers: 
         harness = harness_by_name(harnesses, name)
         if harness is None:
             return f"{role.capitalize()} '{name}' not found. Run /harness list."
-        if harness.kind not in RUNNABLE_KINDS:
-            return f"{name} is a {harness.kind} harness; Clyde can run provider models as {role} for now."
+        if role == "master" and harness.kind not in RUNNABLE_KINDS:
+            return f"{name} is a {harness.kind} harness; the master needs a provider model (an agent CLI can advise or work)."
+        if not can_work(harness):
+            return f"{name} is a {harness.kind} harness Clyde can't run as a {role} yet."
         if model not in [m.model_id for m in harness.models]:
             return f"{name} has no model '{model}'. Run /harness {name}."
         return RoleAssignment(role, harness, model)
@@ -178,18 +181,53 @@ def _worker_context(parent: ToolContext, worktree: Path, run: Run, name: str, ca
     )
 
 
+_NOISE = ":(exclude).aider*"   # aider's caches and histories are never the worker's work
+
+
 def _snapshot(worktree: Path) -> tuple[str, list[str]]:
     """(patch, changed files) of everything the worker did, tracked or new."""
-    _git(worktree, "add", "-A")
-    patch = _git(worktree, "diff", "--cached", "--binary", "--no-ext-diff", "--no-textconv", "HEAD")
+    _git(worktree, "add", "-A", "--", ".", _NOISE)
+    patch = _git(worktree, "diff", "--cached", "--binary", "--no-ext-diff", "--no-textconv", "HEAD", "--", ".", _NOISE)
     return patch, _changed_files(worktree)
 
 
 def _changed_files(tree: Path) -> list[str]:
     try:
-        return [f for f in _git(tree, "diff", "--cached", "--name-only", "-z", "HEAD").split("\0") if f]
+        return [f for f in _git(tree, "diff", "--cached", "--name-only", "-z", "HEAD", "--", ".", _NOISE).split("\0") if f]
     except (RuntimeError, OSError):
         return []
+
+
+def _run_cli(run: Run, name: str, role: RoleAssignment, prompt: str, cwd: Path, cancel: threading.Event, advisor: bool) -> Any:
+    """An agent CLI as a team member: run it under its contract (files only for a worker, advice only for the advisor)
+    and record what it reports."""
+    run.event(name, "constraint", note=cli_workers.constraint(role.provider_name, advisor))
+
+    def emit(kind: str, tool: str, tool_input: Any) -> None:
+        run.event(name, kind, tool=tool, input=json.dumps(tool_input or {}, default=str)[:200])
+
+    runner = cli_workers.RUNNERS[role.provider_name]
+    extra = {"advisor": True} if advisor else {}
+    result = runner(role.harness.binary or role.provider_name, role.model, prompt, cwd, run.worker_dir(name), cancel, emit, **extra)
+    run.spend(name, role.ref, result.usage, result.usd, always=True)
+    return result
+
+
+def _work_cli(run: Run, name: str, role: RoleAssignment, prompt: str, worktree: Path, cancel: threading.Event) -> Any:
+    return _run_cli(run, name, role, prompt, worktree, cancel, advisor=False)
+
+
+def _advise(run: Run, role: RoleAssignment, provider: Any, prompt: str, cancel: threading.Event, notes: list[str]) -> str:
+    """The advisor's review: a model call, or an agent CLI run in an empty folder where it can only answer."""
+    if role.harness.kind != "cli":
+        return _model_text(provider, role.model, REVIEW_SYSTEM, prompt, run, "advisor")
+    empty = run.worker_dir("advisor") / "cwd"
+    empty.mkdir(exist_ok=True)
+    result = _run_cli(run, "advisor", role, f"{REVIEW_SYSTEM}\n\n{prompt}", empty, cancel, advisor=True)
+    if not result.ok:
+        notes.append(f"The advisor ({role.ref}) failed, so the report has no review: {result.summary[:150]}")
+        return "(the advisor failed)"
+    return result.summary
 
 
 def _work(run: Run, name: str, role: RoleAssignment, provider: Any, prompt: str, worktree: Path,
@@ -204,13 +242,20 @@ def _work(run: Run, name: str, role: RoleAssignment, provider: Any, prompt: str,
             run.event(name, event.kind, tool=event.tool_name, input=json.dumps(event.tool_input or {}, default=str)[:200])
 
     try:
-        context = _worker_context(parent, worktree, run, name, cancel, provider, role.model)
-        agent = AgentType(GENERAL, "orchestrated worker", prompt=WORKER_PROMPT)
-        result, _ = run_agent(registry, context, agent, prompt, cancel=cancel, conversation=history, on_event=on_event)
-        out["summary"] = result.response_text or ""
-        run.spend(name, role.ref, result.usage)
+        if role.harness.kind == "cli":
+            result = _work_cli(run, name, role, prompt, worktree, cancel)
+            out["summary"] = result.summary
+            out["ok"] = result.ok
+        else:
+            context = _worker_context(parent, worktree, run, name, cancel, provider, role.model)
+            agent = AgentType(GENERAL, "orchestrated worker",
+                              prompt=f"{WORKER_PROMPT}\nYour worktree is {worktree}. Work only there and use paths relative to it.")
+            result, _ = run_agent(registry, context, agent, prompt, cancel=cancel, conversation=history, on_event=on_event)
+            out["summary"] = result.response_text or ""
+            run.spend(name, role.ref, result.usage)
+            out["ok"] = True
         out["patch"], out["files"] = _snapshot(worktree)
-        out["ok"] = not cancel.is_set()
+        out["ok"] = out["ok"] and not cancel.is_set()
     except Exception as e:   # a provider error, a stopped request: the run goes on without this worker
         out["summary"] = f"{type(e).__name__}: {e}"
     folder = run.worker_dir(name)
@@ -224,9 +269,10 @@ def _work(run: Run, name: str, role: RoleAssignment, provider: Any, prompt: str,
 
 def orchestrate(plan: OrchestrationPlan, spec: str, *, workspace: Path, parent: ToolContext, registry: Any,
                 providers: dict[str, Any], on_approval: Callable[[dict[str, Any]], bool] | None = None,
-                cancel: threading.Event | None = None) -> Outcome | str:
+                cancel: threading.Event | None = None, on_start: Callable[[Run], None] | None = None) -> Outcome | str:
     """Run the plan to the point where the user decides. `on_approval(ask)` answers a worker's request from the
-    caller's thread (None: every request is denied). Returns an Outcome, or the reason it could not start."""
+    caller's thread (None: every request is denied). `on_start(run)` is called once the run exists, before any model call.
+    Returns an Outcome, or the reason it could not start."""
     root = repo_root(workspace)
     if isinstance(root, str):
         return root
@@ -235,9 +281,11 @@ def orchestrate(plan: OrchestrationPlan, spec: str, *, workspace: Path, parent: 
     run = Run.create(plan.task, {"master": plan.master.ref, "advisor": plan.advisor.ref if plan.advisor else None,
                                  "workers": [{"name": n, "model": w.ref} for n, w in zip(names, plan.workers)]})
     run.update(spec=spec, repo=str(root), workspaces={})
+    if on_start:
+        on_start(run)   # e.g. open the tmux panes: the run and its team are already recorded
 
     def provider_of(role: RoleAssignment) -> Any:
-        return providers[role.provider_name]
+        return None if role.harness.kind == "cli" else providers[role.provider_name]   # a CLI brings its own model access
 
     try:
         run.event("master", "splitting")
@@ -266,7 +314,7 @@ def orchestrate(plan: OrchestrationPlan, spec: str, *, workspace: Path, parent: 
         if serial:
             run.event("clyde", "serialized", note="a local model is among the workers: one at a time")
         with ThreadPoolExecutor(max_workers=1 if serial else len(names)) as pool:
-            futures = [pool.submit(_work, run, n, w, provider_of(w), f"{t}\n\nOverall spec, for context:\n{spec}",
+            futures = [pool.submit(_work, run, n, w, provider_of(w), f"{t}\n\nThe overall spec, for context only. The other workers cover the rest: do only your task above.\n{spec}",
                                    Path(workspaces[n]["path"]), parent, registry, cancel)
                        for n, w, t in zip(names, plan.workers, split)]
             while not all(f.done() for f in futures):
@@ -289,8 +337,7 @@ def orchestrate(plan: OrchestrationPlan, spec: str, *, workspace: Path, parent: 
         review = ""
         if plan.advisor:
             run.event("advisor", "reviewing")
-            review = _model_text(provider_of(plan.advisor), plan.advisor.model, REVIEW_SYSTEM,
-                                 f"Spec:\n{spec}\n\nWorkers:\n{digest}", run, "advisor")
+            review = _advise(run, plan.advisor, provider_of(plan.advisor), f"Spec:\n{spec}\n\nWorkers:\n{digest}", cancel, notes)
             (run.root / "advisor.md").write_text(review, encoding="utf-8")
             run.event("advisor", "reviewed")
         run.event("master", "reporting")
