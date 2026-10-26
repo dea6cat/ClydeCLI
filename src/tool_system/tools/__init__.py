@@ -10,6 +10,7 @@ from .edit import FileEditTool
 from .glob import GlobTool
 from .grep import GrepTool
 from .code_map import MapTool
+from .context_retrieve import RetrieveContextTool
 from .lsp import LSPTool
 from .mcp import MCPTool
 from .memory import RememberTool
@@ -53,6 +54,7 @@ __all__ = [
     "GlobTool",
     "GrepTool",
     "MapTool",
+    "RetrieveContextTool",
     "LSPTool",
     "MCPTool",
     "ListMcpResourcesTool",

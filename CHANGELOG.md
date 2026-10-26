@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Context cuts can be read back. When an instruction file, the README excerpt or git status is too long for the context prompt, the part left out used to be gone; now its full text is kept for 7 days in `~/.clyde/context_cache/` and the cut ends with a reference the new `RetrieveContext` tool reads. Every repo measured had at least one such cut, the global CLAUDE.md among them. The reference is a hash of the text, so the prompt stays byte-identical turn to turn. `/context` adds a section table: tokens, whether each section changed since the last turn, where the provider's prompt cache stops, and the references.
 - Answer a permission prompt in your own words: a model reads only your reply and allows the action when it is a plain yes ("sure, go ahead", "dale"). Anything else, a no, a question or a yes with a condition, holds that action and reaches Clyde as your words at its next step. The check is capped at 15 s and fails closed. In Bonnie, type the answer while the card waits and press Steer. It comes from the Discord bridge that was not kept. Live on Qwen2.5-Coder-3B: 12 of 12 replies read right, 0.1 s each.
 
 ### Changed

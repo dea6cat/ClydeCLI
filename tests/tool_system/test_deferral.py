@@ -166,7 +166,7 @@ class TestLocalToolRouting(unittest.TestCase):
     def test_a_review_prompt_gets_only_the_reading_tools(self):
         from src.tool_system.deferral import local_tools
         self.assertEqual(local_tools("ok so I want you to review the implementation with totp token in this project"),
-                         frozenset({"read", "grep", "glob", "toolsearch"}))
+                         frozenset({"read", "grep", "glob", "toolsearch", "retrievecontext"}))
 
     def test_what_the_prompt_asks_for_adds_its_tools(self):
         from src.tool_system.deferral import local_tools

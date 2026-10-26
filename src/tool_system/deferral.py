@@ -22,8 +22,9 @@ from .registry import ToolSpec
 CORE_TOOLS = frozenset(name.lower() for name in (
     "Bash", "Read", "Write", "Edit", "Glob", "Grep", "WebFetch", "WebSearch", "TodoWrite", "Agent", "Skill",
     "AskUserQuestion", "EnterPlanMode", "ExitPlanMode", "SendUserMessage", "StructuredOutput", "ToolSearch", "Remember",
+    "RetrieveContext",   # the context prompt points at it whenever a section was cut
 ))
-LOCAL_BASE = frozenset({"read", "grep", "glob", "toolsearch"})
+LOCAL_BASE = frozenset({"read", "grep", "glob", "toolsearch", "retrievecontext"})
 _INTENTS = (
     (re.compile(r"\b(edit|change|fix|write|create|add|implement|refactor|rename|update|delete|remove|rewrite|replace|patch|migrate)\b", re.I), ("edit", "write")),
     (re.compile(r"\b(run|runs|running|test|tests|build|install|execute|compile|git|commit|lint|format|script|command|terminal|shell|npm|pip|uv|flutter|dart)\b", re.I), ("bash",)),

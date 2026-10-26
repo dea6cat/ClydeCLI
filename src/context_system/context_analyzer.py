@@ -61,6 +61,7 @@ class ContextData:
     api_usage: Optional[dict[str, int]] = None
     auto_compact_threshold: Optional[int] = None
     is_auto_compact_enabled: bool = False
+    sections: list[dict[str, Any]] = field(default_factory=list)   # builder.section_report(): the context prompt's parts
 
 
 def get_context_window_for_model(model: str) -> int:
@@ -347,6 +348,25 @@ def format_context_as_markdown(data: ContextData) -> str:
         lines.append("### Skills")
         lines.append("")
         lines.append(f"**Total skills:** {data.skills_count} ({data.skills_tokens:,} tokens)")
+        lines.append("")
+
+    # Context prompt sections, in prompt order: what the provider's prompt cache can reuse
+    if data.sections:
+        lines.append("### Context sections (prompt cache)")
+        lines.append("")
+        lines.append("| Section | Tokens | Since last turn | Cache-aligned | Cut, full text at |")
+        lines.append("|---------|--------|-----------------|---------------|-------------------|")
+        for s in data.sections:
+            since = "-" if s["stable"] is None else "same" if s["stable"] else "changed"
+            lines.append(f"| {s['name']} | {s['tokens']:,} | {since} | {'yes' if s['aligned'] else 'no'} | "
+                         f"{', '.join(s['refs']) or '-'} |")
+        changed = next((s["name"] for s in data.sections if s["stable"] is False), None)
+        if changed:
+            lines.append("")
+            lines.append(f"The cache stops at **{changed}**: it and every section after it are prefilled again each turn.")
+        if any(s["refs"] for s in data.sections):
+            lines.append("")
+            lines.append("Cut sections keep their full text for 7 days; the model reads it with RetrieveContext.")
         lines.append("")
 
     # API Usage

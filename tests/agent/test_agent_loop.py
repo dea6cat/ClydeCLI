@@ -44,7 +44,7 @@ class TestAgentLoop(unittest.TestCase):
         conversation.add_user_message("review the login code")
         self._run(provider, conversation)
         sent = {t["name"].lower() if isinstance(t, dict) else t.name.lower() for t in provider.requests[0]["tools"]}
-        self.assertEqual(sent, {"read", "grep", "glob", "toolsearch"})
+        self.assertEqual(sent, {"read", "grep", "glob", "toolsearch", "retrievecontext"})
 
     def _system_prompt_sent(self, provider_name, model):
         provider = FakeProvider(reply("done"), name=provider_name, models=(model,))
