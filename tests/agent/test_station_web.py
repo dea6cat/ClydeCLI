@@ -337,6 +337,15 @@ class TestPage(unittest.TestCase):
         for needle in ('id="stopRun"', '"Stop run"', 'api("/api/stop"', "function openStop", "stop_requested"):
             self.assertIn(needle, page)
 
+    def test_a_piece_the_layout_shows_from_behind_has_its_back_picture(self):
+        from pathlib import Path
+        art = Path(station_web.__file__).parent / "station_art"
+        self.assertIn('f.back ? "-back"', station_web.PAGE)
+        self.assertIn("back: true", station_web.PAGE)
+        self.assertIn("a workshop's south and east edges are low glass walls too", station_web.PAGE)
+        for name in ("file-cabinet", "writer-desk", "safe", "radio", "switchboard", "cupboard"):   # the six a workshop is furnished with
+            self.assertTrue((art / f"furn-{name}-back.png").is_file(), name)
+
     def test_the_scene_is_built_with_svg_nodes_and_text_and_a_private_window_cannot_break_the_page(self):
         page = station_web.PAGE
         self.assertIn("createElementNS", page)

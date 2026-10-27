@@ -622,10 +622,25 @@ function shade(hex, pct) {
 function hash(a, b) { let h = Math.imul(a | 0, 374761393) + Math.imul(b | 0, 668265263) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; }
 const BAY_SIZES = [[12, 12], [13, 12], [12, 13], [13, 13]];   // workshop sizes in tiles, so neighbours differ
 const PIECES = [["read", 1.6, 1.1], ["write", 2.4, 1.2], ["mcp", 1.6, 1.1], ["shell", 1.5, 1.2], ["web", 1.4, 1.1], ["other", 1.5, 1.1]];   // [family, length along the wall, depth]
-function bayLayout(i, wall) {   // a workshop floor plan: every one-sided piece against the north or west wall (the pictures only show a front), the door on `wall`, and a clear lane from the door across the room
-  const [w, d] = BAY_SIZES[i % BAY_SIZES.length], vertical = wall !== "e", door = vertical ? w - 2.6 : d - 2.6, slots = {}, lane = (a, b) => a < door + 1.5 && b > door - 1.5;
+const AT_WEST_END = ["write", "mcp"];   // on the south wall these stand at its west end, the others at its east end
+// Every back picture has its back on the right: so against the south wall (back toward down-left) it is mirrored, against the east wall (back toward down-right) it is not.
+const BACK_PAIRS = [["other", "web"], ["mcp", "shell"], ["write", "read"]];   // which two pieces of a workshop show their back, on the south and east walls; by room number, so neighbours differ
+function bayLayout(i, wall) {   // a workshop floor plan: every one-sided piece against the north or west wall (the pictures only show a front), but a piece with a back picture against the south wall, the door on `wall`, and a clear lane from the door across the room
+  const [onSouth, onEast] = BACK_PAIRS[i % BACK_PAIRS.length], [w, d] = BAY_SIZES[i % BAY_SIZES.length], vertical = wall !== "e", door = vertical ? w - 2.6 : d - 2.6, slots = {}, lane = (a, b) => a < door + 1.5 && b > door - 1.5;
   let cx = 2.2, cy = 2.0;   // the north row starts clear of the west column
   for (const [f, len, dep] of PIECES) {
+    if (f === onSouth) {   // against the south wall, turned into the room, so it shows its back
+      let sx = AT_WEST_END.includes(f) ? 2.2 : w - 0.5 - len - 1.0;
+      if (vertical && lane(sx, sx + len)) sx = door - 1.6 - len;   // the south wall holds the entry, or the way on to the next workshop in the arm
+      slots[f] = { box: [sx, d - 0.15 - dep, len, dep], stand: [sx + len / 2, d - 0.15 - dep - 1.0], back: true, flip: true };
+      continue;
+    }
+    if (f === onEast) {   // against the east wall, the same
+      let ey = 3.4;
+      if (!vertical && lane(ey, ey + len)) ey = door - 1.6 - len;   // the east wall holds the entry of a workshop on the east arm
+      slots[f] = { box: [w - 0.15 - dep, ey, dep, len], stand: [w - 0.15 - dep - 1.0, ey + len / 2], back: true, flip: false };
+      continue;
+    }
     if (vertical && lane(cx, cx + len)) cx = door + 1.6;
     if (cx + len <= w - 0.5) { slots[f] = { box: [cx, 0.15, len, dep], stand: [cx + len / 2, 0.15 + dep + 1.0] }; cx += len + 0.5; continue; }
     if (!vertical && lane(cy, cy + len)) cy = door + 1.6;
@@ -690,7 +705,7 @@ function plan(layout) {
   const LAND = Math.min(20, 3 + 0.55 * (Object.keys(rooms).length + corridors.length));   // how far the island reaches past the rooms: more rooms and hallways, more land
   const furniture = [], props = [], prop = (kind, x, y, size) => props.push({ kind, x, y, size, f: 0 });
   for (const r of bayRooms) {
-    for (const o of r.src.objects) { const s = r.tpl.slots[o.family]; if (s) furniture.push({ room: r, family: o.family, obj: o, box: [r.x + s.box[0], r.y + s.box[1], s.box[2], s.box[3]] }); }
+    for (const o of r.src.objects) { const s = r.tpl.slots[o.family]; if (s) furniture.push({ room: r, family: o.family, obj: o, box: [r.x + s.box[0], r.y + s.box[1], s.box[2], s.box[3]], back: s.back, flip: s.flip }); }
     for (const q of r.tpl.props) prop(q[0], r.x + q[1], r.y + q[2]);
   }
   const dk = layout.rooms.find((r) => r.id === "deck");
@@ -910,7 +925,9 @@ const FURN = { read: "file-cabinet", write: "writer-desk", shell: "safe", web: "
 function furnitureSprite(f, pal, now, defs, uid) {
   const g = sv("g", {}), [x, y, w, d] = f.box, o = f.obj, fl = f.room.f, id = "fg" + uid + f.family + Math.round(x * 3 + y * 5) + fl, fresh = o && o.last && now - o.last < 4;
   const lit = fresh || (f.family === "approvals" && o && o.pending) || (f.family === "crate" && o && o.state === "landed") || (f.lane && f.laneState === "lit") || f.family === "bar";
-  const name = "furn-" + FURN[f.family] + (lit ? "-on" : "-off"), [sw, sh] = SPR[name], c = at(x + w / 2, y + d / 2, fl), wpx = Math.max(30, (w + d) * HX * 0.62), hpx = wpx * sh / sw, by = c[1] + (w + d) * HY / 2;
+  const name = "furn-" + FURN[f.family] + (f.back ? "-back" : lit ? "-on" : "-off"), [sw, sh] = SPR[name], [fw, fh] = SPR["furn-" + FURN[f.family] + "-off"], c = at(x + w / 2, y + d / 2, fl), by = c[1] + (w + d) * HY / 2;
+  let wpx = Math.max(30, (w + d) * HX * 0.62), hpx = wpx * sh / sw;
+  if (f.back) { hpx = wpx * fh / fw; wpx = hpx * sw / sh; }   // from behind it stands as tall as its front picture does
   poly(g, quad(x, y, w, d, fl), "#000", { opacity: 0.3, filter: FX.soft });
   const pic = sprite(name, c[0] - wpx / 2, by - hpx, wpx, hpx);
   if (facesDownLeft(f)) pic.setAttribute("transform", "translate(" + (2 * c[0]).toFixed(1) + " 0) scale(-1 1)");
@@ -1050,6 +1067,11 @@ function buildScene(run) {
     g.append(sv("title", {}, tip));
     if (f.obj) described.push((f.room.kind === "bay" ? words.bay + " " + number(f.room.id) : f.room.kind === "deck" ? words.deck : words.outbox) + ": " + tip);
     dyn.push({ el: g, depth: () => f.box[0] + f.box[2] / 2 + f.box[1] + f.box[3] / 2 });
+  }
+  for (const r of p.bayRooms) {   // a workshop's south and east edges are low glass walls too, all along, with the doorways left open; drawn in front of what stands behind them (glass: it is still seen through), piece by piece so people and furniture sort correctly
+    const gaps = (side) => doorsOf(p, r).filter((d) => d[0] === side).map((d) => [d[1], d[2]]);
+    for (const [a, b] of wallRuns(r.x, r.x + r.w, gaps("s"))) for (let u = a; u < b - 0.01; u += 2) { const e = Math.min(b, u + 2), wall = sv("g", {}); wallRun(wall, "y", r.y + r.d, u, e, "glass"); dyn.push({ el: wall, depth: () => (u + e) / 2 + r.y + r.d + 0.2 }); }
+    for (const [a, b] of wallRuns(r.y, r.y + r.d, gaps("e"))) for (let u = a; u < b - 0.01; u += 2) { const e = Math.min(b, u + 2), wall = sv("g", {}); wallRun(wall, "x", r.x + r.w, u, e, "glass"); dyn.push({ el: wall, depth: () => r.x + r.w + (u + e) / 2 + 0.2 }); }
   }
   for (const q of p.props) dyn.push({ el: propSprite(q, pal, defs, uid), depth: () => q.x + q.y + 0.3 });
   const deck = layout.rooms.find((r) => r.id === "deck"), cards = {};
