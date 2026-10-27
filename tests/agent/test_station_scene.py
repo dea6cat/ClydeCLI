@@ -27,7 +27,7 @@ const code = fs.readFileSync(process.argv[2], "utf8");
 const reduced = process.argv[3] === "reduced";
 const ctx = { Math, console, parseInt, REDUCED: reduced };
 vm.createContext(ctx);
-vm.runInContext(code + "\nthis.__api = { plan, bounds, family, workerTrips, orchestratorTrips, walkerState, tripState, tripEnd };", ctx);
+vm.runInContext(code + "\nthis.__api = { QUIET, plan, bounds, family, workerTrips, orchestratorTrips, walkerState, tripState, tripEnd };", ctx);
 const A = ctx.__api, fails = [];
 const FAMILIES = ["read", "write", "shell", "web", "mcp", "other"];
 const bay = (i) => ({ id: "worker-" + i, kind: "bay", members: [], objects: FAMILIES.map((f) => ({ family: f, tools: [f], used: 0, asked: 0, allowed: 0, denied: 0, failed: 0, last: null })) });
@@ -36,20 +36,20 @@ const layoutFor = (n) => ({ rooms: [{ id: "deck", kind: "deck", members: [], obj
 const inside = (r, x, y, e) => x > r.x - e && x < r.x + r.w + e && y > r.y - e && y < r.y + r.d + e;
 const overlap = (a, b) => Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x) > 0.01 && Math.min(a.y + a.d, b.y + b.d) - Math.max(a.y, b.y) > 0.01;
 const boxOf = (b) => ({ x: b[0], y: b[1], w: b[2], d: b[3] });
-const propBox = (p) => p[0] === "bookcase" ? { x: p[1], y: p[2], w: 0.9, d: p[3] || 3.4 } : { x: p[1] - 0.45, y: p[2] - 0.45, w: 0.9, d: 0.9 };
+const propBox = (q) => q.kind === "bookcase" ? { x: q.x, y: q.y, w: 0.9, d: q.size || 3.4 } : { x: q.x - 0.45, y: q.y - 0.45, w: 0.9, d: 0.9 };
 const LAYOUT = [], MOTION = [];
-for (const n of [1, 2, 3, 5]) {
+for (const n of [1, 2, 3, 4, 5, 7]) {
   const p = A.plan(layoutFor(n)), tag = "n=" + n + ": ";
-  const solids = [...p.furniture.map((f) => ({ what: f.family + " in " + f.room.id, ...boxOf(f.box) })), ...p.props.map((q) => ({ what: q[0] + " near " + q[1].toFixed(1) + "," + q[2].toFixed(1), ...propBox(q) }))];
+  const solids = [...p.furniture.map((f) => ({ what: f.family + " in " + f.room.id, ...boxOf(f.box) })), ...p.props.map((q) => ({ what: q.kind + " near " + q.x.toFixed(1) + "," + q.y.toFixed(1), ...propBox(q) }))];
   // 1. every path a person can take is clear of every solid
   const paths = [];
   for (const r of p.bayRooms) {
-    paths.push(["door to worker in " + r.id, [[r.x + p.BW / 2, r.y], p.homes[r.id]]]);
+    paths.push(["door to worker in " + r.id, [r.entry, p.homes[r.id]]]);
     for (const f of FAMILIES) paths.push([r.id + " to " + f, [p.homes[r.id], p.stands[r.id + ":" + f]]]);
     paths.push([r.id + " check spot", [p.homes[r.id], p.checkStands[r.id]]]);
     for (const who of ["clyde", "bonnie"]) paths.push([who + " to " + r.id, p.route("deck", p.homes[who], r.id, p.checkStands[r.id])]);
   }
-  for (const who of ["clyde", "bonnie"]) paths.push([who + " to the outbox", p.route("deck", p.homes[who], "outbox", p.checkStands.outbox)]);
+  for (const who of ["clyde", "bonnie"]) paths.push([who + " to the outbox", p.route("deck", p.homes[who], "outbox", p.checkStands.outbox)], [who + " to the bar", p.route("deck", p.homes[who], "bar", p.barSpots[who])], [who + " back from the bar", p.route("bar", p.barSpots[who], "deck", p.homes[who])]);
   paths.push(["master to clyde", [p.homes.master, p.homes.clyde]], ["advisor to clyde", [p.homes.advisor, p.homes.clyde]]);
   for (const [name, pts] of paths) for (let i = 1; i < pts.length; i++) {
     const a = pts[i - 1], b = pts[i], len = Math.hypot(b[0] - a[0], b[1] - a[1]);
@@ -57,6 +57,14 @@ for (const n of [1, 2, 3, 5]) {
       const x = a[0] + (b[0] - a[0]) * t / len, y = a[1] + (b[1] - a[1]) * t / len;
       for (const s of solids) if (inside(s, x, y, 0.25)) { LAYOUT.push(tag + name + " passes through " + s.what); break; }
     }
+  }
+  // 1b. a worker stands beside the furniture for a tool, and looks at it
+  for (const r of p.bayRooms) for (const f of FAMILIES) {
+    const st = p.stands[r.id + ":" + f], piece = p.furniture.find((q) => q.room.id === r.id && q.family === f), b = boxOf(piece.box);
+    const gap = Math.hypot(Math.max(b.x - st[0], 0, st[0] - (b.x + b.w)), Math.max(b.y - st[1], 0, st[1] - (b.y + b.d)));
+    if (gap > 2.4) LAYOUT.push(tag + "the stand for " + f + " in " + r.id + " is " + gap.toFixed(1) + " tiles from its furniture");
+    const trip = A.workerTrips([{ t: 1001, who: r.id, kind: "tool_use", tool: { read: "Read", write: "Edit", shell: "Bash", web: "WebFetch", mcp: "mcp__x", other: "Foo" }[f] }], r.id, p, 1000)[0], to = [b.x + b.w / 2 - st[0], b.y + b.d / 2 - st[1]];
+    if (!trip || trip.face[0] * to[0] + trip.face[1] * to[1] <= 0) LAYOUT.push(tag + r.id + " does not face its " + f + " furniture");
   }
   // 2. nothing stands inside another thing, and everything is inside its room
   for (let i = 0; i < solids.length; i++) for (let j = i + 1; j < solids.length; j++) if (overlap(solids[i], solids[j])) LAYOUT.push(tag + solids[i].what + " overlaps " + solids[j].what);
@@ -68,7 +76,7 @@ for (const n of [1, 2, 3, 5]) {
     if (i) for (let t = 0; t <= 1; t += 0.1) if (!onFloor(line[i - 1][0] + (line[i][0] - line[i - 1][0]) * t, line[i - 1][1] + (line[i][1] - line[i - 1][1]) * t)) { LAYOUT.push(tag + "lane " + id + " leaves the floor"); break; }
   }
   // 4. corridors meet the doors and never run through a room
-  for (const r of p.bayRooms) if (!p.corridors.some((c) => Math.abs(c.x - (r.x + p.BW / 2 - 1)) < 1e-6 && c.w === 2 && Math.abs(c.y + c.d - r.y) < 1e-6)) LAYOUT.push(tag + "no corridor ends at the door of " + r.id);
+  for (const r of p.bayRooms) if (!p.corridors.some((c) => inside(c, r.entry[0], r.entry[1], 0.01))) LAYOUT.push(tag + "no corridor ends at the door of " + r.id);
   for (const c of p.corridors) for (const r of Object.values(p.rooms)) if (overlap(c, r)) LAYOUT.push(tag + "a corridor runs through " + r.id);
   const roomList = Object.values(p.rooms);
   for (const a of roomList) for (const b of roomList) if (a.id < b.id && overlap(a, b)) LAYOUT.push(tag + a.id + " overlaps " + b.id);
@@ -98,13 +106,46 @@ const checks = [ev(1001, "clyde", "check", { target: "worker-1", reason: "brief"
 const clyde = A.orchestratorTrips(checks, "clyde", p, live), bonnie = A.orchestratorTrips(checks, "bonnie", p, live);
 if (clyde.length !== 2 || bonnie.length !== 1) MOTION.push("checks became " + clyde.length + " and " + bonnie.length + " trips (history must not replay)");
 if (clyde.length === 2 && clyde[1].t0 < A.tripEnd(clyde[0]) - 1e-9) MOTION.push("Clyde started a second walk before finishing the first");
-const door = [p.rooms["worker-1"].x + p.BW / 2, p.rooms["worker-1"].y];
+const door = p.rooms["worker-1"].entry;
 if (clyde.length && !clyde[0].go.some((q) => Math.hypot(q[0] - door[0], q[1] - door[1]) < 2.5)) MOTION.push("Clyde's walk to worker-1 does not pass its door");
 const homeAgain = A.walkerState(clyde, p.homes.clyde, 1500);
 if (Math.hypot(homeAgain.pos[0] - p.homes.clyde[0], homeAgain.pos[1] - p.homes.clyde[1]) > 1e-6) MOTION.push("Clyde did not end at home");
 const landed = A.orchestratorTrips([ev(1005, "user", "landed", { outbox: "/x" })], "clyde", p, live);
 const end = landed.length ? landed[0].go[landed[0].go.length - 1] : [0, 0];
 if (landed.length !== 1 || Math.hypot(end[0] - p.checkStands.outbox[0], end[1] - p.checkStands.outbox[1]) > 1e-6) MOTION.push("landing did not send Clyde to the outbox");
+// 7. a quiet spell: Clyde and Bonnie go to the bar together, not before QUIET seconds with nothing recorded, and a record ends it after the leg they are on
+const quietEvents = [ev(1001, "worker-1", "tool_use", { tool: "Edit" })];
+const lc = A.orchestratorTrips(quietEvents, "clyde", p, live, true), lb = A.orchestratorTrips(quietEvents, "bonnie", p, live, true);
+if (!lc.length || !lc.every((q) => q.leisure)) MOTION.push("no leisure after a quiet spell");
+else {
+  if (lc[0].t0 < 1001 + A.QUIET - 1e-9) MOTION.push("they left for the bar before " + A.QUIET + " quiet seconds");
+  if (!lb.length || Math.abs(lc[0].t0 - lb[0].t0) > 1e-9) MOTION.push("Clyde and Bonnie did not leave together");
+  const bar = p.rooms.bar, spot = lc[0].back[lc[0].back.length - 1];
+  if (!(spot[0] > bar.x && spot[0] < bar.x + bar.w && spot[1] > bar.y && spot[1] < bar.y + bar.d)) MOTION.push("the leisure walk does not end in the bar");
+  if (!lc.some((q) => q.go.some((pt) => Math.hypot(pt[0] - p.rooms["worker-1"].inner[0], pt[1] - p.rooms["worker-1"].inner[1]) < 1e-9))) MOTION.push("they never looked into a workshop");
+}
+if (A.orchestratorTrips(quietEvents, "clyde", p, live).length) MOTION.push("leisure without being asked for");
+// an idle worker goes to the bar after the quiet, its own work first; a busy one never does
+const idleW = A.workerTrips(quietEvents, "worker-1", p, live, true), busyW = A.workerTrips(quietEvents, "worker-1", p, live, false);
+if (busyW.length !== 1) MOTION.push("a busy worker got " + busyW.length + " trips");
+const leisureW = idleW.filter((q) => q.leisure);
+if (idleW.length < 2 || !leisureW.length) MOTION.push("an idle worker never went to the bar");
+else {
+  if (leisureW[0].t0 < A.tripEnd(idleW[0]) - 1e-9 || leisureW[0].t0 < 1001 + A.QUIET - 1e-9) MOTION.push("the worker left for the bar too early");
+  const bar = p.rooms.bar, spot = leisureW[0].back[leisureW[0].back.length - 1];
+  if (!(spot[0] > bar.x && spot[0] < bar.x + bar.w && spot[1] > bar.y && spot[1] < bar.y + bar.d)) MOTION.push("the worker's bar spot is outside the bar");
+  if (leisureW.some((q) => q.go.some((pt) => Math.hypot(pt[0] - p.rooms["worker-2"].inner[0], pt[1] - p.rooms["worker-2"].inner[1]) < 1e-9))) MOTION.push("a worker toured another workshop");
+}
+if (A.workerTrips([], "worker-2", p, live, true).length === 0) MOTION.push("a worker with nothing ever recorded never went to the bar");
+if (new Set(p.bayRooms.map((r) => p.barSpots[r.id].join())).size !== p.bayRooms.length) MOTION.push("two workers share a spot at the bar");
+for (const r of p.bayRooms) { const sp = p.barSpots[r.id], route = p.route(r.id, p.homes[r.id], "bar", sp); for (let i = 1; i < route.length; i++) for (let t = 0; t <= 1; t += 0.05) { const x = route[i - 1][0] + (route[i][0] - route[i - 1][0]) * t, y = route[i - 1][1] + (route[i][1] - route[i - 1][1]) * t; for (const f of p.furniture) if (f.room.id === "bar" && x > f.box[0] - 0.25 && x < f.box[0] + f.box[2] + 0.25 && y > f.box[1] - 0.25 && y < f.box[1] + f.box[3] + 0.25) { MOTION.push(r.id + " walks through the " + f.family + " in the bar"); t = 2; } } }
+const busy = A.orchestratorTrips([...quietEvents, ev(1100, "clyde", "check", { target: "worker-1", reason: "brief" })], "clyde", p, live, true), job = busy.find((q) => !q.leisure);
+if (!job) MOTION.push("the check was lost among the leisure walks");
+else {
+  const before = busy.filter((q) => q.leisure && q.t0 < job.t0), last = before[before.length - 1];
+  if (last && job.t0 < A.tripEnd(last) - 1e-9) MOTION.push("a check started before the walk Clyde was on ended: he would jump");
+  if (last && Math.hypot(job.go[0][0] - last.back[last.back.length - 1][0], job.go[0][1] - last.back[last.back.length - 1][1]) > 1e-9) MOTION.push("a check did not start where the leisure walk ended");
+}
 console.log(JSON.stringify({ layout: LAYOUT, motion: MOTION }));
 """
 

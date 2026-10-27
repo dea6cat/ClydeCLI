@@ -1,14 +1,15 @@
 """The station's page: one HTML string with its CSS and JS inline, and the pictures it shows from station_art/ (served from this machine: it works offline).
 
-Three views of the same recorded state: the station (a top-down scene of rooms, furniture and crew: floors and walls drawn in code, furniture and crew from the Cozy Space Station sprites),
+Three views of the same recorded state: the station (a floating island seen from a corner: rooms, hallways, furniture and crew, in generated pixel art),
 the member cards with their approvals, and the event feed.
 
 The scene shows only what the run recorded. Rooms, furniture and hallways come from station_layout.py. Every movement of the
 crew is a pure function of the recorded events and the clock: a worker walks to the furniture for a tool when it used that
 tool, Clyde and Bonnie walk to a worker when a `check` event says they did, and a worker waits with a "?" while its approval
-is pending. Nobody wanders: a crew member with nothing recorded stands at its place. A theme changes only the look and the words.
+is pending. Nobody else wanders: a crew member with nothing recorded stands at its place. The one exception is scenery: after QUIET seconds in which
+nothing at all was recorded, Clyde and Bonnie go to the bar together and now and then look into a workshop; any record ends it.
 
-Everything else that moves (clouds, rain, searchlights, flickering lamps) is scenery: it says nothing about the run.
+Everything else that moves (clouds, flickering lamps, the walks to the bar) is scenery: it says nothing about the run.
 
 Everything is set with textContent and attributes, never parsed as markup: event text carries paths, commands and model output.
 """
@@ -39,21 +40,30 @@ PAGE = r"""<!doctype html>
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
-main { max-width: 1680px; margin: 0 auto; padding: 20px 16px 48px; }
-header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
-h1 { font-size: 20px; margin: 0; }
+main { margin: 0; padding: 0; }
+/* The scene is the page: each run fills the window, and the title bar, the run's line, the legend and the rail float over it. */
+header { position: fixed; top: 10px; left: 10px; z-index: 6; display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-radius: 12px; max-width: calc(100vw - 20px);
+  background: color-mix(in srgb, var(--panel) 82%, transparent); border: 1px solid color-mix(in srgb, var(--ink) 14%, transparent); backdrop-filter: blur(8px); box-shadow: 0 6px 22px rgba(0,0,0,.28); }
+h1 { font-size: 16px; margin: 0; white-space: nowrap; }
+header .spacer { display: none; }
+header .tool { font: inherit; font-size: 13px; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; white-space: nowrap; }
+header .tool[aria-pressed="true"] { border-color: var(--accent); }
+header .tool.alert { border-color: var(--warn); color: var(--warn); animation: pulse 1.2s ease-in-out infinite; }
+header .tool:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (max-width: 700px) { header .muted:not(#status) { display: none; } }
 .muted { color: var(--muted); }
 .spacer { flex: 1; }
 select { font: inherit; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); }
-.run { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 18px; }
+.run { position: relative; height: 100vh; min-height: 420px; background: #000; overflow: hidden; }
+.run-info { position: absolute; top: 58px; left: 10px; z-index: 3; max-width: min(560px, calc(100vw - 20px)); padding: 8px 12px; border-radius: 12px; background: color-mix(in srgb, var(--panel) 78%, transparent); border: 1px solid color-mix(in srgb, var(--ink) 14%, transparent); backdrop-filter: blur(8px); }
 .run-head { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
-.run-head h2 { font-size: 16px; margin: 0; flex: 1 1 260px; overflow-wrap: anywhere; }
+.run-head h2 { font-size: 14px; margin: 0; flex: 1 1 260px; overflow-wrap: anywhere; }
 .chip { font-size: 12px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
 .chip.running, .chip.reviewing { color: var(--accent); border-color: var(--accent); }
 .chip.awaiting_approval { color: var(--warn); border-color: var(--warn); }
 .chip.failed, .chip.stopped { color: var(--bad); border-color: var(--bad); }
 .chip.done { color: var(--ok); border-color: var(--ok); }
-.clyde { margin: 10px 0 14px; }
+.clyde { margin: 4px 0 0; font-size: 13px; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; }
 .card { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; cursor: pointer; background: var(--bg); text-align: left; font: inherit; color: inherit;
   display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; }   /* a button centres its content; cards must start at the top */
@@ -83,19 +93,22 @@ button.act:focus-visible, .card:focus-visible, select:focus-visible { outline: 2
 .empty { color: var(--muted); padding: 30px 0; text-align: center; }
 #status { font-size: 12px; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; margin: 0; padding: 0; list-style: none; }
-.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12px; color: var(--muted); margin: 0 0 14px; }
+.legend { position: absolute; left: 12px; bottom: 12px; z-index: 3; display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12px; color: var(--muted); padding: 8px 12px; border-radius: 12px; max-width: min(540px, calc(100vw - 24px)); max-height: 60vh; overflow: auto;
+  background: color-mix(in srgb, var(--panel) 80%, transparent); border: 1px solid color-mix(in srgb, var(--ink) 14%, transparent); backdrop-filter: blur(8px); }
+.legend details { flex-basis: 100%; } .legend summary { cursor: pointer; }
 .legend i { display: inline-block; width: 22px; height: 0; border-top: 3px solid; vertical-align: middle; margin-right: 5px; }
 .legend i.dark { border-top-style: dotted; border-color: var(--idle); } .legend i.lit { border-color: var(--accent); }
 .legend i.waiting { border-color: var(--warn); border-top-style: dashed; } .legend i.refused { border-color: var(--bad); }
 
 /* A run: the scene on the left, a glass rail on the right (crew, what needs your OK, the event feed), as StarNet frames its station. */
-.run-body { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 14px; align-items: start; }
-@media (max-width: 1060px) { .run-body { grid-template-columns: minmax(0, 1fr); } }
-.stage { position: relative; min-width: 0; }
-.zoom { position: absolute; right: 10px; top: 10px; display: flex; gap: 6px; z-index: 2; }
+.run-body, .scene-col, .stage { position: absolute; inset: 0; }
+.zoom { position: absolute; left: 12px; bottom: 72px; display: flex; gap: 6px; z-index: 3; }
+@media (max-width: 700px) { .zoom { left: auto; right: 12px; bottom: 12px; } }   /* the legend wraps tall on a phone, so the zoom keys move out from under it */
 .zoom button { width: 30px; height: 30px; border-radius: 8px; border: 1px solid rgba(255,255,255,.25); background: rgba(10,10,16,.65); color: #fff; font: 600 16px/1 system-ui; cursor: pointer; backdrop-filter: blur(6px); }
 .zoom button:hover { background: rgba(10,10,16,.85); } .zoom button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.rail { position: sticky; top: 12px; display: flex; flex-direction: column; gap: 12px; max-height: calc(100vh - 24px); min-height: 0; }
+.rail { position: absolute; top: 12px; right: 12px; bottom: 12px; z-index: 5; width: min(340px, calc(100vw - 24px)); display: flex; flex-direction: column; gap: 12px; min-height: 0; transition: transform .25s ease; }
+body.rail-off .rail { transform: translateX(calc(100% + 24px)); visibility: hidden; transition: transform .25s ease, visibility 0s .25s; }
+.rail > .glass.crew { flex: 1 1 auto; }
 .glass { background: linear-gradient(125deg, rgba(255,255,255,.07), rgba(255,255,255,.02) 48%, transparent), color-mix(in srgb, var(--panel) 86%, transparent);
   border: 1px solid color-mix(in srgb, var(--ink) 14%, transparent); border-radius: 12px; box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 6px 22px rgba(0,0,0,.28); min-height: 0; display: flex; flex-direction: column; }
 .glass.asking { border-color: var(--warn); box-shadow: 0 0 0 1px color-mix(in srgb, var(--warn) 50%, transparent), 0 6px 22px rgba(0,0,0,.28); }
@@ -121,14 +134,16 @@ button.act:focus-visible, .card:focus-visible, select:focus-visible { outline: 2
 .rail .feed { margin: 0; border: 0; padding: 0; overflow: hidden; flex: 0 1 auto; display: flex; flex-direction: column; } .rail .feed h3 { border-top: 0; flex: none; } .rail .log { max-height: 30vh; flex: 1 1 auto; min-height: 4.5em; padding: 8px 10px; font-size: 11.5px; }
 .cards-gone { display: none; }
 /* The station. The scene is SVG built in code; a theme sets the look and the words (THEMES, below). */
-.map { overflow-x: auto; margin: 0 0 10px; border-radius: 10px; border: 1px solid var(--line); background: #000; }   /* a phone scrolls the scene, not the page */
-.map svg { display: block; min-width: 640px; width: 100%; height: auto; max-height: calc(100vh - 150px); touch-action: none; cursor: grab; }   /* the whole station fits the window; letterboxing shows the map's own black */
+.map { position: absolute; inset: 0; overflow: hidden; background: #000; }
+.map svg { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }   /* the whole station fits the window; the world around it fills what is left */
 .map svg:active { cursor: grabbing; }
 .map text { font-family: ui-monospace, Menlo, Consolas, monospace; paint-order: stroke; stroke-linejoin: round; }
 .map .name { font-size: 11.5px; font-weight: 700; text-anchor: middle; }
 .map .sign { font-size: 11px; font-weight: 700; text-anchor: middle; letter-spacing: .5px; }
 .map .badge-n { font-size: 9px; font-weight: 700; text-anchor: middle; }
 .map .sprite { cursor: pointer; }
+.map .sprite .tag { opacity: 0; transition: opacity .12s; pointer-events: none; }   /* a name shows only while the pointer is over the person */
+.map .sprite:hover .tag { opacity: 1; }
 .map .sprite .flip { filter: drop-shadow(1px 0 0 #0d0d12) drop-shadow(-1px 0 0 #0d0d12) drop-shadow(0 1px 0 #0d0d12) drop-shadow(0 -1px 0 #0d0d12); }
 .map .lane { fill: none; stroke-linecap: round; stroke-linejoin: round; }
 .map .lane.waiting { animation: flow 1s linear infinite; }
@@ -170,8 +185,7 @@ button.act:focus-visible, .card:focus-visible, select:focus-visible { outline: 2
   <header>
     <h1>Clyde station</h1><span class="muted">what the team recorded, live</span><span id="status" class="muted" aria-live="polite"></span>
     <span class="spacer"></span>
-    <label class="muted" for="theme">Theme</label>
-    <select id="theme"></select>
+    <button id="railToggle" class="tool" type="button" aria-pressed="true" title="Show or hide the crew and the events">Crew &amp; events</button>
   </header>
   <div id="runs"></div>
 </main>
@@ -183,7 +197,7 @@ const REDUCED = window.matchMedia && window.matchMedia("(prefers-reduced-motion:
 const state = { runs: [], feeds: {}, filter: {}, polling: {}, theme: "city", loadedAt: Date.now() / 1000, scenes: [] };
 const $runs = document.getElementById("runs");
 const $status = document.getElementById("status");
-const $theme = document.getElementById("theme");
+const $rail = document.getElementById("railToggle");
 let UID = 0;
 
 // A theme is a look (palette, materials, backdrop) and the words it gives the same things. It never changes what a room, object or hallway means.
@@ -192,26 +206,12 @@ const THEMES = {
     pal: { bg: "#0a0f24", floorA: "#8a6038", floorB: "#7a5230", corr: "#4a3827", grout: "#2a1a0c", wallL: "#b9a47a", wallR: "#d6c397", trim: "#b08d57", wood: "#8a5a2b", metal: "#b08d57", steel: "#5d6b5a",
            screen: "#9fd6b4", accent: "#e3b04b", lamp: "#ffd98a", ink: "#f6ecd2", paper: "#f4ecd2", dark: "#2b2118", dim: "#7a6850", wait: "#f08a24", bad: "#e0605a",
            sky1: "#070b1e", sky2: "#5a3a2a", bldg: "#141223", win: "#f2c15c", rug1: "#7a1f2b", rug2: "#c99a2e", neonA: "#ff6a3d", neonB: "#f2c15c" },
-    words: { deck: "Front office", bay: "Workshop", outbox: "Mail slot", approvals: "Signing desk", ledger: "Cash register", table: "Planning table",
+    words: { deck: "Front office", bay: "Workshop", outbox: "Mail slot", bar: "Speakeasy", approvals: "Signing desk", ledger: "Cash register", table: "Planning table",
       read: "Filing cabinet", write: "Typewriter", shell: "Safe", web: "Radio set", mcp: "Switchboard", other: "Cupboard",
       task: "Orders", results: "Reports", approvalsLane: "Messages", review: "Review", report: "Report", landing: "Delivery" } },
-  steam: { name: "Steampunk ship",
-    pal: { bg: "#1d2b44", floorA: "#6b5545", floorB: "#5c4a3c", corr: "#3a2f28", grout: "#201710", wallL: "#2b565c", wallR: "#36737d", trim: "#c0773a", wood: "#3b484d", metal: "#c0773a", steel: "#7a8a8a",
-           screen: "#8fe3d1", accent: "#f0a64a", lamp: "#ffd166", ink: "#e6efe9", paper: "#ead9b0", dark: "#1b2a2e", dim: "#6f8c89", wait: "#ffd166", bad: "#e5645f",
-           sky1: "#1b2a52", sky2: "#e8924a", bldg: "#3a2a20", win: "#ffd166", rug1: "#3b2a1e", rug2: "#c0773a", neonA: "#ffd166", neonB: "#f0a64a" },
-    words: { deck: "Bridge", bay: "Engine bay", outbox: "Cargo hatch", approvals: "Helm", ledger: "Pressure gauge", table: "Chart table",
-      read: "Chart rack", write: "Brass press", shell: "Boiler valve", web: "Signal lamp", mcp: "Speaking tubes", other: "Locker",
-      task: "Orders", results: "Dispatches", approvalsLane: "Speaking tube", review: "Review", report: "Report", landing: "Unloading" } },
-  cyber: { name: "Cyberpunk city",
-    pal: { bg: "#06030f", floorA: "#1a1a3c", floorB: "#13132c", corr: "#0b0b1e", grout: "#05050f", wallL: "#1b1b46", wallR: "#27276a", trim: "#19e3ff", wood: "#2f2f6a", metal: "#4a4aa0", steel: "#3a3a70",
-           screen: "#00f5d4", accent: "#00f5d4", lamp: "#ff2bd6", ink: "#d8f6ff", paper: "#9fd8ff", dark: "#0a0a18", dim: "#4a4a8a", wait: "#ffd23f", bad: "#ff3b5c",
-           sky1: "#04020c", sky2: "#35104f", bldg: "#0b0a1e", win: "#19e3ff", rug1: "#150a30", rug2: "#ff2bd6", neonA: "#ff2bd6", neonB: "#19e3ff" },
-    words: { deck: "Operations floor", bay: "Server bay", outbox: "Dead drop", approvals: "Gatekeeper", ledger: "Credit meter", table: "Ops table",
-      read: "Data terminal", write: "Fabricator", shell: "Root console", web: "Uplink", mcp: "Mesh node", other: "Locker",
-      task: "Tasking", results: "Returns", approvalsLane: "Auth request", review: "Review", report: "Report", landing: "Drop-off" } },
 };
-function storedTheme() { try { return localStorage.getItem("station-theme"); } catch (e) { return null; } }
-function storeTheme(value) { try { localStorage.setItem("station-theme", value); } catch (e) { /* a private window: the choice just isn't remembered */ } }
+function stored(key) { try { return localStorage.getItem(key); } catch (e) { return null; } }
+function store(key, value) { try { localStorage.setItem(key, value); } catch (e) { /* a private window: the choice just isn't remembered */ } }
 
 function el(tag, cls, text) {
   const node = document.createElement(tag);
@@ -253,8 +253,9 @@ function family(tool) {   // the same grouping as station_layout.py
 
 // Where everyone is, as a pure function of the recorded events and the clock. Nothing here remembers anything between frames, so
 // the scene can be rebuilt at any moment without a jump. Positions are in tile units.
-const SPEED = REDUCED ? 1e6 : 5.5;   // tiles per second; reduced motion: no walking, crew just appear at the spot
+const SPEED = REDUCED ? 1e6 : 4;   // tiles per second; reduced motion: no walking, crew just appear at the spot
 const DWELL_USE = 2.4, DWELL_CHECK = 2.0;
+const QUIET = 25, BAR_DWELL = 7, TOUR_DWELL = 5;   // seconds with nothing recorded before Clyde and Bonnie go to the bar, how long they stay put there, and how long they look into a workshop
 function dist(a, b) { return Math.hypot(b[0] - a[0], b[1] - a[1]); }
 function pathLength(pts) { let s = 0; for (let i = 1; i < pts.length; i++) s += dist(pts[i - 1], pts[i]); return s; }
 function along(pts, d) {   // the point `d` tiles along a polyline, and the direction of the leg it is on
@@ -280,21 +281,51 @@ function tripState(trip, t) {
   return { done: true, pos: trip.back[trip.back.length - 1], dir: [0, 0], pose: "idle", carry: null, bubble: null };
 }
 function tripEnd(trip) { return trip.t0 + (pathLength(trip.go) + pathLength(trip.back)) / SPEED + trip.dwell; }
+function faceTo(box, from) { return [box[0] + box[2] / 2 - from[0], box[1] + box[3] / 2 - from[1]]; }   // the way to look from a spot at a piece of furniture
 // The walkers' schedules. Workers: one trip per tool they used, to the furniture for that tool, starting from wherever they are.
-function workerTrips(events, name, scene, liveFrom) {
+function workerTrips(events, name, scene, liveFrom, leisure) {
   const trips = [], home = scene.homes[name];
+  let lastOwn = -Infinity;
   for (const e of events) {
+    if (e.who === name && e.t >= liveFrom) lastOwn = Math.max(lastOwn, e.t);
     if (e.who !== name || e.kind !== "tool_use" || e.t < liveFrom) continue;
     const stand = scene.stands[name + ":" + family(e.tool)];
     if (!stand) continue;
+    const piece = scene.furniture.find((f) => f.room.id === name && f.family === family(e.tool));
     let from = home;
     if (trips.length) { const s = tripState(trips[trips.length - 1], e.t); from = s ? s.pos : home; }
-    trips.push({ t0: e.t, go: [from, stand], back: [stand, home], dwell: DWELL_USE, pose: "work", bubble: "dots", face: [0, -1], tool: e.tool });
+    trips.push({ t0: e.t, go: [from, stand], back: [stand, home], dwell: DWELL_USE, pose: "work", bubble: "dots", face: piece ? faceTo(piece.box, stand) : [0, -1], tool: e.tool });
+  }
+  if (leisure && scene.barSpots[name]) {   // idle or finished, and nothing of its own recorded for a while: it goes to the bar like Clyde and Bonnie
+    const free = trips.length ? tripEnd(trips[trips.length - 1]) : liveFrom, quietFrom = Math.max(free, (lastOwn === -Infinity ? liveFrom : lastOwn) + QUIET);
+    trips.push(...leisureTrips(name, scene, { room: name, at: home }, quietFrom, liveFrom + 10800, 0, false).trips);
   }
   return trips;
 }
-// Clyde and Bonnie: one trip per recorded `check` of theirs (plus Clyde carrying the landed work to the outbox), taken in order.
-function orchestratorTrips(events, name, scene, liveFrom) {
+// When nothing has been recorded for QUIET seconds (by anyone), Clyde and Bonnie walk to the bar together, stay a while, now and then look
+// into a workshop and come back. It is scenery, a function of the recorded times and the clock: any recorded event ends it (after the leg they
+// are on), and nothing is shown that the run did not record.
+function leisureTrips(name, scene, from, start, until, tours, tour) {
+  const trips = [], spot = scene.barSpots[name], counter = scene.furniture.find((f) => f.family === "bar"), bays = tour === false ? [] : scene.bayRooms, bubble = (name === "clyde" || ((/(\d+)$/.exec(name) || [0, 1])[1] % 2 === 0 && name !== "bonnie")) ? "smoke" : "drink";
+  let t = start, room = from.room, at = from.at, n = 0;
+  while (t < until && n++ < 400) {
+    const phase = (n - 1) % 4;
+    let trip;
+    if (phase === 3 && bays.length) {
+      const bay = bays[tours++ % bays.length], door = bay.inner;
+      trip = { t0: t, go: scene.route("bar", spot, bay.id, door), back: null, dwell: TOUR_DWELL, pose: "idle", face: [scene.homes[bay.id][0] - door[0], scene.homes[bay.id][1] - door[1]], bubble: null, leisure: true };
+      trip.back = trip.go.slice().reverse();
+    } else {
+      trip = { t0: t, go: room === "bar" ? [spot, spot] : scene.route(room, at, "bar", spot), back: [spot, spot], dwell: BAR_DWELL, pose: "idle", face: counter ? faceTo(counter.box, spot) : [0, -1], bubble, leisure: true };   // leaning on the counter, looking at it
+    }
+    trips.push(trip);
+    t = tripEnd(trip);
+    room = "bar"; at = spot;
+  }
+  return { trips, end: t, room, at, tours };
+}
+// Clyde and Bonnie: one trip per recorded `check` of theirs (plus Clyde carrying the landed work to the outbox), taken in order; `leisure` fills the quiet gaps.
+function orchestratorTrips(events, name, scene, liveFrom, leisure) {
   const trips = [], home = scene.homes[name], REASONS = {
     brief:    { carryGo: "paper", carryDwell: "paper", carryBack: null, bubble: "paper" },
     approval: { carryGo: null, carryDwell: "mail", carryBack: "mail", bubble: "mail" },
@@ -307,16 +338,28 @@ function orchestratorTrips(events, name, scene, liveFrom) {
     if (e.kind === "check" && e.who === name) wanted.push({ t: e.t, target: e.target, reason: e.reason });
     if (e.kind === "landed" && e.who === "user" && name === "clyde") wanted.push({ t: e.t, target: "outbox", reason: "landing" });
   }
-  let free = 0;
+  const times = events.map((e) => e.t);
+  let free = 0, where = { room: "deck", at: home }, tours = 0;
+  const rest = (until) => {   // the quiet before `until`: nothing was recorded for QUIET seconds, so they are at the bar
+    if (!leisure) return;
+    const quietFrom = Math.max(free, liveFrom, Math.max(-Infinity, ...times.filter((t) => t < until)) + QUIET);
+    if (quietFrom >= until) return;
+    const spell = leisureTrips(name, scene, where, quietFrom, until === Infinity ? liveFrom + 10800 : until, tours);
+    trips.push(...spell.trips);
+    free = spell.end; where = { room: spell.room, at: spell.at }; tours = spell.tours;
+  };
   for (const w of wanted) {
     const stand = scene.checkStands[w.target];
     if (!stand) continue;
-    const t0 = Math.max(w.t, free), r = REASONS[w.reason] || REASONS.result;
-    const trip = { t0, go: scene.route("deck", home, w.target === "outbox" ? "outbox" : w.target, stand), back: null, dwell: DWELL_CHECK, pose: "check", face: [0, 1], ...r };
-    trip.back = trip.go.slice().reverse();
+    rest(w.t);
+    const t0 = Math.max(w.t, free), r = REASONS[w.reason] || REASONS.result, target = w.target === "outbox" ? "outbox" : w.target;
+    const piece = w.target === "outbox" ? scene.furniture.find((f) => f.family === "crate") : null;   // at the outbox they face the crate; at a bay, the worker
+    const face = piece ? faceTo(piece.box, stand) : scene.homes[w.target] ? [scene.homes[w.target][0] - stand[0], scene.homes[w.target][1] - stand[1]] : [0, 1];
+    const trip = { t0, go: scene.route(where.room, where.at, target, stand), back: scene.route(target, stand, "deck", home), dwell: DWELL_CHECK, pose: "check", face, ...r };
     trips.push(trip);
-    free = tripEnd(trip);
+    free = tripEnd(trip); where = { room: "deck", at: home };
   }
+  rest(Infinity);
   return trips;
 }
 function walkerState(trips, home, t) {
@@ -328,9 +371,13 @@ function walkerState(trips, home, t) {
 // </motion>
 
 // <geometry>
-// ---- geometry: tile space; the station is seen from above, one tile is T px ----------------------------------------------
-const T = 44;
-function pos(x, y) { return [x * T, y * T]; }
+function convexHull(points) {   // the outline of a set of points (monotone chain), in order
+  const pts = points.slice().sort((p, q) => p[0] - q[0] || p[1] - q[1]), cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]), build = (list) => { const h = []; for (const q of list) { while (h.length >= 2 && cross(h[h.length - 2], h[h.length - 1], q) <= 0) h.pop(); h.push(q); } h.pop(); return h; };
+  return build(pts).concat(build(pts.slice().reverse()));
+}
+// ---- geometry: the station is an island seen from a corner. Every room and hallway is on one slab; a tile is a diamond HX*2 wide and HY*2 tall on screen ----
+const HX = 24, HY = 12, WALL = 60, SLAB = 22;
+function at(x, y, f, h) { return [(x - y) * HX, (x + y) * HY - (h || 0)]; }   // a spot on the island, h px above the ground, on screen (f is unused: there is one level)
 function pts(list) { return list.map((p) => p[0].toFixed(1) + "," + p[1].toFixed(1)).join(" "); }
 function shade(hex, pct) {
   const n = parseInt(hex.slice(1), 16), f = pct / 100;
@@ -338,84 +385,145 @@ function shade(hex, pct) {
   return "#" + [c(n >> 16), c((n >> 8) & 255), c(n & 255)].map((v) => v.toString(16).padStart(2, "0")).join("");
 }
 function hash(a, b) { let h = Math.imul(a | 0, 374761393) + Math.imul(b | 0, 668265263) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; }
-function poly(layer, points, fill, extra) { const n = sv("polygon", { points: pts(points), fill, ...(extra || {}) }); layer.append(n); return n; }
-const BAY_SLOTS = {   // furniture box [x, y, w, d] and where a worker stands to use it, in a bay's own tiles. The door aisle (x 4 to 7, from the back wall down to the worker) stays clear.
-  read: { box: [0.8, 0.8, 3, 1], stand: [2.3, 2.8] }, write: { box: [7.4, 0.8, 3, 1.5], stand: [8.9, 3.4] }, shell: { box: [9.6, 4.4, 1.2, 1.8], stand: [8.3, 5.4] },
-  web: { box: [0.8, 4.4, 1, 2.3], stand: [3.0, 5.6] }, mcp: { box: [0.8, 7.6, 1, 2.3], stand: [3.0, 8.8] }, other: { box: [9.2, 8.0, 1.5, 1.9], stand: [7.9, 9.0] },
-};
+const BAYS = [   // workshop floor plans, each in its own tiles: size, door (x of the doorway's centre, on the top wall), where the worker sits, a spot to be checked from, the furniture box [x, y, w, d] and stand-spot for each tool family, and the clutter. The aisle from the door down to the worker stays clear.
+  { w: 11, d: 11, door: 5.5, home: [5.5, 6.4], check: [7.4, 6.2],
+    slots: { read: { box: [0.8, 0.8, 3, 1], stand: [2.3, 2.8] }, write: { box: [7.4, 0.8, 3, 1.5], stand: [8.9, 3.4] }, shell: { box: [9.6, 4.4, 1.2, 1.8], stand: [8.3, 5.4] },
+             web: { box: [0.8, 4.4, 1, 2.3], stand: [3.0, 5.6] }, mcp: { box: [0.8, 7.6, 1, 2.3], stand: [3.0, 8.8] }, other: { box: [9.2, 8.0, 1.5, 1.9], stand: [7.9, 9.0] } },
+    props: [["tank", 6.8, 10.2], ["crates", 4.6, 10.2], ["lamp", 10.4, 3.3], ["plant", 0.9, 10.7]] },
+  { w: 14, d: 9, door: 3.5, home: [3.5, 5.0], check: [5.0, 4.4],   // wide and shallow, the door at one end
+    slots: { read: { box: [5.5, 0.8, 3, 1], stand: [7.0, 2.8] }, write: { box: [10.4, 0.8, 3, 1.5], stand: [11.9, 3.4] }, shell: { box: [12.2, 5.0, 1.4, 2.2], stand: [10.6, 6.0] },
+             web: { box: [0.5, 5.6, 1, 2.3], stand: [2.9, 6.8] }, mcp: { box: [5.0, 6.6, 2.4, 1.3], stand: [6.2, 5.6] }, other: { box: [8.4, 7.0, 1.6, 1.4], stand: [9.2, 5.9] } },
+    props: [["plant", 0.9, 8.5], ["tank", 13.0, 8.2], ["crates", 11.2, 8.4], ["lamp", 13.2, 3.8]] },
+  { w: 9, d: 13, door: 4.5, home: [4.5, 6.5], check: [5.5, 4.8],   // narrow and deep, furniture down both walls
+    slots: { read: { box: [0.6, 1.0, 2.6, 1], stand: [1.9, 3.0] }, write: { box: [5.8, 1.0, 2.6, 1.4], stand: [7.1, 3.6] }, shell: { box: [7.2, 5.6, 1.2, 1.8], stand: [5.9, 6.5] },
+             web: { box: [0.6, 5.0, 1, 2.3], stand: [2.9, 6.2] }, mcp: { box: [0.6, 9.0, 1, 2.3], stand: [2.9, 10.2] }, other: { box: [6.6, 9.4, 1.6, 1.9], stand: [5.5, 10.4] } },
+    props: [["plant", 0.9, 12.2], ["crates", 3.4, 12.2], ["tank", 7.8, 12.2], ["lamp", 8.2, 4.7]] },
+];
+const BAY_ORDER = [[1, false], [2, false], [0, false], [1, true], [2, true], [0, true]];   // plan and mirrored, so neighbours never match
+function bayPlan(i) {
+  const [k, flip] = BAY_ORDER[i % BAY_ORDER.length], t = BAYS[k];
+  if (!flip) return t;
+  const w = t.w, fx = (q) => [w - q[0], q[1]], slots = {};
+  for (const f in t.slots) { const s = t.slots[f]; slots[f] = { box: [w - s.box[0] - s.box[2], s.box[1], s.box[2], s.box[3]], stand: fx(s.stand) }; }
+  return { w, d: t.d, door: w - t.door, home: fx(t.home), check: fx(t.check), slots, props: t.props.map((q) => [q[0], w - q[1], q[2]]) };
+}
+function orient(t, wall) {   // a floor plan turned so that its door is on a wall (n, e, s or w); the aisle from the door runs straight across to the opposite wall
+  const w = t.w, d = t.d, turned = wall === "w" || wall === "e";
+  const P = { n: (u, v) => [u, v], s: (u, v) => [u, d - v], w: (u, v) => [v, u], e: (u, v) => [d - v, u] }[wall];
+  const B = { n: (b) => b, s: (b) => [b[0], d - b[1] - b[3], b[2], b[3]], w: (b) => [b[1], b[0], b[3], b[2]], e: (b) => [d - b[1] - b[3], b[0], b[3], b[2]] }[wall];
+  const slots = {};
+  for (const f in t.slots) slots[f] = { box: B(t.slots[f].box), stand: P(...t.slots[f].stand) };
+  return { w: turned ? d : w, d: turned ? w : d, door: t.door, home: P(...t.home), check: P(...t.check), slots, props: t.props.map((q) => [q[0], ...P(q[1], q[2])]), runner: B([t.door - 1.4, 0.4, 2.8, t.home[1] + 1.6]) };
+}
 function plan(layout) {
-  const bays = layout.rooms.filter((r) => r.kind === "bay"), n = Math.max(1, bays.length);
-  const BW = 11, BD = 11, GAP = 2, DW = 26, DD = 12, SPINE = 17, BAYY = 22;
-  const totalW = n * BW + (n - 1) * GAP, deckX = (totalW - DW) / 2;
-  const rooms = { deck: { id: "deck", kind: "deck", x: deckX, y: 0, w: DW, d: DD } };
-  bays.forEach((b, i) => { rooms[b.id] = { id: b.id, kind: "bay", x: i * (BW + GAP), y: BAYY, w: BW, d: BD, src: b }; });
-  rooms.outbox = { id: "outbox", kind: "outbox", x: deckX + DW + 4, y: 3, w: 8, d: 7 };
-  const deck = rooms.deck, deckCx = deck.x + DW / 2, bayRooms = Object.values(rooms).filter((r) => r.kind === "bay");
-  const cxs = bayRooms.map((r) => r.x + BW / 2), xmin = Math.min(deckCx, ...cxs) - 1, xmax = Math.max(deckCx, ...cxs) + 1;
-  // Corridors: a trunk from the deck's door down to a spine, a branch from the spine to each bay's door, and a short one east to the outbox.
-  const corridors = [{ x: deckCx - 1, y: DD, w: 2, d: SPINE - DD }, { x: xmin, y: SPINE, w: xmax - xmin, d: 2 }, { x: deck.x + DW, y: 5, w: 4, d: 2 }];
-  for (const r of bayRooms) corridors.push({ x: r.x + BW / 2 - 1, y: SPINE + 2, w: 2, d: BAYY - SPINE - 2 });
-  // The long sides of the corridors that have a wall or a rail (lines in tile space), left open where another corridor joins.
-  const edges = [[[deckCx - 1, DD], [deckCx - 1, SPINE]], [[deckCx + 1, DD], [deckCx + 1, SPINE]], [[deck.x + DW, 5], [deck.x + DW + 4, 5]], [[deck.x + DW, 7], [deck.x + DW + 4, 7]]];
-  const sides = (y, opens) => { let x = xmin; for (const [a, b] of opens.concat([[xmax, xmax]])) { if (a > x) edges.push([[x, y], [a, y]]); x = b; } };
-  sides(SPINE, [[deckCx - 1, deckCx + 1]]);
-  sides(SPINE + 2, bayRooms.map((r) => [r.x + BW / 2 - 1, r.x + BW / 2 + 1]).sort((a, b) => a[0] - b[0]));
-  for (const r of bayRooms) { const cx = r.x + BW / 2; edges.push([[cx - 1, SPINE + 2], [cx - 1, BAYY]], [[cx + 1, SPINE + 2], [cx + 1, BAYY]]); }
+  const bays = layout.rooms.filter((r) => r.kind === "bay"), DW = 26, DD = 12, deckCx = DW / 2;
+  // The deck is the centre. Workshops hang off it in three arms, down, left and up; a workshop past the first in an arm is reached through the one before it.
+  const ARMS = [{ wall: "n", hub: [[deckCx, DD - 0.5]], door: ["s", deckCx - 1, deckCx + 1] }, { wall: "e", hub: [[1, 6]], door: ["w", 5, 7] }, { wall: "s", hub: [[6, 1], [9.2, 7.8]], door: ["n", 5, 7] }];
+  const rooms = { deck: { id: "deck", kind: "deck", f: 0, x: 0, y: 0, w: DW, d: DD } }, deck = rooms.deck, armsUsed = Math.max(1, Math.min(3, bays.length));
+  deck.doors = [["e", 5, 7], ["n", 20, 22], ...ARMS.slice(0, armsUsed).map((a) => a.door)];   // the north door is the visitors' entrance, from the car park
+  const corridors = [{ x: DW, y: 5, w: 4, d: 2 }, { x: 20, y: -3.5, w: 2, d: 3.5 }], edge = [DD, 0, 0], chains = [[], [], []], lanes = {}, outs = {};
+  bays.forEach((b, i) => {
+    const a = i % 3, arm = ARMS[a], O = orient(bayPlan(i), arm.wall), chain = chains[a], gap = chain.length ? 3 : 4;
+    let x, y, corr, entry, inner, lane;
+    if (a === 0) { x = deckCx - O.door; y = edge[0] + gap; corr = { x: deckCx - 1, y: edge[0], w: 2, d: gap }; edge[0] = y + O.d; entry = [deckCx, y]; inner = [deckCx, y + 1.5]; lane = (off) => [[deckCx + off, DD], [deckCx + off, y + 1.2]]; }
+    else if (a === 1) { x = edge[1] - gap - O.w; y = 6 - O.door; corr = { x: x + O.w, y: 5, w: gap, d: 2 }; edge[1] = x; entry = [x + O.w, 6]; inner = [x + O.w - 1.5, 6]; lane = (off) => [[0, 6 + off], [x + O.w - 1.2, 6 + off]]; }
+    else { y = edge[2] - gap - O.d; x = 6 - O.door; corr = { x: 5, y: y + O.d, w: 2, d: gap }; edge[2] = y; entry = [6, y + O.d]; inner = [6, y + O.d - 1.5]; lane = (off) => [[6 + off, 0], [6 + off, y + O.d - 1.2]]; }
+    corridors.push(corr);
+    const room = { id: b.id, kind: "bay", f: 0, x, y, w: O.w, d: O.d, wall: arm.wall, entry, inner, tpl: O, src: b, through: false, runner: [x + O.runner[0], y + O.runner[1], O.runner[2], O.runner[3]] };
+    if (chain.length) chain[chain.length - 1].through = true;
+    outs[b.id] = [inner, ...chain.slice().reverse().map((r) => r.inner), ...arm.hub];
+    for (const [kind, off] of [["task", -0.5], ["results", 0], ["approvals", 0.5]]) lanes[kind + ":" + b.id] = lane(off);
+    chain.push(room);
+    rooms[b.id] = room;
+  });
+  // East of the front office, along the same hallway: the bar, then the mail slot behind it.
+  rooms.bar = { id: "bar", kind: "bar", f: 0, x: DW + 4, y: 1, w: 12, d: 10, doors: [["w", 5, 7], ["e", 5, 7]] };
+  rooms.outbox = { id: "outbox", kind: "outbox", f: 0, x: DW + 4 + 12 + 3, y: 3, w: 8, d: 7, doors: [["w", 5, 7]] };
+  corridors.push({ x: rooms.bar.x + rooms.bar.w, y: 5, w: 3, d: 2 });
+  const bayRooms = Object.values(rooms).filter((r) => r.kind === "bay");
+  // The long sides of every corridor have a rail (lines in tile space).
+  const edges = [];
+  for (const c of corridors) {
+    if (c.d > c.w) edges.push([[c.x, c.y], [c.x, c.y + c.d]], [[c.x + c.w, c.y], [c.x + c.w, c.y + c.d]]);
+    else edges.push([[c.x, c.y], [c.x + c.w, c.y]], [[c.x, c.y + c.d], [c.x + c.w, c.y + c.d]]);
+  }
   const at = (room, p) => [room.x + p[0], room.y + p[1]];
   const homes = { clyde: at(deck, [11.2, 8.9]), bonnie: at(deck, [14.8, 8.9]), master: at(deck, [3.5, 4.6]), advisor: at(deck, [22.5, 4.6]) };
   const stands = {}, checkStands = { outbox: at(rooms.outbox, [3.5, 3.8]) };
   for (const r of bayRooms) {
-    homes[r.id] = at(r, [5.5, 6.4]);
-    checkStands[r.id] = at(r, [7.4, 6.2]);
-    for (const f in BAY_SLOTS) stands[r.id + ":" + f] = at(r, BAY_SLOTS[f].stand);
+    homes[r.id] = at(r, r.tpl.home);
+    checkStands[r.id] = at(r, r.tpl.check);
+    for (const f in r.tpl.slots) stands[r.id + ":" + f] = at(r, r.tpl.slots[f].stand);
   }
-  const hub = [deckCx, DD - 0.5], spineAt = (x) => [x, SPINE + 1];
-  const toDeck = (room, pos) => {   // from a spot in a room to the deck's door
+  const toDeck = (room, pos) => {   // from a spot in a room to the deck, by way of the doors on its arm
     if (room === "deck") return [pos];
-    if (room === "outbox") return [pos, [rooms.outbox.x + 1.5, 6], [deck.x + DW - 1, 6]];
-    const cx = rooms[room].x + BW / 2;
-    return [pos, [cx, BAYY + 1.5], spineAt(cx), spineAt(deckCx), hub];
+    if (room === "bar") return [pos, [rooms.bar.x + 1.5, 6], [deck.x + DW - 1, 6]];
+    if (room === "outbox") return [pos, [rooms.outbox.x + 1.5, 6], [rooms.bar.x + rooms.bar.w - 1.5, 6], [rooms.bar.x + 1.5, 6], [deck.x + DW - 1, 6]];
+    return [pos, ...outs[room]];
   };
   const route = (fromRoom, from, toRoom, to) => {
     if (fromRoom === toRoom) return [from, to];
     const out = toDeck(fromRoom, from), back = toDeck(toRoom, to).reverse();
     return out.concat(back);
   };
-  const furniture = [], lanes = {}, props = [];
+  const LAND = Math.min(20, 3 + 0.55 * (Object.keys(rooms).length + corridors.length));   // how far the island reaches past the rooms: more rooms and hallways, more land
+  const furniture = [], props = [], prop = (kind, x, y, size) => props.push({ kind, x, y, size, f: 0 });
   for (const r of bayRooms) {
-    const cx = r.x + BW / 2;
-    for (const o of r.src.objects) { const s = BAY_SLOTS[o.family]; if (s) furniture.push({ room: r, family: o.family, obj: o, box: [r.x + s.box[0], r.y + s.box[1], s.box[2], s.box[3]] }); }
-    for (const [kind, off] of [["task", -0.5], ["results", 0], ["approvals", 0.5]])
-      lanes[kind + ":" + r.id] = [[deckCx + off, DD], [deckCx + off, SPINE + 1 + off], [cx + off, SPINE + 1 + off], [cx + off, BAYY + 1.2]];
-    props.push(["tank", r.x + 6.8, r.y + 10.2], ["crates", r.x + 4.6, r.y + 10.2], ["lamp", r.x + 10.4, r.y + 3.3], ["plant", r.x + 0.9, r.y + 10.7]);
+    for (const o of r.src.objects) { const s = r.tpl.slots[o.family]; if (s) furniture.push({ room: r, family: o.family, obj: o, box: [r.x + s.box[0], r.y + s.box[1], s.box[2], s.box[3]] }); }
+    for (const q of r.tpl.props) prop(q[0], r.x + q[1], r.y + q[2]);
   }
   const dk = layout.rooms.find((r) => r.id === "deck");
   const deckBoxes = { approvals: [3, 8, 3, 1.6], ledger: [19, 9.2, 3, 1.4] };
   for (const o of dk.objects) furniture.push({ room: deck, family: o.family, obj: o, box: [deck.x + deckBoxes[o.family][0], deck.y + deckBoxes[o.family][1], deckBoxes[o.family][2], deckBoxes[o.family][3]] });
   furniture.push({ room: deck, family: "desk", obj: null, lane: "report", box: [deck.x + 2, deck.y + 2, 3, 2] }, { room: deck, family: "desk", obj: null, lane: "review", box: [deck.x + 21, deck.y + 2, 3, 2] },
                  { room: deck, family: "table", obj: null, box: [deck.x + 11, deck.y + 5, 4.2, 2] });
-  props.push(["plant", deck.x + 0.9, deck.y + 10.6], ["plant", deck.x + 24.8, deck.y + 10.6], ["lamp", deck.x + 9, deck.y + 1.3], ["lamp", deck.x + 17.4, deck.y + 1.3],
-             ["bookcase", deck.x + 0.3, deck.y + 5.4], ["tank", deck.x + 24.6, deck.y + 8.8], ["coat", deck.x + 7.6, deck.y + 10.8]);
+  for (const [kind, x, y, size] of [["plant", 2.2, 10.8], ["plant", 24.8, 10.6], ["lamp", 9, 1.3], ["lamp", 17.4, 1.3], ["bookcase", 0.3, 8.0, 3.2], ["tank", 24.6, 8.8], ["coat", 7.6, 10.8]]) prop(kind, deck.x + x, deck.y + y, size);
   const ob = layout.rooms.find((r) => r.kind === "outbox");
   furniture.push({ room: rooms.outbox, family: "crate", obj: ob, box: [rooms.outbox.x + 4.8, rooms.outbox.y + 1, 2.2, 1.8] });
-  props.push(["bookcase", rooms.outbox.x + 0.3, rooms.outbox.y + 0.2, 1.6], ["bookcase", rooms.outbox.x + 0.3, rooms.outbox.y + 4.8, 2], ["tank", rooms.outbox.x + 6.6, rooms.outbox.y + 5.6], ["lamp", rooms.outbox.x + 7.2, rooms.outbox.y + 4.2]);
+  for (const [kind, x, y, size] of [["bookcase", 0.3, 0.2, 1.6], ["bookcase", 0.3, 4.8, 2], ["tank", 6.6, 5.6], ["lamp", 7.2, 4.2]]) prop(kind, rooms.outbox.x + x, rooms.outbox.y + y, size);
+  const bar = rooms.bar;
+  const barSpots = { clyde: [bar.x + 4.0, bar.y + 3.0], bonnie: [bar.x + 5.4, bar.y + 3.0] };   // where Clyde and Bonnie lean on the counter
+  const crowd = [[6.8, 3.0], [8.2, 3.0], [9.6, 3.0], [2.6, 4.6], [4.2, 4.6], [5.8, 4.6], [7.4, 4.6], [9.0, 4.6]];   // and where the workers stand, one spot each, round the counter
+  bayRooms.forEach((r, i) => { barSpots[r.id] = [bar.x + crowd[i % crowd.length][0], bar.y + crowd[i % crowd.length][1]]; });
+  // the speakeasy: a counter along the back with stools, sofas and a little table in front; the way through (row 5) stays clear
+  furniture.push({ room: bar, family: "bar", obj: null, box: [bar.x + 1.5, bar.y + 0.5, 6, 1.4] }, { room: bar, family: "sofa", obj: null, box: [bar.x + 0.6, bar.y + 7.6, 3.4, 1.4] },
+                 { room: bar, family: "sofa", obj: null, box: [bar.x + 7.6, bar.y + 7.6, 3.4, 1.4] }, { room: bar, family: "smalltable", obj: null, box: [bar.x + 4.8, bar.y + 7.8, 1.8, 1.4] });
+  for (const [kind, x, y] of [["plant", 0.9, 4.0], ["plant", 11.1, 4.0], ["plant", 11.1, 1.1], ["lamp", 9.2, 3.0], ["lamp", 0.8, 3.0]]) prop(kind, bar.x + x, bar.y + y);
   lanes.landing = [[deck.x + DW - 1, 6], [rooms.outbox.x + 1.5, 6]];
-  return { rooms, bayRooms, corridors, edges, homes, stands, checkStands, route, furniture, props, lanes, deckCx, DW, DD, BW, BD, SPINE, BAYY };
+  // the island: every room and hallway on one slab that follows their outline, with a few trees and lamps round its edge
+  const xs = Object.values(rooms), gx = [Math.min(...xs.map((r) => r.x)), Math.max(...xs.map((r) => r.x + r.w))], gy = [Math.min(...xs.map((r) => r.y)), Math.max(...xs.map((r) => r.y + r.d))];
+  prop("tower", gx[0] - 1.5, gy[0] - 1.5); prop("tower", gx[1] + 1.5, gy[0] - 1.5);   // a deco tower at two corners of the island
+  const lot = { x: 15.8, y: -7.9, w: 10.4, d: 4.4 };   // the car park, north of the front office: three bays side by side, its path ends at the office's north door
+  ["car-black", "car-red", "car-green"].forEach((name, i) => prop("car", lot.x + 1.9 + i * 3.3, lot.y + 2.4, name));
+  const around = [[lot.x - 2, lot.y - 2], [lot.x + lot.w + 2, lot.y - 2], [lot.x + lot.w + 2, lot.y + lot.d + 2], [lot.x - 2, lot.y + lot.d + 2]];
+  for (const r of Object.values(rooms)) for (const [cx, cy] of [[r.x, r.y], [r.x + r.w, r.y], [r.x + r.w, r.y + r.d], [r.x, r.y + r.d]]) around.push([cx + (cx === r.x ? -LAND : LAND), cy + (cy === r.y ? -LAND : LAND)]);
+  for (const c of corridors) for (const [cx, cy] of [[c.x, c.y], [c.x + c.w, c.y], [c.x + c.w, c.y + c.d], [c.x, c.y + c.d]]) around.push([cx + (cx === c.x ? -LAND : LAND), cy + (cy === c.y ? -LAND : LAND)]);
+  for (const q of props) if (q.kind === "car" || q.kind === "tower") for (const [dx, dy] of [[-2, -2], [2, -2], [2, 2], [-2, 2]]) around.push([q.x + dx, q.y + dy]);
+  const slab = convexHull(around), mid = [slab.reduce((a, q) => a + q[0], 0) / slab.length, slab.reduce((a, q) => a + q[1], 0) / slab.length];
+  slab.forEach((a, i) => {
+    const b = slab[(i + 1) % slab.length], len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    for (let t = 2, k = i; t < len - 1; t += 6, k++) {
+      const x = a[0] + (b[0] - a[0]) * t / len, y = a[1] + (b[1] - a[1]) * t / len, away = Math.hypot(x - mid[0], y - mid[1]) || 1, px = x + (mid[0] - x) / away * 1.6, py = y + (mid[1] - y) / away * 1.6;
+      if (!props.some((q) => (q.kind === "car" || q.kind === "tower") && Math.hypot(q.x - px, q.y - py) < 3.2)) prop(k % 3 ? "tree" : "lamppost", px, py);
+    }
+  });
+  return { rooms, lot, bayRooms, corridors, edges, homes, stands, checkStands, barSpots, route, furniture, props, lanes, deckCx, DW, DD, slab };
 }
-function bounds(p) {
+function bounds(p) {   // the rooms with a little air round them: the island and its rock run on past the edges of the picture
   let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
   for (const r of Object.values(p.rooms)) { x0 = Math.min(x0, r.x); y0 = Math.min(y0, r.y); x1 = Math.max(x1, r.x + r.w); y1 = Math.max(y1, r.y + r.d); }
-  const X0 = x0 * T - 120, Y0 = y0 * T - 110, X1 = x1 * T + 120, Y1 = y1 * T + 110, want = (Y1 - Y0) * 1.8, extra = Math.max(0, (want - (X1 - X0)) / 2);   // wide enough to fill a landscape window with the world around the station
-  return [X0 - extra, Y0, X1 + extra, Y1];
+  return [at(x0, y1)[0] - 120, at(x0, y0)[1] - WALL - 130, at(x1, y0)[0] + 120, at(x1, y1)[1] + 150];
 }
+function rockDepth(p) { const xs = p.slab.map((q) => at(q[0], q[1])[0]); return (Math.max(...xs) - Math.min(...xs)) * 0.42; }   // the rock under the island grows with it   // the rock under the island grows with it
 // </geometry>
 
-// ---- the station seen from above: a world, floors, walls, then the Cozy Space Station sprites (CC-BY 4.0, Bramble & Byte) for furniture and crew ----
+// ---- the island: a night sky around it, floors, low glass walls, then furniture and the crew, all generated pixel art (THIRD_PARTY.md) ----
 const ART_V = "__ARTV__";   // changes whenever a picture does, so a browser never shows an old one from its cache
 function artUrl(name) { return "/assets/" + name + ".png?v=" + ART_V; }
 const SPR = __SPRITES__;   // each sprite's natural size [w, h], read from the files by the server
-const WT = 14;   // wall thickness, px
 const FX = { grain: "", grime: "", soft: "" };
+const RAIL = 22;   // the height of a rail along an open edge
+const BRICK = "#8c3b2e", SKEW = Math.tan(Math.atan(HY / HX));   // brick for the outside; the slope of a wall running along an axis
 function gradient(defs, id, stops, attrs) {
   const g = sv(attrs && attrs.r ? "radialGradient" : "linearGradient", attrs || { x1: 0, y1: 0, x2: 0, y2: 1 });
   g.setAttribute("id", id);
@@ -428,216 +536,173 @@ function materials(defs, uid) {   // grain, grime and a soft shadow: filters the
   const noise = (freq, oct, seed, a, b) => (f) => f.append(sv("feTurbulence", { type: "fractalNoise", baseFrequency: freq, numOctaves: oct, seed, result: "n" }), sv("feColorMatrix", { in: "n", type: "matrix", values: "0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  " + a + " 0 0 0 " + b, result: "m" }), sv("feComposite", { in: "m", in2: "SourceAlpha", operator: "in" }));
   FX.grain = make("grain" + uid, noise("0.85", 2, 4, 1.6, -0.55));
   FX.grime = make("grime" + uid, noise("0.03", 3, 11, 2.4, -1.05));
-  FX.soft = make("soft" + uid, (f) => f.append(sv("feGaussianBlur", { stdDeviation: 5 })));
+  FX.soft = make("soft" + uid, (f) => f.append(sv("feGaussianBlur", { stdDeviation: 4 })));
 }
-const TINT = { city: "sepia(0.55) saturate(1.1) brightness(0.96)", steam: "sepia(0.7) saturate(1.3) hue-rotate(-12deg) brightness(0.92)", cyber: "hue-rotate(205deg) saturate(1.25) brightness(0.78) contrast(1.1)" };   // the same sprites, seen in each theme's light
-function sprite(name, x, y, w, h, theme, extra) { return sv("image", { href: artUrl(name), x, y, width: w, height: h, style: "filter:" + TINT[theme], ...(extra || {}) }); }
-function fit(name, bx, by, bw, bh, theme, extra) {   // a sprite as large as fits the box, bottom centre on the box's bottom edge
-  const [w, h] = SPR[name], k = Math.min(bw * 1.25 / w, bh * 1.5 / h);   // a little larger than its box: the art has air around it
-  return sprite(name, bx + bw / 2 - w * k / 2, by + bh - h * k, w * k, h * k, theme, extra);
+function sprite(name, x, y, w, h, extra) { return sv("image", { href: artUrl(name), x, y, width: w, height: h, style: "image-rendering:pixelated", ...(extra || {}) }); }
+function standing(name, cx, by, wpx, extra) {   // a sprite standing on the floor: bottom centre at (cx, by), wpx wide
+  const [sw, sh] = SPR[name], hpx = wpx * sh / sw;
+  return sprite(name, cx - wpx / 2, by - hpx, wpx, hpx, extra);
 }
-function ground(svg, defs, B, pal, theme, uid) {   // what lies around the station: a street, a sea of cloud, a neon grid; scenery only
-  const [x0, y0, x1, y1] = B, w = x1 - x0, h = y1 - y0, layer = sv("g", { "aria-hidden": "true" });
-  layer.append(sv("rect", { x: x0, y: y0, width: w, height: h, fill: gradient(defs, "sky" + uid, [[0, pal.sky1], [1, theme === "steam" ? mixc(pal.sky2, "#10181c", 0.5) : pal.sky2]]) }));
-  if (theme === "city") {
-    for (let gx = Math.ceil(x0 / 352) * 352; gx < x1; gx += 352) layer.append(sv("rect", { x: gx - 18, y: y0, width: 36, height: h, fill: "#0b0e1a", opacity: 0.55 }), sv("line", { x1: gx, x2: gx, y1: y0, y2: y1, stroke: pal.neonB, "stroke-width": 1.5, "stroke-dasharray": "14 18", opacity: 0.4 }));
-    for (let gy = Math.ceil(y0 / 352) * 352; gy < y1; gy += 352) layer.append(sv("rect", { x: x0, y: gy - 18, width: w, height: 36, fill: "#0b0e1a", opacity: 0.55 }), sv("line", { x1: x0, x2: x1, y1: gy, y2: gy, stroke: pal.neonB, "stroke-width": 1.5, "stroke-dasharray": "14 18", opacity: 0.4 }));
-    for (let i = 0; i < 40; i++) { const lx = x0 + hash(91, i) * w, ly = y0 + hash(92, i) * h; layer.append(sv("circle", { cx: lx, cy: ly, r: 34, fill: gradient(defs, "sl" + uid + i, [[0, pal.lamp, 0.32], [1, pal.lamp, 0]], { r: "50%" }), class: "flick2 amb" }), sv("circle", { cx: lx, cy: ly, r: 3, fill: pal.lamp })); }
-    for (let c = 0; c < 8; c++) { const cy = Math.ceil(y0 / 352) * 352 + Math.floor(hash(93, c) * 3) * 352, car = sv("g", { class: "drive amb", style: "animation-duration:" + (14 + hash(94, c) * 20).toFixed(0) + "s;animation-delay:-" + (hash(95, c) * 30).toFixed(0) + "s" }), cx = x0 + hash(96, c) * w; car.append(sv("circle", { cx, cy: cy - 5, r: 4, fill: "#fff6d8" }), sv("circle", { cx: cx + 16, cy: cy - 5, r: 4, fill: "#fff6d8" }), sv("circle", { cx: cx - 14, cy: cy - 5, r: 3, fill: "#ff4d4d" })); layer.append(car); }
-  } else if (theme === "steam") {
-    for (let i = 0; i < 70; i++) layer.append(sv("path", { d: "M" + (x0 + hash(81, i) * w).toFixed(0) + " " + (y0 + hash(82, i) * h).toFixed(0) + "q12 -8 24 0t24 0", stroke: "#9fd8c8", "stroke-width": 1.4, fill: "none", opacity: 0.22, class: "twinkle amb", style: "animation-delay:-" + (hash(83, i) * 3).toFixed(1) + "s" }));
-    for (let i = 0; i < 7; i++) { const cloud = sv("g", { class: (i % 2 ? "drift" : "drift2") + " amb", style: "animation-delay:-" + (hash(87, i) * 60).toFixed(0) + "s" }), cx = x0 + hash(85, i) * w, cy = y0 + hash(86, i) * h; for (let k = 0; k < 5; k++) cloud.append(sv("ellipse", { cx: cx + (k - 2) * 60, cy: cy + (k % 2) * 14, rx: 90 + hash(88, i + k) * 40, ry: 28 + hash(89, i + k) * 14, fill: "#ffc58a", opacity: 0.16 })); layer.append(cloud); }
-  } else {
-    for (let gx = Math.ceil(x0 / 88) * 88; gx < x1; gx += 88) layer.append(sv("line", { x1: gx, x2: gx, y1: y0, y2: y1, stroke: pal.neonA, "stroke-width": 1, opacity: 0.14 }));
-    for (let gy = Math.ceil(y0 / 88) * 88; gy < y1; gy += 88) layer.append(sv("line", { x1: x0, x2: x1, y1: gy, y2: gy, stroke: pal.neonB, "stroke-width": 1, opacity: 0.14 }));
-    for (let i = 0; i < 12; i++) layer.append(sv("circle", { cx: x0 + hash(71, i) * w, cy: y0 + hash(72, i) * h, r: 40 + hash(73, i) * 60, fill: gradient(defs, "ng" + uid + i, [[0, i % 2 ? pal.neonA : pal.neonB, 0.22], [1, pal.neonA, 0]], { r: "50%" }), class: "flick2 amb" }));
-    for (let i = 0; i < 90; i++) layer.append(sv("line", { x1: 0, y1: 0, x2: -4, y2: 24, transform: "translate(" + (x0 + hash(61, i) * w).toFixed(0) + " " + (y0 + hash(62, i) * h).toFixed(0) + ")", stroke: "#9fd8ff", "stroke-width": 1, opacity: 0.3, class: "rain amb", style: "animation-delay:-" + (hash(63, i) * 1.1).toFixed(2) + "s" }));
-  }
+function poly(layer, points, fill, extra) { const n = sv("polygon", { points: pts(points), fill, ...(extra || {}) }); layer.append(n); return n; }
+function mixc(a, b, t) { const p = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)), x = p(a), y = p(b); return "#" + x.map((v, i) => Math.round(v + (y[i] - v) * t).toString(16).padStart(2, "0")).join(""); }
+function quad(x, y, w, d, f, h) { return [at(x, y, f, h), at(x + w, y, f, h), at(x + w, y + d, f, h), at(x, y + d, f, h)]; }   // a rectangle on a floor
+function wallQuad(plane, c, a, b, h0, h1, f) {   // a vertical rectangle on a wall: plane "x" (x = c, running along y from a to b) or "y" (y = c, along x)
+  const P = (u, h) => plane === "x" ? at(c, u, f, h) : at(u, c, f, h);
+  return [P(a, h0), P(b, h0), P(b, h1), P(a, h1)];
+}
+function tilePath(i, j, f) { const q = quad(i, j, 1, 1, f); return "M" + q.map((v) => v[0].toFixed(1) + " " + v[1].toFixed(1)).join("L") + "Z"; }
+function lineAt(a, b) { return "M" + a[0].toFixed(1) + " " + a[1].toFixed(1) + "L" + b[0].toFixed(1) + " " + b[1].toFixed(1); }
+function ground(svg, defs, B, pal, uid) {   // the building floats in a night sky that never ends: stars, a moon, a few wisps of cloud; scenery only
+  const [x0, y0, x1, y1] = B, big = Math.max(x1 - x0, y1 - y0), ex = big * 1.6, ey = big * 0.6, gx0 = x0 - ex, gx1 = x1 + ex, gy0 = y0 - ey, gy1 = y1 + ey, layer = sv("g", { "aria-hidden": "true" });
+  layer.append(sv("rect", { x: gx0, y: gy0, width: gx1 - gx0, height: gy1 - gy0, fill: gradient(defs, "sky" + uid, [[0, "#060919"], [0.55, "#121634"], [1, "#2a2d52"]]) }));
+  for (let i = 0; i < 260; i++) layer.append(sv("circle", { cx: gx0 + hash(41, i) * (gx1 - gx0), cy: gy0 + hash(42, i) * (gy1 - gy0), r: 0.7 + hash(43, i) * 1.5, fill: "#fff6d8", opacity: 0.3 + hash(44, i) * 0.6, class: "twinkle amb", style: "animation-delay:-" + (hash(45, i) * 4).toFixed(1) + "s" }));
+  const mx = x1 + (x1 - x0) * 0.5, my = y0 + (y1 - y0) * 0.1;   // a moon off to one side, and clouds that drift past
+  layer.append(sv("circle", { cx: mx, cy: my, r: 300, fill: gradient(defs, "moonglow" + uid, [[0, "#f4ecd2", 0.26], [1, "#f4ecd2", 0]], { r: "50%" }) }), sprite("scene-moon", mx - 110, my - 114, 220, 228));
+  for (let i = 0; i < 9; i++) { const cx = gx0 + hash(51, i) * (gx1 - gx0), cy = gy0 + hash(52, i) * (gy1 - gy0), name = "scene-cloud-" + (1 + (i % 5)), [cw, ch] = SPR[name], wide = 260 + hash(54, i) * 260; layer.append(sprite(name, cx - wide / 2, cy, wide, wide * ch / cw, { opacity: 0.5, class: (i % 2 ? "drift" : "drift2") + " amb", style: "image-rendering:pixelated;animation-delay:-" + (hash(53, i) * 60).toFixed(0) + "s" })); }
   svg.append(layer);
 }
-function mixc(a, b, t) { const p = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)), x = p(a), y = p(b); return "#" + x.map((v, i) => Math.round(v + (y[i] - v) * t).toString(16).padStart(2, "0")).join(""); }
-function rect(layer, x, y, w, h, fill, extra) { const n = sv("rect", { x, y, width: w, height: h, fill, ...(extra || {}) }); layer.append(n); return n; }
-function floors(layer, defs, p, pal, theme, uid) {
-  for (const r of Object.values(p.rooms)) { const q = [r.x * T, r.y * T, r.w * T, r.d * T]; rect(layer, q[0] - 6, q[1] - 2, q[2] + 12, q[3] + 14, "#000", { opacity: 0.45, filter: FX.soft, rx: 10 }); }   // a soft shadow under each room
-  const plates = (r, ri, a, b, grout, kind) => {
-    const W = Math.round(r.w), D = Math.round(r.d), x = r.x * T, y = r.y * T;
-    rect(layer, x, y, W * T, D * T, a);
-    let alt = "", lines = "", rivets = "";
-    for (let i = 0; i < W; i++) for (let j = 0; j < D; j++) {
-      if ((i + j) % 2) alt += "M" + (x + i * T) + " " + (y + j * T) + "h" + T + "v" + T + "h-" + T + "Z";
-      for (const [u, v] of [[0.12, 0.12], [0.88, 0.12], [0.12, 0.88], [0.88, 0.88]]) rivets += "M" + (x + (i + u) * T).toFixed(1) + " " + (y + (j + v) * T).toFixed(1) + "h0";
-    }
-    for (let i = 0; i <= W; i++) lines += "M" + (x + i * T) + " " + y + "v" + D * T;
-    for (let j = 0; j <= D; j++) lines += "M" + x + " " + (y + j * T) + "h" + W * T;
-    layer.append(sv("path", { d: alt, fill: b }), sv("path", { d: lines, stroke: grout, "stroke-width": 1.2, opacity: 0.5, fill: "none" }), sv("path", { d: lines, stroke: "#fff", "stroke-width": 1, opacity: 0.08, fill: "none", transform: "translate(1 1)" }), sv("path", { d: rivets, stroke: shade(grout, 55), "stroke-width": 2.4, "stroke-linecap": "round", opacity: 0.5, fill: "none" }));
-    if (kind === "room") for (let k = 0; k < 2; k++) {   // a vent grating set into a plate
-      const i = Math.floor(hash(ri + 31, k) * (W - 2)) + 1, j = Math.floor(hash(ri + 37, k) * (D - 2)) + 1, vx = x + i * T + 6, vy = y + j * T + 6;
-      let slats = ""; for (let t = 1; t < 6; t++) slats += "M" + (vx + t * 5.4) + " " + vy + "v" + (T - 12);
-      rect(layer, vx, vy, T - 12, T - 12, shade(grout, -30), { opacity: 0.8, rx: 2 }); layer.append(sv("path", { d: slats, stroke: shade(a, 25), "stroke-width": 1.6, opacity: 0.7, fill: "none" }));
-    }
-    rect(layer, x, y, W * T, D * T, "#000", { filter: FX.grain, opacity: 0.2 }); rect(layer, x, y, W * T, D * T, "#000", { filter: FX.grime, opacity: 0.24 });
-  };
-  p.corridors.forEach((c, ci) => plates({ x: c.x, y: c.y, w: c.w, d: c.d }, 90 + ci, shade(pal.floorA, theme === "cyber" ? 40 : -4), shade(pal.floorB, theme === "cyber" ? 28 : -14), pal.grout, "corridor"));
-  Object.values(p.rooms).forEach((r, ri) => {
-    plates(r, ri, pal.floorA, pal.floorB, pal.grout, "room");
-    const x = r.x * T, y = r.y * T, w = r.w * T, d = r.d * T;
-    rect(layer, x + 14, y + 14, w - 28, d - 28, "none", { stroke: "#000", "stroke-width": 4, opacity: 0.35 });
-    rect(layer, x + 14, y + 14, w - 28, d - 28, "none", { stroke: theme === "cyber" ? pal.neonB : "#e8c020", "stroke-width": 3, "stroke-dasharray": "9 9", opacity: 0.5 });   // a hazard inlay inside the walls
-  });
-  const deck = p.rooms.deck, rug = [deck.x + 9, deck.y + 3.4, 8.4, 6.4];   // the deck's rug under the planning table
-  rect(layer, rug[0] * T, rug[1] * T, rug[2] * T, rug[3] * T, pal.rug1, { rx: 6 }); rect(layer, rug[0] * T + 12, rug[1] * T + 12, rug[2] * T - 24, rug[3] * T - 24, "none", { stroke: pal.rug2, "stroke-width": 3, rx: 4, opacity: 0.8 });
-  for (const r of Object.values(p.rooms)) {   // a runner down each doorway's aisle
-    if (r.kind !== "bay" && r.kind !== "outbox") continue;
-    const run = r.kind === "bay" ? [r.x + p.BW / 2 - 1.4, r.y + 0.4, 2.8, 8.4] : [r.x + 0.4, r.y + 2.1, 4.2, 1.8];
-    rect(layer, run[0] * T, run[1] * T, run[2] * T, run[3] * T, pal.rug1, { opacity: 0.85, rx: 4 }); rect(layer, run[0] * T + 8, run[1] * T + 8, run[2] * T - 16, run[3] * T - 16, "none", { stroke: pal.rug2, "stroke-width": 2, opacity: 0.7, rx: 3 });
+function underside(layer, defs, p, pal, uid) {   // the rock the island floats on: it hangs below the slab, narrowing to a point, with a lantern on a chain
+  const H = p.slab.map((q) => at(q[0], q[1])), down = (q, h) => [q[0], q[1] + h];
+  const L = H.reduce((a, q) => (q[0] < a[0] ? q : a)), R = H.reduce((a, q) => (q[0] > a[0] ? q : a)), B = H.reduce((a, q) => (q[1] > a[1] ? q : a));
+  const lower = H.filter((q) => q[1] >= Math.min(L[1], R[1]) - 1).sort((a, b) => a[0] - b[0]).map((q) => down(q, SLAB)), tip = [(L[0] + R[0]) / 2 + 20, down(B, SLAB)[1] + rockDepth(p)];
+  const left = lower.filter((q) => q[0] <= B[0]), right = lower.filter((q) => q[0] >= B[0]);
+  const edge = (a, b, seed) => { const out = [a]; for (let i = 1; i < 9; i++) { const k = i / 9, wob = (hash(seed, i) - 0.5) * 60 * Math.sin(k * Math.PI); out.push([a[0] + (b[0] - a[0]) * k + wob, a[1] + (b[1] - a[1]) * k * (0.85 + hash(seed + 1, i) * 0.3)]); } out.push(b); return out; };
+  const ridge = edge(down(B, SLAB), tip, 23), leftEdge = edge(left[0], tip, 11), rightEdge = edge(right[right.length - 1], tip, 37);
+  const pat = (id, name, w, h) => { const t = sv("pattern", { id, width: w, height: h, patternUnits: "userSpaceOnUse" }); t.append(sprite(name, 0, 0, w, h)); defs.append(t); return "url(#" + id + ")"; };
+  const lf = [...left, ...ridge.slice(1), ...leftEdge.slice().reverse()], rt = [...right, ...rightEdge.slice(1), ...ridge.slice().reverse()];
+  poly(layer, lf, pat("rockL" + uid, "scene-rock", 160, 102)); poly(layer, lf, "#000", { opacity: 0.2 });
+  poly(layer, rt, pat("rockR" + uid, "scene-rock", 160, 102)); poly(layer, rt, "#000", { opacity: 0.5 });
+  for (let k = 1; k < 8; k++) layer.append(sv("path", { d: lineAt(leftEdge[k], ridge[k]), stroke: "#000", "stroke-width": 1.4, opacity: 0.25 }), sv("path", { d: lineAt(ridge[k], rightEdge[k]), stroke: "#000", "stroke-width": 1.4, opacity: 0.3 }));
+  layer.append(sv("path", { d: lineAt(tip, [tip[0], tip[1] + 90]), stroke: pal.metal, "stroke-width": 2 }), sv("circle", { cx: tip[0], cy: tip[1] + 100, r: 40, fill: gradient(defs, "lant" + uid, [[0, pal.lamp, 0.5], [1, pal.lamp, 0]], { r: "50%" }), class: "flick2 amb" }), sv("rect", { x: tip[0] - 5, y: tip[1] + 90, width: 10, height: 16, rx: 2, fill: pal.lamp, stroke: "#000", "stroke-width": 1 }));
+}
+function plaque(layer, plane, c, u, h, text, pal, f) {   // a name plate on a wall
+  const p = plane === "x" ? at(c, u, f, h) : at(u, c, f, h), half = text.length * 3.6 + 12;
+  const g = sv("g", { transform: "translate(" + p[0].toFixed(1) + " " + p[1].toFixed(1) + ") skewY(" + (plane === "x" ? -26.565 : 26.565) + ")" });
+  g.append(sv("rect", { x: -half, y: -10, width: half * 2, height: 19, rx: 3, fill: pal.dark, stroke: pal.trim, "stroke-width": 2 }), sv("text", { x: 0, y: 4, class: "sign", fill: pal.ink, stroke: "none" }, text));
+  layer.append(g);
+}
+function wallRuns(a, b, gaps) {   // the stretches of a wall between its doorways
+  const runs = [];
+  let from = a;
+  for (const [g0, g1] of gaps.slice().sort((x, y) => x[0] - y[0]).concat([[b, b]])) { if (g0 > from) runs.push([from, g0]); from = Math.max(from, g1); }
+  return runs;
+}
+function wallPanel(layer, plane, c, a, b, color, pal) {   // a back wall: solid to the waist, glass above it, so you can see through it into the next room
+  poly(layer, wallQuad(plane, c, a, b, 0, 28, 0), color, { stroke: "#000", "stroke-width": 0.8, "stroke-opacity": 0.5 });
+  poly(layer, wallQuad(plane, c, a, b, 28, WALL, 0), pal.screen, { opacity: 0.16, stroke: pal.trim, "stroke-width": 1 });
+  poly(layer, wallQuad(plane, c, a, b, WALL - 3, WALL, 0), pal.trim);
+  poly(layer, wallQuad(plane, c, a, b, 26, 30, 0), pal.trim);
+  const P = (u, h) => plane === "x" ? at(c, u, 0, h) : at(u, c, 0, h);
+  let bars = "";
+  for (let u = Math.ceil(a / 2) * 2; u < b; u += 2) if (u > a) bars += lineAt(P(u, 30), P(u, WALL));
+  layer.append(sv("path", { d: bars, stroke: pal.trim, "stroke-width": 1.4, opacity: 0.7 }));
+}
+function paved(layer, defs, x, y, w, d, name, uid) {   // a floor: the picture repeated over blocks of 2 x 2 tiles and cut to the rectangle
+  const [sw, sh] = SPR[name], k = 4 * HX / sw, id = "fc" + uid + Math.round(x * 7 + y * 13 + w * 3), clip = sv("clipPath", { id }), g = sv("g", { "clip-path": "url(#" + id + ")" }), blocks = [];
+  clip.append(sv("polygon", { points: pts(quad(x, y, w, d, 0)) }));
+  defs.append(clip);
+  for (let i = 0; i < Math.ceil(w / 2); i++) for (let j = 0; j < Math.ceil(d / 2); j++) blocks.push([i, j]);
+  blocks.sort((a, b) => a[0] + a[1] - b[0] - b[1]);
+  for (const [i, j] of blocks) { const t = at(x + i * 2, y + j * 2, 0); g.append(sprite(name, t[0] - sw * k / 2, t[1], sw * k, sh * k)); }
+  layer.append(g);
+}
+function worldStatic(layer, defs, p, pal, uid, words) {   // the slab, the courtyard, hallways, rooms with their floors and low glass walls
+  const H = p.slab.map((q) => at(q[0], q[1])), down = (q, h) => [q[0], q[1] + h];
+  const pat = (id, name, w, h) => { const t = sv("pattern", { id, width: w, height: h, patternUnits: "userSpaceOnUse" }); t.append(sprite(name, 0, 0, w, h)); defs.append(t); return "url(#" + id + ")"; };
+  H.forEach((a, i) => { const b = H[(i + 1) % H.length], face = [a, b, down(b, SLAB), down(a, SLAB)]; poly(layer, face, pat("cliff" + uid + i, "scene-rock", 110, 70)); poly(layer, face, "#000", { opacity: i % 2 ? 0.1 : 0.35 }); });
+  poly(layer, H, "#2f4a2a");
+  const grass = poly(layer, H, pat("grass" + uid, "scene-grass", 328, 120), { opacity: 0.9 });
+  defs.querySelector("#grass" + uid).setAttribute("patternTransform", "matrix(0.5 0.25 -0.5 0.25 0 0)");   // laid flat on the ground, along the tile axes
+  poly(layer, H, "#0a0f24", { opacity: 0.45 });   // night over the grass
+  const xs = p.slab.map((q) => q[0]), ys = p.slab.map((q) => q[1]), clip = sv("clipPath", { id: "slab" + uid });
+  clip.append(sv("polygon", { points: pts(H) }));
+  defs.append(clip);
+  let paving = "";
+  for (let i = Math.ceil(Math.min(...xs) / 2) * 2; i <= Math.max(...xs); i += 2) paving += lineAt(at(i, Math.min(...ys)), at(i, Math.max(...ys)));
+  for (let j = Math.ceil(Math.min(...ys) / 2) * 2; j <= Math.max(...ys); j += 2) paving += lineAt(at(Math.min(...xs), j), at(Math.max(...xs), j));
+  layer.append(sv("path", { d: paving, stroke: "#000", "stroke-width": 1, opacity: 0.28, fill: "none", "clip-path": "url(#slab" + uid + ")" }));
+  const lot = p.lot;   // asphalt, with a white line between the bays
+  poly(layer, quad(lot.x, lot.y, lot.w, lot.d, 0), "#23232d"); poly(layer, quad(lot.x, lot.y, lot.w, lot.d, 0), "none", { stroke: "#e8c020", "stroke-width": 1.5, opacity: 0.7 });
+  for (let i = 0; i <= 3; i++) poly(layer, quad(lot.x + 0.25 + i * 3.3, lot.y + 0.4, 0.12, 3.4, 0), "#ddd", { opacity: 0.8 });
+  for (const c of p.corridors) { poly(layer, quad(c.x, c.y, c.w, c.d, 0), pal.corr); paved(layer, defs, c.x, c.y, c.w, c.d, "tile-floor-stone", uid); }
+  const rooms = Object.values(p.rooms).sort((a, b) => a.x + a.y - b.x - b.y);
+  for (const r of rooms) {
+    const q = quad(r.x, r.y, r.w, r.d, 0), lip = (a, b) => [a, b, down(b, 5), down(a, 5)];
+    poly(layer, lip(q[3], q[2]), shade(pal.trim, -45)); poly(layer, lip(q[2], q[1]), shade(pal.trim, -65));
+    poly(layer, q, pal.floorA); paved(layer, defs, r.x, r.y, r.w, r.d, r.kind === "bar" ? "tile-floor-checker" : r.kind === "outbox" ? "tile-floor-stone" : "tile-floor-parquet", uid);
+    if (r.kind === "deck") poly(layer, quad(r.x + 9, r.y + 3.4, 8.4, 6.4, 0), pal.rug1, { opacity: 0.92, stroke: pal.rug2, "stroke-width": 2 });
+    else if (r.kind === "bay") poly(layer, quad(r.runner[0], r.runner[1], r.runner[2], r.runner[3], 0), pal.rug1, { opacity: 0.88, stroke: pal.rug2, "stroke-width": 1.6 });
+    else if (r.kind === "bar") poly(layer, quad(r.x + 3.5, r.y + 6.8, 5, 3, 0), pal.rug1, { opacity: 0.9, stroke: pal.rug2, "stroke-width": 1.6 });
+    const gaps = (side) => doorsOf(p, r).filter((d) => d[0] === side).map((d) => [d[1], d[2]]);
+    for (const [a, b] of wallRuns(r.y, r.y + r.d, gaps("w"))) wallPanel(layer, "x", r.x, a, b, pal.wallL, pal);
+    for (const [a, b] of wallRuns(r.x, r.x + r.w, gaps("n"))) wallPanel(layer, "y", r.y, a, b, pal.wallR, pal);
+    layer.append(sv("path", { d: lineAt(at(r.x, r.y, 0, 0), at(r.x, r.y, 0, WALL)), stroke: pal.trim, "stroke-width": 4 }));
+    const title = r.kind === "deck" ? words.deck : r.kind === "outbox" ? words.outbox : r.kind === "bar" ? words.bar : words.bay + " " + number(r.id);
+    plaque(layer, "y", r.y, r.x + r.w / 2, WALL + 16, title, pal, 0);
+    const hang = (name, u, h, wpx) => { const [sw, sh] = SPR[name], c = at(u, r.y, 0, h); layer.append(sprite(name, c[0] - wpx / 2, c[1] - wpx * sh / sw / 2, wpx, wpx * sh / sw)); };   // something hung on the back wall
+    if (r.kind === "deck") { hang("tile-clock-b", r.x + 13, 40, 34); hang("tile-picture-city", r.x + 8, 38, 30); hang("tile-picture-hills-b", r.x + 18, 38, 34); }
+    else if (r.kind === "bar") { hang("tile-neon-b", r.x + 6, 42, 52); hang("tile-picture-leaf", r.x + 2.5, 38, 26); hang("tile-picture-hills-b", r.x + 9.5, 38, 32); }
+    else if (r.kind === "outbox") hang("tile-clock-b", r.x + 4, 40, 30);
+    else if (r.kind === "bay" && r.wall !== "e") hang("tile-picture-hills-b", r.x + r.w / 2, 36, 30);
   }
-  for (const [a, b] of p.edges) {   // a rail along each long side of a corridor, with a light every so often
-    const A = pos(a[0], a[1]), Bq = pos(b[0], b[1]);
-    layer.append(sv("line", { x1: A[0], y1: A[1], x2: Bq[0], y2: Bq[1], stroke: shade(pal.trim, -30), "stroke-width": 7 }), sv("line", { x1: A[0], y1: A[1], x2: Bq[0], y2: Bq[1], stroke: pal.trim, "stroke-width": 2.4 }));
-    const len = Math.hypot(Bq[0] - A[0], Bq[1] - A[1]), steps = Math.max(1, Math.floor(len / 66));
-    for (let t = 0; t <= steps; t++) { const k = steps ? t / steps : 0; layer.append(sv("circle", { cx: A[0] + (Bq[0] - A[0]) * k, cy: A[1] + (Bq[1] - A[1]) * k, r: 2.8, fill: theme === "cyber" ? pal.neonB : pal.lamp, class: "blink" + (t % 3 ? String(t % 3 + 1) : "") + " amb" })); }
+}
+function frontStatic(layer, defs, p, pal, uid) {   // what stands in front of the crew: a rail along each hallway, with a post every so often
+  for (const [a, b] of p.edges) {
+    const A = at(a[0], a[1]), Bq = at(b[0], b[1]), len = Math.hypot(b[0] - a[0], b[1] - a[1]), n = Math.max(1, Math.round(len / 1.5));
+    layer.append(sv("path", { d: lineAt([A[0], A[1] - 20], [Bq[0], Bq[1] - 20]), stroke: pal.trim, "stroke-width": 2.6 }), sv("path", { d: lineAt([A[0], A[1] - 10], [Bq[0], Bq[1] - 10]), stroke: pal.trim, "stroke-width": 1.1, opacity: 0.7 }));
+    for (let i = 0; i <= n; i++) { const q = at(a[0] + (b[0] - a[0]) * i / n, a[1] + (b[1] - a[1]) * i / n); layer.append(sv("path", { d: lineAt(q, [q[0], q[1] - 20]), stroke: pal.trim, "stroke-width": 2 })); }
   }
 }
 function doorsOf(p, r) {   // where a room's wall has a doorway: [side, from, to] in tiles along that side
-  if (r.kind === "deck") return [["s", p.deckCx - 1, p.deckCx + 1], ["e", 5, 7]];
-  if (r.kind === "bay") return [["n", r.x + p.BW / 2 - 1, r.x + p.BW / 2 + 1]];
-  return [["w", 5, 7]];
+  if (r.doors) return r.doors;
+  const along = r.wall === "n" || r.wall === "s" ? r.entry[0] : r.entry[1], opposite = { n: "s", s: "n", e: "w", w: "e" }[r.wall];
+  return [[r.wall, along - 1, along + 1], ...(r.through ? [[opposite, along - 1, along + 1]] : [])];
 }
-function hazard(defs, uid) {   // diagonal yellow and black warning stripes, as a fill
-  const pat = sv("pattern", { id: "haz" + uid, width: 16, height: 16, patternUnits: "userSpaceOnUse", patternTransform: "rotate(45)" });
-  pat.append(sv("rect", { x: 0, y: 0, width: 16, height: 16, fill: "#14110a" }), sv("rect", { x: 0, y: 0, width: 8, height: 16, fill: "#e8b820" }));
-  defs.append(pat);
-  return "url(#haz" + uid + ")";
-}
-function screenTD(g, x, y, w, h, pal, kind, seed, lit) {   // a display seen from above: a radar, a graph or lines of text
-  const col = pal.screen, on = lit ? 1 : 0.7;
-  rect(g, x, y, w, h, "#03060c", { rx: 2, stroke: shade(pal.metal, -10), "stroke-width": 1.2 });
-  rect(g, x, y, w, h, col, { rx: 2, opacity: 0.1 * on });
-  if (kind === 0) {
-    const cx = x + w / 2, cy = y + h / 2, r = Math.min(w, h) * 0.38;
-    g.append(sv("circle", { cx, cy, r, fill: "none", stroke: col, "stroke-width": 0.9, opacity: 0.8 * on }), sv("circle", { cx, cy, r: r * 0.5, fill: "none", stroke: col, "stroke-width": 0.8, opacity: 0.7 * on }), sv("line", { x1: cx - r, y1: cy, x2: cx + r, y2: cy, stroke: col, "stroke-width": 0.6, opacity: 0.6 * on }), sv("line", { x1: cx, y1: cy - r, x2: cx, y2: cy + r, stroke: col, "stroke-width": 0.6, opacity: 0.6 * on }));
-    for (let b = 0; b < 3; b++) g.append(sv("circle", { cx: cx + (hash(seed, b) - 0.5) * r * 1.4, cy: cy + (hash(b, seed) - 0.5) * r * 1.4, r: 1.3, fill: "#fff", class: "blink" + (b ? String(b + 1) : "") + " amb" }));
-  } else if (kind === 1) {
-    let d = ""; for (let i = 0; i <= 8; i++) d += (i ? "L" : "M") + (x + 3 + i * (w - 6) / 8).toFixed(1) + " " + (y + h - 3 - hash(seed + i, i * 3) * (h - 6)).toFixed(1);
-    g.append(sv("path", { d, fill: "none", stroke: col, "stroke-width": 1.2, opacity: on }));
-  } else for (let l = 0; l < Math.max(2, Math.floor(h / 4.5)); l++) rect(g, x + 3, y + 3 + l * 4.4, (w - 6) * (0.3 + hash(seed, l) * 0.65), 1.4, l % 3 === 2 ? pal.accent : col, { opacity: 0.85 * on });
-}
-function consoleBanks(layer, defs, r, doors, pal, theme, uid) {   // modules of consoles along a room's top wall: screens, buttons and a glow, as on a ship's bridge
-  const gaps = doors.filter((q) => q[0] === "n").map((q) => [q[1] * T - 14, q[2] * T + 14]);
-  const y = r.y * T + WT / 2 + 1, step = 96;
-  for (let mx = r.x * T + 22, i = 0; mx + step - 10 < (r.x + r.w) * T - 20; mx += step, i++) {
-    if (gaps.some(([a, b]) => mx < b && mx + step - 8 > a)) continue;
-    const seed = Math.round(r.x * 7 + r.y * 13) + i * 5;
-    rect(layer, mx + 3, y + 3, step - 8, 34, "#000", { opacity: 0.45, filter: FX.soft });
-    rect(layer, mx, y, step - 8, 34, shade(pal.dark, 14), { rx: 3, stroke: pal.trim, "stroke-width": 1, "stroke-opacity": 0.55 });
-    rect(layer, mx, y, step - 8, 3, "#fff", { opacity: 0.1, rx: 1.5 });
-    screenTD(layer, mx + 6, y + 5, 36, 18, pal, hash(seed, 1) > 0.5 ? 0 : 1, seed, true); screenTD(layer, mx + 46, y + 5, 36, 18, pal, hash(seed, 2) > 0.5 ? 2 : 1, seed + 3, true);
-    for (let b = 0; b < 7; b++) layer.append(sv("circle", { cx: mx + 9 + b * 11, cy: y + 28, r: 2, fill: [pal.accent, pal.lamp, pal.screen, pal.bad][Math.floor(hash(seed + b, 5) * 4)], class: hash(seed, b) > 0.6 ? "blink" + (b % 3 ? String(b % 3 + 1) : "") + " amb" : "", opacity: 0.9 }));
-    layer.append(sv("ellipse", { cx: mx + step / 2 - 4, cy: y + 46, rx: 52, ry: 22, fill: gradient(defs, "cb" + uid + i + Math.round(r.x), [[0, pal.screen, 0.2], [1, pal.screen, 0]], { r: "50%" }), class: "flick2 amb" }));
-  }
-}
-function chairTD(g, cx, cy, pal, theme, rot) {   // an office chair seen from above: a seat, a curved back, five castors
-  const tone = theme === "city" ? "#5a2b2b" : shade(pal.dark, 26), c = sv("g", { transform: "translate(" + cx + " " + cy + ") rotate(" + (rot || 0) + ")" });
-  for (let k = 0; k < 5; k++) { const a = k / 5 * Math.PI * 2; c.append(sv("circle", { cx: Math.cos(a) * 10.5, cy: Math.sin(a) * 10.5, r: 2.2, fill: "#111" })); }
-  c.append(sv("circle", { cx: 0, cy: 0, r: 9.5, fill: tone, stroke: "#000", "stroke-width": 1 }), sv("circle", { cx: 0, cy: 0, r: 6, fill: shade(tone, 12) }), sv("path", { d: "M-10 -6Q0 -17 10 -6", fill: "none", stroke: shade(tone, -25), "stroke-width": 5, "stroke-linecap": "round" }));
-  g.append(c);
-}
-function holoTable(g, box, pal, theme, defs, id) {   // the planning table: a glowing holographic map in the steampunk and cyberpunk themes, a paper map on a wooden table in the city
-  const [x, y, w, d] = box, cx = (x + w / 2) * T, cy = (y + d / 2) * T, rx = w * T / 2, ry = d * T / 2, cut = Math.min(rx, ry) * 0.45;
-  const oct = [[cx - rx + cut, cy - ry], [cx + rx - cut, cy - ry], [cx + rx, cy - ry + cut], [cx + rx, cy + ry - cut], [cx + rx - cut, cy + ry], [cx - rx + cut, cy + ry], [cx - rx, cy + ry - cut], [cx - rx, cy - ry + cut]];
-  g.append(sv("polygon", { points: pts(oct.map((q) => [q[0] + 4, q[1] + 6])), fill: "#000", opacity: 0.45, filter: FX.soft }), sv("polygon", { points: pts(oct), fill: theme === "city" ? shade(pal.wood, -10) : "#0c1118", stroke: pal.trim, "stroke-width": 4 }));
-  const inner = oct.map((q) => [cx + (q[0] - cx) * 0.86, cy + (q[1] - cy) * 0.82]);
-  g.append(sv("polygon", { points: pts(inner), fill: theme === "city" ? pal.paper : "#040a10", stroke: theme === "city" ? shade(pal.paper, -30) : pal.screen, "stroke-width": 1.6 }));
-  const clip = sv("clipPath", { id: id + "tc" }); clip.append(sv("polygon", { points: pts(inner) })); defs.append(clip);
-  const map = sv("g", { "clip-path": "url(#" + id + "tc)" }), line = theme === "city" ? shade(pal.paper, -35) : pal.screen;
-  for (let i = -6; i <= 6; i++) map.append(sv("line", { x1: cx + i * 16, y1: cy - ry, x2: cx + i * 16, y2: cy + ry, stroke: line, "stroke-width": 0.7, opacity: theme === "city" ? 0.5 : 0.28 }));
-  for (let j = -3; j <= 3; j++) map.append(sv("line", { x1: cx - rx, y1: cy + j * 16, x2: cx + rx, y2: cy + j * 16, stroke: line, "stroke-width": 0.7, opacity: theme === "city" ? 0.5 : 0.28 }));
-  for (const k of [0.3, 0.55, 0.8]) map.append(sv("ellipse", { cx, cy, rx: rx * k, ry: ry * k, fill: "none", stroke: line, "stroke-width": 1, opacity: 0.6 }));
-  if (theme !== "city") { const sweep = sv("g", { class: "spin amb", style: "transform-origin:" + cx + "px " + cy + "px" }); sweep.append(sv("line", { x1: cx, y1: cy, x2: cx + rx * 0.85, y2: cy, stroke: pal.screen, "stroke-width": 2, opacity: 0.8 }), sv("path", { d: "M" + cx + " " + cy + "L" + (cx + rx * 0.85) + " " + cy + "A" + rx * 0.85 + " " + ry * 0.85 + " 0 0 0 " + (cx + rx * 0.85 * Math.cos(0.7)) + " " + (cy - ry * 0.85 * Math.sin(0.7)) + "Z", fill: pal.screen, opacity: 0.18 })); map.append(sweep); }
-  for (let b = 0; b < 5; b++) map.append(sv("circle", { cx: cx + (hash(b, 17) - 0.5) * rx * 1.3, cy: cy + (hash(17, b) - 0.5) * ry * 1.3, r: 3, fill: theme === "city" ? pal.bad : "#fff", class: "blink" + (b % 3 ? String(b % 3 + 1) : "") + " amb" }));
-  g.append(map);
-  if (theme !== "city") g.append(sv("ellipse", { cx, cy, rx: rx * 1.5, ry: ry * 1.6, fill: gradient(defs, id + "hg", [[0, pal.screen, 0.3], [1, pal.screen, 0]], { r: "50%" }), class: "flick2 amb" }));
-  for (const [dx, dy, rot] of [[-rx * 0.6, -ry - 16, 180], [rx * 0.6, -ry - 16, 180], [-rx * 0.6, ry + 16, 0], [rx * 0.6, ry + 16, 0]]) chairTD(g, cx + dx, cy + dy, pal, theme, rot);
-}
-function cableTD(g, x0, y0, x1, y1, pal, theme) {   // a lead on the floor from a machine to the wall: bends at right angles
-  const mid = (y0 + y1) / 2, d = "M" + x0.toFixed(0) + " " + y0.toFixed(0) + "V" + mid.toFixed(0) + "H" + x1.toFixed(0) + "V" + y1.toFixed(0);
-  g.append(sv("path", { d, fill: "none", stroke: "#000", "stroke-width": 5.5, opacity: 0.5, "stroke-linejoin": "round" }), sv("path", { d, fill: "none", stroke: theme === "cyber" ? pal.neonA : "#2b2b30", "stroke-width": 3, "stroke-linejoin": "round" }), sv("path", { d, fill: "none", stroke: "#fff", "stroke-width": 0.8, opacity: 0.18, "stroke-linejoin": "round" }));
-}
-function walls(layer, defs, p, pal, theme, uid) {
-  const haz = hazard(defs, uid);
-  for (const r of Object.values(p.rooms)) {
-    const doors = doorsOf(p, r), x = r.x * T, y = r.y * T, w = r.w * T, d = r.d * T, runs = [];
-    const cut = (side, from, to, fixed) => {   // the stretches of one side that are wall, once the doorways are taken out
-      const gaps = doors.filter((q) => q[0] === side).map((q) => [q[1] * T, q[2] * T]).sort((a, b) => a[0] - b[0]);
-      let at = from; for (const [a, b] of gaps.concat([[to, to]])) { if (a > at) runs.push(side === "n" || side === "s" ? [at, fixed - WT / 2, a - at, WT] : [fixed - WT / 2, at, WT, a - at]); at = b; }
-    };
-    cut("n", x - WT / 2, x + w + WT / 2, y); cut("s", x - WT / 2, x + w + WT / 2, y + d); cut("w", y + WT / 2, y + d - WT / 2, x); cut("e", y + WT / 2, y + d - WT / 2, x + w);
-    for (const q of runs) rect(layer, q[0] + 4, q[1] + 6, q[2], q[3], "#000", { opacity: 0.45, filter: FX.soft });
-    consoleBanks(layer, defs, r, doors, pal, theme, uid);
-    for (const q of runs) {
-      const horiz = q[2] > q[3], len = horiz ? q[2] : q[3];
-      rect(layer, q[0], q[1], q[2], q[3], pal.wallL, { stroke: "#000", "stroke-width": 1.4, "stroke-opacity": 0.6 });
-      rect(layer, q[0], q[1], horiz ? q[2] : 3, horiz ? 3 : q[3], "#fff", { opacity: 0.2 });   // the lit edge
-      rect(layer, horiz ? q[0] : q[0] + q[2] - 3, horiz ? q[1] + q[3] - 3 : q[1], horiz ? q[2] : 3, horiz ? 3 : q[3], "#000", { opacity: 0.3 });   // the shaded edge
-      let seams = "", bolts = "";
-      for (let t = 33; t < len - 8; t += 66) { seams += horiz ? "M" + (q[0] + t) + " " + q[1] + "v" + q[3] : "M" + q[0] + " " + (q[1] + t) + "h" + q[2]; bolts += horiz ? "M" + (q[0] + t - 6) + " " + (q[1] + 3.5) + "h0M" + (q[0] + t + 6) + " " + (q[1] + 3.5) + "h0" : "M" + (q[0] + 3.5) + " " + (q[1] + t - 6) + "v0M" + (q[0] + 3.5) + " " + (q[1] + t + 6) + "v0"; }
-      layer.append(sv("path", { d: seams, stroke: "#000", "stroke-width": 1.2, opacity: 0.45, fill: "none" }), sv("path", { d: bolts, stroke: shade(pal.wallL, 45), "stroke-width": 2.2, "stroke-linecap": "round", fill: "none", opacity: 0.8 }));
-      if (theme === "city") for (let t = 20; t < len - 12; t += 66) { if (horiz) rect(layer, q[0] + t, q[1] + 5, 22, 4, pal.win, { opacity: 0.85 }); else rect(layer, q[0] + 5, q[1] + t, 4, 22, pal.win, { opacity: 0.85 }); }
-      else if (theme === "steam") for (let t = 33; t < len - 8; t += 66) layer.append(sv("circle", { cx: horiz ? q[0] + t : q[0] + WT / 2, cy: horiz ? q[1] + WT / 2 : q[1] + t, r: 4.2, fill: "#7fe0d0", stroke: pal.metal, "stroke-width": 2 }));
-      else for (let t = 14; t < len - 8; t += 66) { if (horiz) rect(layer, q[0] + t, q[1] + 5, 34, 3, pal.neonB, { opacity: 0.9, class: "blink2 amb" }); else rect(layer, q[0] + 5, q[1] + t, 3, 34, pal.neonB, { opacity: 0.9, class: "blink2 amb" }); }
-    }
-    for (const [side, a, b] of doors) {   // a door: posts, a warning-striped threshold and a lamp over it
-      const A = side === "n" || side === "s" ? [a * T, (side === "n" ? y : y + d)] : [(side === "w" ? x : x + w), a * T], Bq = side === "n" || side === "s" ? [b * T, A[1]] : [A[0], b * T], horiz = side === "n" || side === "s";
-      rect(layer, horiz ? A[0] : A[0] - 11, horiz ? A[1] - 11 : A[1], horiz ? Bq[0] - A[0] : 22, horiz ? 22 : Bq[1] - A[1], haz, { opacity: 0.88, stroke: "#000", "stroke-width": 1.2 });
-      for (const q of [A, Bq]) layer.append(sv("rect", { x: q[0] - 8, y: q[1] - 8, width: 16, height: 16, rx: 3, fill: pal.trim, stroke: "#000", "stroke-width": 1.4 }), sv("circle", { cx: q[0], cy: q[1], r: 3, fill: "#000", opacity: 0.55 }));
-      layer.append(sv("circle", { cx: (A[0] + Bq[0]) / 2, cy: (A[1] + Bq[1]) / 2, r: 24, fill: gradient(defs, "dl" + uid + side + Math.round(x + y), [[0, theme === "cyber" ? pal.neonB : pal.lamp, 0.4], [1, pal.lamp, 0]], { r: "50%" }), class: "flick2 amb" }), sv("circle", { cx: (A[0] + Bq[0]) / 2, cy: (A[1] + Bq[1]) / 2, r: 4, fill: theme === "cyber" ? pal.neonB : pal.lamp, class: "flick amb" }));
-    }
-  }
-}
-function lightPools(layer, defs, p, pal, theme, uid) {   // ceiling lights: a soft pool of light on the floor under each, so the rooms are not evenly lit
-  let n = 0;
-  for (const r of Object.values(p.rooms)) for (let i = 3; i < r.w; i += 6) for (let j = 3; j < r.d; j += 6) {
-    layer.append(sv("circle", { cx: (r.x + i) * T, cy: (r.y + j) * T, r: 190, fill: gradient(defs, "lp" + uid + n++, [[0, theme === "cyber" ? pal.neonB : pal.lamp, theme === "cyber" ? 0.13 : 0.18], [1, pal.lamp, 0]], { r: "50%" }) }), sv("circle", { cx: (r.x + i) * T, cy: (r.y + j) * T, r: 5, fill: "#fff", opacity: 0.5 }), sv("circle", { cx: (r.x + i) * T, cy: (r.y + j) * T, r: 9, fill: "none", stroke: "#000", "stroke-width": 1.5, opacity: 0.5 }));
-  }
-}
-const FAMILY_SPRITE = { read: "file-cabinet", write: "writer-desk", shell: "console", web: "comm-booth", mcp: "server-rack", other: "crate", approvals: "dual-monitor-desk", ledger: "counter", desk: "desk", table: "meeting-table", crate: "crate" };
-const PLANTS = ["plant-fern", "plant-ficus", "plant-flowering", "plant-monstera", "plant-snake-plant"];
-function furnitureSprite(f, pal, theme, now, defs, uid) {
-  const g = sv("g", {}), [x, y, w, d] = f.box, o = f.obj, id = "fg" + uid + f.family + Math.round(x * 3 + y * 5), fresh = o && o.last && now - o.last < 4;
-  const bx = x * T, by = y * T, bw = w * T, bh = d * T;
-  if (f.family === "table") { holoTable(g, f.box, pal, theme, defs, id); return g; }
-  if (f.room && f.family !== "crate" && y - f.room.y < 3.2) cableTD(g, bx + bw * 0.35, by + bh * 0.3, bx + bw * 0.35 + (hash(Math.round(x * 5), Math.round(y * 3)) - 0.5) * 60, f.room.y * T + WT + 34, pal, theme);   // a lead up to the console bank on the wall
-  rect(g, bx + 4, by + bh * 0.55, bw - 4, bh * 0.5, "#000", { opacity: 0.4, filter: FX.soft, rx: 8 });
-  g.append(fit(FAMILY_SPRITE[f.family] || "crate", bx, by, bw, bh + 6, theme));
-  if (f.family === "desk" || f.family === "approvals") chairTD(g, bx + bw / 2, by + bh + 22, pal, theme, 0);   // someone sits at a desk
-  if (fresh && (f.family === "write" || f.family === "shell" || f.family === "read")) g.append(sv("ellipse", { cx: bx + bw / 2, cy: by + bh / 2, rx: bw * 0.9, ry: bh * 0.9, fill: gradient(defs, id + "w", [[0, pal.screen, 0.35], [1, pal.screen, 0]], { r: "50%" }), class: "flick amb" }));
-  if (f.family === "approvals" && o && o.pending) g.append(sv("circle", { cx: bx + bw / 2, cy: by + bh / 2, r: 46, fill: gradient(defs, id + "p", [[0, pal.wait, 0.5], [1, pal.wait, 0]], { r: "50%" }), class: "flick2 amb" }));
-  if (f.lane && f.laneState) { const on = f.laneState === "lit"; g.append(sv("circle", { cx: bx + bw - 10, cy: by + 12, r: 5, fill: on ? pal.accent : shade(pal.dark, 20), stroke: "#000", "stroke-width": 1, class: on ? "flick amb" : "" })); }   // the handoff tray: lit once that handoff was recorded
-  if (f.family === "crate" && o && o.state === "landed") g.append(sv("circle", { cx: bx + bw / 2, cy: by + bh / 2, r: 56, fill: gradient(defs, id + "l", [[0, pal.accent, 0.55], [1, pal.accent, 0]], { r: "50%" }), class: "flick amb" }));
-  if (fresh) g.append(sv("rect", { x: bx - 6, y: by - 6, width: bw + 12, height: bh + 12, rx: 10, fill: "none", stroke: pal.accent, "stroke-width": 3, opacity: 0.85, class: "blink amb" }));
+const FURN = { read: "file-cabinet", write: "writer-desk", shell: "safe", web: "radio", mcp: "switchboard", other: "cupboard", approvals: "signing-desk", ledger: "cash-register",
+  desk: "report-desk", table: "planning-table", crate: "mail-cabinet", bar: "bar", sofa: "sofa", smalltable: "small-table" };   // the picture for each kind of furniture
+function furnitureSprite(f, pal, now, defs, uid) {
+  const g = sv("g", {}), [x, y, w, d] = f.box, o = f.obj, fl = f.room.f, id = "fg" + uid + f.family + Math.round(x * 3 + y * 5) + fl, fresh = o && o.last && now - o.last < 4;
+  const lit = fresh || (f.family === "approvals" && o && o.pending) || (f.family === "crate" && o && o.state === "landed") || (f.lane && f.laneState === "lit") || f.family === "bar";
+  const name = "furn-" + FURN[f.family] + (lit ? "-on" : "-off"), [sw, sh] = SPR[name], c = at(x + w / 2, y + d / 2, fl), wpx = Math.max(30, (w + d) * HX * 0.62), hpx = wpx * sh / sw, by = c[1] + (w + d) * HY / 2;
+  poly(g, quad(x, y, w, d, fl), "#000", { opacity: 0.3, filter: FX.soft });
+  g.append(sprite(name, c[0] - wpx / 2, by - hpx, wpx, hpx));
+  if (fresh) g.append(sv("ellipse", { cx: c[0], cy: by - 4, rx: wpx * 0.55, ry: wpx * 0.2, fill: "none", stroke: pal.accent, "stroke-width": 3, opacity: 0.85, class: "blink amb" }));
+  if (f.lane && f.laneState) { const on = f.laneState === "lit"; g.append(sv("circle", { cx: c[0] + wpx * 0.3, cy: by - hpx * 0.8, r: 5, fill: on ? pal.accent : shade(pal.dark, 20), stroke: "#000", "stroke-width": 1, class: on ? "flick amb" : "" })); }   // the handoff tray: lit once that handoff was recorded
   if (o && f.family !== "crate") {   // a count plate: how often it was used; amber dot: it asked you; red dot: denied or failed
-    const n = f.family === "ledger" ? "$" + o.usd.toFixed(3) : f.family === "approvals" ? o.asked : o.used, cx = bx + bw / 2, cy = by - 4;
-    g.append(sv("rect", { x: cx - 17, y: cy - 9, width: 34, height: 15, rx: 4, fill: pal.dark, stroke: pal.trim, "stroke-width": 1, opacity: 0.94 }), sv("text", { x: cx, y: cy + 2, class: "badge-n", fill: pal.ink, stroke: "none" }, String(n)));
-    if (o.pending || (o.asked && f.family !== "approvals")) g.append(sv("circle", { cx: cx - 20, cy: cy - 7, r: 4.5, fill: pal.wait, stroke: "#000", "stroke-width": 1 }));
-    if (o.denied || o.failed) g.append(sv("circle", { cx: cx + 20, cy: cy - 7, r: 4.5, fill: pal.bad, stroke: "#000", "stroke-width": 1 }));
+    const n = f.family === "ledger" ? "$" + o.usd.toFixed(3) : f.family === "approvals" ? o.asked : o.used, py = by - hpx - 6;
+    g.append(sv("rect", { x: c[0] - 17, y: py - 9, width: 34, height: 15, rx: 4, fill: pal.dark, stroke: pal.trim, "stroke-width": 1, opacity: 0.94 }), sv("text", { x: c[0], y: py + 2, class: "badge-n", fill: pal.ink, stroke: "none" }, String(n)));
+    if (o.pending || (o.asked && f.family !== "approvals")) g.append(sv("circle", { cx: c[0] - 20, cy: py - 7, r: 4.5, fill: pal.wait, stroke: "#000", "stroke-width": 1 }));
+    if (o.denied || o.failed) g.append(sv("circle", { cx: c[0] + 20, cy: py - 7, r: 4.5, fill: pal.bad, stroke: "#000", "stroke-width": 1 }));
   }
   return g;
 }
-function propSprite(kind, x, y, pal, theme, defs, uid, size) {   // scenery: it says nothing about the run
-  const g = sv("g", {}), px = x * T, py = y * T, id = "pr" + uid + kind + Math.round(x * 3 + y * 7);
-  if (kind === "plant") g.append(fit(PLANTS[Math.floor(hash(Math.round(x * 3), Math.round(y * 5)) * PLANTS.length)], px - 26, py - 36, 62, 62, theme));
-  else if (kind === "lamp") g.append(sv("circle", { cx: px, cy: py, r: 56, fill: gradient(defs, id, [[0, pal.lamp, 0.4], [1, pal.lamp, 0]], { r: "50%" }), class: "flick2 amb" }), sv("circle", { cx: px, cy: py, r: 6, fill: pal.lamp, stroke: "#000", "stroke-width": 1.2 }));
-  else if (kind === "crates") g.append(fit("crate", px - 6, py - 30, 54, 54, theme), fit("crate", px + 34, py - 18, 44, 44, theme));
-  else if (kind === "tank") g.append(fit("water-cooler", px - 10, py - 40, 36, 66, theme));
-  else if (kind === "bookcase") { const len = (size || 3.4) * T, n = Math.max(1, Math.floor(len / 40)); for (let i = 0; i < n; i++) g.append(fit("bookshelf", px - 6, py + i * (len / n), 50, len / n + 14, theme)); }
-  else if (kind === "coat") g.append(fit("clothes-rack", px - 18, py - 40, 56, 56, theme));
+function box(g, x, y, w, d, f, h0, h, base) {   // a plain block, for the few things without a picture
+  const P = (px, py, hh) => at(px, py, f, hh), edge = { stroke: "#000", "stroke-width": 0.8, "stroke-opacity": 0.45 };
+  poly(g, [P(x, y + d, h0), P(x + w, y + d, h0), P(x + w, y + d, h0 + h), P(x, y + d, h0 + h)], base, edge);
+  poly(g, [P(x + w, y + d, h0), P(x + w, y, h0), P(x + w, y, h0 + h), P(x + w, y + d, h0 + h)], shade(base, -28), edge);
+  poly(g, [P(x, y, h0 + h), P(x + w, y, h0 + h), P(x + w, y + d, h0 + h), P(x, y + d, h0 + h)], shade(base, 16), edge);
+}
+function stand(name, cx, by, wpx) { const [sw, sh] = SPR[name]; return sprite(name, cx - wpx / 2, by - wpx * sh / sw, wpx, wpx * sh / sw); }   // a picture standing on a spot, wpx wide
+function propSprite(q, pal, defs, uid) {   // scenery: it says nothing about the run
+  const g = sv("g", {}), f = q.f, [px, py] = at(q.x, q.y, f), seed = hash(Math.round(q.x * 3), Math.round(q.y * 5));
+  poly(g, quad(q.x - 0.35, q.y - 0.35, 0.7, 0.7, f), "#000", { opacity: 0.25, filter: FX.soft });
+  if (q.kind === "plant") g.append(stand(seed < 0.5 ? "furn-fern-off" : "furn-ficus-off", px, py + 10, 46));
+  else if (q.kind === "lamp") g.append(sv("circle", { cx: px, cy: py - 50, r: 62, fill: gradient(defs, "pr" + uid + Math.round(q.x * 3 + q.y * 7), [[0, pal.lamp, 0.4], [1, pal.lamp, 0]], { r: "50%" }), class: "flick2 amb" }), stand("furn-floor-lamp-on", px, py + 10, 36));
+  else if (q.kind === "tank") g.append(stand("furn-water-cooler-off", px, py + 10, 34));
+  else if (q.kind === "coat") g.append(stand("furn-coat-rack-off", px, py + 10, 42));
+  else if (q.kind === "bookcase") { const n = Math.max(1, Math.round((q.size || 2) / 1.1)); for (let i = 0; i < n; i++) { const p = at(q.x, q.y + (i + 0.5) * (q.size || 2) / n, f); g.append(stand("furn-bookcase-off", p[0], p[1] + 10, 54)); } }
+  else if (q.kind === "tree") g.append(stand(["scene-tree-blossom", "scene-tree-pine", "scene-hedge"][Math.floor(seed * 3)], px, py + 12, [78, 64, 70][Math.floor(seed * 3)]));
+  else if (q.kind === "tower") g.append(stand(seed < 0.5 ? "tile-tower-a" : "tile-tower-b", px, py + 14, 74));
+  else if (q.kind === "car") g.append(stand("scene-" + (q.size || "car-black"), px, py + 14, 92));
+  else if (q.kind === "lamppost") g.append(sv("circle", { cx: px, cy: py - 80, r: 70, fill: gradient(defs, "lp" + uid + Math.round(q.x * 3 + q.y * 7), [[0, pal.lamp, 0.38], [1, pal.lamp, 0]], { r: "50%" }), class: "flick2 amb" }), stand("scene-lamppost", px, py + 8, 26));
+  else if (q.kind === "crates") { box(g, q.x - 0.4, q.y - 0.3, 0.8, 0.6, f, 0, 22, pal.wood); box(g, q.x + 0.3, q.y - 0.1, 0.6, 0.5, f, 0, 15, shade(pal.wood, -12)); }
   return g;
 }
 const CREW = __CREW__;   // each person's frames: person -> animation -> direction -> frame count (station_art/<person>-<animation>-<direction>-<nn>.png), filled in by the server
 const FIGURE = {   // each person's idle picture facing south: [picture width, height, then the left, top, right and bottom of the figure in it]
-  clyde: [96, 96, 34, 29, 61, 88], bonnie: [96, 96, 34, 29, 61, 88], master: [96, 96, 33, 28, 62, 88], advisor: [96, 96, 34, 29, 61, 88],
-  newsboy: [96, 96, 34, 30, 61, 88], mechanic: [96, 96, 34, 30, 61, 88], clerk: [96, 96, 33, 33, 61, 88] };
-const CREW_H = 80;   // every figure is drawn this tall, standing on its spot
+  clyde: [96, 96, 30, 2, 66, 90], bonnie: [96, 96, 33, 2, 63, 90], master: [96, 96, 26, 2, 69, 90], advisor: [96, 96, 26, 2, 70, 90], newsboy: [96, 96, 32, 3, 64, 90], mechanic: [96, 96, 24, 2, 73, 90], clerk: [96, 96, 27, 2, 68, 90] };
+const TYPING_FACE = { "south-west": "south-west", west: "south-west", "north-west": "south-west", south: "south", north: "south", "south-east": "south-east", east: "south-east", "north-east": "south-east" };   // the typing pictures exist for three facings
+const CREW_H = 58;   // every figure is drawn this tall, standing on its spot
 const CREW_NAMED = ["clyde", "bonnie", "master", "advisor"], WORKER_LOOKS = ["newsboy", "mechanic", "clerk"];   // each worker is one of three people, by number
 function crewPack(name) { return CREW_NAMED.includes(name) ? name : WORKER_LOOKS[(parseInt(number(name) || "1", 10) - 1) % WORKER_LOOKS.length]; }
 function crewBox(pack) { const [w, h, x0, y0, x1, y1] = FIGURE[pack], k = CREW_H / (y1 - y0 + 1); return { w: w * k, h: h * k, x: -(x0 + x1 + 1) / 2 * k, y: -(y1 + 1) * k }; }
@@ -650,13 +715,13 @@ function preload(pack, anim, dir) {   // fetch a whole animation the first time 
   PRELOADED[key] = true;
   for (let f = 0; f < crewFrame(pack, anim, dir, 0).n; f++) new Image().src = artUrl(crewFrame(pack, anim, dir, f).file);
 }
-function personItem(name, role, theme) {
+function personItem(name, role) {
   const pack = crewPack(name), box = crewBox(pack), g = sv("g", { class: "sprite", "data-sprite": name }), body = sv("g", {}), carry = sv("g", { style: "display:none" });
   const img = sv("image", { x: box.x, y: box.y, width: box.w, height: box.h, "image-rendering": "pixelated" });
   img.setAttribute("href", artUrl(crewFrame(pack, "idle", "south", 0).file));
   body.append(img);
   carry.append(sv("rect", { x: -13, y: -CREW_H * 0.5, width: 26, height: 18, rx: 2, fill: "#a8782f", stroke: "#0b0b12", "stroke-width": 1.6 }), sv("rect", { x: -2, y: -CREW_H * 0.5, width: 4, height: 18, fill: "#d8b060" }));
-  const shadowEl = sv("ellipse", { cx: 0, cy: -2, rx: 16, ry: 6, fill: "#000", opacity: 0.32 }), tag = sv("g", { transform: "translate(0 " + (-CREW_H - 8) + ")" }), bubble = sv("g", { transform: "translate(0 " + (-CREW_H - 28) + ")" });
+  const shadowEl = sv("ellipse", { cx: 0, cy: -1, rx: 13, ry: 5, fill: "#000", opacity: 0.32 }), tag = sv("g", { class: "tag", transform: "translate(0 " + (-CREW_H - 8) + ")" }), bubble = sv("g", { transform: "translate(0 " + (-CREW_H - 28) + ")" });
   tag.append(sv("rect", { x: -(name.length * 3.6 + 6), y: -9, width: name.length * 7.2 + 12, height: 14, rx: 3, fill: "#000", opacity: 0.6 }), sv("text", { y: 3, class: "name", fill: "#fff", stroke: "#000" }, name));
   g.append(shadowEl, body, carry, tag, bubble, sv("title", {}, name));
   const person = { name, role, g, body, carry, bubble, pack, dir: "south", shown: "", bubbleKind: null, title: g.lastChild };
@@ -674,7 +739,7 @@ function setBubble(person, kind, pal) {
   person.bubbleKind = kind;
   person.bubble.replaceChildren();
   if (!kind) return;
-  const fill = { q: pal.wait, ok: "#3ec283", bad: pal.bad, dots: pal.accent, paper: pal.paper, mail: pal.paper, glass: pal.screen, folder: pal.accent, box: pal.wood }[kind] || pal.accent;
+  const fill = { q: pal.wait, ok: "#3ec283", bad: pal.bad, dots: pal.accent, paper: pal.paper, mail: pal.paper, glass: pal.screen, folder: pal.accent, box: pal.wood, drink: pal.screen, smoke: pal.ink }[kind] || pal.accent;
   person.bubble.append(sv("rect", { x: -11, y: -9, width: 22, height: 18, rx: 5, fill: pal.dark, stroke: fill, "stroke-width": 2 }), sv("polygon", { points: "-3,9 3,9 0,14", fill: fill }));
   if (kind === "q") person.bubble.append(sv("text", { y: 5, class: "sign", fill, stroke: "none" }, "?"));
   else if (kind === "ok") person.bubble.append(sv("path", { d: "M-5 0l3 4 7-8", fill: "none", stroke: fill, "stroke-width": 2.5 }));
@@ -684,67 +749,66 @@ function setBubble(person, kind, pal) {
   else if (kind === "mail") person.bubble.append(sv("rect", { x: -6, y: -4, width: 12, height: 8, fill }), sv("path", { d: "M-6 -4l6 5 6 -5", fill: "none", stroke: "#444", "stroke-width": 1 }));
   else if (kind === "glass") person.bubble.append(sv("circle", { cx: -1, cy: -1, r: 4, fill: "none", stroke: fill, "stroke-width": 2 }), sv("path", { d: "M2 2l4 4", stroke: fill, "stroke-width": 2 }));
   else if (kind === "folder") person.bubble.append(sv("rect", { x: -6, y: -4, width: 12, height: 8, fill }), sv("rect", { x: -6, y: -6, width: 5, height: 3, fill }));
+  else if (kind === "drink") person.bubble.append(sv("path", { d: "M-5 -5h10l-2 9h-6z", fill: "none", stroke: fill, "stroke-width": 2 }), sv("path", { d: "M-3 -1h6", stroke: fill, "stroke-width": 2 }));
+  else if (kind === "smoke") person.bubble.append(sv("rect", { x: -7, y: 1, width: 11, height: 3, fill: pal.paper }), sv("circle", { cx: 6, cy: 2, r: 1.6, fill: pal.wait }), sv("path", { d: "M5 -2q-3 -3 0 -5", fill: "none", stroke: fill, "stroke-width": 1.6, opacity: 0.8, class: "drift2 amb" }));
   else if (kind === "box") person.bubble.append(sv("rect", { x: -5, y: -5, width: 10, height: 10, fill, stroke: "#222", "stroke-width": 1 }));
 }
 
 // ---- assembling and animating the scene ----------------------------------------------------------------------------------
 function buildScene(run) {
-  const layout = run.layout, theme = state.theme, pal = THEMES[theme].pal, words = THEMES[theme].words, p = plan(layout), uid = ++UID;
+  const layout = run.layout, pal = THEMES.city.pal, words = THEMES.city.words, p = plan(layout), uid = ++UID;
   const B = bounds(p), [x0, y0, x1, y1] = B, now = Date.now() / 1000, events = state.feeds[run.id] || [], liveFrom = state.loadedAt - 3;
-  const svg = sv("svg", { viewBox: [x0, y0, x1 - x0, y1 - y0].map((v) => v.toFixed(0)).join(" "), role: "img", "aria-label": "Station for " + (run.task || run.id) + ", " + THEMES[theme].name });
+  const svg = sv("svg", { viewBox: [x0, y0, x1 - x0, y1 - y0].map((v) => v.toFixed(0)).join(" "), role: "img", "aria-label": "Station for " + (run.task || run.id) + ", a 1930s building" });
   const defs = sv("defs", {});
   svg.append(defs);
   materials(defs, uid);
-  ground(svg, defs, B, pal, theme, uid);
-  const floorLayer = sv("g", {}), laneLayer = sv("g", {}), wallLayer = sv("g", {}), items = sv("g", {}), signs = sv("g", {});
-  floors(floorLayer, defs, p, pal, theme, uid);
-  lightPools(floorLayer, defs, p, pal, theme, uid);
-  const order = { dark: 0, lit: 1, waiting: 2, refused: 3 };   // the strongest state is drawn last where lanes share a corridor
+  ground(svg, defs, B, pal, uid);
+  const floorLayer = sv("g", {}), laneLayer = sv("g", {}), items = sv("g", {}), frontLayer = sv("g", {});
+  underside(floorLayer, defs, p, pal, uid);
+  worldStatic(floorLayer, defs, p, pal, uid, words);
+  const order = { dark: 0, lit: 1, waiting: 2, refused: 3 };   // the strongest state is drawn last where lanes share a stretch
   const laneColor = { dark: pal.dim, lit: pal.accent, waiting: pal.wait, refused: pal.bad }, described = [];
   for (const lane of layout.hallways.slice().sort((a, b) => order[a.state] - order[b.state])) {
     const path = p.lanes[lane.id] || p.lanes[lane.kind];
-    if (!path) continue;   // the two inside the deck are shown as a lamp on the desk instead
-    const proj = path.map((q) => pos(q[0], q[1])), color = laneColor[lane.state];
+    if (!path) continue;   // the two inside the front office are shown as a lamp on the desk instead
+    const proj = path.map((q) => at(q[0], q[1], 0, 1)), color = laneColor[lane.state];
     const line = sv("polyline", { points: pts(proj), class: "lane " + lane.state, stroke: color, "stroke-width": lane.state === "dark" ? 3 : 5, "stroke-linejoin": "round",
       "stroke-dasharray": lane.state === "dark" ? "3 11" : lane.state === "waiting" ? "14 10" : "none", opacity: lane.state === "dark" ? 0.6 : 0.95 });
     line.append(sv("title", {}, laneTitle(lane, words)));
     laneLayer.append(line);
     if (lane.state === "lit") laneLayer.append(sv("polyline", { points: pts(proj), class: "lane", stroke: color, "stroke-width": 14, opacity: 0.14, "stroke-linejoin": "round" }));
     if (lane.state !== "dark") {   // chevrons along it, pointing the way the work goes
-      const toward = lane.from === "deck" || lane.kind === "landing" ? 1 : -1;   // task and landing go away from the deck; results and approvals come back
+      const toward = lane.from === "deck" || lane.kind === "landing" ? 1 : -1;   // task and landing go away from the front office; results and approvals come back
       for (let i = 1; i < path.length; i++) {
         const a = path[i - 1], b = path[i], len = Math.hypot(b[0] - a[0], b[1] - a[1]);
-        for (let t = 1; t < len; t += 1.6) {
-          const c = pos(a[0] + (b[0] - a[0]) * t / len, a[1] + (b[1] - a[1]) * t / len), ux = (b[0] - a[0]) / len * toward, uy = (b[1] - a[1]) / len * toward;
+        if (len < 0.1) continue;
+        const sa = at(a[0], a[1], 0, 1), sb = at(b[0], b[1], 0, 1), sl = Math.hypot(sb[0] - sa[0], sb[1] - sa[1]), ux = (sb[0] - sa[0]) / sl * toward, uy = (sb[1] - sa[1]) / sl * toward;
+        for (let t = 0.8; t < len; t += 1.6) {
+          const c = at(a[0] + (b[0] - a[0]) * t / len, a[1] + (b[1] - a[1]) * t / len, 0, 1);
           laneLayer.append(sv("polygon", { points: pts([[c[0] + ux * 8, c[1] + uy * 8], [c[0] - ux * 5 - uy * 6, c[1] - uy * 5 + ux * 6], [c[0] - ux * 5 + uy * 6, c[1] - uy * 5 - ux * 6]]), fill: color, opacity: 0.9, class: lane.state === "waiting" ? "blink amb" : "" }));
         }
       }
     }
   }
   for (const lane of layout.hallways) described.push(laneTitle(lane, words));
-  walls(wallLayer, defs, p, pal, theme, uid);
-  for (const r of Object.values(p.rooms)) {   // each room's sign, on its top wall
-    const title = r.kind === "deck" ? words.deck : r.kind === "outbox" ? words.outbox : words.bay + " " + number(r.id), half = title.length * 3.6 + 12, cx = r.x * T + 20 + half, cy = r.y * T - 22;
-    signs.append(sv("rect", { x: cx - half, y: cy - 10, width: half * 2, height: 19, rx: 3, fill: pal.dark, stroke: pal.trim, "stroke-width": 2 }), sv("text", { x: cx, y: cy + 4, class: "sign", fill: pal.ink, stroke: "none" }, title));
-  }
   const dyn = [];   // everything that can pass in front of or behind something else: furniture, scenery and crew, back to front
   for (const f of p.furniture) {
     if (f.lane) { const l = layout.hallways.find((h) => h.id === f.lane); f.laneState = l ? l.state : null; if (l) described.push(laneTitle(l, words)); }
-    const g = furnitureSprite(f, pal, theme, now, defs, uid), tip = f.obj && f.obj.tools ? words[f.family] + ": " + f.obj.tools.join(", ") + " · used " + f.obj.used + " · asked " + f.obj.asked + " (allowed " + f.obj.allowed + ", denied " + f.obj.denied + ")" + (f.obj.failed ? " · failed " + f.obj.failed : "")
+    const g = furnitureSprite(f, pal, now, defs, uid), tip = f.obj && f.obj.tools ? words[f.family] + ": " + f.obj.tools.join(", ") + " · used " + f.obj.used + " · asked " + f.obj.asked + " (allowed " + f.obj.allowed + ", denied " + f.obj.denied + ")" + (f.obj.failed ? " · failed " + f.obj.failed : "")
       : f.family === "approvals" ? words.approvals + ": asked " + f.obj.asked + " · allowed " + f.obj.allowed + " · denied " + f.obj.denied + " · waiting " + f.obj.pending
       : f.family === "ledger" ? words.ledger + ": $" + f.obj.usd.toFixed(4) + (f.obj.unpriced ? " + " + f.obj.unpriced + " unpriced" : "")
       : f.family === "crate" ? words.outbox + ": " + f.obj.state : f.lane && f.laneState ? words[f.lane] + " tray: " + { dark: "not used yet", lit: "used", waiting: "waiting", refused: "refused" }[f.laneState] : (words[f.family] || f.family);
     g.append(sv("title", {}, tip));
     if (f.obj) described.push((f.room.kind === "bay" ? words.bay + " " + number(f.room.id) : f.room.kind === "deck" ? words.deck : words.outbox) + ": " + tip);
-    dyn.push({ el: g, depth: () => f.box[1] + f.box[3] });
+    dyn.push({ el: g, depth: () => f.box[0] + f.box[2] / 2 + f.box[1] + f.box[3] / 2 });
   }
-  for (const [kind, x, y, size] of p.props) dyn.push({ el: propSprite(kind, x, y, pal, theme, defs, uid, size), depth: () => y + (kind === "bookcase" ? size || 1 : 0.5) });
+  for (const q of p.props) dyn.push({ el: propSprite(q, pal, defs, uid), depth: () => q.x + q.y + 0.3 });
   const deck = layout.rooms.find((r) => r.id === "deck"), cards = {};
   for (const m of deck.members) cards[m.name] = m;
   for (const room of layout.rooms) for (const m of room.members || []) cards[m.name] = m;
   const crewNames = ["clyde", ...(cards.bonnie ? ["bonnie"] : []), "master", ...(cards.advisor ? ["advisor"] : []), ...p.bayRooms.map((r) => r.id)];
   const people = crewNames.map((name) => {
-    const person = personItem(name, name, theme), card = cards[name] || { name, doing: "" };
+    const person = personItem(name, name), card = cards[name] || { name, doing: "" };
     person.card = card;
     person.g.addEventListener("click", () => { if (dragged) return; state.filter[run.id] = state.filter[run.id] === name ? null : name; draw(); });
     person.title.textContent = name + (card.model ? " · " + card.model : "") + " · " + (card.doing || "");
@@ -753,12 +817,12 @@ function buildScene(run) {
   });
   const trips = {};
   for (const person of people) {
-    if (person.name === "clyde" || person.name === "bonnie") trips[person.name] = orchestratorTrips(events, person.name, p, liveFrom);
-    else if (p.rooms[person.name]) trips[person.name] = workerTrips(events, person.name, p, liveFrom);
-    dyn.push({ el: person.g, person, depth: () => (person.at ? person.at[1] : 0) });
+    if (person.name === "clyde" || person.name === "bonnie") trips[person.name] = orchestratorTrips(events, person.name, p, liveFrom, !run.asks.length && run.status !== "awaiting_approval");   // not while an approval waits for you
+    else if (p.rooms[person.name]) trips[person.name] = workerTrips(events, person.name, p, liveFrom, /^(idle|finished)$/.test(person.card.doing || "") && !run.asks.length);
+    dyn.push({ el: person.g, person, depth: () => (person.at ? person.at[0] + person.at[1] : 0) });
   }
-  svg.append(floorLayer, laneLayer, wallLayer, items, signs);
-  svg.append(rect(sv("g", { "aria-hidden": "true", "pointer-events": "none" }), x0, y0, x1 - x0, y1 - y0, gradient(defs, "vig" + uid, [[0.6, "#000", 0], [1, "#000", 0.55]], { r: "75%" })).parentNode);
+  frontStatic(frontLayer, defs, p, pal, uid);
+  svg.append(floorLayer, laneLayer, items, frontLayer);
   const scene = { runId: run.id, svg, items, dyn, people, trips, p, pal, layout, order: [], base: { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } };
   for (const d of dyn) items.append(d.el);
   tickScene(scene, now);
@@ -787,18 +851,17 @@ function tickScene(scene, now) {
     if (pose === "idle" && /using|working|splitting|reviewing|writing the report|tasks handed/.test(doing) && !/waiting/.test(doing)) pose = "work";
     const moving = pose === "walk";
     if (!moving && s.carry) pose = "carry";
-    if (Math.abs(s.dir[0]) > 0.05 || Math.abs(s.dir[1]) > 0.05) person.dir = headingDir(s.dir[0], s.dir[1]);   // they face the way they walk, and keep it when they stop
-    const typing = !moving && (pose === "work" || pose === "check");   // a crew member using a tool taps at the keys
-    person.show(person.dir, moving ? "walk" : typing ? "type" : "idle", Math.floor(now * (moving ? 10 : typing ? 8 : 5)));
+    if (Math.abs(s.dir[0]) > 0.05 || Math.abs(s.dir[1]) > 0.05) person.dir = headingDir((s.dir[0] - s.dir[1]) * HX, (s.dir[0] + s.dir[1]) * HY);   // they face the way they walk on screen, and keep it when they stop
+    const typing = !moving && (pose === "work" || pose === "check") && !!(CREW[person.pack].type && CREW[person.pack].type.south);   // a crew member using a tool taps at the keys, turned toward it as far as the three typing pictures (front-left, front, front-right) allow
+    person.show(typing ? TYPING_FACE[person.dir] || "south" : person.dir, moving ? "walk" : typing ? "type" : "idle", Math.floor(now * (moving ? 10 : typing ? 6 : 3)));
     let dy = 0, rot = 0, squash = 1;
     if (!REDUCED) {
       if (moving) { dy = -Math.abs(Math.sin(now * 13)) * 4; rot = Math.sin(now * 13) * 3; }
-      else if (pose === "work" || pose === "check") { dy = -Math.abs(Math.sin(now * 9)) * 1.5; rot = Math.sin(now * 9) * 2; }
       else squash = 1 + Math.sin(now * 2.2) * 0.012;
     }
-    const at = pos(s.pos[0], s.pos[1]);
+    const sp = at(s.pos[0], s.pos[1]);
     person.at = s.pos;
-    person.g.setAttribute("transform", "translate(" + at[0].toFixed(1) + " " + at[1].toFixed(1) + ")");
+    person.g.setAttribute("transform", "translate(" + sp[0].toFixed(1) + " " + sp[1].toFixed(1) + ")");
     person.body.setAttribute("transform", "translate(0 " + dy.toFixed(1) + ") rotate(" + rot.toFixed(1) + ") scale(1 " + squash.toFixed(3) + ")");
     person.carry.style.display = pose === "carry" ? "" : "none";
     setBubble(person, personBubble(person, s, doing) || (s.carry && !s.bubble ? s.carry : null), pal);
@@ -856,7 +919,9 @@ function legend() {
     item.append(el("i", cls), document.createTextNode(text));
     box.append(item);
   }
-  box.append(el("span", "", "Furniture is a capability the member was given; its plate counts how often it was used. Crew walk only when something was recorded: a worker to the furniture for a tool it used, Clyde with a task or an approval request, Bonnie to collect a result. Clouds, rain, lamps and neon are only scenery. Drag to pan, Ctrl-scroll or the + and − keys to zoom. Furniture art: \"Cozy Space Station\" by Bramble & Byte (CC-BY 4.0). Crew: drawn for this station."));
+  const more = el("details");
+  more.append(el("summary", "", "About this picture"), el("span", "", "Furniture is a capability the member was given; its plate counts how often it was used. Crew walk only when something was recorded: a worker to the furniture for a tool it used, Clyde with a task or an approval request, Bonnie to collect a result. Clyde and Bonnie in the speakeasy, and the clouds, trees and lamps, are only scenery: after 25 quiet seconds the two go to the bar together and now and then look into a workshop. Drag to pan, Ctrl-scroll or the + and − keys to zoom. Pictures: generated for this project."));
+  box.append(more);
   return box;
 }
 function mapSection(run) {
@@ -868,7 +933,7 @@ function mapSection(run) {
   const text = el("ul", "sr");
   text.setAttribute("aria-label", "Station as text");
   for (const line of built.described) text.append(el("li", "", line));
-  const left = el("div", "");
+  const left = el("div", "scene-col");
   left.append(stage, text, legend());
   return left;
 }
@@ -939,7 +1004,7 @@ function rail(run) {
     needs.append(head, asks(run));
     side.append(needs);
   }
-  const box = el("section", "glass"), head = el("h3", "", "Crew"), body = el("div", "body");
+  const box = el("section", "glass crew"), head = el("h3", "", "Crew"), body = el("div", "body");
   const working = crew.filter((m) => dotClass(m.doing) === "on").length, waiting = crew.filter((m) => dotClass(m.doing) === "wait").length;
   head.append(el("small", "", crew.length + " · " + working + " working" + (waiting ? " · " + waiting + " waiting" : "")));
   for (const m of crew) body.append(crewRow(run, m));
@@ -955,6 +1020,7 @@ function draw() {
   const signature = JSON.stringify([state.runs, Object.keys(state.feeds).map((id) => [id, state.feeds[id].length]), state.filter, state.theme]);
   if (signature === lastSignature) return;
   lastSignature = signature;
+  $rail.classList.toggle("alert", state.runs.some((r) => r.asks.length));   // a request for your OK never hides behind a closed panel
   $runs.replaceChildren();
   state.scenes = [];
   if (!state.runs.length) { $runs.append(el("div", "empty", "No runs yet. Start one with /orchestrate in clyde.")); return; }
@@ -963,7 +1029,9 @@ function draw() {
     const head = el("div", "run-head");
     const spend = "$" + run.spend.usd.toFixed(4) + (run.spend.unpriced ? " + " + run.spend.unpriced + " unpriced" : "");
     head.append(el("h2", "", run.task || run.id), el("span", "chip " + run.status, run.status.replace("_", " ")), el("span", "chip", spend), el("span", "chip", run.id));
-    section.append(head, el("div", "clyde", "Clyde: " + run.clyde));
+    const info = el("div", "run-info");
+    info.append(head, el("div", "clyde", "Clyde: " + run.clyde));
+    section.append(info);
     const body = el("div", "run-body");
     body.append(mapSection(run), rail(run));
     section.append(body);
@@ -997,10 +1065,15 @@ async function follow(id) {
     } catch (e) { $status.textContent = "disconnected: " + e.message; await new Promise((r) => setTimeout(r, 2000)); }
   }
 }
-for (const key in THEMES) { const option = el("option", "", THEMES[key].name); option.value = key; $theme.append(option); }
-if (THEMES[storedTheme()]) state.theme = storedTheme();
-$theme.value = state.theme;
-$theme.addEventListener("change", () => { state.theme = $theme.value; storeTheme(state.theme); draw(); });
+function setRail(on) {   // the crew and events panel slides away so the scene has the whole window
+  document.body.classList.toggle("rail-off", !on);
+  $rail.setAttribute("aria-pressed", String(on));
+  store("station.rail", on ? "1" : "0");
+}
+const savedRail = stored("station.rail");
+setRail(savedRail === null ? window.innerWidth >= 900 : savedRail === "1");
+$rail.addEventListener("click", () => setRail(document.body.classList.contains("rail-off")));
+for (const pack in CREW) for (const anim in CREW[pack]) for (const dir in CREW[pack][anim]) preload(pack, anim, dir);   // every picture is fetched once up front, so a frame never blinks while it loads
 refresh();
 setInterval(refresh, 5000);   // picks up runs that start after the page opened
 requestAnimationFrame(loop);

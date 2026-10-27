@@ -1,13 +1,9 @@
 # Third-party material
 
-## Cozy Space Station (station art)
+## Station art (generated)
 
-- What: the furniture and crew sprites the web station (`clyde station web`) shows, in `src/agent/station_art/`.
-- Author: Bramble & Byte, https://aquumgifts.itch.io (also listed on OpenGameArt as "Cozy Space Station: top-down sci-fi office sprites").
-- Licence: Creative Commons Attribution 4.0 (CC-BY 4.0), https://creativecommons.org/licenses/by/4.0/. The licence text that came with the files is in `src/agent/station_art/LICENSE-cozy-space-station.txt`.
-- Changes: the files are used unmodified at their 4x size. The page scales them and tints them for each theme with a CSS filter.
-- Credit: shown in the station page's legend.
-
-## Crew
-
-The crew pictures in `src/agent/station_art/` (`clyde-*`, `bonnie-*`, and the other people) are drawn for this project by `tools/make_crew.py`: no outside art is involved.
+- What: every picture the web station (`clyde station web`) shows, in `src/agent/station_art/`: the seven crew (`clyde-*`, `bonnie-*`, `master-*`, `advisor-*`, `newsboy-*`, `mechanic-*`, `clerk-*`), the furniture (`furn-*`), the floors, walls and wall decorations (`tile-*`) and the sky and garden (`scene-*`).
+- How: the maintainer generated them as sprite sheets with ChatGPT's image generation, from prompts written for this project (1930s, isometric pixel art, the people and the furniture named in the station's code). `tools/slice_crew.py`, `tools/slice_env.py` and `tools/build_env_art.py` cut the sheets into the single pictures: they remove the background and cut, nothing is repainted.
+- Author and licence: no outside artist's work is used. The pictures are machine-generated output; the rights in such output depend on the generator's terms and local law. Before a public release, read OpenAI's current terms for the use of generated images and record the result here.
+- Previously: the station used the "Cozy Space Station" sprites by Bramble & Byte (CC-BY 4.0). They are no longer in the repository.
+- Credit: the station page's legend says the pictures were generated for this project.
