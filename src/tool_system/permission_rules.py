@@ -11,6 +11,7 @@ take a path glob relative to the workspace; a bare tool name matches every use. 
 from __future__ import annotations
 
 from src.config import clyde_home
+from src.safe_write import write_json_safely
 
 import fnmatch
 import hashlib
@@ -71,8 +72,7 @@ def set_project_trust(root: Path, allow: list[str], trusted: bool) -> None:
         answers = {}
     answers = answers if isinstance(answers, dict) else {}
     answers[_approval_key(root, allow)] = trusted
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(answers, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+    write_json_safely(path, answers, indent=1, sort_keys=True)
 
 
 def merge_project_rules(rules: dict[str, list[str]], project: dict[str, list[str]], trusted: bool) -> dict[str, list[str]]:
@@ -100,9 +100,7 @@ def save_allow_rule(rule: str, path: Path | None = None) -> None:
     allow = data.setdefault("permissions", {}).setdefault("allow", [])
     if rule not in allow:
         allow.append(rule)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-    path.chmod(0o600)  # settings may hold MCP tokens
+    write_json_safely(path, data, private=True)  # settings may hold MCP tokens
 
 
 def _words(text: str) -> list[str]:

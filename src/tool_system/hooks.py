@@ -17,6 +17,7 @@ any other outcome carries on.
 from __future__ import annotations
 
 from src.config import clyde_home
+from src.safe_write import write_json_safely
 
 import json
 import re
@@ -262,6 +263,5 @@ def import_hooks(hooks: dict[str, list[dict[str, Any]]], dest: Path | None = Non
         if current:
             table[event] = current
     if added:
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        dest.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+        write_json_safely(dest, data)
     return added

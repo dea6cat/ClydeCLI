@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from src.config import clyde_home
+from src.safe_write import write_safely
 
 _POLL_S = 0.3
 MAX_TEAM = 12   # workers in one run, however they joined: the station has room for this many at the bar
@@ -43,10 +44,7 @@ def _private_dir(path: Path) -> Path:
 
 
 def _write_json(path: Path, data: Any) -> None:
-    tmp = path.with_name(f".{path.name}.{uuid.uuid4().hex[:6]}")
-    tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
-    os.chmod(tmp, 0o600)
-    os.replace(tmp, path)   # a reader never sees half a file
+    write_safely(path, json.dumps(data, indent=2), private=True)   # a reader never sees half a file, and a crash keeps the last one
 
 
 def _read_json(path: Path) -> dict[str, Any] | None:
