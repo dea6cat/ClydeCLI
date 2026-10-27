@@ -133,12 +133,12 @@ class TestArt(StationWebCase):
 
 
 class TestCrewArt(unittest.TestCase):
-    def test_every_person_has_idle_and_walk_frames_in_all_eight_directions(self):
+    def test_every_person_has_idle_walk_and_typing_frames_in_all_eight_directions(self):
         from src.agent import station_page
         crew = station_page._crew_index()
         self.assertEqual(set(crew), {"clyde", "bonnie", "master", "advisor", "newsboy", "mechanic", "clerk"})
         for person, anims in crew.items():
-            for anim in ("idle", "walk"):
+            for anim in ("idle", "walk", "type"):
                 self.assertEqual(len(anims[anim]), 8, (person, anim))   # a figure can face any way it walks
                 for direction, count in anims[anim].items():
                     for n in range(count):

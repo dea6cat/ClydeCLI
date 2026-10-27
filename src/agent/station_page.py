@@ -788,7 +788,8 @@ function tickScene(scene, now) {
     const moving = pose === "walk";
     if (!moving && s.carry) pose = "carry";
     if (Math.abs(s.dir[0]) > 0.05 || Math.abs(s.dir[1]) > 0.05) person.dir = headingDir(s.dir[0], s.dir[1]);   // they face the way they walk, and keep it when they stop
-    person.show(person.dir, moving ? "walk" : "idle", Math.floor(now * (moving ? 10 : 5)));
+    const typing = !moving && (pose === "work" || pose === "check");   // a crew member using a tool taps at the keys
+    person.show(person.dir, moving ? "walk" : typing ? "type" : "idle", Math.floor(now * (moving ? 10 : typing ? 8 : 5)));
     let dy = 0, rot = 0, squash = 1;
     if (!REDUCED) {
       if (moving) { dy = -Math.abs(Math.sin(now * 13)) * 4; rot = Math.sin(now * 13) * 3; }
@@ -1009,7 +1010,7 @@ requestAnimationFrame(loop);
 """
 
 
-_CREW_FRAME = re.compile(r"(clyde|bonnie|master|advisor|newsboy|mechanic|clerk)-(idle|walk)-([a-z\-]+)-(\d+)")
+_CREW_FRAME = re.compile(r"(clyde|bonnie|master|advisor|newsboy|mechanic|clerk)-(idle|walk|type)-([a-z\-]+)-(\d+)")
 
 
 def _crew_index() -> dict[str, dict[str, dict[str, int]]]:

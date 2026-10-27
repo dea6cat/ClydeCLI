@@ -1,8 +1,8 @@
-"""Draw the crew of the web station: seven people in 1930s clothes, each seen from eight directions, standing and walking.
+"""Draw the crew of the web station: seven people in 1930s clothes, each seen from eight directions, standing, walking and typing.
 
 Each person is a small model of boxes (head, hat, jacket, arms, legs, shoes). The script turns the model to face each direction,
 lights it from the upper left, draws it from above and in front as the station does, and writes one PNG per frame:
-`<person>-<idle|walk>-<direction>-<nn>.png`. The pictures are made here, so no outside art is involved. It needs Pillow, a
+`<person>-<idle|walk|type>-<direction>-<nn>.png`. The pictures are made here, so no outside art is involved. It needs Pillow, a
 development tool only and not a Clyde dependency.
 
     python tools/make_crew.py src/agent/station_art
@@ -120,9 +120,9 @@ def outfit(b: Builder, kind: str, w: float, jacket: str) -> None:
     elif kind == "dress":        # a dress: a skirt to the knee, a white collar, pearls
         b.add("skirt", -7.2, 7.2, -4.6, 4.6, 8.5, 15.5, jacket)
         b.add("skirt", -7.4, 7.4, -4.8, 4.8, 8.5, 9.6, "#e9d9b4")
-        b.add("torso", -3.4, 3.4, 3.2, 3.7, 25, 27, "#f2ece0")
-        for x in (-2.4, -1.2, 0, 1.2, 2.4):
-            b.add("torso", x - 0.45, x + 0.45, 3.6, 4.1, 23.8 + abs(x) * 0.25, 24.8 + abs(x) * 0.25, "#f2ece0")
+        b.add("torso", -2.2, 2.2, 3.2, 3.6, 25.8, 27, "#f2ece0")                    # a small collar
+        for x in (-1.8, -0.9, 0, 0.9, 1.8):                                          # pearls on a short string
+            b.add("torso", x - 0.35, x + 0.35, 3.6, 4.0, 24.6 + abs(x) * 0.3, 25.3 + abs(x) * 0.3, "#efe6d2")
     elif kind == "braces":       # shirt sleeves, braces over a shirt, a neckerchief
         b.pair("torso", "torso", 2.4, 3.4, 3.2, 3.7, 15, 27, "#3a2a1e")
         b.add("torso", -1.6, 1.6, 3.4, 3.8, 24.5, 26.5, "#b33a3a")
@@ -138,23 +138,34 @@ def outfit(b: Builder, kind: str, w: float, jacket: str) -> None:
         b.add("hat", -4.6, 4.6, -4.4, 0.4, 36, 37, "#2e7d4f")
 
 
-def motion(part: str, anim: str, frame: int) -> tuple[float, float]:
-    """How far a part is moved from where it stands in this frame: forward, and up."""
+SHOULDER = (0.0, 26.0)   # (y, z) of the shoulders: arms swing about this line
+
+
+def motion(part: str, anim: str, frame: int) -> tuple[float, float, float]:
+    """How a part is moved from where it stands in this frame: forward, up, and the angle in degrees its arm is swung forward."""
     p = 2 * math.pi * frame / FRAMES
     if anim == "idle":
-        return (0.0, 0.0) if part in ("legL", "legR", "skirt") else (0.0, 0.45 * (0.5 - 0.5 * math.cos(p)))
+        return (0.0, 0.0, 0.0) if part in ("legL", "legR", "skirt") else (0.0, 0.45 * (0.5 - 0.5 * math.cos(p)), 0.0)
     s, c = math.sin(p), math.cos(p)
+    if anim == "type":   # both arms forward to the keys, the hands tapping in turn, the body leaning in a little
+        if part == "armL":
+            return 0.0, 0.0, 80 - 10 * max(0.0, s)
+        if part == "armR":
+            return 0.0, 0.0, 80 - 10 * max(0.0, -s)
+        if part in ("legL", "legR", "skirt"):
+            return 0.0, 0.0, 0.0
+        return 0.7, -0.25 * abs(math.sin(2 * p)), 0.0
     if part == "legL":
-        return 3.4 * s, 1.6 * max(0.0, c)
+        return 3.4 * s, 1.6 * max(0.0, c), 0.0
     if part == "legR":
-        return -3.4 * s, 1.6 * max(0.0, -c)
+        return -3.4 * s, 1.6 * max(0.0, -c), 0.0
     if part == "armL":
-        return -3.0 * s, 0.9 * abs(c)
+        return -3.0 * s, 0.9 * abs(c), 0.0
     if part == "armR":
-        return 3.0 * s, 0.9 * abs(c)
+        return 3.0 * s, 0.9 * abs(c), 0.0
     if part == "skirt":
-        return 0.5 * s, 0.0
-    return 0.0, 0.9 * abs(c)   # the body bobs as the feet land
+        return 0.5 * s, 0.0, 0.0
+    return 0.0, 0.9 * abs(c), 0.0   # the body bobs as the feet land
 
 
 def render(boxes: list[Box], yaw_deg: float, anim: str, frame: int) -> Image.Image:
@@ -176,12 +187,23 @@ def render(boxes: list[Box], yaw_deg: float, anim: str, frame: int) -> Image.Ima
     def toward(v: tuple[float, float, float]) -> float:
         return v[0] * TOWARD[0] + v[1] * TOWARD[1] + v[2] * TOWARD[2]
 
+    def swing(v: tuple[float, float, float], angle: float, point: bool) -> tuple[float, float, float]:
+        """Swing a point (or a direction) forward about the shoulders; angle is in radians, 0 leaves the arm hanging."""
+        if not angle:
+            return v
+        c, s = math.cos(angle), math.sin(angle)
+        dy, dz = (v[1] - SHOULDER[0], v[2] - SHOULDER[1]) if point else (v[1], v[2])
+        y, z = dy * c - dz * s, dy * s + dz * c
+        return (v[0], y + SHOULDER[0], z + SHOULDER[1]) if point else (v[0], y, z)
+
     placed = []
     for part, x0, x1, y0, y1, z0, z1, colour in boxes:
-        forward, up = motion(part, anim, frame)
+        forward, up, degrees = motion(part, anim, frame)
         y0, y1, z0, z1 = y0 + forward, y1 + forward, z0 + up, z1 + up
-        placed.append((toward(turn((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2)), (x0, x1, y0, y1, z0, z1), colour))
-    for _, (x0, x1, y0, y1, z0, z1), colour in sorted(placed, key=lambda t: t[0]):   # far boxes first
+        angle = math.radians(degrees)
+        centre = swing(((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2), angle, True)
+        placed.append((toward(turn(*centre)), (x0, x1, y0, y1, z0, z1), colour, angle))
+    for _, (x0, x1, y0, y1, z0, z1), colour, angle in sorted(placed, key=lambda t: t[0]):   # far boxes first
         quads = [
             ((0, 0, 1), [(x0, y0, z1), (x1, y0, z1), (x1, y1, z1), (x0, y1, z1)]),
             ((0, 1, 0), [(x0, y1, z0), (x1, y1, z0), (x1, y1, z1), (x0, y1, z1)]),
@@ -190,11 +212,11 @@ def render(boxes: list[Box], yaw_deg: float, anim: str, frame: int) -> Image.Ima
             ((-1, 0, 0), [(x0, y0, z0), (x0, y1, z0), (x0, y1, z1), (x0, y0, z1)]),
         ]
         for normal, corners in quads:
-            n = turn(*normal)
+            n = turn(*swing(normal, angle, False))
             if toward(n) <= 1e-6:
                 continue   # a face turned away from the camera
             lit = 0.52 + 0.62 * max(0.0, n[0] * light[0] + n[1] * light[1] + n[2] * light[2])
-            draw.polygon([screen(*turn(*c)) for c in corners], fill=tone(colour, lit) + (255,))
+            draw.polygon([screen(*turn(*swing(c, angle, True))) for c in corners], fill=tone(colour, lit) + (255,))
     small = img.resize((CANVAS, CANVAS), Image.NEAREST)
     alpha = small.getchannel("A").point(lambda v: 255 if v > 127 else 0)
     out = Image.new("RGBA", small.size, (0, 0, 0, 0))
@@ -219,7 +241,7 @@ def main(target: Path) -> int:
     count = 0
     for name, boxes in CREW.items():
         for direction, yaw in DIRS.items():
-            for anim in ("idle", "walk"):
+            for anim in ("idle", "walk", "type"):
                 for frame in range(FRAMES):
                     render(boxes, yaw, anim, frame).save(target / f"{name}-{anim}-{direction}-{frame:02d}.png", optimize=True)
                     count += 1
