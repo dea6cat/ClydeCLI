@@ -721,12 +721,12 @@ function wallRuns(a, b, gaps) {   // the stretches of a wall between its doorway
   for (const [g0, g1] of gaps.slice().sort((x, y) => x[0] - y[0]).concat([[b, b]])) { if (g0 > from) runs.push([from, g0]); from = Math.max(from, g1); }
   return runs;
 }
-const WALL_OFF = 7;   // how far below a wall's centre line the picture's bottom edge sits (the wall has thickness)
+const WALL_BASE = { "glass-a": [137.2, 0.57], "glass-b": [140.0, 0.55], "brick-a": [121.7, 0.60], "brick-b": [124.1, 0.58] };   // [row where the front bottom edge crosses the middle, its slope], measured from the pictures   // the row, in each picture, where the wall's front bottom edge crosses its middle (measured from the pictures): this is what stands on the floor's edge, not the lowest corner
 function wallRun(layer, plane, c, a, b, kind) {   // a back wall of sprites, two tiles to a piece: the "-a" pictures run along x (the north wall), the "-b" ones along y (the west wall); glass-topped for a see-through room, solid brick where things hang on it
-  const n = Math.max(1, Math.round((b - a) / 2)), name = "tile-wall-" + kind + (plane === "y" ? "-a" : "-b"), [sw, sh] = SPR[name];
+  const n = Math.max(1, Math.round((b - a) / 2)), key = kind + (plane === "y" ? "-a" : "-b"), name = "tile-wall-" + key, [sw, sh] = SPR[name], [base, slope] = WALL_BASE[key];
   for (let i = 0; i < n; i++) {
-    const u0 = a + (b - a) * i / n, u1 = a + (b - a) * (i + 1) / n, mid = plane === "y" ? at((u0 + u1) / 2, c, 0) : at(c, (u0 + u1) / 2, 0), w = (u1 - u0) * HX + 4, h = sh * w / sw;
-    layer.append(sprite(name, mid[0] - w / 2, mid[1] - h + WALL_OFF, w, h));
+    const u0 = a + (b - a) * i / n, u1 = a + (b - a) * (i + 1) / n, mid = plane === "y" ? at((u0 + u1) / 2, c, 0) : at(c, (u0 + u1) / 2, 0), w = (u1 - u0) * HX + 4, kx = w / sw, ky = kx * HY / HX / slope;   // squeezed in height so the piece's base slopes exactly like the floor's tiles, and neighbours meet edge to edge
+    layer.append(sprite(name, mid[0] - w / 2, mid[1] - base * ky + 1, w, sh * ky, { preserveAspectRatio: "none" }));
   }
 }
 function paved(layer, defs, x, y, w, d, name, uid) {   // a floor: the picture repeated over blocks of 2 x 2 tiles and cut to the rectangle
@@ -771,9 +771,9 @@ function worldStatic(layer, defs, p, pal, uid, words) {   // the slab, the court
     const title = r.kind === "deck" ? words.deck : r.kind === "outbox" ? words.outbox : r.kind === "bar" ? words.bar : words.bay + " " + number(r.id);
     plaque(layer, "y", r.y, r.x + r.w / 2, WALL + 16, title, pal, 0);
     const hang = (name, u, h, wpx) => { const [sw, sh] = SPR[name], c = at(u, r.y, 0, h); layer.append(sprite(name, c[0] - wpx / 2, c[1] - wpx * sh / sw / 2, wpx, wpx * sh / sw)); };   // something hung on the back wall
-    if (r.kind === "deck") { hang("tile-clock-b", r.x + 13, 40, 34); hang("tile-picture-city", r.x + 8, 38, 30); hang("tile-picture-hills-b", r.x + 18, 38, 34); }
-    else if (r.kind === "bar") { hang("tile-neon-b", r.x + 6, 42, 52); hang("tile-picture-leaf", r.x + 2.5, 38, 26); hang("tile-picture-hills-b", r.x + 9.5, 38, 32); }
-    else if (r.kind === "outbox") hang("tile-clock-b", r.x + 4, 40, 30);
+    if (r.kind === "deck") { hang("tile-clock-a", r.x + 13, 40, 34); hang("tile-picture-city", r.x + 8, 38, 30); hang("tile-picture-hills-a", r.x + 18, 38, 34); }
+    else if (r.kind === "bar") { hang("tile-neon-a", r.x + 2.8, 42, 52); hang("tile-picture-hills-a", r.x + 9.5, 38, 32); }
+    else if (r.kind === "outbox") hang("tile-clock-a", r.x + 4, 40, 30);
   }
 }
 function frontStatic(layer, defs, p, pal, uid) {   // what stands in front of the crew: a rail along each hallway, with a post every so often
