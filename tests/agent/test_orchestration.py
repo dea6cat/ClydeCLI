@@ -158,6 +158,31 @@ class EndToEnd(unittest.TestCase):
         self.assertEqual(run.pending_orders(), [])
         land(run, approve=False)
 
+    def test_a_task_the_user_gives_a_worker_runs_after_its_first_in_the_same_conversation(self):
+        started = []
+        w1 = FakeProvider(reply(tool_calls=[("Bash", {"command": "echo hi > c.txt"})]), reply("tried"), name="w1")
+        w2 = FakeProvider(reply("first done"), reply("second done"), name="w2")
+
+        def on_approval(ask):   # while worker-1 waits, the user gives worker-2 a task
+            started[0].order("also write d.txt", "worker-2")
+            return False
+
+        providers = {"m": FakeProvider(reply('{"tasks": ["a", "b"]}', usage=USAGE), reply("ok\nVERDICT: APPROVE", usage=USAGE), name="m"),
+                     "adv": FakeProvider(reply("fine"), name="adv"), "w1": w1, "w2": w2}
+        plan = build_plan("t", ("provider:m", "m"), ("provider:adv", "m"), [("provider:w1", "m"), ("provider:w2", "m")], [_harness(f"provider:{n}") for n in providers])
+        outcome = orchestrate(plan, "spec", workspace=self.repo, parent=ToolContext(workspace_root=self.repo), registry=build_default_registry(),
+                              providers=providers, on_approval=on_approval, on_start=started.append)
+        run = outcome.run
+        mine = [(e["kind"], e.get("note")) for e in run.events() if e["who"] == "worker-2" and e["kind"] in ("started", "finished", "failed")]
+        self.assertEqual(mine, [("started", None), ("finished", None), ("started", "a task from you"), ("finished", None)])
+        self.assertIn(("clyde", "worker-2", "brief"), [(e["who"], e.get("target"), e.get("reason")) for e in run.events() if e["kind"] == "check"])
+        order = json.loads(next((run.root / "orders").glob("*.json")).read_text())
+        self.assertEqual((order["status"], order["worker"]), ("accepted", "worker-2"))
+        self.assertEqual([r["name"] for r in run.state()["roles"]["workers"]], ["worker-1", "worker-2"])   # nobody was added
+        self.assertGreater(len(w2.requests[-1]["conversation"].messages), 2)   # the second task saw the first in its conversation
+        self.assertIn("A task from you", (run.root / "workers" / "worker-2" / "summary.md").read_text())
+        land(run, approve=False)
+
     def test_a_command_waits_for_an_approval_and_a_no_reaches_the_worker(self):
         asked = []
         w1 = FakeProvider(reply(tool_calls=[("Bash", {"command": "echo hi > c.txt"})]), reply("tried"), name="w1")

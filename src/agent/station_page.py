@@ -169,11 +169,12 @@ dialog#addWorker .aw-actions button { min-height: 40px; padding: 0 16px; }
 .crew-row .nm .chip { font-weight: 500; }
 .crew-item { position: relative; }
 .crew-item .rename { position: absolute; top: 8px; right: 8px; min-height: 28px; opacity: 0; }
-.crew-item:hover .rename, .crew-item:focus-within .rename { opacity: 1; }
-@media (hover: none) { .crew-item .rename { opacity: 1; } }
+.crew-item .task { position: absolute; top: 8px; right: 78px; min-height: 28px; opacity: 0; }
+.crew-item:hover .rename, .crew-item:focus-within .rename, .crew-item:hover .task, .crew-item:focus-within .task { opacity: 1; }
+@media (hover: none) { .crew-item .rename, .crew-item .task { opacity: 1; } }
 .crew-item .name-edit { width: 100%; min-height: 40px; padding: 6px 10px; font: inherit; color: var(--ink); background: rgba(255,255,255,.06); border: 1px solid var(--brass); border-radius: 8px; }
 .crew-item .name-edit:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
-.crew-item .crew-row .nm { padding-right: 74px; }
+.crew-item .crew-row .nm { padding-right: 130px; }
 .crew-row .nm .real { font-weight: 500; font-size: 11.5px; color: var(--muted); }
 .crew-row .md { font-size: 11.5px; color: var(--muted); overflow-wrap: anywhere; }
 .crew-row .st { margin-top: 2px; font-size: 13px; }
@@ -289,7 +290,7 @@ button.act.allow { border-color: rgba(123,214,166,.6); } button.act.deny { borde
 <dialog id="addWorker" aria-labelledby="awTitle">
   <form id="awForm">
     <h2 id="awTitle">Add a worker</h2>
-    <p class="muted">Clyde takes your task to a new worker on the same model as worker-1. It joins this run now, and the events list records it.</p>
+    <p id="awHint" class="muted">Clyde takes your task to a new worker on the same model as worker-1. It joins this run now, and the events list records it.</p>
     <label for="awTask">What should it do?</label>
     <textarea id="awTask" rows="5" maxlength="2000" required></textarea>
     <p id="awError" class="aw-error" role="alert"></p>
@@ -304,7 +305,7 @@ const REDUCED = window.matchMedia && window.matchMedia("(prefers-reduced-motion:
 const state = { dismissed: [], names: {}, quests: { done: {}, hidden: false }, editing: false, runs: [], feeds: {}, filter: {}, polling: {}, theme: "city", loadedAt: Date.now() / 1000, scenes: [], link: { ok: true, reason: "" } };
 const $runs = document.getElementById("runs");
 const $status = document.getElementById("status");
-const $aw = document.getElementById("addWorker"), $awTask = document.getElementById("awTask"), $awError = document.getElementById("awError"), $awSend = document.getElementById("awSend");
+const $awTitle = document.getElementById("awTitle"), $awHint = document.getElementById("awHint"), $aw = document.getElementById("addWorker"), $awTask = document.getElementById("awTask"), $awError = document.getElementById("awError"), $awSend = document.getElementById("awSend");
 const $rail = document.getElementById("railToggle");
 const $link = document.getElementById("link"), $linkText = document.getElementById("linkText"), $retry = document.getElementById("linkRetry"), $counts = document.getElementById("counts");
 let UID = 0;
@@ -1200,6 +1201,13 @@ function crewItem(run, member) {   // the row, and beside it the button that giv
     input.focus();
   });
   item.append(crewRow(run, member, label), rename);
+  if (run.status === "running" && /^worker-/.test(member.name)) {   // a task for a worker already on the team, once it is free
+    const task = el("button", "mini task", "Task");
+    task.type = "button";
+    task.setAttribute("aria-label", "Give " + label + " a task");
+    task.addEventListener("click", () => openAdd(run, member.name));
+    item.append(task);
+  }
   return item;
 }
 function crewRow(run, member, label) {
@@ -1284,16 +1292,21 @@ function rail(run) {
 }
 // The add-worker dialog lives outside the part the page rebuilds, so a redraw never takes it away from under your typing.
 const MAX_TEAM = 12;   // as the server's: a run holds at most this many workers
-let addingTo = "";
-function openAdd(run) {
-  addingTo = run.id;
+let addingTo = "", addingFor = "";   // the run, and the worker the task is for ("" adds a new worker)
+function openAdd(run, worker) {
+  addingTo = run.id; addingFor = worker || "";
+  $awTitle.textContent = worker ? "Give " + callName(state.names, run.id, worker) + " a task" : "Add a worker";
+  $awHint.textContent = worker ? "Clyde takes it to " + worker + ", which starts it when its current task is done, in the same worktree. The events list records it."
+    : "Clyde takes your task to a new worker on the same model as worker-1. It joins this run now, and the events list records it.";
+  $awSend.textContent = worker ? "Give task" : "Add worker";
   $awTask.value = ""; $awError.textContent = ""; $awSend.disabled = false;
   $aw.showModal();
   $awTask.focus();
 }
 function sendAdd() {
   $awSend.disabled = true; $awError.textContent = "";
-  api("/api/order", { run: addingTo, task: $awTask.value }).then(() => { $aw.close(); $status.textContent = "Asked Clyde for one more worker."; refresh(); },
+  api("/api/order", Object.assign({ run: addingTo, task: $awTask.value }, addingFor ? { worker: addingFor } : {})).then(
+    () => { $aw.close(); $status.textContent = addingFor ? "Asked Clyde to give " + addingFor + " the task." : "Asked Clyde for one more worker."; refresh(); },
     (e) => { $awError.textContent = e.message; $awSend.disabled = false; });
 }
 function questBox() {   // the first-steps card: until every step is ticked or you hide it

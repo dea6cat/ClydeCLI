@@ -4,7 +4,7 @@
     events.jsonl      one line per thing that happened (who, kind, data), appended as it happens
     ledger.jsonl      one line per model call group: who, model, usage, estimated USD
     approvals/<n>.json  a worker's request for a yes or no; written pending, answered by the REPL or `clyde station`
-    orders/<n>.json     the user's request, from the station, to add a worker with a task; written pending, taken or refused by the run
+    orders/<n>.json     the user's request, from the station, to add a worker with a task or to give a worker a task; written pending, taken or refused by the run
     workers/<name>/   transcript.json and summary.md for each worker
 
 Every reader (the REPL that started the run, `clyde station` in another terminal) reads these files, so
@@ -190,22 +190,31 @@ class Run:
 
     # --- orders: the user adds a worker --------------------------------------------------------------------------
 
-    def order(self, task: str) -> str:
-        """File the user's request for one more worker, doing `task`; the run takes it or refuses it, and says so.
-        Raises ValueError (the reason, fit to show the user) when it cannot be filed: the run is not working, no task, too long, team full."""
+    def order(self, task: str, worker: str | None = None) -> str:
+        """File the user's request: one more worker doing `task`, or (with `worker`) `task` for a worker already on the team, which
+        starts it when that worker's current task is done. The run takes it or refuses it, and says so.
+        Raises ValueError (the reason, fit to show the user) when it cannot be filed: the run is not working, no task, too long,
+        team full, no such worker, too many waiting."""
         task = task.strip()
         state = self.state()
+        team = [w.get("name") for w in (state.get("roles") or {}).get("workers", [])]
+        pending = self.pending_orders()
         if state.get("status") != "running":
-            raise ValueError("the run is not working right now: workers can only be added while it is")
+            raise ValueError("the run is not working right now: tasks and new workers can only be given while it is")
         if not task:
-            raise ValueError("say what the new worker should do")
+            raise ValueError("say what the task is")
         if len(task) > ORDER_CHARS:
             raise ValueError(f"the task is longer than {ORDER_CHARS} characters")
-        if len((state.get("roles") or {}).get("workers", [])) + len(self.pending_orders()) >= MAX_TEAM:
+        if worker is not None and worker not in team:
+            raise ValueError(f"{worker} is not on this team")
+        if worker is None and len(team) + sum(1 for o in pending if not o.get("worker")) >= MAX_TEAM:
             raise ValueError(f"the team is full ({MAX_TEAM} workers)")
+        if worker is not None and sum(1 for o in pending if o.get("worker")) >= MAX_TEAM:
+            raise ValueError("too many tasks are waiting to be taken: try again in a moment")
         order_id = uuid.uuid4().hex[:8]
-        _write_json(_private_dir(self.root / "orders") / f"{order_id}.json", {"id": order_id, "task": task, "status": "pending", "t": time.time()})
-        self.event("user", "ordered", order=order_id, task=task[:200])
+        _write_json(_private_dir(self.root / "orders") / f"{order_id}.json",
+                    {"id": order_id, "task": task, "status": "pending", "t": time.time(), **({"worker": worker} if worker else {})})
+        self.event("user", "ordered", order=order_id, task=task[:200], **({"worker": worker} if worker else {}))
         return order_id
 
     def pending_orders(self) -> list[dict[str, Any]]:
