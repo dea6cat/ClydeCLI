@@ -67,3 +67,5 @@ include = ["src*"]
 # Ship the vendored code's MIT license text with it (attribution travels with the code).
 [tool.setuptools.package-data]
 "src.vendor.whichllm" = ["LICENSE"]
+# The station's pictures (generated for this project: see THIRD_PARTY.md).
+"src.agent" = ["station_art/*.png"]

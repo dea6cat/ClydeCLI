@@ -31,7 +31,7 @@ from src.providers.types import Conversation, Message
 from src.security.git_safe import git_cmd, git_env
 from src.tool_system.context import ToolContext
 from src.tool_system.permissions import ToolPermissionContext
-from src.tool_system.tools.agent import run_agent
+from src.tool_system.tools.agent import offered_tools, run_agent
 
 _PATCH_CHARS = 20_000      # of one worker's patch shown to the advisor
 _SUMMARY_CHARS = 6_000     # of one worker's final answer shown to the advisor and the master
@@ -267,7 +267,23 @@ def _work(run: Run, name: str, role: RoleAssignment, provider: Any, prompt: str,
     if out["patch"]:
         (folder / "changes.patch").write_text(out["patch"], encoding="utf-8")
     run.event(name, "finished" if out["ok"] else "failed", files=len(out["files"]))
+    run.event("bonnie", "check", target=name, reason="result")   # Bonnie collects what the worker made
     return out
+
+
+def _record_tools(run: Run, plan: OrchestrationPlan, names: list[str], registry: Any, parent: ToolContext) -> None:
+    """Record what each member was given to work with, so what the station shows as a capability is on record: a native
+    worker the tools its loop is offered, a CLI worker its adapter's list, and a master or advisor model call none."""
+    def given(role: RoleAssignment, advisor: bool) -> list[str]:
+        if role.harness.kind == "cli":
+            return cli_workers.granted_tools(role.provider_name, advisor)
+        return [] if advisor else offered_tools(registry, AgentType(GENERAL, "orchestrated worker"), parent.permission_rules)
+
+    run.event("master", "tools", tools=[])
+    if plan.advisor:
+        run.event("advisor", "tools", tools=given(plan.advisor, True))
+    for name, role in zip(names, plan.workers):
+        run.event(name, "tools", tools=given(role, False))
 
 
 def orchestrate(plan: OrchestrationPlan, spec: str, *, workspace: Path, parent: ToolContext, registry: Any,
@@ -284,8 +300,10 @@ def orchestrate(plan: OrchestrationPlan, spec: str, *, workspace: Path, parent: 
     kinds = {"master": plan.master.harness.kind, "advisor": plan.advisor.harness.kind if plan.advisor else None,
              **{n: w.harness.kind for n, w in zip(names, plan.workers)}}   # provider (Clyde's own loop) or cli
     run = Run.create(plan.task, {"master": plan.master.ref, "advisor": plan.advisor.ref if plan.advisor else None,
-                                 "workers": [{"name": n, "model": w.ref} for n, w in zip(names, plan.workers)], "kinds": kinds})
+                                 "workers": [{"name": n, "model": w.ref} for n, w in zip(names, plan.workers)], "kinds": kinds,
+                                 "orchestrators": ["clyde", "bonnie"]})
     run.update(spec=spec, repo=str(root), workspaces={})
+    _record_tools(run, plan, names, registry, parent)
     if on_start:
         on_start(run)   # e.g. open the tmux panes: the run and its team are already recorded
 
@@ -313,6 +331,8 @@ def orchestrate(plan: OrchestrationPlan, spec: str, *, workspace: Path, parent: 
             _git(root, "worktree", "add", "-q", "-b", branch, str(tree), "HEAD")
             workspaces[name] = {"path": str(tree), "branch": branch}
         run.update(workspaces=workspaces)
+        for n in names:
+            run.event("clyde", "check", target=n, reason="brief")   # Clyde takes each worker its task
 
         run.set_status("running")
         serial = any(w.provider_name in LOCAL_PROVIDERS for w in plan.workers)
@@ -325,6 +345,7 @@ def orchestrate(plan: OrchestrationPlan, spec: str, *, workspace: Path, parent: 
             while not all(f.done() for f in futures):
                 try:
                     for ask in run.pending():
+                        run.event("clyde", "check", target=ask["who"], reason="approval", approval=ask["id"])   # Clyde brings it to you
                         run.answer(ask["id"], bool(on_approval and on_approval(ask)))
                     time.sleep(0.2)
                 except KeyboardInterrupt:   # Ctrl-C: tell every worker to stop, then wait for them to wind down

@@ -34,6 +34,13 @@ def _tools_for(registry: ToolRegistry, agent: Any) -> ToolRegistry:
     return ToolRegistry([registry.get(n) for n in names])
 
 
+def offered_tools(registry: ToolRegistry, agent: Any, rules: dict[str, list[str]]) -> list[str]:
+    """The tool names a sub-agent can call: its type's tools, no nesting, and none denied by bare name in `rules` (the
+    loop hides those). What an orchestrated worker is recorded as having been given."""
+    from ...tool_system.permission_rules import bare_denied
+    return [s.name for s in _tools_for(registry, agent).list_specs() if not bare_denied(s.name, rules)]
+
+
 def _model_for(agent: Any, context: ToolContext) -> tuple[Any, str, str]:
     """(provider, model, note): the agent's own model when it names one that's usable, else the caller's."""
     if agent.model:

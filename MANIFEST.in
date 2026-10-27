@@ -3,3 +3,4 @@ include LICENSE
 recursive-include src *.py
 recursive-include src *.json
 recursive-include src *.woff2 *.txt
+recursive-include src/agent/station_art *.png

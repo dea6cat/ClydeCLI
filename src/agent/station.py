@@ -20,6 +20,7 @@ from rich.live import Live
 from rich.table import Table
 from rich.text import Text
 
+from src.agent import station_layout
 from src.agent.runs import Run
 
 _ENDED = ("done", "failed", "stopped")
@@ -56,17 +57,19 @@ def snapshot(run: Run) -> dict[str, Any]:
     last: dict[str, dict[str, Any]] = {}
     constraint: dict[str, str] = {}
     for e in events:
-        last[e["who"]] = e
         if e["kind"] == "constraint":
             constraint[e["who"]] = e.get("note", "")
+        if e["kind"] not in ("tools", "constraint", "check"):   # bookkeeping, not what a member is doing
+            last[e["who"]] = e
     crew = [{"name": n, "model": m, "kind": kinds.get(n), "doing": _doing(last.get(n)), "constraint": constraint.get(n)} for n, m in people]
     asks = run.pending()
     status = state.get("status", "?")
     clyde = f"waiting on you for {len(asks)} request{'s' if len(asks) != 1 else ''}" if asks else _CLYDE.get(status, status)
     usd, unpriced = run.total_spend()
+    spend = {"usd": usd, "unpriced": unpriced}
     return {"id": run.id, "task": state.get("task") or "", "status": status, "started": state.get("started"),
             "clyde": clyde, "crew": crew, "asks": [{k: a.get(k) for k in ("id", "who", "tool", "message", "t")} for a in asks],
-            "spend": {"usd": usd, "unpriced": unpriced}, "events": len(events)}
+            "spend": spend, "events": len(events), "layout": station_layout.build(state, events, asks, crew, clyde, spend)}
 
 
 def _crew(run: Run) -> list[tuple[str, str, str]]:

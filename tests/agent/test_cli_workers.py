@@ -188,6 +188,7 @@ class CliWorkerInARun(unittest.TestCase):
                 kinds = [(e["who"], e["kind"]) for e in run.events()]
                 self.assertIn(("worker-1", "constraint"), kinds)
                 self.assertIn(("worker-1", "tool_use"), kinds)
+                self.assertEqual([e["tools"] for e in run.events() if e["kind"] == "tools" and e["who"] == "worker-1"], [["Edit"]])   # aider: editing only
                 self.assertEqual([r["usd"] for r in run.ledger() if r["who"] == "worker-1"], [0.0021])
                 out = land(run, approve=True)
             self.assertEqual((out / "worker-1" / "files" / "y.txt").read_text(), "yo\n")
@@ -232,6 +233,7 @@ class CliWorkerInARun(unittest.TestCase):
         self.assertIn(("advisor", "constraint"), [(e["who"], e["kind"]) for e in run.events()])
         self.assertIn("Advisor review:\ndone", providers["m"].requests[-1]["conversation"].messages[0].text)
         self.assertEqual(outcome.notes, [])
+        self.assertEqual([e["tools"] for e in run.events() if e["kind"] == "tools" and e["who"] == "advisor"], [[]])   # a CLI advisor has no tools
         land(run, approve=False)
 
     def test_an_advisor_that_fails_is_reported_and_the_report_still_comes(self):

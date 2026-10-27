@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import http.client
 import json
+import re
 import tempfile
 import threading
 import time
@@ -45,7 +46,7 @@ class StationWebCase(unittest.TestCase):
             headers["Content-Type"] = ctype
         conn.request(method, path, body=data, headers=headers)
         response = conn.getresponse()
-        text = response.read().decode()
+        text = response.read().decode(errors="replace")   # a picture is bytes, not text
         out = response.status, dict(response.getheaders()), text
         conn.close()
         return out
@@ -108,6 +109,45 @@ class TestAuth(StationWebCase):
     def test_the_page_builds_its_view_with_text_nodes_only(self):
         self.assertNotIn("innerHTML", station_web.PAGE)   # event text carries paths and model output: never parsed as markup
         self.assertNotIn("eval(", station_web.PAGE)
+
+
+class TestArt(StationWebCase):
+    def test_a_picture_is_served_only_to_the_browser_that_opened_the_link_and_only_from_the_art_folder(self):
+        cookie = self.login()
+        status, headers, _ = self.request("GET", "/assets/furn-writer-desk-off.png", cookie=cookie)
+        self.assertEqual((status, headers["Content-Type"]), (200, "image/png"))
+        self.assertEqual(self.request("GET", "/assets/furn-writer-desk-off.png")[0], 403)   # no cookie, no picture
+        for bad in ("/assets/nothing.png", "/assets/../station_page.py", "/assets/%2e%2e/station_page.py", "/assets/furn-writer-desk-off.png/../../station_web.py", "/assets/LICENSE-cozy-space-station.txt"):
+            self.assertEqual(self.request("GET", bad, cookie=cookie)[0], 404, bad)
+
+    def test_every_picture_the_page_asks_for_exists_and_its_size_is_known(self):
+        names = set(re.findall(r'"(tile-[a-z\-]+[a-z]|furn-[a-z\-]+-o(?:n|ff)|scene-(?:moon|stars|hedge|lamppost|tree-[a-z]+))"', station_web.PAGE)) | {f"scene-cloud-{n}" for n in range(1, 6)}
+        furniture = re.search(r"const FURN = \{(.*?)\};", station_web.PAGE, re.S).group(1)
+        for name in re.findall(r':\s*"([a-z\-]+)"', furniture):
+            names |= {f"furn-{name}-off", f"furn-{name}-on"}   # each piece of furniture has an unlit and a lit picture
+        self.assertGreater(len(names), 20)
+        for name in names:
+            self.assertTrue((station_web.ART / f"{name}.png").is_file(), name)
+        self.assertEqual(station_web.PAGE.count("__SPRITES__") + station_web.PAGE.count("__CREW__"), 0)   # the server filled the sizes and the crew frames in
+        sizes = json.loads(re.search(r"const SPR = (\{.*?\});", station_web.PAGE).group(1))
+        self.assertTrue(names <= set(sizes), names - set(sizes))   # the page can fit every picture to its box
+
+
+class TestCrewArt(unittest.TestCase):
+    def test_every_person_has_idle_and_walk_frames_in_all_eight_directions_and_typists_face_us(self):
+        from src.agent import station_page
+        crew = station_page._crew_index()
+        self.assertEqual(set(crew), {"clyde", "bonnie", "master", "advisor", "newsboy", "mechanic", "clerk"})
+        for person, anims in crew.items():
+            for anim in ("idle", "walk", "type"):
+                if anim == "type" and anim not in anims:
+                    continue   # typing is shown only to people who have a typing sheet; the others stand while they work
+                self.assertEqual(len(anims[anim]), 8 if anim != "type" else 3, (person, anim))   # a figure can face any way it walks; typists face us
+                for direction, count in anims[anim].items():
+                    for n in range(count):
+                        self.assertTrue((station_web.ART / f"{person}-{anim}-{direction}-{n:02d}.png").is_file(), (person, anim, direction, n))
+        self.assertIn("south", crew["clyde"]["type"])   # whoever types faces the viewer
+        self.assertEqual({p for p in station_web.PAGE.split("WORKER_LOOKS = [")[1].split("]")[0].replace('"', "").replace(" ", "").split(",")}, {"newsboy", "mechanic", "clerk"})
 
 
 class TestState(StationWebCase):
@@ -220,6 +260,30 @@ class TestAnswer(StationWebCase):
         run.answer(ask_id, False)
         thread.join(5)
         self.assertEqual(got, [False])
+
+
+class TestPage(unittest.TestCase):
+    """The page is one string; these check what a browser would run into without running one."""
+
+    def test_the_one_look_names_every_room_object_and_hallway(self):
+        found = re.findall(r'(\w+): \{ name: "[^"]+",\s*pal: \{(.*?)\},\s*words: \{(.*?)\} \}', station_web.PAGE, re.S)
+        self.assertEqual([k for k, _, _ in found], ["city"])
+        words = set(re.findall(r"(\w+): \"", found[0][2]))
+        self.assertTrue({"deck", "bay", "outbox", "read", "write", "shell", "web", "mcp", "other", "task", "results", "review", "report", "landing", "table"} <= words)
+        self.assertNotIn('id="theme"', station_web.PAGE)
+
+    def test_the_scene_is_built_with_svg_nodes_and_text_and_a_private_window_cannot_break_the_page(self):
+        page = station_web.PAGE
+        self.assertIn("createElementNS", page)
+        self.assertNotIn("innerHTML", page)
+        self.assertNotIn("insertAdjacentHTML", page)
+        self.assertNotIn("document.write", page)
+        self.assertNotIn("eval(", page)
+        self.assertIn("try { return localStorage", page)   # a private window may not allow it
+        self.assertIn("prefers-reduced-motion", page)     # reduced motion: the crew appear at their spot instead of walking
+        self.assertNotIn("http://", page.replace("http://www.w3.org/2000/svg", ""))   # no outside script, font or image
+        self.assertNotIn("https://", page)
+        self.assertNotIn("<img", page)   # drawn in code, no picture files
 
 
 if __name__ == "__main__":

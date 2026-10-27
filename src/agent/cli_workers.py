@@ -45,6 +45,13 @@ def litellm_models(provider_models: dict[str, list[str]]) -> list[str]:
     return [f"{_LITELLM[p]}/{m}" for p, models in provider_models.items() if p in _LITELLM for m in models]
 
 
+def granted_tools(name: str, advisor: bool = False) -> list[str]:
+    """The tools a CLI team member has: an advisor none; Claude Code its fixed list; aider only editing (it has no tool list)."""
+    if advisor:
+        return []
+    return {"claude": _CLAUDE_TOOLS.split(","), "aider": ["Edit"]}[name]
+
+
 def constraint(name: str, advisor: bool = False) -> str:
     if advisor:
         return {"claude": "advice only: no tools at all, an empty folder, none of your own Claude settings",

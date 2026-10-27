@@ -111,6 +111,15 @@ class Station(unittest.TestCase):
         run.answer(run.pending()[0]["id"], False)
         thread.join(5)
 
+    def test_bookkeeping_events_are_not_what_a_member_is_doing(self):
+        run = Run.create("t", {"master": "a:big", "advisor": None, "workers": [{"name": "worker-1", "model": "a"}]})
+        run.event("worker-1", "tools", tools=["Read"])
+        run.event("worker-1", "constraint", note="files only")
+        run.event("bonnie", "check", target="worker-1", reason="result")
+        self.assertEqual(station.snapshot(run)["crew"][1]["doing"], "idle")   # granted tools and a rule are not activity
+        run.event("worker-1", "started")
+        self.assertEqual(station.snapshot(run)["crew"][1]["doing"], "working")
+
     def test_ls_and_the_no_runs_message(self):
         console = self._console()
         self.assertEqual(station.command(console, "show", None, once=True), 1)
