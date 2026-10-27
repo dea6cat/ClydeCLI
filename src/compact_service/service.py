@@ -145,7 +145,7 @@ async def compact_conversation(
     # Recent messages as context (after microcompact), bounded to stay within context
     # limits. Start at a plain user turn so the slice never opens on a tool result whose
     # tool call was cut off (providers reject that pairing).
-    context_messages = list(compacted_api[-20:])
+    context_messages = [_without_pins(m) for m in compacted_api[-20:]]   # the user's words are carried on as they are, not through the summarizer
     while context_messages and (
         context_messages[0].get("role") != "user" or _has_tool_result(context_messages[0])
     ):
@@ -182,6 +182,8 @@ async def compact_conversation(
         summary_text = _fallback_summary(messages)
     if recent := _recent_files(messages):
         summary_text += "\n\n" + recent
+    if pinned := _pin(_pinned_from(messages) + _user_words(messages)):
+        summary_text += "\n\n" + pinned
 
     # Step 6: Create boundary marker
     last_msg_uuid = None
@@ -292,15 +294,72 @@ _SUMMARY_LEAD = "This session is being continued from a previous conversation." 
 _EARLIER_CHARS = 8_000
 
 
+def _text_of(message: Message) -> str:
+    if isinstance(message.content, str):
+        return message.content
+    return "\n".join(getattr(b, "text", "") for b in message.content if getattr(b, "type", "") == "text")
+
+
+# The user's own messages come back after compaction exactly as they were typed. A summary is the model's wording of them, and a
+# model drops or bends a constraint ("no ORMs", "never touch the migrations") without anyone noticing; what you said is never
+# worth less than what was said about it. A budget keeps it small: the newest messages first, a long one cut in the middle.
+PIN_HEAD = "Your own messages, word for word (oldest first):"
+PIN_MARK = "--- you said ---"
+PIN_CHARS = 6_000   # about 1,500 tokens for all of them
+PIN_EACH = 1_500    # one message: its start and its end are kept, the middle goes
+
+
+def _user_words(messages: list[Message]) -> list[str]:
+    """What the user typed in these messages: not tool results, not an earlier summary."""
+    words = []
+    for m in messages:
+        said = _text_of(m).strip() if m.role == "user" else ""
+        if said and not said.startswith(_SUMMARY_LEAD):
+            words.append(said)
+    return words
+
+
+def _pinned_from(messages: list[Message]) -> list[str]:
+    """The words an earlier compaction kept, read back from its summary, so they carry on to the next one."""
+    for m in messages:
+        text = _text_of(m)
+        if m.role == "user" and text.startswith(_SUMMARY_LEAD) and PIN_HEAD in text:
+            return [part.strip() for part in text.split(PIN_HEAD, 1)[1].split(PIN_MARK)[1:] if part.strip()]   # [0] is the note on dropped ones
+    return []
+
+
+def _pin(words: list[str]) -> str:
+    """The block of the user's words that fit the budget, newest first chosen, oldest first shown; empty when there are none."""
+    chosen, used = [], 0
+    for word in reversed(words):
+        if len(word) > PIN_EACH:
+            cut = len(word) - PIN_EACH
+            word = f"{word[:PIN_EACH * 3 // 5]}\n[... {cut:,} characters left out ...]\n{word[len(word) - PIN_EACH * 2 // 5:]}"
+        if used + len(word) > PIN_CHARS and chosen:
+            break
+        chosen.append(word)
+        used += len(word)
+    if not chosen:
+        return ""
+    dropped = len(words) - len(chosen)
+    body = "\n".join(f"{PIN_MARK}\n{w}" for w in reversed(chosen))
+    return f"{PIN_HEAD}\n" + (f"({dropped} older messages are not kept here.)\n" if dropped else "") + body
+
+
+def _without_pins(api_message: dict[str, Any]) -> dict[str, Any]:
+    content = api_message.get("content")
+    if isinstance(content, str) and PIN_HEAD in content:
+        return {**api_message, "content": content.split(PIN_HEAD, 1)[0].rstrip()}
+    if isinstance(content, list):
+        return {**api_message, "content": [{**b, "text": b["text"].split(PIN_HEAD, 1)[0].rstrip()} if isinstance(b, dict) and PIN_HEAD in str(b.get("text", "")) else b for b in content]}
+    return api_message
+
+
 def _earlier_context(messages: list[Message], kept: int) -> str:
     """What the summarizer would not see: it reads only the recent messages, so the previous summary and every user
     request before them were left out of the new summary and lost. This hands it the previous summary to update
     (Kilo's anchored summary) and those requests, first 300 characters each, about 8,000 in all."""
-    def text(message: Message) -> str:
-        if isinstance(message.content, str):
-            return message.content
-        return "\n".join(getattr(b, "text", "") for b in message.content if getattr(b, "type", "") == "text")
-
+    text = _text_of
     older = messages[: len(messages) - kept] if kept else list(messages)
     previous = next((text(m) for m in older if m.role == "user" and text(m).startswith(_SUMMARY_LEAD)), "")
     asked, used = [], 0
@@ -314,7 +373,7 @@ def _earlier_context(messages: list[Message], kept: int) -> str:
         return ""
     out = "\n\nWhat came before the messages above. Keep what is still true, and update it with them:"
     if previous:
-        out += "\n\nPrevious summary:\n" + previous.removeprefix(_SUMMARY_LEAD).strip()
+        out += "\n\nPrevious summary:\n" + previous.removeprefix(_SUMMARY_LEAD).split(PIN_HEAD, 1)[0].strip()   # its pinned words are carried on as they are
     if asked:
         out += "\n\nEarlier requests from the user:\n" + "\n".join(asked)
     return out
