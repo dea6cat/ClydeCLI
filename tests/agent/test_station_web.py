@@ -308,6 +308,11 @@ class TestPage(unittest.TestCase):
         for needle in ('id="addWorker"', '"Add worker"', 'api("/api/order"', "function openAdd", f"const MAX_TEAM = {MAX_TEAM};"):
             self.assertIn(needle, page)
 
+    def test_each_person_can_be_renamed_and_the_name_is_kept_only_in_this_browser(self):
+        page = station_web.PAGE
+        for needle in ("function crewItem", '"Rename"', "station.names", "withName(", "callName("):
+            self.assertIn(needle, page)
+
     def test_the_scene_is_built_with_svg_nodes_and_text_and_a_private_window_cannot_break_the_page(self):
         page = station_web.PAGE
         self.assertIn("createElementNS", page)

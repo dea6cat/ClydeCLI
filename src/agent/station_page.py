@@ -159,6 +159,14 @@ dialog#addWorker .aw-actions button { min-height: 40px; padding: 0 16px; }
 .portrait .lamp.bad { background: var(--bad); } .portrait .lamp.fin { background: var(--ok); }
 .crew-row .nm { display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; font-weight: 700; }
 .crew-row .nm .chip { font-weight: 500; }
+.crew-item { position: relative; }
+.crew-item .rename { position: absolute; top: 8px; right: 8px; min-height: 28px; opacity: 0; }
+.crew-item:hover .rename, .crew-item:focus-within .rename { opacity: 1; }
+@media (hover: none) { .crew-item .rename { opacity: 1; } }
+.crew-item .name-edit { width: 100%; min-height: 40px; padding: 6px 10px; font: inherit; color: var(--ink); background: rgba(255,255,255,.06); border: 1px solid var(--brass); border-radius: 8px; }
+.crew-item .name-edit:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+.crew-item .crew-row .nm { padding-right: 74px; }
+.crew-row .nm .real { font-weight: 500; font-size: 11.5px; color: var(--muted); }
 .crew-row .md { font-size: 11.5px; color: var(--muted); overflow-wrap: anywhere; }
 .crew-row .st { margin-top: 2px; font-size: 13px; }
 .crew-row .ru { margin-top: 3px; font-size: 11px; color: var(--muted); line-height: 1.35; }
@@ -285,7 +293,7 @@ button.act.allow { border-color: rgba(123,214,166,.6); } button.act.deny { borde
 const TOKEN = "__TOKEN__";
 const NS = "http://www.w3.org/2000/svg";
 const REDUCED = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-const state = { dismissed: [], runs: [], feeds: {}, filter: {}, polling: {}, theme: "city", loadedAt: Date.now() / 1000, scenes: [], link: { ok: true, reason: "" } };
+const state = { dismissed: [], names: {}, editing: false, runs: [], feeds: {}, filter: {}, polling: {}, theme: "city", loadedAt: Date.now() / 1000, scenes: [], link: { ok: true, reason: "" } };
 const $runs = document.getElementById("runs");
 const $status = document.getElementById("status");
 const $aw = document.getElementById("addWorker"), $awTask = document.getElementById("awTask"), $awError = document.getElementById("awError"), $awSend = document.getElementById("awSend");
@@ -355,6 +363,14 @@ function countsText(counts) {
   parts.push(counts.idle + " idle");
   return parts.join(" \u00b7 ");
 }
+// A name you give someone is a label kept in this browser, per run; it never changes who they are in the log, so the real id stays beside it.
+const NAME_MAX = 24;
+function callName(names, runId, who) { return names[runId + "|" + who] || who; }
+function withName(names, runId, who, typed) {   // the map after naming `who`; an empty name, or their own id, takes the label away
+  const key = runId + "|" + who, clean = String(typed || "").replace(/\s+/g, " ").trim().slice(0, NAME_MAX), next = Object.assign({}, names);
+  if (!clean || clean === who) delete next[key]; else next[key] = clean;
+  return next;
+}
 function linkState(reachable, runs) {   // live only when the server answered and a run is live; standby is neutral, never green
   return !reachable ? "down" : runs.some((run) => LIVE_RUN.includes(run.status)) ? "live" : "standby";
 }
@@ -378,16 +394,16 @@ function ageText(seconds) {
   const s = Math.max(0, Math.round(seconds));
   return s < 60 ? s + "s" : s < 3600 ? Math.floor(s / 60) + "m" : s < 86400 ? Math.floor(s / 3600) + "h" : Math.floor(s / 86400) + "d";
 }
-function needsYou(runs, eventsOf, now, dismissed) {   // everything waiting on the user, each row from a recorded fact: a pending request, a worker whose last event is a failure, a failed run
+function needsYou(runs, eventsOf, now, dismissed, nameOf) {   // everything waiting on the user, each row from a recorded fact: a pending request, a worker whose last event is a failure, a failed run
   const rows = [];
   for (const run of runs) {
-    const events = eventsOf(run.id) || [], last = {};
-    for (const a of run.asks) rows.push({ key: run.id + ":ask:" + a.id, kind: "approval", run: run.id, id: a.id, who: a.who, text: a.who + " wants to use " + a.tool, since: a.t });
+    const events = eventsOf(run.id) || [], last = {}, call = (w) => (nameOf ? nameOf(run.id, w) : w);
+    for (const a of run.asks) rows.push({ key: run.id + ":ask:" + a.id, kind: "approval", run: run.id, id: a.id, who: a.who, text: call(a.who) + " wants to use " + a.tool, since: a.t });
     for (const e of events) if (!["tools", "constraint", "check"].includes(e.kind)) last[e.who] = e;
     for (const who of Object.keys(last)) {
       const e = last[who];
-      if (e.kind === "failed") rows.push({ key: run.id + ":fail:" + who + ":" + e.t, kind: "failure", run: run.id, who, text: who + " failed", since: e.t });
-      else if (e.kind === "tool_error") rows.push({ key: run.id + ":err:" + who + ":" + e.t, kind: "failure", run: run.id, who, text: who + ": " + (e.tool || "a tool") + " failed", since: e.t });
+      if (e.kind === "failed") rows.push({ key: run.id + ":fail:" + who + ":" + e.t, kind: "failure", run: run.id, who, text: call(who) + " failed", since: e.t });
+      else if (e.kind === "tool_error") rows.push({ key: run.id + ":err:" + who + ":" + e.t, kind: "failure", run: run.id, who, text: call(who) + ": " + (e.tool || "a tool") + " failed", since: e.t });
     }
     if (run.status === "failed") rows.push({ key: run.id + ":runfailed", kind: "failure", run: run.id, who: "clyde", text: "the run failed", since: events.length ? events[events.length - 1].t : run.started });
   }
@@ -902,15 +918,15 @@ function preload(pack, anim, dir) {   // fetch a whole animation the first time 
   PRELOADED[key] = true;
   for (let f = 0; f < crewFrame(pack, anim, dir, 0).n; f++) new Image().src = artUrl(crewFrame(pack, anim, dir, f).file);
 }
-function personItem(name, role) {
+function personItem(name, role, label) {
   const pack = crewPack(name), box = crewBox(pack), g = sv("g", { class: "sprite", "data-sprite": name }), body = sv("g", {}), carry = sv("g", { style: "display:none" });
   const img = sv("image", { x: box.x, y: box.y, width: box.w, height: box.h, "image-rendering": "pixelated" });
   img.setAttribute("href", artUrl(crewFrame(pack, "idle", "south", 0).file));
   body.append(img);
   carry.append(sv("rect", { x: -13, y: -CREW_H * 0.5, width: 26, height: 18, rx: 2, fill: "#a8782f", stroke: "#0b0b12", "stroke-width": 1.6 }), sv("rect", { x: -2, y: -CREW_H * 0.5, width: 4, height: 18, fill: "#d8b060" }));
   const shadowEl = sv("ellipse", { cx: 0, cy: -1, rx: 13, ry: 5, fill: "#000", opacity: 0.32 }), tag = sv("g", { class: "tag", transform: "translate(0 " + (-CREW_H - 8) + ")" }), bubble = sv("g", { transform: "translate(0 " + (-CREW_H - 28) + ")" });
-  tag.append(sv("rect", { x: -(name.length * 3.6 + 6), y: -9, width: name.length * 7.2 + 12, height: 14, rx: 3, fill: "#000", opacity: 0.6 }), sv("text", { y: 3, class: "name", fill: "#fff", stroke: "#000" }, name));
-  g.append(shadowEl, body, carry, tag, bubble, sv("title", {}, name));
+  tag.append(sv("rect", { x: -(label.length * 3.6 + 6), y: -9, width: label.length * 7.2 + 12, height: 14, rx: 3, fill: "#000", opacity: 0.6 }), sv("text", { y: 3, class: "name", fill: "#fff", stroke: "#000" }, label));
+  g.append(shadowEl, body, carry, tag, bubble, sv("title", {}, label));
   const person = { name, role, g, body, carry, bubble, pack, dir: "south", shown: "", bubbleKind: null, title: g.lastChild };
   person.show = (dir, anim, f) => {   // set the picture for this pose; nothing happens when it is already showing
     const fr = crewFrame(pack, anim, dir, f);
@@ -995,11 +1011,11 @@ function buildScene(run) {
   for (const room of layout.rooms) for (const m of room.members || []) cards[m.name] = m;
   const crewNames = ["clyde", ...(cards.bonnie ? ["bonnie"] : []), "master", ...(cards.advisor ? ["advisor"] : []), ...p.bayRooms.map((r) => r.id)];
   const people = crewNames.map((name) => {
-    const person = personItem(name, name), card = cards[name] || { name, doing: "" };
+    const label = callName(state.names, run.id, name), person = personItem(name, name, label), card = cards[name] || { name, doing: "" };
     person.card = card;
     person.g.addEventListener("click", () => { if (dragged) return; state.filter[run.id] = state.filter[run.id] === name ? null : name; draw(); });
-    person.title.textContent = name + (card.model ? " · " + card.model : "") + " · " + (card.doing || "");
-    described.push(name + ": " + (card.doing || ""));
+    person.title.textContent = label + (label !== name ? " (" + name + ")" : "") + (card.model ? " · " + card.model : "") + " · " + (card.doing || "");
+    described.push(label + ": " + (card.doing || ""));
     return person;
   });
   p.bonds = bonds(events);
@@ -1135,12 +1151,37 @@ function portrait(name, doing) {   // the same person as in the scene, in a smal
   well.append(svg, el("span", "lamp " + dotClass(doing)));
   return well;
 }
-function crewRow(run, member) {
+function redraw() { lastSignature = ""; draw(); }
+function crewItem(run, member) {   // the row, and beside it the button that gives this person a name of your own
+  const item = el("div", "crew-item"), label = callName(state.names, run.id, member.name), rename = el("button", "mini rename", "Rename");
+  rename.type = "button";
+  rename.setAttribute("aria-label", "Rename " + label);
+  rename.addEventListener("click", () => {
+    const input = el("input", "name-edit");
+    input.type = "text"; input.maxLength = NAME_MAX; input.value = label === member.name ? "" : label; input.placeholder = member.name;
+    input.setAttribute("aria-label", "A name for " + member.name + " (empty to go back to " + member.name + ")");
+    state.editing = true;   // a redraw while you type would swap the box out from under you
+    const done = (keep) => {
+      if (!state.editing) return;
+      state.editing = false;
+      if (keep) { state.names = withName(state.names, run.id, member.name, input.value); store("station.names", JSON.stringify(Object.fromEntries(Object.entries(state.names).slice(-200)))); }
+      redraw();
+    };
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") done(true); else if (e.key === "Escape") done(false); });
+    input.addEventListener("blur", () => done(true));
+    item.replaceChildren(input);
+    input.focus();
+  });
+  item.append(crewRow(run, member, label), rename);
+  return item;
+}
+function crewRow(run, member, label) {
   const button = el("button", "crew-row" + (/approval/.test(member.doing) || (member.name === "clyde" && run.asks.length) ? " asking" : ""));
   button.type = "button";
   button.setAttribute("aria-pressed", String(state.filter[run.id] === member.name));
   const info = el("div", ""), nm = el("div", "nm");
-  nm.append(el("span", "", member.name));
+  nm.append(el("span", "", label));
+  if (label !== member.name) nm.append(el("span", "real", member.name));
   if (member.kind) nm.append(el("span", "chip", member.kind === "cli" ? "agent CLI" : "Clyde"));
   info.append(nm, el("div", "md", member.model), el("div", "st", member.doing));
   if (member.constraint) info.append(el("div", "ru", member.constraint));
@@ -1156,7 +1197,7 @@ function asks(run) {
   const box = el("div", "asks");
   for (const ask of run.asks) {
     const row = el("div", "ask");
-    row.append(el("div", "", ask.who + " wants to use " + ask.tool));
+    row.append(el("div", "", callName(state.names, run.id, ask.who) + " wants to use " + ask.tool));
     row.append(el("pre", "", ask.message));
     for (const [label, allow] of [["Allow", true], ["Deny", false]]) {
       const button = el("button", "act " + (allow ? "allow" : "deny"), label);
@@ -1171,13 +1212,13 @@ function asks(run) {
 function feed(run) {
   const box = el("div", "feed"), who = state.filter[run.id];
   const head = el("h3", "", "Events");
-  head.append(el("small", "", who ? who + " only · click it again for all" : (state.feeds[run.id] || []).length + " recorded"));
+  head.append(el("small", "", who ? callName(state.names, run.id, who) + " only · click it again for all" : (state.feeds[run.id] || []).length + " recorded"));
   box.append(head);
   const log = el("ul", "log");
   for (const e of (state.feeds[run.id] || []).filter((x) => !who || x.who === who || x.target === who).slice(-200)) {
-    const detail = e.tool ? e.tool + (e.input ? " " + e.input : "") : (e.status || e.note || (e.target ? e.target + " " + (e.reason || "") : ""));
+    const detail = e.tool ? e.tool + (e.input ? " " + e.input : "") : (e.status || e.note || (e.target ? callName(state.names, run.id, e.target) + " " + (e.reason || "") : ""));
     const line = el("li");
-    line.append(el("span", "t", clock(e.t) + " "), document.createTextNode(e.who + " " + e.kind + (detail ? " " + detail : "")));
+    line.append(el("span", "t", clock(e.t) + " "), document.createTextNode(callName(state.names, run.id, e.who) + " " + e.kind + (detail ? " " + detail : "")));
     log.append(line);
   }
   box.append(log);
@@ -1207,7 +1248,7 @@ function rail(run) {
     tools.append(add);
   }
   head.append(tools);
-  for (const m of crew) body.append(crewRow(run, m));
+  for (const m of crew) body.append(crewItem(run, m));
   box.append(head, body);
   const events = el("section", "glass");
   events.append(feed(run));
@@ -1229,7 +1270,7 @@ function sendAdd() {
     (e) => { $awError.textContent = e.message; $awSend.disabled = false; });
 }
 function needsBox(run) {   // the top-left card's "needs you" list: only what waits on the user, hidden when nothing does
-  const rows = needsYou([run], (id) => state.feeds[id], Date.now() / 1000, state.dismissed), box = el("div", "needs");
+  const rows = needsYou([run], (id) => state.feeds[id], Date.now() / 1000, state.dismissed, (id, w) => callName(state.names, id, w)), box = el("div", "needs");
   if (!rows.length) { box.hidden = true; return box; }
   box.setAttribute("role", "region"); box.setAttribute("aria-label", "Needs you");
   box.append(el("div", "needs-head", "Needs you \u00b7 " + rows.length));
@@ -1270,7 +1311,8 @@ let lastSignature = "";
 function draw() {
   paintHeader();
   // Rebuild only when something visible changed: a rebuild every few seconds would swap the buttons out from under a click.
-  const signature = JSON.stringify([state.dismissed, state.runs, Object.keys(state.feeds).map((id) => [id, state.feeds[id].length]), state.filter, state.theme]);
+  if (state.editing) return;
+  const signature = JSON.stringify([state.dismissed, state.names, state.runs, Object.keys(state.feeds).map((id) => [id, state.feeds[id].length]), state.filter, state.theme]);
   if (signature === lastSignature) return;
   lastSignature = signature;
   $rail.classList.toggle("alert", state.runs.some((r) => r.asks.length));   // a request for your OK never hides behind a closed panel
@@ -1356,6 +1398,7 @@ document.addEventListener("pointerdown", (e) => {
 document.addEventListener("dblclick", (e) => { if (e.target.classList && e.target.classList.contains("railgrip")) { document.documentElement.style.removeProperty("--railw"); store("station.railw", ""); } });
 for (const pack in CREW) for (const anim in CREW[pack]) for (const dir in CREW[pack][anim]) preload(pack, anim, dir);   // every picture is fetched once up front, so a frame never blinks while it loads
 try { state.dismissed = JSON.parse(stored("station.dismissed") || "[]"); } catch (e) { state.dismissed = []; }
+try { state.names = JSON.parse(stored("station.names") || "{}") || {}; } catch (e) { state.names = {}; }
 setInterval(() => { for (const age of document.querySelectorAll("[data-since]")) age.textContent = ageText(Date.now() / 1000 - Number(age.dataset.since)); }, 15000);   // how long each row has waited
 refresh();
 setInterval(refresh, 5000);   // picks up runs that start after the page opened
