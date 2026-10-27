@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import threading
 import tempfile
 import unittest
 from pathlib import Path
@@ -215,6 +216,43 @@ class EndToEnd(unittest.TestCase):
         listed = subprocess.run(["git", "worktree", "list"], cwd=self.repo, capture_output=True, text=True, check=False).stdout
         self.assertEqual(len(listed.strip().splitlines()), 1)
         self.assertFalse((self.repo / "c.txt").exists())
+
+    def test_stop_from_the_station_stops_every_worker_the_same_way_as_ctrl_c(self):
+        started = []
+        w1 = FakeProvider(reply(tool_calls=[("Bash", {"command": "echo hi > c.txt"})]), reply("never"), name="w1")
+        w2 = FakeProvider(reply("done"), name="w2")
+
+        def on_approval(_ask):   # the user presses Stop while worker-1 waits for an answer
+            started[0].stop()
+            return True   # even a yes does not let it go on: the stop wins
+
+        providers = {"m": FakeProvider(reply('{"tasks": ["a", "b"]}'), name="m"), "adv": FakeProvider(reply("x"), name="adv"), "w1": w1, "w2": w2}
+        plan = build_plan("t", ("provider:m", "m"), ("provider:adv", "m"), [("provider:w1", "m"), ("provider:w2", "m")], [_harness(f"provider:{n}") for n in providers])
+        outcome = orchestrate(plan, "spec", workspace=self.repo, parent=ToolContext(workspace_root=self.repo), registry=build_default_registry(),
+                              providers=providers, on_approval=on_approval, on_start=started.append)
+        run = outcome.run
+        self.assertEqual((run.state()["status"], outcome.report), ("stopped", "Stopped before the review."))
+        kinds = [(e["who"], e["kind"]) for e in run.events()]
+        self.assertLess(kinds.index(("user", "stop_requested")), kinds.index(("clyde", "stopping")))
+        self.assertNotIn(("advisor", "reviewing"), kinds)   # it never went on to the review
+        with self.assertRaises(ValueError):
+            run.order("one more")   # nothing new is taken on a stopped run
+        listed = subprocess.run(["git", "worktree", "list"], cwd=self.repo, capture_output=True, text=True, check=False).stdout
+        self.assertEqual(len(listed.strip().splitlines()), 1)
+        self.assertFalse((self.repo / "c.txt").exists())
+
+    def test_a_worker_never_has_more_than_its_lead(self):
+        from src.tool_system.permissions import ToolPermissionContext
+        from src.tool_system.tools.agent import offered_tools
+        from src.agent.agent_types import GENERAL, AgentType
+        parent = ToolContext(workspace_root=self.repo, permission_context=ToolPermissionContext.from_iterables(["Bash"], ["mcp__evil"], workspace_root=self.repo),
+                             permission_rules={"deny": ["WebFetch"], "ask": [], "allow": []})
+        context = orchestration._worker_context(parent, self.repo, Run.create("t", {}), "worker-1", threading.Event(), None, "m")
+        self.assertTrue(context.permission_context.blocks_tool("Bash") and context.permission_context.blocks_tool("mcp__evil_x"))   # what the lead is denied stays denied
+        self.assertIs(context.permission_rules, parent.permission_rules)
+        offered = offered_tools(build_default_registry(), AgentType(GENERAL, "orchestrated worker"), parent.permission_rules)
+        self.assertNotIn("WebFetch", offered)                                    # a bare deny hides the tool from the worker
+        self.assertFalse({"Agent", "TeamCreate", "TeamDelete"} & set(offered))   # and a worker can never start workers of its own
 
     def test_a_local_model_among_the_workers_makes_them_run_one_at_a_time(self):
         import threading

@@ -383,6 +383,9 @@ def orchestrate(plan: OrchestrationPlan, spec: str, *, workspace: Path, parent: 
                     for n, w, t in zip(names, plan.workers, split)]
             while True:
                 try:
+                    if run.stop_requested() and not cancel.is_set():   # the user pressed Stop in the station: the same path as Ctrl-C
+                        run.event("clyde", "stopping", note="you asked every worker to stop")
+                        cancel.set()
                     for order in (() if cancel.is_set() else run.pending_orders()):
                         if order.get("worker"):   # a task for a worker already on the team
                             if order["worker"] not in roles:

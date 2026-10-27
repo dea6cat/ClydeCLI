@@ -144,6 +144,15 @@ body.rail-off .rail { transform: translateX(calc(100% + 24px)); visibility: hidd
   border-bottom: 1px solid color-mix(in srgb, var(--ink) 12%, transparent); font-weight: 700; }
 .head-tools { display: flex; align-items: baseline; gap: 10px; }
 .head-tools button.mini { min-height: 28px; }
+dialog#stopRun { width: min(420px, calc(100vw - 32px)); padding: 18px 20px; color: var(--ink); background: #0f1120; border: 1px solid var(--bad); border-radius: 14px; box-shadow: 0 18px 50px rgba(0,0,0,.6); }
+dialog#stopRun::backdrop { background: rgba(5,6,14,.6); }
+dialog#stopRun h2 { margin: 0 0 6px; font-size: 18px; }
+dialog#stopRun p { margin: 0 0 12px; font-size: 13px; line-height: 1.45; }
+dialog#stopRun .aw-error { min-height: 1.2em; margin: 8px 0 0; color: var(--bad); }
+dialog#stopRun .aw-actions { display: flex; justify-content: flex-end; gap: 8px; }
+dialog#stopRun .aw-actions button { min-height: 40px; padding: 0 16px; }
+dialog#stopRun button:focus-visible { outline: 2px solid var(--brass, #c99a2e); outline-offset: 2px; }
+dialog#stopRun button.deny { border-color: var(--bad); color: var(--bad); }
 dialog#addWorker { width: min(440px, calc(100vw - 32px)); padding: 18px 20px; color: var(--ink); background: #0f1120; border: 1px solid var(--brass-soft, rgba(201,154,46,.5)); border-radius: 14px; box-shadow: 0 18px 50px rgba(0,0,0,.6); }
 dialog#addWorker::backdrop { background: rgba(5,6,14,.6); }
 dialog#addWorker h2 { margin: 0 0 6px; font-size: 18px; }
@@ -297,6 +306,14 @@ button.act.allow { border-color: rgba(123,214,166,.6); } button.act.deny { borde
     <div class="aw-actions"><button type="button" id="awCancel" class="mini">Cancel</button><button type="submit" id="awSend" class="mini act">Add worker</button></div>
   </form>
 </dialog>
+<dialog id="stopRun" aria-labelledby="srTitle">
+  <form id="srForm">
+    <h2 id="srTitle">Stop this run?</h2>
+    <p>Every worker stops where it is, waiting requests are turned down, and the workshops are cleared away. Nothing lands. This cannot be undone.</p>
+    <p id="srError" class="aw-error" role="alert"></p>
+    <div class="aw-actions"><button type="button" id="srCancel" class="mini">Keep working</button><button type="submit" id="srSend" class="mini act deny">Stop every worker</button></div>
+  </form>
+</dialog>
 <script>
 "use strict";
 const TOKEN = "__TOKEN__";
@@ -305,6 +322,7 @@ const REDUCED = window.matchMedia && window.matchMedia("(prefers-reduced-motion:
 const state = { dismissed: [], names: {}, quests: { done: {}, hidden: false }, editing: false, runs: [], feeds: {}, filter: {}, polling: {}, theme: "city", loadedAt: Date.now() / 1000, scenes: [], link: { ok: true, reason: "" } };
 const $runs = document.getElementById("runs");
 const $status = document.getElementById("status");
+const $sr = document.getElementById("stopRun"), $srError = document.getElementById("srError"), $srSend = document.getElementById("srSend");
 const $awTitle = document.getElementById("awTitle"), $awHint = document.getElementById("awHint"), $aw = document.getElementById("addWorker"), $awTask = document.getElementById("awTask"), $awError = document.getElementById("awError"), $awSend = document.getElementById("awSend");
 const $rail = document.getElementById("railToggle");
 const $link = document.getElementById("link"), $linkText = document.getElementById("linkText"), $retry = document.getElementById("linkRetry"), $counts = document.getElementById("counts");
@@ -1282,6 +1300,15 @@ function rail(run) {
     add.addEventListener("click", () => openAdd(run));
     tools.append(add);
   }
+  if (run.status === "running") {   // a stop already asked for shows as such, until the run ends
+    if ((state.feeds[run.id] || []).some((e) => e.kind === "stop_requested")) tools.append(el("small", "", "stopping\u2026"));
+    else {
+      const stop = el("button", "mini", "Stop run");
+      stop.type = "button";
+      stop.addEventListener("click", () => openStop(run));
+      tools.append(stop);
+    }
+  }
   head.append(tools);
   for (const m of crew) body.append(crewItem(run, m));
   box.append(head, body);
@@ -1302,6 +1329,12 @@ function openAdd(run, worker) {
   $awTask.value = ""; $awError.textContent = ""; $awSend.disabled = false;
   $aw.showModal();
   $awTask.focus();
+}
+let stopping = "";
+function openStop(run) { stopping = run.id; $srError.textContent = ""; $srSend.disabled = false; $sr.showModal(); }
+function sendStop() {
+  $srSend.disabled = true; $srError.textContent = "";
+  api("/api/stop", { run: stopping }).then(() => { $sr.close(); $status.textContent = "Asked every worker to stop."; refresh(); }, (e) => { $srError.textContent = e.message; $srSend.disabled = false; });
 }
 function sendAdd() {
   $awSend.disabled = true; $awError.textContent = "";
@@ -1440,6 +1473,8 @@ setCinema(stored("station.cinema") === "1");
 $cinema.addEventListener("click", () => setCinema(true));
 document.getElementById("cinemaTab").addEventListener("click", () => setCinema(false));
 document.getElementById("awCancel").addEventListener("click", () => $aw.close());
+document.getElementById("srCancel").addEventListener("click", () => $sr.close());
+document.getElementById("srForm").addEventListener("submit", (e) => { e.preventDefault(); sendStop(); });
 document.getElementById("awForm").addEventListener("submit", (e) => { e.preventDefault(); sendAdd(); });
 document.addEventListener("keydown", (e) => {
   if (e.ctrlKey || e.metaKey || e.altKey || /^(INPUT|SELECT|TEXTAREA)$/.test((e.target.tagName || ""))) return;

@@ -5,6 +5,7 @@
     GET  /api/runs        every run, newest first
     GET  /api/events      ?run=<id>&after=<n>: waits up to 25 s for events past n, then answers (the stream is a long poll)
     POST /api/answer      {run, id, allow}: answer a worker's pending request, as `clyde station approve` does
+    POST /api/stop        {run}: ask the live run to stop every worker (the run ends as stopped, nothing lands)
     POST /api/order       {run, task[, worker]}: ask the live run for one more worker doing `task`, or give `worker` that task (Clyde hands it over; the run records it)
 
 Any web page the user visits can try to talk to a localhost port, so, as Bonnie does: it binds 127.0.0.1, checks the Host
@@ -201,7 +202,7 @@ def make_server(host: str = "127.0.0.1", port: int = 0) -> ThreadingHTTPServer:
 
         def do_POST(self) -> None:
             url = urlparse(self.path)
-            if url.path not in ("/api/answer", "/api/order"):
+            if url.path not in ("/api/answer", "/api/order", "/api/stop"):
                 self._json(404, {"error": "not found"})
                 return
             if not self._guard(api=True):
@@ -210,6 +211,17 @@ def make_server(host: str = "127.0.0.1", port: int = 0) -> ThreadingHTTPServer:
             if data is None:
                 return
             run = Run.open(str(data.get("run", "")))
+            if url.path == "/api/stop":
+                if run is None:
+                    self._json(400, {"error": "need a run"})
+                    return
+                try:
+                    run.stop()
+                except ValueError as e:
+                    self._json(409, {"error": str(e)})
+                    return
+                self._json(200, {"ok": True})
+                return
             if url.path == "/api/order":
                 if run is None or not isinstance(data.get("task"), str):
                     self._json(400, {"error": "need a run and a task"})
