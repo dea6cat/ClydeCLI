@@ -27,7 +27,7 @@ const code = fs.readFileSync(process.argv[2], "utf8");
 const reduced = process.argv[3] === "reduced";
 const ctx = { Math, console, parseInt, REDUCED: reduced };
 vm.createContext(ctx);
-vm.runInContext(code + "\nthis.__api = { callName, withName, NAME_MAX, bonds, partnerOf, assignBarSpots, facesDownLeft, needsYou, ageText, memberState, crewCounts, countsText, linkState, QUIET, plan, bounds, family, workerTrips, orchestratorTrips, walkerState, tripState, tripEnd };", ctx);
+vm.runInContext(code + "\nthis.__api = { quests, QUESTS, callName, withName, NAME_MAX, bonds, partnerOf, assignBarSpots, facesDownLeft, needsYou, ageText, memberState, crewCounts, countsText, linkState, QUIET, plan, bounds, family, workerTrips, orchestratorTrips, walkerState, tripState, tripEnd };", ctx);
 const A = ctx.__api, fails = [];
 const FAMILIES = ["read", "write", "shell", "web", "mcp", "other"];
 const bay = (i) => ({ id: "worker-" + i, kind: "bay", members: [], objects: FAMILIES.map((f) => ({ family: f, tools: [f], used: 0, asked: 0, allowed: 0, denied: 0, failed: 0, last: null })) });
@@ -220,6 +220,14 @@ if (A.callName(A.withName({}, "r1", "w", "x".repeat(90)), "r1", "w").length !== 
 if (nm["r1|worker-2"] !== "Fixer Bob" || Object.keys(A.withName(nm, "r1", "worker-3", "A")).length !== 2) MOTION.push("naming must not change the old map or other labels");
 const named = A.needsYou([nrun("r1", "running", [{ id: "a1", who: "worker-1", tool: "Bash", t: nowT - 90 }])], ne({ r1: [] }), nowT, [], (id, w) => A.callName({ "r1|worker-1": "Fixer" }, id, w));
 if (named[0].text !== "Fixer wants to use Bash" || named[0].who !== "worker-1") MOTION.push("needs-you shows the name but keeps the id: " + JSON.stringify(named));
+// 11. first steps: ticked only by a recorded fact (or a name you gave), and a step once seen stays ticked
+const qev = (events) => (id) => events[id] || [], qdone = (qs) => qs.filter((q) => q.done).map((q) => q.key).join(",");
+if (qdone(A.quests([], qev({}), {}, {})) !== "") MOTION.push("nothing recorded, nothing ticked");
+if (qdone(A.quests([{ id: "r" }], qev({ r: [] }), {}, {})) !== "run") MOTION.push("a run ticks the first step");
+const qall = A.quests([{ id: "r" }], qev({ r: [{ who: "worker-1", kind: "tool_use" }, { who: "user", kind: "approval_answered" }, { who: "user", kind: "ordered" }, { who: "user", kind: "landed" }] }), { "r|w": "X" }, {});
+if (qall.length !== A.QUESTS.length || !qall.every((q) => q.done)) MOTION.push("every step ticks from its own record: " + qdone(qall));
+if (qdone(A.quests([{ id: "r" }], qev({ r: [{ who: "clyde", kind: "tool_use" }, { who: "worker-1", kind: "approval_answered" }, { who: "worker-2", kind: "ordered" }] }), {}, {})) !== "run") MOTION.push("only the right person's event counts");
+if (qdone(A.quests([], qev({}), {}, { add: true })) !== "add") MOTION.push("a step seen before stays ticked after the run is gone");
 console.log(JSON.stringify({ layout: LAYOUT, motion: MOTION }));
 """
 
