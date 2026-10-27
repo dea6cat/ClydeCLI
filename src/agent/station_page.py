@@ -581,8 +581,10 @@ function plan(layout) {
                  { room: deck, family: "table", obj: null, box: [deck.x + 11, deck.y + 5, 4.2, 2] });
   for (const [kind, x, y, size] of [["plant", 2.2, 10.8], ["plant", 24.8, 10.6], ["lamp", 9, 1.3], ["lamp", 17.4, 1.3], ["bookcase", 0.3, 8.0, 3.2], ["tank", 24.6, 8.8], ["coat", 7.6, 10.8]]) prop(kind, deck.x + x, deck.y + y, size);
   const ob = layout.rooms.find((r) => r.kind === "outbox");
-  furniture.push({ room: rooms.outbox, family: "crate", obj: ob, box: [rooms.outbox.x + 4.8, rooms.outbox.y + 1, 2.2, 1.8] });
-  for (const [kind, x, y, size] of [["bookcase", 0.3, 0.2, 1.6], ["bookcase", 0.3, 4.8, 2], ["tank", 6.6, 5.6], ["lamp", 7.2, 4.2]]) prop(kind, rooms.outbox.x + x, rooms.outbox.y + y, size);
+  const ox = rooms.outbox.x, oy = rooms.outbox.y;   // a post room: pigeonhole cabinets along the back wall (the one that lights up is the real outbox), sacks and crates in the corner
+  furniture.push({ room: rooms.outbox, family: "mailbox", obj: null, box: [ox + 1.2, oy + 0.3, 1.8, 1.1] }, { room: rooms.outbox, family: "mailbox", obj: null, box: [ox + 3.2, oy + 0.3, 1.8, 1.1] },
+                 { room: rooms.outbox, family: "crate", obj: ob, box: [ox + 5.2, oy + 0.3, 1.8, 1.1] });
+  for (const [kind, x, y, size] of [["crates", 6.9, 5.7], ["plant", 7.3, 3.6], ["lamp", 0.7, 5.6]]) prop(kind, rooms.outbox.x + x, rooms.outbox.y + y, size);
   // Each workshop gets its own look: a rug style and colours, and a few extra pieces, all picked from the room's number and placed only where they fit.
   const RUGS = [["#7a1f2b", "#c99a2e"], ["#24432f", "#c99a2e"], ["#232f55", "#e2d3a8"], ["#8a5a1f", "#7a1f2b"]];
   const nearSeg = (px, py, a, b) => { const dx = b[0] - a[0], dy = b[1] - a[1], k = Math.max(0, Math.min(1, ((px - a[0]) * dx + (py - a[1]) * dy) / (dx * dx + dy * dy || 1))); return Math.hypot(px - a[0] - dx * k, py - a[1] - dy * k); };
@@ -789,7 +791,7 @@ function doorsOf(p, r) {   // where a room's wall has a doorway: [side, from, to
   return [[r.wall, along - 1, along + 1], ...(r.through ? [[opposite, along - 1, along + 1]] : [])];
 }
 const FURN = { read: "file-cabinet", write: "writer-desk", shell: "safe", web: "radio", mcp: "switchboard", other: "cupboard", approvals: "signing-desk", ledger: "cash-register",
-  desk: "report-desk", table: "planning-table", crate: "mail-cabinet", bar: "bar", sofa: "sofa", smalltable: "small-table" };   // the picture for each kind of furniture
+  desk: "report-desk", table: "planning-table", crate: "mail-cabinet", mailbox: "mail-cabinet", bar: "bar", sofa: "sofa", smalltable: "small-table" };   // the picture for each kind of furniture
 function furnitureSprite(f, pal, now, defs, uid) {
   const g = sv("g", {}), [x, y, w, d] = f.box, o = f.obj, fl = f.room.f, id = "fg" + uid + f.family + Math.round(x * 3 + y * 5) + fl, fresh = o && o.last && now - o.last < 4;
   const lit = fresh || (f.family === "approvals" && o && o.pending) || (f.family === "crate" && o && o.state === "landed") || (f.lane && f.laneState === "lit") || f.family === "bar";
