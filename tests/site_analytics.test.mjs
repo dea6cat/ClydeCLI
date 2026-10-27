@@ -35,6 +35,13 @@ test("with no endpoint set it sends nothing", () => {
   assert.equal(run({ endpoint: "" }).requests.length, 0);
 });
 
+test("the documentation tab is counted under its own names, not as the home page or the features page", () => {
+  for (const [path, name] of [["/ClydeCLI/docs/usage.html", "/docs-usage"], ["/ClydeCLI/docs/features.html", "/docs-features"], ["/ClydeCLI/docs/", "/docs"],
+                              ["/ClydeCLI/docs/index.html", "/docs"], ["/ClydeCLI/docs", "/docs"], ["/ClydeCLI/features.html", "/features"], ["/ClydeCLI/", "/home"]]) {
+    assert.equal(run({ path }).params(0).p, name, path);
+  }
+});
+
 test("a page view carries the page, its title and the site you came from, and nothing else", () => {
   const r = run({ referrer: "https://github.com/dea6cat/ClydeCLI" });
   assert.equal(r.requests.length, 1);
