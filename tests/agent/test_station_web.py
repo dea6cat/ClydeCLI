@@ -342,7 +342,7 @@ class TestPage(unittest.TestCase):
         art = Path(station_web.__file__).parent / "station_art"
         self.assertIn('f.back ? "-back"', station_web.PAGE)
         self.assertIn("back: true", station_web.PAGE)
-        self.assertIn("if (f.back) {   // a piece that shows its back has a low glass wall behind it", station_web.PAGE)
+        self.assertIn("a workshop's south and east edges are low glass walls too", station_web.PAGE)
         for name in ("file-cabinet", "writer-desk", "safe", "radio", "switchboard", "cupboard"):   # the six a workshop is furnished with
             self.assertTrue((art / f"furn-{name}-back.png").is_file(), name)
 
