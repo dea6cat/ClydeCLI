@@ -46,6 +46,11 @@ class RunStore(unittest.TestCase):
         self.assertIn(("user", "ordered"), [(e["who"], e["kind"]) for e in run.events()])
         run.settle_order(first, "accepted", worker="worker-2")
         self.assertEqual(run.pending_orders(), [])
+        with self.assertRaises(ValueError):
+            run.order("go", "worker-9")   # not on this team
+        given = run.order("also this", "worker-1")
+        self.assertEqual([(o["id"], o.get("worker")) for o in run.pending_orders()], [(given, "worker-1")])   # the earlier one was settled
+        self.assertEqual([e for e in run.events() if e["kind"] == "ordered"][-1]["worker"], "worker-1")
         full = Run.create("t", {"workers": [{"name": f"worker-{i}", "model": "m"} for i in range(runs.MAX_TEAM)]})
         full.set_status("running")
         with self.assertRaises(ValueError):

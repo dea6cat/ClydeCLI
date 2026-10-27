@@ -256,6 +256,9 @@ class TestAnswer(StationWebCase):
         self.assertEqual(self.request("POST", "/api/order", cookie=cookie, token=self.token, body={"run": "../x", "task": "x"})[0], 400)
         status, _, text = self.request("POST", "/api/order", cookie=cookie, token=self.token, body={"run": run.id, "task": "  "})
         self.assertEqual((status, "say what" in json.loads(text)["error"]), (409, True))
+        self.assertEqual(self.request("POST", "/api/order", cookie=cookie, token=self.token, body={"run": run.id, "task": "x", "worker": 3})[0], 400)
+        status, _, text = self.request("POST", "/api/order", cookie=cookie, token=self.token, body={"run": run.id, "task": "x", "worker": "worker-9"})
+        self.assertEqual((status, "not on this team" in json.loads(text)["error"]), (409, True))
         run.set_status("reviewing")
         status, _, text = self.request("POST", "/api/order", cookie=cookie, token=self.token, body={"run": run.id, "task": "late"})
         self.assertEqual((status, "not working" in json.loads(text)["error"]), (409, True))
@@ -305,7 +308,7 @@ class TestPage(unittest.TestCase):
     def test_the_page_can_ask_for_one_more_worker_up_to_the_servers_team_size(self):
         from src.agent.runs import MAX_TEAM
         page = station_web.PAGE
-        for needle in ('id="addWorker"', '"Add worker"', 'api("/api/order"', "function openAdd", f"const MAX_TEAM = {MAX_TEAM};"):
+        for needle in ('id="addWorker"', '"Add worker"', 'api("/api/order"', "function openAdd", f"const MAX_TEAM = {MAX_TEAM};", '"Task"', "addingFor"):
             self.assertIn(needle, page)
 
     def test_each_person_can_be_renamed_and_the_name_is_kept_only_in_this_browser(self):

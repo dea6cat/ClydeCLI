@@ -232,12 +232,13 @@ def _advise(run: Run, role: RoleAssignment, provider: Any, prompt: str, cancel: 
 
 
 def _work(run: Run, name: str, role: RoleAssignment, provider: Any, prompt: str, worktree: Path,
-          parent: ToolContext, registry: Any, cancel: threading.Event) -> dict[str, Any]:
-    """One worker, start to end. Never raises: a failure is recorded and returned."""
+          parent: ToolContext, registry: Any, cancel: threading.Event, history: History | None = None, follow: bool = False) -> dict[str, Any]:
+    """One worker, start to end. Never raises: a failure is recorded and returned. `follow`: a later task the user gave this
+    worker, run in the same worktree and conversation after its last one."""
     out: dict[str, Any] = {"name": name, "ok": False, "summary": "", "patch": "", "files": []}
-    history = History()
-    run.event(name, "started", model=role.ref, worktree=str(worktree))
-    if role.harness.kind != "cli":   # a CLI worker states its own in _run_cli
+    history = history if history is not None else History()
+    run.event(name, "started", model=role.ref, worktree=str(worktree), **({"note": "a task from you"} if follow else {}))
+    if role.harness.kind != "cli" and not follow:   # a CLI worker states its own in _run_cli
         run.event(name, "constraint", note=NATIVE_CONSTRAINT)
 
     def on_event(event: Any) -> None:
@@ -262,7 +263,8 @@ def _work(run: Run, name: str, role: RoleAssignment, provider: Any, prompt: str,
     except Exception as e:   # a provider error, a stopped request: the run goes on without this worker
         out["summary"] = f"{type(e).__name__}: {e}"
     folder = run.worker_dir(name)
-    (folder / "summary.md").write_text(out["summary"], encoding="utf-8")
+    earlier = (folder / "summary.md").read_text(encoding="utf-8") if follow and (folder / "summary.md").is_file() else ""
+    (folder / "summary.md").write_text(f"{earlier}\n\n## A task from you\n\n{out['summary']}" if earlier else out["summary"], encoding="utf-8")
     (folder / "transcript.json").write_text(json.dumps(history.to_dict(), indent=2, default=str), encoding="utf-8")
     if out["patch"]:
         (folder / "changes.patch").write_text(out["patch"], encoding="utf-8")
@@ -372,16 +374,41 @@ def orchestrate(plan: OrchestrationPlan, spec: str, *, workspace: Path, parent: 
         def prompt_for(task: str) -> str:
             return f"{task}\n\nThe overall spec, for context only. The other workers cover the rest: do only your task above.\n{spec}"
 
+        roles = dict(zip(names, plan.workers))   # each worker's model; one the user adds gets the first worker's
+        histories = {n: History() for n in names}   # a worker given a later task goes on in its own conversation
+        queued: dict[str, list[dict[str, Any]]] = {}   # tasks given to a worker that is still busy wait for its turn
+
         with ThreadPoolExecutor(max_workers=1 if serial else MAX_TEAM) as pool:
-            futures = [pool.submit(_work, run, n, w, provider_of(w), prompt_for(t), Path(workspaces[n]["path"]), parent, registry, cancel)
-                       for n, w, t in zip(names, plan.workers, split)]
+            jobs = [(n, pool.submit(_work, run, n, w, provider_of(w), prompt_for(t), Path(workspaces[n]["path"]), parent, registry, cancel, histories[n]))
+                    for n, w, t in zip(names, plan.workers, split)]
             while True:
                 try:
-                    for order in (() if cancel.is_set() else run.pending_orders()):   # the user added a worker from the station, on the first worker's model
+                    for order in (() if cancel.is_set() else run.pending_orders()):
+                        if order.get("worker"):   # a task for a worker already on the team
+                            if order["worker"] not in roles:
+                                run.settle_order(order["id"], "refused", why="no such worker")
+                                run.event("clyde", "order_refused", order=order["id"], note="no such worker")
+                                continue
+                            run.event("clyde", "check", target=order["worker"], reason="brief", order=order["id"])   # Clyde takes it the task
+                            run.settle_order(order["id"], "accepted", worker=order["worker"])
+                            queued.setdefault(order["worker"], []).append(order)
+                            continue
                         joined = _hand_over(run, order, names, plan.workers[0], root, registry, parent)
                         if joined:
-                            futures.append(pool.submit(_work, run, joined[0], plan.workers[0], provider_of(plan.workers[0]), prompt_for(order["task"]), joined[1], parent, registry, cancel))
-                    if all(f.done() for f in futures):
+                            roles[joined[0]], histories[joined[0]] = plan.workers[0], History()
+                            jobs.append((joined[0], pool.submit(_work, run, joined[0], plan.workers[0], provider_of(plan.workers[0]), prompt_for(order["task"]),
+                                                                joined[1], parent, registry, cancel, histories[joined[0]])))
+                    if cancel.is_set():
+                        for waiting in queued.values():
+                            for order in waiting:
+                                run.event("clyde", "order_refused", order=order["id"], note="the run was stopped before it began")
+                        queued.clear()
+                    busy = {n for n, f in jobs if not f.done()}
+                    for n, waiting in queued.items():   # a worker that has finished takes its next task, in its own worktree and conversation
+                        if waiting and n not in busy:
+                            jobs.append((n, pool.submit(_work, run, n, roles[n], provider_of(roles[n]), waiting.pop(0)["task"],
+                                                        Path(run.state()["workspaces"][n]["path"]), parent, registry, cancel, histories[n], True)))
+                    if all(f.done() for _, f in jobs) and not any(queued.values()):
                         break
                     for ask in run.pending():
                         run.event("clyde", "check", target=ask["who"], reason="approval", approval=ask["id"])   # Clyde brings it to you
@@ -389,7 +416,11 @@ def orchestrate(plan: OrchestrationPlan, spec: str, *, workspace: Path, parent: 
                     time.sleep(0.2)
                 except KeyboardInterrupt:   # Ctrl-C: tell every worker to stop, then wait for them to wind down
                     cancel.set()
-            results = [f.result() for f in futures]
+            by_worker: dict[str, dict[str, Any]] = {}   # one result per worker: its last patch holds all it did, and its summaries run on
+            for n, f in jobs:
+                r, before = f.result(), by_worker.get(n)
+                by_worker[n] = {**r, "summary": f"{before['summary']}\n\nThen, a task from the user: {r['summary']}" if before else r["summary"]}
+            results = list(by_worker.values())
         run.set_status("stopped" if cancel.is_set() else "reviewing")
         for late in run.pending_orders():   # the station only files orders while the run is working: this one slipped in as it ended
             run.settle_order(late["id"], "refused", why="the run had moved on")
