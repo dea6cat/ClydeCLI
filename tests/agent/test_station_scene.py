@@ -27,7 +27,7 @@ const code = fs.readFileSync(process.argv[2], "utf8");
 const reduced = process.argv[3] === "reduced";
 const ctx = { Math, console, parseInt, REDUCED: reduced };
 vm.createContext(ctx);
-vm.runInContext(code + "\nthis.__api = { memberState, crewCounts, countsText, linkState, QUIET, plan, bounds, family, workerTrips, orchestratorTrips, walkerState, tripState, tripEnd };", ctx);
+vm.runInContext(code + "\nthis.__api = { needsYou, ageText, memberState, crewCounts, countsText, linkState, QUIET, plan, bounds, family, workerTrips, orchestratorTrips, walkerState, tripState, tripEnd };", ctx);
 const A = ctx.__api, fails = [];
 const FAMILIES = ["read", "write", "shell", "web", "mcp", "other"];
 const bay = (i) => ({ id: "worker-" + i, kind: "bay", members: [], objects: FAMILIES.map((f) => ({ family: f, tools: [f], used: 0, asked: 0, allowed: 0, denied: 0, failed: 0, last: null })) });
@@ -154,6 +154,28 @@ if (A.crewCounts([mk("done", "using Edit")], crewOf).working !== 0) MOTION.push(
 if (A.countsText({ working: 2, waiting: 0, failed: 0, idle: 5 }) !== "2 working \u00b7 5 idle") MOTION.push("counts text: " + A.countsText({ working: 2, waiting: 0, failed: 0, idle: 5 }));
 if (A.countsText({ working: 1, waiting: 2, failed: 1, idle: 0 }) !== "1 working \u00b7 2 waiting \u00b7 1 failed \u00b7 0 idle") MOTION.push("counts text with waiting and failed");
 if (A.linkState(false, [mk("running")]) !== "down" || A.linkState(true, []) !== "standby" || A.linkState(true, [mk("done")]) !== "standby" || A.linkState(true, [mk("running")]) !== "live") MOTION.push("link states are wrong");
+// 9. what waits on the user: a pending request (never ages out), a worker whose last event is a failure, a failed run; not what recovered, was dismissed or is days old
+const ne = (events) => (id) => events[id] || [], nowT = 10 * 24 * 3600;
+const nrun = (id, status, asks) => ({ id, status, asks: asks || [], started: nowT - 500 });
+const rowsOf = (runs, events, dismissed) => A.needsYou(runs, ne(events), nowT, dismissed || []);
+let rows = rowsOf([nrun("r1", "running", [{ id: "a1", who: "worker-1", tool: "Bash", t: nowT - 90 }])], { r1: [] });
+if (rows.length !== 1 || rows[0].kind !== "approval" || rows[0].text !== "worker-1 wants to use Bash" || rows[0].since !== nowT - 90) MOTION.push("approval row: " + JSON.stringify(rows));
+if (rowsOf([nrun("r1", "awaiting_approval", [{ id: "a1", who: "w", tool: "Edit", t: 1 }])], { r1: [] }).length !== 1) MOTION.push("a pending request must never age out");
+rows = rowsOf([nrun("r1", "running")], { r1: [{ t: nowT - 60, who: "worker-2", kind: "started" }, { t: nowT - 30, who: "worker-2", kind: "failed" }] });
+if (rows.length !== 1 || rows[0].text !== "worker-2 failed" || rows[0].kind !== "failure") MOTION.push("failed worker row: " + JSON.stringify(rows));
+rows = rowsOf([nrun("r1", "running")], { r1: [{ t: nowT - 30, who: "worker-3", kind: "tool_error", tool: "Bash" }, { t: nowT - 10, who: "worker-3", kind: "tool_use", tool: "Read" }] });
+if (rows.length) MOTION.push("a worker that went on after a tool error is still listed");
+rows = rowsOf([nrun("r1", "running")], { r1: [{ t: nowT - 30, who: "worker-3", kind: "tool_error", tool: "Bash" }, { t: nowT - 20, who: "worker-3", kind: "check" }] });
+if (rows.length !== 1 || rows[0].text !== "worker-3: Bash failed") MOTION.push("a tool error that is the last thing recorded: " + JSON.stringify(rows));
+rows = rowsOf([nrun("r1", "failed")], { r1: [{ t: nowT - 5, who: "clyde", kind: "status" }] });
+if (rows.length !== 1 || rows[0].text !== "the run failed") MOTION.push("failed run row: " + JSON.stringify(rows));
+if (rowsOf([nrun("r1", "running")], { r1: [{ t: nowT - 4 * 24 * 3600, who: "worker-1", kind: "failed" }] }).length) MOTION.push("a failure older than 3 days is still listed");
+const failedOnce = { r1: [{ t: nowT - 30, who: "worker-2", kind: "failed" }] }, key = rowsOf([nrun("r1", "running")], failedOnce)[0].key;
+if (rowsOf([nrun("r1", "running")], failedOnce, [key]).length) MOTION.push("a dismissed row came back");
+if (rowsOf([nrun("r1", "done")], { r1: [] }).length) MOTION.push("rows with nothing waiting");
+const order = rowsOf([nrun("r1", "running", [{ id: "a", who: "w", tool: "Edit", t: nowT - 10 }])], { r1: [{ t: nowT - 100, who: "worker-2", kind: "failed" }] });
+if (order.length !== 2 || order[0].kind !== "failure") MOTION.push("the longest-waiting row goes first");
+if (A.ageText(5) !== "5s" || A.ageText(125) !== "2m" || A.ageText(7300) !== "2h" || A.ageText(200000) !== "2d") MOTION.push("age text");
 console.log(JSON.stringify({ layout: LAYOUT, motion: MOTION }));
 """
 

@@ -53,6 +53,14 @@ header .link { display: inline-flex; align-items: center; gap: 6px; }
 header .link i { width: 8px; height: 8px; border-radius: 50%; background: var(--idle); }
 header .link.live i { background: var(--accent); animation: pulse 1.2s ease-in-out infinite; } header .link.down i { background: var(--bad); } header .link.down { color: var(--bad); border-color: var(--bad); }
 #counts { font-size: 13px; white-space: nowrap; }
+.needs { margin-top: 8px; padding-top: 8px; border-top: 1px solid color-mix(in srgb, var(--ink) 14%, transparent); }
+.needs-head { font-size: 11px; letter-spacing: 2px; text-transform: uppercase; font-weight: 700; color: var(--warn); margin-bottom: 4px; }
+.need { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 13px; padding: 3px 0; }
+.need i { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); flex: none; } .need.failure i { background: var(--bad); }
+.need .age { color: var(--muted); font-size: 12px; }
+.need .grow { flex: 1 1 140px; min-width: 0; overflow-wrap: anywhere; }
+button.mini { font: inherit; font-size: 12px; padding: 2px 9px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; }
+button.mini:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 body.cinema header, body.cinema .run-info, body.cinema .legend, body.cinema .zoom, body.cinema .rail { display: none; }   /* cinema: only the island */
 #cinemaTab { display: none; position: fixed; top: 10px; left: 10px; z-index: 6; opacity: .45; font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; }
 #cinemaTab:hover, #cinemaTab:focus-visible { opacity: 1; }
@@ -210,7 +218,7 @@ body.rail-off .rail { transform: translateX(calc(100% + 24px)); visibility: hidd
 const TOKEN = "__TOKEN__";
 const NS = "http://www.w3.org/2000/svg";
 const REDUCED = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-const state = { runs: [], feeds: {}, filter: {}, polling: {}, theme: "city", loadedAt: Date.now() / 1000, scenes: [], link: { ok: true, reason: "" } };
+const state = { dismissed: [], runs: [], feeds: {}, filter: {}, polling: {}, theme: "city", loadedAt: Date.now() / 1000, scenes: [], link: { ok: true, reason: "" } };
 const $runs = document.getElementById("runs");
 const $status = document.getElementById("status");
 const $rail = document.getElementById("railToggle");
@@ -277,6 +285,26 @@ function countsText(counts) {
 }
 function linkState(reachable, runs) {   // live only when the server answered and a run is live; standby is neutral, never green
   return !reachable ? "down" : runs.some((run) => LIVE_RUN.includes(run.status)) ? "live" : "standby";
+}
+const NEEDS_MAX_AGE = 3 * 24 * 3600;   // a failure older than this drops off the list; a pending request never does
+function ageText(seconds) {
+  const s = Math.max(0, Math.round(seconds));
+  return s < 60 ? s + "s" : s < 3600 ? Math.floor(s / 60) + "m" : s < 86400 ? Math.floor(s / 3600) + "h" : Math.floor(s / 86400) + "d";
+}
+function needsYou(runs, eventsOf, now, dismissed) {   // everything waiting on the user, each row from a recorded fact: a pending request, a worker whose last event is a failure, a failed run
+  const rows = [];
+  for (const run of runs) {
+    const events = eventsOf(run.id) || [], last = {};
+    for (const a of run.asks) rows.push({ key: run.id + ":ask:" + a.id, kind: "approval", run: run.id, id: a.id, who: a.who, text: a.who + " wants to use " + a.tool, since: a.t });
+    for (const e of events) if (!["tools", "constraint", "check"].includes(e.kind)) last[e.who] = e;
+    for (const who of Object.keys(last)) {
+      const e = last[who];
+      if (e.kind === "failed") rows.push({ key: run.id + ":fail:" + who + ":" + e.t, kind: "failure", run: run.id, who, text: who + " failed", since: e.t });
+      else if (e.kind === "tool_error") rows.push({ key: run.id + ":err:" + who + ":" + e.t, kind: "failure", run: run.id, who, text: who + ": " + (e.tool || "a tool") + " failed", since: e.t });
+    }
+    if (run.status === "failed") rows.push({ key: run.id + ":runfailed", kind: "failure", run: run.id, who: "clyde", text: "the run failed", since: events.length ? events[events.length - 1].t : run.started });
+  }
+  return rows.filter((r) => !dismissed.includes(r.key) && (r.kind === "approval" || now - r.since < NEEDS_MAX_AGE)).sort((a, b) => a.since - b.since);
 }
 // </status>
 function clock(t) { return new Date(t * 1000).toLocaleTimeString([], { hour12: false }); }
@@ -1057,6 +1085,35 @@ function rail(run) {
   side.append(box, events);
   return side;
 }
+function needsBox(run) {   // the top-left card's "needs you" list: only what waits on the user, hidden when nothing does
+  const rows = needsYou([run], (id) => state.feeds[id], Date.now() / 1000, state.dismissed), box = el("div", "needs");
+  if (!rows.length) { box.hidden = true; return box; }
+  box.setAttribute("role", "region"); box.setAttribute("aria-label", "Needs you");
+  box.append(el("div", "needs-head", "Needs you \u00b7 " + rows.length));
+  for (const r of rows.slice(0, 4)) {
+    const row = el("div", "need " + r.kind), age = el("span", "age", ageText(Date.now() / 1000 - r.since));
+    age.dataset.since = String(r.since);
+    row.append(el("i"), el("span", "grow", r.text), age);
+    const look = el("button", "mini", r.kind === "approval" ? "Open" : "Look");
+    look.type = "button";
+    look.addEventListener("click", () => { setRail(true); if (r.kind === "failure" && r.who !== "clyde") state.filter[run.id] = r.who; draw(); });
+    row.append(look);
+    if (r.kind === "approval") {
+      const deny = el("button", "mini", "Deny");
+      deny.type = "button";
+      deny.addEventListener("click", async () => { deny.disabled = true; try { await api("/api/answer", { run: run.id, id: r.id, allow: false }); } catch (e) { $status.textContent = String(e); } refresh(); });
+      row.append(deny);
+    } else {
+      const dismiss = el("button", "mini", "Dismiss");
+      dismiss.type = "button";
+      dismiss.addEventListener("click", () => { state.dismissed.push(r.key); store("station.dismissed", JSON.stringify(state.dismissed.slice(-200))); draw(); });
+      row.append(dismiss);
+    }
+    box.append(row);
+  }
+  if (rows.length > 4) { const more = el("button", "mini", "+" + (rows.length - 4) + " more"); more.type = "button"; more.addEventListener("click", () => { setRail(true); }); box.append(more); }
+  return box;
+}
 function paintHeader() {   // the link chip and the crew counts: only what the server answered and the runs recorded
   const kind = linkState(state.link.ok, state.runs);
   $link.className = "chip link " + kind;
@@ -1069,7 +1126,7 @@ let lastSignature = "";
 function draw() {
   paintHeader();
   // Rebuild only when something visible changed: a rebuild every few seconds would swap the buttons out from under a click.
-  const signature = JSON.stringify([state.runs, Object.keys(state.feeds).map((id) => [id, state.feeds[id].length]), state.filter, state.theme]);
+  const signature = JSON.stringify([state.dismissed, state.runs, Object.keys(state.feeds).map((id) => [id, state.feeds[id].length]), state.filter, state.theme]);
   if (signature === lastSignature) return;
   lastSignature = signature;
   $rail.classList.toggle("alert", state.runs.some((r) => r.asks.length));   // a request for your OK never hides behind a closed panel
@@ -1082,7 +1139,7 @@ function draw() {
     const spend = "$" + run.spend.usd.toFixed(4) + (run.spend.unpriced ? " + " + run.spend.unpriced + " unpriced" : "");
     head.append(el("h2", "", run.task || run.id), el("span", "chip " + run.status, run.status.replace("_", " ")), el("span", "chip", spend), el("span", "chip", run.id));
     const info = el("div", "run-info");
-    info.append(head, el("div", "clyde", "Clyde: " + run.clyde));
+    info.append(head, el("div", "clyde", "Clyde: " + run.clyde), needsBox(run));
     section.append(info);
     const body = el("div", "run-body");
     body.append(mapSection(run), rail(run));
@@ -1152,6 +1209,8 @@ document.addEventListener("pointerdown", (e) => {
 });
 document.addEventListener("dblclick", (e) => { if (e.target.classList && e.target.classList.contains("railgrip")) { document.documentElement.style.removeProperty("--railw"); store("station.railw", ""); } });
 for (const pack in CREW) for (const anim in CREW[pack]) for (const dir in CREW[pack][anim]) preload(pack, anim, dir);   // every picture is fetched once up front, so a frame never blinks while it loads
+try { state.dismissed = JSON.parse(stored("station.dismissed") || "[]"); } catch (e) { state.dismissed = []; }
+setInterval(() => { for (const age of document.querySelectorAll("[data-since]")) age.textContent = ageText(Date.now() / 1000 - Number(age.dataset.since)); }, 15000);   // how long each row has waited
 refresh();
 setInterval(refresh, 5000);   // picks up runs that start after the page opened
 requestAnimationFrame(loop);

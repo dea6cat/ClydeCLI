@@ -278,6 +278,11 @@ class TestPage(unittest.TestCase):
             self.assertIn(needle, page)
         self.assertNotIn("disconnected:", page)   # the link chip says it now
 
+    def test_the_top_left_card_lists_what_waits_on_the_user(self):
+        page = station_web.PAGE
+        for needle in ("function needsBox", '"Needs you"', "needsYou(", "station.dismissed", 'api("/api/answer"', "data-since" if False else "dataset.since"):
+            self.assertIn(needle, page)
+
     def test_the_scene_is_built_with_svg_nodes_and_text_and_a_private_window_cannot_break_the_page(self):
         page = station_web.PAGE
         self.assertIn("createElementNS", page)
