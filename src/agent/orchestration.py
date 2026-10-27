@@ -106,6 +106,8 @@ def build_plan(task: str, master: Picks | None, advisor: Picks | None, workers: 
         return "No master picked."
     if not workers:
         return "No workers picked."
+    if len(workers) > MAX_TEAM:
+        return f"At most {MAX_TEAM} workers: the station has room for no more."
     made = [assign("master", master), *([assign("advisor", advisor)] if advisor else []), *(assign("worker", w) for w in workers)]
     for item in made:
         if isinstance(item, str):
