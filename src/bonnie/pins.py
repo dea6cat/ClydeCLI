@@ -2,16 +2,16 @@
 dropped the next time the list is written."""
 from __future__ import annotations
 
-import json
 
 from src.bonnie.theme import folder
+from src.safe_write import read_json_safely, write_json_safely
 
 MAX_PINS = 100
 
 
 def load() -> list[str]:
     try:
-        raw = json.loads((folder() / "pins.json").read_text())
+        raw = read_json_safely(folder() / "pins.json")
     except (OSError, ValueError):
         return []
     return [i for i in raw if isinstance(i, str)] if isinstance(raw, list) else []
@@ -23,4 +23,4 @@ def set_pinned(session_id: str, pinned: bool) -> None:
     if pinned:
         ids.insert(0, session_id)
     (folder()).mkdir(parents=True, exist_ok=True)
-    (folder() / "pins.json").write_text(json.dumps(ids[:MAX_PINS]))
+    write_json_safely(folder() / "pins.json", ids[:MAX_PINS], indent=None)

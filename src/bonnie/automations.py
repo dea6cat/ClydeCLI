@@ -6,7 +6,6 @@ the automation was made with edits allowed, since nobody is there to answer a pe
 """
 from __future__ import annotations
 
-import json
 import re
 import uuid
 from datetime import datetime, timedelta
@@ -14,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from src.bonnie.theme import folder
+from src.safe_write import read_json_safely, write_json_safely
 
 MAX_PROMPT = 4000
 MAX_NAME = 80
@@ -78,7 +78,7 @@ def _file() -> Path:
 
 def _load() -> list[dict[str, Any]]:
     try:
-        raw = json.loads(_file().read_text())
+        raw = read_json_safely(_file())
     except (OSError, ValueError):
         return []
     return [a for a in raw if isinstance(a, dict) and isinstance(a.get("id"), str)] if isinstance(raw, list) else []
@@ -86,7 +86,7 @@ def _load() -> list[dict[str, Any]]:
 
 def _save(rows: list[dict[str, Any]]) -> None:
     folder().mkdir(parents=True, exist_ok=True)
-    _file().write_text(json.dumps(rows, indent=1))
+    write_json_safely(_file(), rows, indent=1)
 
 
 def listing(project: str) -> list[dict[str, Any]]:

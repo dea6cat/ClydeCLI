@@ -8,10 +8,11 @@ src/providers/keys.py); a key exported in the shell always wins over a saved one
 from __future__ import annotations
 
 import base64
-import json
 import os
 from pathlib import Path
 from typing import Any, Optional
+
+from src.safe_write import read_json_safely, write_json_safely
 
 
 def clyde_home() -> Path:
@@ -88,8 +89,7 @@ def load_config() -> dict[str, Any]:
         return config
 
     try:
-        with open(config_path, 'r', encoding='utf-8') as f:
-            config = json.load(f)
+        config = read_json_safely(config_path)   # a cut-off file falls back to the last good copy
     except Exception as e:
         print(f"Error loading config: {e}")
         return get_default_config()
@@ -111,17 +111,7 @@ def load_config() -> dict[str, Any]:
 
 def save_config(config: dict[str, Any]) -> None:
     """Save configuration to file (mode 0600)."""
-    config_path = get_config_path()
-    config_path.parent.mkdir(parents=True, exist_ok=True)
-
-    if os.name == "nt":
-        with open(config_path, 'w', encoding='utf-8') as f:
-            json.dump(config, f, indent=2, ensure_ascii=False)
-    else:
-        fd = os.open(config_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, 'w', encoding='utf-8') as f:
-            json.dump(config, f, indent=2, ensure_ascii=False)
-        os.chmod(config_path, 0o600)
+    write_json_safely(get_config_path(), config, private=True)   # a crash mid-write leaves the old file, and the last good one is kept as config.json.prev
 
 
 def get_default_model() -> Optional[str]:

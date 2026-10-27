@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from src.config import clyde_home
+from src.safe_write import write_json_safely
 
 import json
 import re
@@ -44,8 +45,7 @@ class Session:
             "cwd": self.cwd,
         }
 
-        with open(session_file, 'w') as f:
-            json.dump(session_data, f, indent=2)
+        write_json_safely(session_file, session_data)
 
     @classmethod
     def load(cls, session_id: str) -> Optional['Session']:

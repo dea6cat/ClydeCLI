@@ -7,12 +7,12 @@ setting the right env var and, to make it stick, writing it to ~/.clyde/keys.jso
 from __future__ import annotations
 
 from src.config import clyde_home
+from src.safe_write import write_json_safely, write_safely
 
 import json
 import os
 import re
 import sys
-import tempfile
 from pathlib import Path
 
 # Provider name -> the environment variable its adapter reads. Ollama's key is only for
@@ -118,9 +118,7 @@ def _edit_object(name: str, change) -> str | None:
     change(section)
     if not section:
         del data[name]
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-    path.chmod(0o600)  # settings may hold MCP tokens
+    write_json_safely(path, data, private=True)  # settings may hold MCP tokens
     return None
 
 
@@ -150,17 +148,7 @@ def _write(data: dict) -> None:
     """Atomic write, created 0600 from the start (never world-readable, even briefly)."""
     path = keys_file()
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".keys-", suffix=".tmp")   # mkstemp creates 0600
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
-        os.replace(tmp, path)
-    except BaseException:
-        try:
-            os.unlink(tmp)
-        except OSError:
-            pass
-        raise
+    write_safely(path, json.dumps(data, indent=2), private=True)   # no .prev: a second copy of the keys is not wanted
 
 
 def load_into_env() -> None:

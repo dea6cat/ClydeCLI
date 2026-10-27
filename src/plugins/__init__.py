@@ -15,6 +15,7 @@ plugins run code, so installing one never enables it without an explicit yes.
 from __future__ import annotations
 
 from src.config import clyde_home
+from src.safe_write import write_json_safely
 
 import json
 import re
@@ -120,8 +121,7 @@ def set_enabled(name: str, enabled: bool | None) -> None:
     else:
         table.setdefault(name, {})["enabled"] = enabled
     path = settings_paths()[0]
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    write_json_safely(path, data)
 
 
 def enabled_plugins() -> list[Plugin]:
