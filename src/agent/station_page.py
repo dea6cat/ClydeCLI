@@ -501,35 +501,21 @@ function shade(hex, pct) {
   return "#" + [c(n >> 16), c((n >> 8) & 255), c(n & 255)].map((v) => v.toString(16).padStart(2, "0")).join("");
 }
 function hash(a, b) { let h = Math.imul(a | 0, 374761393) + Math.imul(b | 0, 668265263) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; }
-const BAYS = [   // workshop floor plans, each in its own tiles: size, door (x of the doorway's centre, on the top wall), where the worker sits, a spot to be checked from, the furniture box [x, y, w, d] and stand-spot for each tool family, and the clutter. The aisle from the door down to the worker stays clear.
-  { w: 11, d: 11, door: 5.5, home: [5.5, 6.4], check: [7.4, 6.2],
-    slots: { read: { box: [0.8, 0.8, 3, 1], stand: [2.3, 2.8] }, write: { box: [7.4, 0.8, 3, 1.5], stand: [8.9, 3.4] }, shell: { box: [9.6, 4.4, 1.2, 1.8], stand: [8.3, 5.4] },
-             web: { box: [0.8, 4.4, 1, 2.3], stand: [3.0, 5.6] }, mcp: { box: [0.8, 7.6, 1, 2.3], stand: [3.0, 8.8] }, other: { box: [9.2, 8.0, 1.5, 1.9], stand: [7.9, 9.0] } },
-    props: [["tank", 6.8, 10.2], ["crates", 4.6, 10.2], ["lamp", 10.4, 3.3], ["plant", 0.9, 10.7]] },
-  { w: 14, d: 9, door: 3.5, home: [3.5, 5.0], check: [5.0, 4.4],   // wide and shallow, the door at one end
-    slots: { read: { box: [5.5, 0.8, 3, 1], stand: [7.0, 2.8] }, write: { box: [10.4, 0.8, 3, 1.5], stand: [11.9, 3.4] }, shell: { box: [12.2, 5.0, 1.4, 2.2], stand: [10.6, 6.0] },
-             web: { box: [0.5, 5.6, 1, 2.3], stand: [2.9, 6.8] }, mcp: { box: [5.0, 6.6, 2.4, 1.3], stand: [6.2, 5.6] }, other: { box: [8.4, 7.0, 1.6, 1.4], stand: [9.2, 5.9] } },
-    props: [["plant", 0.9, 8.5], ["tank", 13.0, 8.2], ["crates", 11.2, 8.4], ["lamp", 13.2, 3.8]] },
-  { w: 9, d: 13, door: 4.5, home: [4.5, 6.5], check: [5.5, 4.8],   // narrow and deep, furniture down both walls
-    slots: { read: { box: [0.6, 1.0, 2.6, 1], stand: [1.9, 3.0] }, write: { box: [5.8, 1.0, 2.6, 1.4], stand: [7.1, 3.6] }, shell: { box: [7.2, 5.6, 1.2, 1.8], stand: [5.9, 6.5] },
-             web: { box: [0.6, 5.0, 1, 2.3], stand: [2.9, 6.2] }, mcp: { box: [0.6, 9.0, 1, 2.3], stand: [2.9, 10.2] }, other: { box: [6.6, 9.4, 1.6, 1.9], stand: [5.5, 10.4] } },
-    props: [["plant", 0.9, 12.2], ["crates", 3.4, 12.2], ["tank", 7.8, 12.2], ["lamp", 8.2, 4.7]] },
-];
-const BAY_ORDER = [[1, false], [2, false], [0, false], [1, true], [2, true], [0, true]];   // plan and mirrored, so neighbours never match
-function bayPlan(i) {
-  const [k, flip] = BAY_ORDER[i % BAY_ORDER.length], t = BAYS[k];
-  if (!flip) return t;
-  const w = t.w, fx = (q) => [w - q[0], q[1]], slots = {};
-  for (const f in t.slots) { const s = t.slots[f]; slots[f] = { box: [w - s.box[0] - s.box[2], s.box[1], s.box[2], s.box[3]], stand: fx(s.stand) }; }
-  return { w, d: t.d, door: w - t.door, home: fx(t.home), check: fx(t.check), slots, props: t.props.map((q) => [q[0], w - q[1], q[2]]) };
-}
-function orient(t, wall) {   // a floor plan turned so that its door is on a wall (n, e, s or w); the aisle from the door runs straight across to the opposite wall
-  const w = t.w, d = t.d, turned = wall === "w" || wall === "e";
-  const P = { n: (u, v) => [u, v], s: (u, v) => [u, d - v], w: (u, v) => [v, u], e: (u, v) => [d - v, u] }[wall];
-  const B = { n: (b) => b, s: (b) => [b[0], d - b[1] - b[3], b[2], b[3]], w: (b) => [b[1], b[0], b[3], b[2]], e: (b) => [d - b[1] - b[3], b[0], b[3], b[2]] }[wall];
-  const slots = {};
-  for (const f in t.slots) slots[f] = { box: B(t.slots[f].box), stand: P(...t.slots[f].stand) };
-  return { w: turned ? d : w, d: turned ? w : d, door: t.door, home: P(...t.home), check: P(...t.check), slots, props: t.props.map((q) => [q[0], ...P(q[1], q[2])]), runner: B([t.door - 1.4, 0.4, 2.8, t.home[1] + 1.6]) };
+const BAY_SIZES = [[12, 12], [13, 12], [12, 13], [13, 13]];   // workshop sizes in tiles, so neighbours differ
+const PIECES = [["read", 1.6, 1.1], ["write", 2.4, 1.2], ["mcp", 1.6, 1.1], ["shell", 1.5, 1.2], ["web", 1.4, 1.1], ["other", 1.5, 1.1]];   // [family, length along the wall, depth]
+function bayLayout(i, wall) {   // a workshop floor plan: every one-sided piece against the north or west wall (the pictures only show a front), the door on `wall`, and a clear lane from the door across the room
+  const [w, d] = BAY_SIZES[i % BAY_SIZES.length], vertical = wall !== "e", door = vertical ? w - 2.6 : d - 2.6, slots = {}, lane = (a, b) => a < door + 1.5 && b > door - 1.5;
+  let cx = 2.2, cy = 2.0;   // the north row starts clear of the west column
+  for (const [f, len, dep] of PIECES) {
+    if (vertical && lane(cx, cx + len)) cx = door + 1.6;
+    if (cx + len <= w - 0.5) { slots[f] = { box: [cx, 0.3, len, dep], stand: [cx + len / 2, 0.3 + dep + 1.0] }; cx += len + 0.5; continue; }
+    if (!vertical && lane(cy, cy + len)) cy = door + 1.6;
+    slots[f] = { box: [0.3, cy, dep, len], stand: [0.3 + dep + 1.0, cy + len / 2] };   // what does not fit on the north wall goes down the west wall
+    cy += len + 0.5;
+  }
+  const home = vertical ? [door, d * 0.56] : [w * 0.56, door], check = wall === "n" ? [door, home[1] - 1.7] : wall === "s" ? [door, home[1] + 1.7] : [home[0] + 1.7, door];
+  const runner = wall === "n" ? [door - 1.4, 0.4, 2.8, home[1] + 1.6 - 0.4] : wall === "s" ? [door - 1.4, home[1] - 1.6, 2.8, d - 0.4 - (home[1] - 1.6)] : [home[0] - 1.6, door - 1.4, w - 0.4 - (home[0] - 1.6), 2.8];
+  return { w, d, door, home, check, slots, props: [], runner };
 }
 function plan(layout) {
   const bays = layout.rooms.filter((r) => r.kind === "bay"), DW = 26, DD = 12, deckCx = DW / 2;
@@ -539,7 +525,7 @@ function plan(layout) {
   deck.doors = [["e", 5, 7], ["n", 20, 22], ...ARMS.slice(0, armsUsed).map((a) => a.door)];   // the north door is the visitors' entrance, from the car park
   const corridors = [{ x: DW, y: 5, w: 4, d: 2 }, { x: 20, y: -3.5, w: 2, d: 3.5 }], edge = [DD, 0, 0], chains = [[], [], []], lanes = {}, outs = {};
   bays.forEach((b, i) => {
-    const a = i % 3, arm = ARMS[a], O = orient(bayPlan(i), arm.wall), chain = chains[a], gap = chain.length ? 3 : 4;
+    const a = i % 3, arm = ARMS[a], O = bayLayout(i, arm.wall), chain = chains[a], gap = chain.length ? 3 : 4;
     let x, y, corr, entry, inner, lane;
     if (a === 0) { x = deckCx - O.door; y = edge[0] + gap; corr = { x: deckCx - 1, y: edge[0], w: 2, d: gap }; edge[0] = y + O.d; entry = [deckCx, y]; inner = [deckCx, y + 1.5]; lane = (off) => [[deckCx + off, DD], [deckCx + off, y + 1.2]]; }
     else if (a === 1) { x = edge[1] - gap - O.w; y = 6 - O.door; corr = { x: x + O.w, y: 5, w: gap, d: 2 }; edge[1] = x; entry = [x + O.w, 6]; inner = [x + O.w - 1.5, 6]; lane = (off) => [[0, 6 + off], [x + O.w - 1.2, 6 + off]]; }
@@ -589,7 +575,7 @@ function plan(layout) {
     for (const q of r.tpl.props) prop(q[0], r.x + q[1], r.y + q[2]);
   }
   const dk = layout.rooms.find((r) => r.id === "deck");
-  const deckBoxes = { approvals: [3, 8, 3, 1.6], ledger: [19, 9.2, 3, 1.4] };
+  const deckBoxes = { approvals: [3, 8, 3, 1.6], ledger: [13.4, 0.3, 2.8, 1.3] };
   for (const o of dk.objects) furniture.push({ room: deck, family: o.family, obj: o, box: [deck.x + deckBoxes[o.family][0], deck.y + deckBoxes[o.family][1], deckBoxes[o.family][2], deckBoxes[o.family][3]] });
   furniture.push({ room: deck, family: "desk", obj: null, lane: "report", box: [deck.x + 2, deck.y + 2, 3, 2] }, { room: deck, family: "desk", obj: null, lane: "review", box: [deck.x + 21, deck.y + 2, 3, 2] },
                  { room: deck, family: "table", obj: null, box: [deck.x + 11, deck.y + 5, 4.2, 2] });
@@ -597,6 +583,34 @@ function plan(layout) {
   const ob = layout.rooms.find((r) => r.kind === "outbox");
   furniture.push({ room: rooms.outbox, family: "crate", obj: ob, box: [rooms.outbox.x + 4.8, rooms.outbox.y + 1, 2.2, 1.8] });
   for (const [kind, x, y, size] of [["bookcase", 0.3, 0.2, 1.6], ["bookcase", 0.3, 4.8, 2], ["tank", 6.6, 5.6], ["lamp", 7.2, 4.2]]) prop(kind, rooms.outbox.x + x, rooms.outbox.y + y, size);
+  // Each workshop gets its own look: a rug style and colours, and a few extra pieces, all picked from the room's number and placed only where they fit.
+  const RUGS = [["#7a1f2b", "#c99a2e"], ["#24432f", "#c99a2e"], ["#232f55", "#e2d3a8"], ["#8a5a1f", "#7a1f2b"]];
+  const nearSeg = (px, py, a, b) => { const dx = b[0] - a[0], dy = b[1] - a[1], k = Math.max(0, Math.min(1, ((px - a[0]) * dx + (py - a[1]) * dy) / (dx * dx + dy * dy || 1))); return Math.hypot(px - a[0] - dx * k, py - a[1] - dy * k); };
+  const walks = [];   // the lines workers and visitors walk through the rooms on the way to the far workshops of an arm
+  chains.forEach((c, a) => { for (let k = 1; k < c.length; k++) walks.push([c[k].inner, c[k - 1].inner]); if (c.length) walks.push([c[0].inner, ARMS[a].hub[0]]); });
+  bayRooms.forEach((r, i) => {
+    const seed = (parseInt((/(\d+)$/.exec(r.id) || [0, i + 1])[1], 10) || i + 1) * 7;
+    const [c1, c2] = RUGS[Math.floor(hash(seed, 1) * RUGS.length)], style = Math.floor(hash(seed, 2) * 3), h = homes[r.id], ck = checkStands[r.id];
+    r.rugs = style === 0 ? [{ box: r.runner, c1, c2 }] : style === 1 ? [{ box: [h[0] - 1.8, h[1] - 1.3, 3.6, 2.6], c1, c2 }, { box: r.runner, c1: RUGS[(RUGS.indexOf(RUGS.find((q) => q[0] === c1)) + 1) % RUGS.length][0], c2 }] : [{ box: [ck[0] - 1.1, ck[1] - 0.9, 2.2, 1.8], c1, c2 }, { box: [h[0] - 1.4, h[1] - 1.0, 2.8, 2.0], c1: c2 === "#c99a2e" ? "#3a2a1c" : c1, c2: c1 }];
+    r.rugs = r.rugs.map((q) => ({ ...q, box: [Math.max(r.x + 0.6, q.box[0]), Math.max(r.y + 0.6, q.box[1]), Math.min(q.box[2], r.x + r.w - 0.6 - Math.max(r.x + 0.6, q.box[0])), Math.min(q.box[3], r.y + r.d - 0.6 - Math.max(r.y + 0.6, q.box[1]))] }));
+    const marks = [homes[r.id], checkStands[r.id], ...Object.keys(r.tpl.slots).map((k) => stands[r.id + ":" + k])];
+    const free = (x, y) => x > r.x + 0.9 && x < r.x + r.w - 0.9 && y > r.y + 0.9 && y < r.y + r.d - 0.9
+      && !furniture.some((f) => f.room === r && x > f.box[0] - 0.9 && x < f.box[0] + f.box[2] + 0.9 && y > f.box[1] - 0.9 && y < f.box[1] + f.box[3] + 0.9)
+      && !props.some((q) => Math.hypot(q.x - x, q.y - y) < 1.6) && !marks.some((m) => Math.hypot(m[0] - x, m[1] - y) < 1.5)
+      && nearSeg(x, y, r.entry, r.inner) > 1.4 && nearSeg(x, y, r.inner, h) > 1.4 && nearSeg(x, y, r.inner, checkStands[r.id]) > 1.4 && marks.every((m) => nearSeg(x, y, h, m) > 1.3) && walks.every((w) => nearSeg(x, y, w[0], w[1]) > 1.4);   // never on a line anyone walks
+    const spots = [];
+    for (let gx = r.x + 1; gx < r.x + r.w; gx += 1) for (let gy = r.y + 1; gy < r.y + r.d; gy += 1) spots.push([gx, gy, hash(Math.round(gx * 3) + seed, Math.round(gy * 5))]);
+    spots.sort((a, b) => a[2] - b[2]);
+    const kinds = ["plant", "lamp", "coat", "crates", "tank", "plant"];
+    let placed = 0;
+    const used = [];
+    for (const [gx, gy] of spots) {
+      if (placed >= 3) break;
+      const kind = kinds[Math.floor(hash(seed + placed + used.length, 9) * kinds.length)];
+      if (kind !== "plant" && used.includes(kind)) { used.push(kind); if (used.length > 12) break; continue; }   // one coat rack, one cooler: only plants may repeat
+      if (free(gx, gy)) { prop(kind, gx, gy); used.push(kind); placed++; }
+    }
+  });
   const bar = rooms.bar;
   const barSpots = { clyde: [bar.x + 4.0, bar.y + 3.0], bonnie: [bar.x + 5.4, bar.y + 3.0] };   // where Clyde and Bonnie lean on the counter
   const crowd = [[6.8, 3.0], [8.2, 3.0], [9.6, 3.0], [2.6, 4.6], [4.2, 4.6], [5.8, 4.6], [7.4, 4.6], [9.0, 4.6]];   // and where the workers stand, one spot each, round the counter
@@ -747,7 +761,7 @@ function worldStatic(layer, defs, p, pal, uid, words) {   // the slab, the court
     poly(layer, lip(q[3], q[2]), shade(pal.trim, -45)); poly(layer, lip(q[2], q[1]), shade(pal.trim, -65));
     poly(layer, q, pal.floorA); paved(layer, defs, r.x, r.y, r.w, r.d, r.kind === "bar" ? "tile-floor-checker" : r.kind === "outbox" ? "tile-floor-stone" : "tile-floor-parquet", uid);
     if (r.kind === "deck") poly(layer, quad(r.x + 9, r.y + 3.4, 8.4, 6.4, 0), pal.rug1, { opacity: 0.92, stroke: pal.rug2, "stroke-width": 2 });
-    else if (r.kind === "bay") poly(layer, quad(r.runner[0], r.runner[1], r.runner[2], r.runner[3], 0), pal.rug1, { opacity: 0.88, stroke: pal.rug2, "stroke-width": 1.6 });
+    else if (r.kind === "bay") for (const g of r.rugs) { poly(layer, quad(g.box[0], g.box[1], g.box[2], g.box[3], 0), g.c1, { opacity: 0.9, stroke: g.c2, "stroke-width": 1.6 }); poly(layer, quad(g.box[0] + 0.25, g.box[1] + 0.25, g.box[2] - 0.5, g.box[3] - 0.5, 0), "none", { stroke: g.c2, "stroke-width": 0.8, opacity: 0.6 }); }
     else if (r.kind === "bar") poly(layer, quad(r.x + 3.5, r.y + 6.8, 5, 3, 0), pal.rug1, { opacity: 0.9, stroke: pal.rug2, "stroke-width": 1.6 });
     const gaps = (side) => doorsOf(p, r).filter((d) => d[0] === side).map((d) => [d[1], d[2]]);
     for (const [a, b] of wallRuns(r.y, r.y + r.d, gaps("w"))) wallPanel(layer, "x", r.x, a, b, pal.wallL, pal);
