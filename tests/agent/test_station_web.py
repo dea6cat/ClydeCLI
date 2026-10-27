@@ -125,6 +125,8 @@ class TestArt(StationWebCase):
         furniture = re.search(r"const FURN = \{(.*?)\};", station_web.PAGE, re.S).group(1)
         for name in re.findall(r':\s*"([a-z\-]+)"', furniture):
             names |= {f"furn-{name}-off", f"furn-{name}-on"}   # each piece of furniture has an unlit and a lit picture
+        names |= {f"tile-wall-{kind}-{side}" for kind in ("glass", "brick") for side in ("a", "b")}   # the walls are built from these names in code
+        self.assertIn('"tile-wall-" + key', station_web.PAGE)
         self.assertGreater(len(names), 20)
         for name in names:
             self.assertTrue((station_web.ART / f"{name}.png").is_file(), name)
@@ -277,6 +279,11 @@ class TestPage(unittest.TestCase):
         for needle in ('id="link"', 'id="counts"', 'id="cinemaToggle"', 'id="cinemaTab"', "body.cinema .rail", "railgrip", "station.cinema", "station.railw"):
             self.assertIn(needle, page)
         self.assertNotIn("disconnected:", page)   # the link chip says it now
+
+    def test_the_top_left_card_lists_what_waits_on_the_user(self):
+        page = station_web.PAGE
+        for needle in ("function needsBox", '"Needs you"', "needsYou(", "station.dismissed", 'api("/api/answer"', "data-since" if False else "dataset.since"):
+            self.assertIn(needle, page)
 
     def test_the_scene_is_built_with_svg_nodes_and_text_and_a_private_window_cannot_break_the_page(self):
         page = station_web.PAGE

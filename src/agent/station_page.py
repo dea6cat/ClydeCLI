@@ -53,6 +53,14 @@ header .link { display: inline-flex; align-items: center; gap: 6px; }
 header .link i { width: 8px; height: 8px; border-radius: 50%; background: var(--idle); }
 header .link.live i { background: var(--accent); animation: pulse 1.2s ease-in-out infinite; } header .link.down i { background: var(--bad); } header .link.down { color: var(--bad); border-color: var(--bad); }
 #counts { font-size: 13px; white-space: nowrap; }
+.needs { margin-top: 8px; padding-top: 8px; border-top: 1px solid color-mix(in srgb, var(--ink) 14%, transparent); }
+.needs-head { font-size: 11px; letter-spacing: 2px; text-transform: uppercase; font-weight: 700; color: var(--warn); margin-bottom: 4px; }
+.need { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 13px; padding: 3px 0; }
+.need i { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); flex: none; } .need.failure i { background: var(--bad); }
+.need .age { color: var(--muted); font-size: 12px; }
+.need .grow { flex: 1 1 140px; min-width: 0; overflow-wrap: anywhere; }
+button.mini { font: inherit; font-size: 12px; padding: 2px 9px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; }
+button.mini:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 body.cinema header, body.cinema .run-info, body.cinema .legend, body.cinema .zoom, body.cinema .rail { display: none; }   /* cinema: only the island */
 #cinemaTab { display: none; position: fixed; top: 10px; left: 10px; z-index: 6; opacity: .45; font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; }
 #cinemaTab:hover, #cinemaTab:focus-visible { opacity: 1; }
@@ -61,7 +69,7 @@ body.cinema #cinemaTab { display: block; }
 .railgrip::after { content: ""; position: absolute; left: 5px; top: 40%; bottom: 40%; width: 2px; border-radius: 2px; background: var(--ink); opacity: 0; transition: opacity .15s; }
 .railgrip:hover::after { opacity: .35; }
 header .tool:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-@media (max-width: 700px) { header .muted:not(#status) { display: none; } }
+@media (max-width: 700px) { header > .muted:not(#status):not(#counts) { display: none; } }
 .muted { color: var(--muted); }
 .spacer { flex: 1; }
 select { font: inherit; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); }
@@ -114,12 +122,13 @@ button.act:focus-visible, .card:focus-visible, select:focus-visible { outline: 2
 /* A run: the scene on the left, a glass rail on the right (crew, what needs your OK, the event feed), as StarNet frames its station. */
 .run-body, .scene-col, .stage { position: absolute; inset: 0; }
 .zoom { position: absolute; left: 12px; bottom: 72px; display: flex; gap: 6px; z-index: 3; }
-@media (max-width: 700px) { .zoom { left: auto; right: 12px; bottom: 12px; } }   /* the legend wraps tall on a phone, so the zoom keys move out from under it */
+@media (max-width: 700px) { .zoom { left: auto; right: 12px; bottom: 110px; } }   /* the legend wraps tall on a phone, so the zoom keys move out from under it */
 .zoom button { width: 30px; height: 30px; border-radius: 8px; border: 1px solid rgba(255,255,255,.25); background: rgba(10,10,16,.65); color: #fff; font: 600 16px/1 system-ui; cursor: pointer; backdrop-filter: blur(6px); }
 .zoom button:hover { background: rgba(10,10,16,.85); } .zoom button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .rail { position: absolute; top: 12px; right: 12px; bottom: 12px; z-index: 5; width: min(var(--railw, 340px), calc(100vw - 24px)); display: flex; flex-direction: column; gap: 12px; min-height: 0; transition: transform .25s ease; }
 body.rail-off .rail { transform: translateX(calc(100% + 24px)); visibility: hidden; transition: transform .25s ease, visibility 0s .25s; }
-.rail > .glass.crew { flex: 1 1 auto; }
+.rail > .glass.crew { flex: 1 1 0; min-height: 120px; }   /* the crew list gives way first and scrolls */
+.rail > .glass.asking { flex: none; max-height: 45%; overflow: auto; }   /* a request is never squeezed: it keeps its buttons and scrolls inside if it is long */
 .glass { background: linear-gradient(125deg, rgba(255,255,255,.07), rgba(255,255,255,.02) 48%, transparent), color-mix(in srgb, var(--panel) 86%, transparent);
   border: 1px solid color-mix(in srgb, var(--ink) 14%, transparent); border-radius: 12px; box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 6px 22px rgba(0,0,0,.28); min-height: 0; display: flex; flex-direction: column; }
 .glass.asking { border-color: var(--warn); box-shadow: 0 0 0 1px color-mix(in srgb, var(--warn) 50%, transparent), 0 6px 22px rgba(0,0,0,.28); }
@@ -189,6 +198,50 @@ body.rail-off .rail { transform: translateX(calc(100% + 24px)); visibility: hidd
 @media (prefers-reduced-motion: reduce) {
   .portrait .lamp, .dot, .map .lane.waiting, .amb, .blink, .blink2, .blink3, .flick, .flick2, .drift, .drift2, .spin, .spinr, .rain, .puff, .sweep, .twinkle, .mote, .bars, .glint, .drive { animation: none !important; }
 }
+
+/* ---- polish: the chrome is ink glass with brass hairlines whatever the system theme (the island is always night); one ivory telegram slip, the list of what needs you ---- */
+body { --panel: #15172a; --ink: #efe6cc; --muted: #aaa28e; --line: #3b3a52; --accent: #7bd6a6; --ok: #7bd6a6; --warn: #e9a94c; --bad: #f08a82; --idle: #8b8577; --brass: #c99a2e; --brass-soft: rgba(201,154,46,.38); --display: "Futura", "Avenir Next", "Century Gothic", "Trebuchet MS", system-ui, sans-serif; background: #0b0e1c; }
+h1, .glass h3, .run-head h2, .crew-row .nm, .needs-head { font-family: var(--display); }
+header, .run-info, .legend, .glass { background: linear-gradient(160deg, rgba(255,255,255,.055), rgba(255,255,255,0) 42%), rgba(15,17,32,.86); border: 1px solid var(--brass-soft); box-shadow: inset 0 0 0 1px rgba(0,0,0,.45), 0 10px 28px rgba(0,0,0,.4); backdrop-filter: blur(10px); }
+header { border-radius: 14px; padding: 7px 12px; gap: 10px; }
+h1 { font-size: 17px; font-weight: 600; letter-spacing: .02em; color: #f6ecce; }
+.run-info { border-radius: 14px; padding: 12px 14px; }
+.run-head h2 { font-size: 16px; font-weight: 600; letter-spacing: .01em; }
+.clyde { color: var(--muted); }
+.chip { background: rgba(255,255,255,.04); font-variant-numeric: tabular-nums; }
+.chip.running, .chip.reviewing { background: rgba(123,214,166,.1); }
+header .tool, button.mini, button.act { font-family: inherit; border: 1px solid rgba(239,230,204,.28); background: rgba(255,255,255,.04); color: var(--ink); border-radius: 8px; transition: background .15s, border-color .15s; }
+header .tool:hover, button.mini:hover, button.act:hover { background: rgba(201,154,46,.16); border-color: var(--brass); }
+header .tool[aria-pressed="true"] { border-color: var(--brass); background: rgba(201,154,46,.12); }
+header .tool:focus-visible, button.mini:focus-visible, button.act:focus-visible, #cinemaTab:focus-visible, .crew-row:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+button.act.allow { border-color: rgba(123,214,166,.6); } button.act.deny { border-color: rgba(240,138,130,.6); }
+.glass { border-radius: 14px; }
+.glass h3 { padding: 11px 14px 9px; font-size: 15px; font-weight: 600; letter-spacing: .01em; text-transform: none; border-bottom: 1px solid var(--brass-soft); }
+.glass h3 small { font-family: system-ui, sans-serif; font-size: 12px; font-variant-numeric: tabular-nums; }
+.glass.asking { border-color: var(--warn); }
+.crew-row { border-radius: 10px; }
+.crew-row:hover, .crew-row[aria-pressed="true"] { background: rgba(201,154,46,.09); border-color: var(--brass-soft); }
+.portrait { border-color: var(--brass-soft); }
+.rail .ask { border-radius: 10px; }
+.log { font-variant-numeric: tabular-nums; }
+.legend { border-radius: 12px; font-size: 12px; padding: 7px 12px; }
+.legend summary { color: var(--ink); }
+#cinemaTab { background: rgba(15,17,32,.86); border-color: var(--brass-soft); }
+#counts, .need .age { font-variant-numeric: tabular-nums; }
+/* the telegram slip */
+.needs { margin: 12px -4px -4px; padding: 10px 14px 12px; background: #eee2c2; color: #251d14; border-radius: 6px; border: 0; border-left: 5px solid #8c2f39; box-shadow: inset 0 1px 0 rgba(255,255,255,.55), 0 10px 22px rgba(0,0,0,.45); }
+.needs-head { font-size: 15px; font-weight: 600; letter-spacing: .01em; text-transform: none; color: #8c2f39; margin-bottom: 4px; }
+.need { padding: 6px 0; border-top: 1px dashed rgba(37,29,20,.28); font-size: 14px; }
+.need:first-of-type { border-top: 0; }
+.need i { background: #b26a12; } .need.failure i { background: #a3302a; }
+.need .age { color: #655840; }
+.needs button.mini { border-color: rgba(37,29,20,.55); background: transparent; color: #251d14; }
+.needs button.mini:hover { background: rgba(37,29,20,.09); border-color: #251d14; }
+.needs button.mini:focus-visible { outline-color: #8c2f39; }
+/* phones: the header may wrap to two rows (the counts keep their line), so the run's card sits below it; this block comes last so it wins */
+@media (max-width: 700px) { header { flex-wrap: wrap; row-gap: 4px; } #counts { flex-basis: 100%; order: 5; white-space: normal; } .run-info { top: 96px; padding: 8px 12px; } .run-head h2 { font-size: 14px; flex-basis: 100%; } .run-info .chip.run-id { display: none; } }
+@media (pointer: coarse) { header .tool, button.mini, button.act { min-height: 40px; padding-inline: 14px; } }
+@media (prefers-reduced-motion: reduce) { .link.live i, .dot.on, .portrait .lamp.on { animation: none; } * { transition-duration: .01ms !important; } }
 </style>
 </head>
 <body>
@@ -210,7 +263,7 @@ body.rail-off .rail { transform: translateX(calc(100% + 24px)); visibility: hidd
 const TOKEN = "__TOKEN__";
 const NS = "http://www.w3.org/2000/svg";
 const REDUCED = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-const state = { runs: [], feeds: {}, filter: {}, polling: {}, theme: "city", loadedAt: Date.now() / 1000, scenes: [], link: { ok: true, reason: "" } };
+const state = { dismissed: [], runs: [], feeds: {}, filter: {}, polling: {}, theme: "city", loadedAt: Date.now() / 1000, scenes: [], link: { ok: true, reason: "" } };
 const $runs = document.getElementById("runs");
 const $status = document.getElementById("status");
 const $rail = document.getElementById("railToggle");
@@ -277,6 +330,26 @@ function countsText(counts) {
 }
 function linkState(reachable, runs) {   // live only when the server answered and a run is live; standby is neutral, never green
   return !reachable ? "down" : runs.some((run) => LIVE_RUN.includes(run.status)) ? "live" : "standby";
+}
+const NEEDS_MAX_AGE = 3 * 24 * 3600;   // a failure older than this drops off the list; a pending request never does
+function ageText(seconds) {
+  const s = Math.max(0, Math.round(seconds));
+  return s < 60 ? s + "s" : s < 3600 ? Math.floor(s / 60) + "m" : s < 86400 ? Math.floor(s / 3600) + "h" : Math.floor(s / 86400) + "d";
+}
+function needsYou(runs, eventsOf, now, dismissed) {   // everything waiting on the user, each row from a recorded fact: a pending request, a worker whose last event is a failure, a failed run
+  const rows = [];
+  for (const run of runs) {
+    const events = eventsOf(run.id) || [], last = {};
+    for (const a of run.asks) rows.push({ key: run.id + ":ask:" + a.id, kind: "approval", run: run.id, id: a.id, who: a.who, text: a.who + " wants to use " + a.tool, since: a.t });
+    for (const e of events) if (!["tools", "constraint", "check"].includes(e.kind)) last[e.who] = e;
+    for (const who of Object.keys(last)) {
+      const e = last[who];
+      if (e.kind === "failed") rows.push({ key: run.id + ":fail:" + who + ":" + e.t, kind: "failure", run: run.id, who, text: who + " failed", since: e.t });
+      else if (e.kind === "tool_error") rows.push({ key: run.id + ":err:" + who + ":" + e.t, kind: "failure", run: run.id, who, text: who + ": " + (e.tool || "a tool") + " failed", since: e.t });
+    }
+    if (run.status === "failed") rows.push({ key: run.id + ":runfailed", kind: "failure", run: run.id, who: "clyde", text: "the run failed", since: events.length ? events[events.length - 1].t : run.started });
+  }
+  return rows.filter((r) => !dismissed.includes(r.key) && (r.kind === "approval" || now - r.since < NEEDS_MAX_AGE)).sort((a, b) => a.since - b.since);
 }
 // </status>
 function clock(t) { return new Date(t * 1000).toLocaleTimeString([], { hour12: false }); }
@@ -411,6 +484,11 @@ function walkerState(trips, home, t) {
 // </motion>
 
 // <geometry>
+function facesDownLeft(f) {   // the pictures face down-right (toward +x); a piece against its room's north wall must face down-left (toward +y), so its picture is mirrored
+  if (f.flip !== undefined) return f.flip;
+  const r = f.room, cx = f.box[0] + f.box[2] / 2 - r.x, cy = f.box[1] + f.box[3] / 2 - r.y;
+  return cy < cx;
+}
 function convexHull(points) {   // the outline of a set of points (monotone chain), in order
   const pts = points.slice().sort((p, q) => p[0] - q[0] || p[1] - q[1]), cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]), build = (list) => { const h = []; for (const q of list) { while (h.length >= 2 && cross(h[h.length - 2], h[h.length - 1], q) <= 0) h.pop(); h.push(q); } h.pop(); return h; };
   return build(pts).concat(build(pts.slice().reverse()));
@@ -425,35 +503,21 @@ function shade(hex, pct) {
   return "#" + [c(n >> 16), c((n >> 8) & 255), c(n & 255)].map((v) => v.toString(16).padStart(2, "0")).join("");
 }
 function hash(a, b) { let h = Math.imul(a | 0, 374761393) + Math.imul(b | 0, 668265263) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; }
-const BAYS = [   // workshop floor plans, each in its own tiles: size, door (x of the doorway's centre, on the top wall), where the worker sits, a spot to be checked from, the furniture box [x, y, w, d] and stand-spot for each tool family, and the clutter. The aisle from the door down to the worker stays clear.
-  { w: 11, d: 11, door: 5.5, home: [5.5, 6.4], check: [7.4, 6.2],
-    slots: { read: { box: [0.8, 0.8, 3, 1], stand: [2.3, 2.8] }, write: { box: [7.4, 0.8, 3, 1.5], stand: [8.9, 3.4] }, shell: { box: [9.6, 4.4, 1.2, 1.8], stand: [8.3, 5.4] },
-             web: { box: [0.8, 4.4, 1, 2.3], stand: [3.0, 5.6] }, mcp: { box: [0.8, 7.6, 1, 2.3], stand: [3.0, 8.8] }, other: { box: [9.2, 8.0, 1.5, 1.9], stand: [7.9, 9.0] } },
-    props: [["tank", 6.8, 10.2], ["crates", 4.6, 10.2], ["lamp", 10.4, 3.3], ["plant", 0.9, 10.7]] },
-  { w: 14, d: 9, door: 3.5, home: [3.5, 5.0], check: [5.0, 4.4],   // wide and shallow, the door at one end
-    slots: { read: { box: [5.5, 0.8, 3, 1], stand: [7.0, 2.8] }, write: { box: [10.4, 0.8, 3, 1.5], stand: [11.9, 3.4] }, shell: { box: [12.2, 5.0, 1.4, 2.2], stand: [10.6, 6.0] },
-             web: { box: [0.5, 5.6, 1, 2.3], stand: [2.9, 6.8] }, mcp: { box: [5.0, 6.6, 2.4, 1.3], stand: [6.2, 5.6] }, other: { box: [8.4, 7.0, 1.6, 1.4], stand: [9.2, 5.9] } },
-    props: [["plant", 0.9, 8.5], ["tank", 13.0, 8.2], ["crates", 11.2, 8.4], ["lamp", 13.2, 3.8]] },
-  { w: 9, d: 13, door: 4.5, home: [4.5, 6.5], check: [5.5, 4.8],   // narrow and deep, furniture down both walls
-    slots: { read: { box: [0.6, 1.0, 2.6, 1], stand: [1.9, 3.0] }, write: { box: [5.8, 1.0, 2.6, 1.4], stand: [7.1, 3.6] }, shell: { box: [7.2, 5.6, 1.2, 1.8], stand: [5.9, 6.5] },
-             web: { box: [0.6, 5.0, 1, 2.3], stand: [2.9, 6.2] }, mcp: { box: [0.6, 9.0, 1, 2.3], stand: [2.9, 10.2] }, other: { box: [6.6, 9.4, 1.6, 1.9], stand: [5.5, 10.4] } },
-    props: [["plant", 0.9, 12.2], ["crates", 3.4, 12.2], ["tank", 7.8, 12.2], ["lamp", 8.2, 4.7]] },
-];
-const BAY_ORDER = [[1, false], [2, false], [0, false], [1, true], [2, true], [0, true]];   // plan and mirrored, so neighbours never match
-function bayPlan(i) {
-  const [k, flip] = BAY_ORDER[i % BAY_ORDER.length], t = BAYS[k];
-  if (!flip) return t;
-  const w = t.w, fx = (q) => [w - q[0], q[1]], slots = {};
-  for (const f in t.slots) { const s = t.slots[f]; slots[f] = { box: [w - s.box[0] - s.box[2], s.box[1], s.box[2], s.box[3]], stand: fx(s.stand) }; }
-  return { w, d: t.d, door: w - t.door, home: fx(t.home), check: fx(t.check), slots, props: t.props.map((q) => [q[0], w - q[1], q[2]]) };
-}
-function orient(t, wall) {   // a floor plan turned so that its door is on a wall (n, e, s or w); the aisle from the door runs straight across to the opposite wall
-  const w = t.w, d = t.d, turned = wall === "w" || wall === "e";
-  const P = { n: (u, v) => [u, v], s: (u, v) => [u, d - v], w: (u, v) => [v, u], e: (u, v) => [d - v, u] }[wall];
-  const B = { n: (b) => b, s: (b) => [b[0], d - b[1] - b[3], b[2], b[3]], w: (b) => [b[1], b[0], b[3], b[2]], e: (b) => [d - b[1] - b[3], b[0], b[3], b[2]] }[wall];
-  const slots = {};
-  for (const f in t.slots) slots[f] = { box: B(t.slots[f].box), stand: P(...t.slots[f].stand) };
-  return { w: turned ? d : w, d: turned ? w : d, door: t.door, home: P(...t.home), check: P(...t.check), slots, props: t.props.map((q) => [q[0], ...P(q[1], q[2])]), runner: B([t.door - 1.4, 0.4, 2.8, t.home[1] + 1.6]) };
+const BAY_SIZES = [[12, 12], [13, 12], [12, 13], [13, 13]];   // workshop sizes in tiles, so neighbours differ
+const PIECES = [["read", 1.6, 1.1], ["write", 2.4, 1.2], ["mcp", 1.6, 1.1], ["shell", 1.5, 1.2], ["web", 1.4, 1.1], ["other", 1.5, 1.1]];   // [family, length along the wall, depth]
+function bayLayout(i, wall) {   // a workshop floor plan: every one-sided piece against the north or west wall (the pictures only show a front), the door on `wall`, and a clear lane from the door across the room
+  const [w, d] = BAY_SIZES[i % BAY_SIZES.length], vertical = wall !== "e", door = vertical ? w - 2.6 : d - 2.6, slots = {}, lane = (a, b) => a < door + 1.5 && b > door - 1.5;
+  let cx = 2.2, cy = 2.0;   // the north row starts clear of the west column
+  for (const [f, len, dep] of PIECES) {
+    if (vertical && lane(cx, cx + len)) cx = door + 1.6;
+    if (cx + len <= w - 0.5) { slots[f] = { box: [cx, 0.15, len, dep], stand: [cx + len / 2, 0.15 + dep + 1.0] }; cx += len + 0.5; continue; }
+    if (!vertical && lane(cy, cy + len)) cy = door + 1.6;
+    slots[f] = { box: [0.15, cy, dep, len], stand: [0.15 + dep + 1.0, cy + len / 2] };   // what does not fit on the north wall goes down the west wall
+    cy += len + 0.5;
+  }
+  const home = vertical ? [door, d * 0.56] : [w * 0.56, door], check = wall === "n" ? [door, home[1] - 1.7] : wall === "s" ? [door, home[1] + 1.7] : [home[0] + 1.7, door];
+  const runner = wall === "n" ? [door - 1.4, 0.4, 2.8, home[1] + 1.6 - 0.4] : wall === "s" ? [door - 1.4, home[1] - 1.6, 2.8, d - 0.4 - (home[1] - 1.6)] : [home[0] - 1.6, door - 1.4, w - 0.4 - (home[0] - 1.6), 2.8];
+  return { w, d, door, home, check, slots, props: [], runner };
 }
 function plan(layout) {
   const bays = layout.rooms.filter((r) => r.kind === "bay"), DW = 26, DD = 12, deckCx = DW / 2;
@@ -463,7 +527,7 @@ function plan(layout) {
   deck.doors = [["e", 5, 7], ["n", 20, 22], ...ARMS.slice(0, armsUsed).map((a) => a.door)];   // the north door is the visitors' entrance, from the car park
   const corridors = [{ x: DW, y: 5, w: 4, d: 2 }, { x: 20, y: -3.5, w: 2, d: 3.5 }], edge = [DD, 0, 0], chains = [[], [], []], lanes = {}, outs = {};
   bays.forEach((b, i) => {
-    const a = i % 3, arm = ARMS[a], O = orient(bayPlan(i), arm.wall), chain = chains[a], gap = chain.length ? 3 : 4;
+    const a = i % 3, arm = ARMS[a], O = bayLayout(i, arm.wall), chain = chains[a], gap = chain.length ? 3 : 4;
     let x, y, corr, entry, inner, lane;
     if (a === 0) { x = deckCx - O.door; y = edge[0] + gap; corr = { x: deckCx - 1, y: edge[0], w: 2, d: gap }; edge[0] = y + O.d; entry = [deckCx, y]; inner = [deckCx, y + 1.5]; lane = (off) => [[deckCx + off, DD], [deckCx + off, y + 1.2]]; }
     else if (a === 1) { x = edge[1] - gap - O.w; y = 6 - O.door; corr = { x: x + O.w, y: 5, w: gap, d: 2 }; edge[1] = x; entry = [x + O.w, 6]; inner = [x + O.w - 1.5, 6]; lane = (off) => [[0, 6 + off], [x + O.w - 1.2, 6 + off]]; }
@@ -513,22 +577,52 @@ function plan(layout) {
     for (const q of r.tpl.props) prop(q[0], r.x + q[1], r.y + q[2]);
   }
   const dk = layout.rooms.find((r) => r.id === "deck");
-  const deckBoxes = { approvals: [3, 8, 3, 1.6], ledger: [19, 9.2, 3, 1.4] };
+  const deckBoxes = { approvals: [3, 8, 3, 1.6], ledger: [13.4, 0.3, 2.8, 1.3] };
   for (const o of dk.objects) furniture.push({ room: deck, family: o.family, obj: o, box: [deck.x + deckBoxes[o.family][0], deck.y + deckBoxes[o.family][1], deckBoxes[o.family][2], deckBoxes[o.family][3]] });
   furniture.push({ room: deck, family: "desk", obj: null, lane: "report", box: [deck.x + 2, deck.y + 2, 3, 2] }, { room: deck, family: "desk", obj: null, lane: "review", box: [deck.x + 21, deck.y + 2, 3, 2] },
                  { room: deck, family: "table", obj: null, box: [deck.x + 11, deck.y + 5, 4.2, 2] });
   for (const [kind, x, y, size] of [["plant", 2.2, 10.8], ["plant", 24.8, 10.6], ["lamp", 9, 1.3], ["lamp", 17.4, 1.3], ["bookcase", 0.3, 8.0, 3.2], ["tank", 24.6, 8.8], ["coat", 7.6, 10.8]]) prop(kind, deck.x + x, deck.y + y, size);
   const ob = layout.rooms.find((r) => r.kind === "outbox");
-  furniture.push({ room: rooms.outbox, family: "crate", obj: ob, box: [rooms.outbox.x + 4.8, rooms.outbox.y + 1, 2.2, 1.8] });
-  for (const [kind, x, y, size] of [["bookcase", 0.3, 0.2, 1.6], ["bookcase", 0.3, 4.8, 2], ["tank", 6.6, 5.6], ["lamp", 7.2, 4.2]]) prop(kind, rooms.outbox.x + x, rooms.outbox.y + y, size);
+  const ox = rooms.outbox.x, oy = rooms.outbox.y;   // a post room: pigeonhole cabinets along the back wall (the one that lights up is the real outbox), sacks and crates in the corner
+  furniture.push({ room: rooms.outbox, family: "mailbox", obj: null, box: [ox + 1.2, oy + 0.3, 1.8, 1.1] }, { room: rooms.outbox, family: "mailbox", obj: null, box: [ox + 3.2, oy + 0.3, 1.8, 1.1] },
+                 { room: rooms.outbox, family: "crate", obj: ob, box: [ox + 5.2, oy + 0.3, 1.8, 1.1] });
+  for (const [kind, x, y, size] of [["crates", 6.9, 5.7], ["plant", 7.3, 3.6], ["lamp", 0.6, 6.3]]) prop(kind, rooms.outbox.x + x, rooms.outbox.y + y, size);
+  // Each workshop gets its own look: a rug style and colours, and a few extra pieces, all picked from the room's number and placed only where they fit.
+  const RUGS = [["#7a1f2b", "#c99a2e"], ["#24432f", "#c99a2e"], ["#232f55", "#e2d3a8"], ["#8a5a1f", "#7a1f2b"]];
+  const nearSeg = (px, py, a, b) => { const dx = b[0] - a[0], dy = b[1] - a[1], k = Math.max(0, Math.min(1, ((px - a[0]) * dx + (py - a[1]) * dy) / (dx * dx + dy * dy || 1))); return Math.hypot(px - a[0] - dx * k, py - a[1] - dy * k); };
+  const walks = [];   // the lines workers and visitors walk through the rooms on the way to the far workshops of an arm
+  chains.forEach((c, a) => { for (let k = 1; k < c.length; k++) walks.push([c[k].inner, c[k - 1].inner]); if (c.length) walks.push([c[0].inner, ARMS[a].hub[0]]); });
+  bayRooms.forEach((r, i) => {
+    const seed = (parseInt((/(\d+)$/.exec(r.id) || [0, i + 1])[1], 10) || i + 1) * 7;
+    const [c1, c2] = RUGS[Math.floor(hash(seed, 1) * RUGS.length)], style = Math.floor(hash(seed, 2) * 3), h = homes[r.id], ck = checkStands[r.id];
+    r.rugs = style === 0 ? [{ box: r.runner, c1, c2 }] : style === 1 ? [{ box: [h[0] - 1.8, h[1] - 1.3, 3.6, 2.6], c1, c2 }, { box: r.runner, c1: RUGS[(RUGS.indexOf(RUGS.find((q) => q[0] === c1)) + 1) % RUGS.length][0], c2 }] : [{ box: [ck[0] - 1.1, ck[1] - 0.9, 2.2, 1.8], c1, c2 }, { box: [h[0] - 1.4, h[1] - 1.0, 2.8, 2.0], c1: c2 === "#c99a2e" ? "#3a2a1c" : c1, c2: c1 }];
+    r.rugs = r.rugs.map((q) => ({ ...q, box: [Math.max(r.x + 0.6, q.box[0]), Math.max(r.y + 0.6, q.box[1]), Math.min(q.box[2], r.x + r.w - 0.6 - Math.max(r.x + 0.6, q.box[0])), Math.min(q.box[3], r.y + r.d - 0.6 - Math.max(r.y + 0.6, q.box[1]))] }));
+    const marks = [homes[r.id], checkStands[r.id], ...Object.keys(r.tpl.slots).map((k) => stands[r.id + ":" + k])];
+    const free = (x, y) => x > r.x + 0.9 && x < r.x + r.w - 0.9 && y > r.y + 0.9 && y < r.y + r.d - 0.9
+      && !furniture.some((f) => f.room === r && x > f.box[0] - 0.9 && x < f.box[0] + f.box[2] + 0.9 && y > f.box[1] - 0.9 && y < f.box[1] + f.box[3] + 0.9)
+      && !props.some((q) => Math.hypot(q.x - x, q.y - y) < 1.6) && !marks.some((m) => Math.hypot(m[0] - x, m[1] - y) < 1.5)
+      && nearSeg(x, y, r.entry, r.inner) > 1.4 && nearSeg(x, y, r.inner, h) > 1.4 && nearSeg(x, y, r.inner, checkStands[r.id]) > 1.4 && marks.every((m) => nearSeg(x, y, h, m) > 1.3) && walks.every((w) => nearSeg(x, y, w[0], w[1]) > 1.4);   // never on a line anyone walks
+    const spots = [];
+    for (let gx = r.x + 1; gx < r.x + r.w; gx += 1) for (let gy = r.y + 1; gy < r.y + r.d; gy += 1) spots.push([gx, gy, hash(Math.round(gx * 3) + seed, Math.round(gy * 5))]);
+    spots.sort((a, b) => a[2] - b[2]);
+    const kinds = ["plant", "lamp", "coat", "crates", "tank", "plant"];
+    let placed = 0;
+    const used = [];
+    for (const [gx, gy] of spots) {
+      if (placed >= 3) break;
+      const kind = kinds[Math.floor(hash(seed + placed + used.length, 9) * kinds.length)];
+      if (kind !== "plant" && used.includes(kind)) { used.push(kind); if (used.length > 12) break; continue; }   // one coat rack, one cooler: only plants may repeat
+      if (free(gx, gy)) { prop(kind, gx, gy); used.push(kind); placed++; }
+    }
+  });
   const bar = rooms.bar;
   const barSpots = { clyde: [bar.x + 4.0, bar.y + 3.0], bonnie: [bar.x + 5.4, bar.y + 3.0] };   // where Clyde and Bonnie lean on the counter
   const crowd = [[6.8, 3.0], [8.2, 3.0], [9.6, 3.0], [2.6, 4.6], [4.2, 4.6], [5.8, 4.6], [7.4, 4.6], [9.0, 4.6]];   // and where the workers stand, one spot each, round the counter
   bayRooms.forEach((r, i) => { barSpots[r.id] = [bar.x + crowd[i % crowd.length][0], bar.y + crowd[i % crowd.length][1]]; });
   // the speakeasy: a counter along the back with stools, sofas and a little table in front; the way through (row 5) stays clear
-  furniture.push({ room: bar, family: "bar", obj: null, box: [bar.x + 1.5, bar.y + 0.5, 6, 1.4] }, { room: bar, family: "sofa", obj: null, box: [bar.x + 0.6, bar.y + 7.6, 3.4, 1.4] },
-                 { room: bar, family: "sofa", obj: null, box: [bar.x + 7.6, bar.y + 7.6, 3.4, 1.4] }, { room: bar, family: "smalltable", obj: null, box: [bar.x + 4.8, bar.y + 7.8, 1.8, 1.4] });
-  for (const [kind, x, y] of [["plant", 0.9, 4.0], ["plant", 11.1, 4.0], ["plant", 11.1, 1.1], ["lamp", 9.2, 3.0], ["lamp", 0.8, 3.0]]) prop(kind, bar.x + x, bar.y + y);
+  furniture.push({ room: bar, family: "bar", obj: null, box: [bar.x + 1.5, bar.y + 0.5, 6, 1.4] }, { room: bar, family: "sofa", obj: null, box: [bar.x + 0.5, bar.y + 6.4, 1.4, 3.2] },
+                 { room: bar, family: "sofa", obj: null, box: [bar.x + 8.4, bar.y + 0.5, 3.2, 1.4] }, { room: bar, family: "smalltable", obj: null, box: [bar.x + 3.2, bar.y + 7.2, 1.8, 1.4] });
+  for (const [kind, x, y] of [["plant", 0.9, 4.0], ["plant", 11.1, 4.0], ["plant", 11.3, 9.2], ["lamp", 9.2, 3.0], ["lamp", 0.8, 3.0]]) prop(kind, bar.x + x, bar.y + y);
   lanes.landing = [[deck.x + DW - 1, 6], [rooms.outbox.x + 1.5, 6]];
   // the island: every room and hallway on one slab that follows their outline, with a few trees and lamps round its edge
   const xs = Object.values(rooms), gx = [Math.min(...xs.map((r) => r.x)), Math.max(...xs.map((r) => r.x + r.w))], gy = [Math.min(...xs.map((r) => r.y)), Math.max(...xs.map((r) => r.y + r.d))];
@@ -627,15 +721,13 @@ function wallRuns(a, b, gaps) {   // the stretches of a wall between its doorway
   for (const [g0, g1] of gaps.slice().sort((x, y) => x[0] - y[0]).concat([[b, b]])) { if (g0 > from) runs.push([from, g0]); from = Math.max(from, g1); }
   return runs;
 }
-function wallPanel(layer, plane, c, a, b, color, pal) {   // a back wall: solid to the waist, glass above it, so you can see through it into the next room
-  poly(layer, wallQuad(plane, c, a, b, 0, 28, 0), color, { stroke: "#000", "stroke-width": 0.8, "stroke-opacity": 0.5 });
-  poly(layer, wallQuad(plane, c, a, b, 28, WALL, 0), pal.screen, { opacity: 0.16, stroke: pal.trim, "stroke-width": 1 });
-  poly(layer, wallQuad(plane, c, a, b, WALL - 3, WALL, 0), pal.trim);
-  poly(layer, wallQuad(plane, c, a, b, 26, 30, 0), pal.trim);
-  const P = (u, h) => plane === "x" ? at(c, u, 0, h) : at(u, c, 0, h);
-  let bars = "";
-  for (let u = Math.ceil(a / 2) * 2; u < b; u += 2) if (u > a) bars += lineAt(P(u, 30), P(u, WALL));
-  layer.append(sv("path", { d: bars, stroke: pal.trim, "stroke-width": 1.4, opacity: 0.7 }));
+const WALL_BASE = { "glass-a": [137.2, 0.57], "glass-b": [140.0, 0.55], "brick-a": [121.7, 0.60], "brick-b": [124.1, 0.58] };   // [row where the front bottom edge crosses the middle, its slope], measured from the pictures   // the row, in each picture, where the wall's front bottom edge crosses its middle (measured from the pictures): this is what stands on the floor's edge, not the lowest corner
+function wallRun(layer, plane, c, a, b, kind) {   // a back wall of sprites, two tiles to a piece: the "-a" pictures run along x (the north wall), the "-b" ones along y (the west wall); glass-topped for a see-through room, solid brick where things hang on it
+  const n = Math.max(1, Math.round((b - a) / 2)), key = kind + (plane === "y" ? "-a" : "-b"), name = "tile-wall-" + key, [sw, sh] = SPR[name], [base, slope] = WALL_BASE[key];
+  for (let i = 0; i < n; i++) {
+    const u0 = a + (b - a) * i / n, u1 = a + (b - a) * (i + 1) / n, mid = plane === "y" ? at((u0 + u1) / 2, c, 0) : at(c, (u0 + u1) / 2, 0), w = (u1 - u0) * HX + 4, kx = w / sw, ky = kx * HY / HX / slope;   // squeezed in height so the piece's base slopes exactly like the floor's tiles, and neighbours meet edge to edge
+    layer.append(sprite(name, mid[0] - w / 2, mid[1] - base * ky + 1, w, sh * ky, { preserveAspectRatio: "none" }));
+  }
 }
 function paved(layer, defs, x, y, w, d, name, uid) {   // a floor: the picture repeated over blocks of 2 x 2 tiles and cut to the rectangle
   const [sw, sh] = SPR[name], k = 4 * HX / sw, id = "fc" + uid + Math.round(x * 7 + y * 13 + w * 3), clip = sv("clipPath", { id }), g = sv("g", { "clip-path": "url(#" + id + ")" }), blocks = [];
@@ -671,19 +763,17 @@ function worldStatic(layer, defs, p, pal, uid, words) {   // the slab, the court
     poly(layer, lip(q[3], q[2]), shade(pal.trim, -45)); poly(layer, lip(q[2], q[1]), shade(pal.trim, -65));
     poly(layer, q, pal.floorA); paved(layer, defs, r.x, r.y, r.w, r.d, r.kind === "bar" ? "tile-floor-checker" : r.kind === "outbox" ? "tile-floor-stone" : "tile-floor-parquet", uid);
     if (r.kind === "deck") poly(layer, quad(r.x + 9, r.y + 3.4, 8.4, 6.4, 0), pal.rug1, { opacity: 0.92, stroke: pal.rug2, "stroke-width": 2 });
-    else if (r.kind === "bay") poly(layer, quad(r.runner[0], r.runner[1], r.runner[2], r.runner[3], 0), pal.rug1, { opacity: 0.88, stroke: pal.rug2, "stroke-width": 1.6 });
+    else if (r.kind === "bay") for (const g of r.rugs) { poly(layer, quad(g.box[0], g.box[1], g.box[2], g.box[3], 0), g.c1, { opacity: 0.9, stroke: g.c2, "stroke-width": 1.6 }); poly(layer, quad(g.box[0] + 0.25, g.box[1] + 0.25, g.box[2] - 0.5, g.box[3] - 0.5, 0), "none", { stroke: g.c2, "stroke-width": 0.8, opacity: 0.6 }); }
     else if (r.kind === "bar") poly(layer, quad(r.x + 3.5, r.y + 6.8, 5, 3, 0), pal.rug1, { opacity: 0.9, stroke: pal.rug2, "stroke-width": 1.6 });
     const gaps = (side) => doorsOf(p, r).filter((d) => d[0] === side).map((d) => [d[1], d[2]]);
-    for (const [a, b] of wallRuns(r.y, r.y + r.d, gaps("w"))) wallPanel(layer, "x", r.x, a, b, pal.wallL, pal);
-    for (const [a, b] of wallRuns(r.x, r.x + r.w, gaps("n"))) wallPanel(layer, "y", r.y, a, b, pal.wallR, pal);
-    layer.append(sv("path", { d: lineAt(at(r.x, r.y, 0, 0), at(r.x, r.y, 0, WALL)), stroke: pal.trim, "stroke-width": 4 }));
+    for (const [a, b] of wallRuns(r.y, r.y + r.d, gaps("w"))) wallRun(layer, "x", r.x, a, b, r.kind === "bay" ? "glass" : "brick");
+    for (const [a, b] of wallRuns(r.x, r.x + r.w, gaps("n"))) wallRun(layer, "y", r.y, a, b, r.kind === "bay" ? "glass" : "brick");
     const title = r.kind === "deck" ? words.deck : r.kind === "outbox" ? words.outbox : r.kind === "bar" ? words.bar : words.bay + " " + number(r.id);
     plaque(layer, "y", r.y, r.x + r.w / 2, WALL + 16, title, pal, 0);
     const hang = (name, u, h, wpx) => { const [sw, sh] = SPR[name], c = at(u, r.y, 0, h); layer.append(sprite(name, c[0] - wpx / 2, c[1] - wpx * sh / sw / 2, wpx, wpx * sh / sw)); };   // something hung on the back wall
-    if (r.kind === "deck") { hang("tile-clock-b", r.x + 13, 40, 34); hang("tile-picture-city", r.x + 8, 38, 30); hang("tile-picture-hills-b", r.x + 18, 38, 34); }
-    else if (r.kind === "bar") { hang("tile-neon-b", r.x + 6, 42, 52); hang("tile-picture-leaf", r.x + 2.5, 38, 26); hang("tile-picture-hills-b", r.x + 9.5, 38, 32); }
-    else if (r.kind === "outbox") hang("tile-clock-b", r.x + 4, 40, 30);
-    else if (r.kind === "bay" && r.wall !== "e") hang("tile-picture-hills-b", r.x + r.w / 2, 36, 30);
+    if (r.kind === "deck") { hang("tile-clock-a", r.x + 13, 40, 34); hang("tile-picture-city", r.x + 8, 38, 30); hang("tile-picture-hills-a", r.x + 18, 38, 34); }
+    else if (r.kind === "bar") { hang("tile-neon-a", r.x + 2.8, 42, 52); hang("tile-picture-hills-a", r.x + 9.5, 38, 32); }
+    else if (r.kind === "outbox") hang("tile-clock-a", r.x + 4, 40, 30);
   }
 }
 function frontStatic(layer, defs, p, pal, uid) {   // what stands in front of the crew: a rail along each hallway, with a post every so often
@@ -699,13 +789,15 @@ function doorsOf(p, r) {   // where a room's wall has a doorway: [side, from, to
   return [[r.wall, along - 1, along + 1], ...(r.through ? [[opposite, along - 1, along + 1]] : [])];
 }
 const FURN = { read: "file-cabinet", write: "writer-desk", shell: "safe", web: "radio", mcp: "switchboard", other: "cupboard", approvals: "signing-desk", ledger: "cash-register",
-  desk: "report-desk", table: "planning-table", crate: "mail-cabinet", bar: "bar", sofa: "sofa", smalltable: "small-table" };   // the picture for each kind of furniture
+  desk: "report-desk", table: "planning-table", crate: "mail-cabinet", mailbox: "mail-cabinet", bar: "bar", sofa: "sofa", smalltable: "small-table" };   // the picture for each kind of furniture
 function furnitureSprite(f, pal, now, defs, uid) {
   const g = sv("g", {}), [x, y, w, d] = f.box, o = f.obj, fl = f.room.f, id = "fg" + uid + f.family + Math.round(x * 3 + y * 5) + fl, fresh = o && o.last && now - o.last < 4;
   const lit = fresh || (f.family === "approvals" && o && o.pending) || (f.family === "crate" && o && o.state === "landed") || (f.lane && f.laneState === "lit") || f.family === "bar";
   const name = "furn-" + FURN[f.family] + (lit ? "-on" : "-off"), [sw, sh] = SPR[name], c = at(x + w / 2, y + d / 2, fl), wpx = Math.max(30, (w + d) * HX * 0.62), hpx = wpx * sh / sw, by = c[1] + (w + d) * HY / 2;
   poly(g, quad(x, y, w, d, fl), "#000", { opacity: 0.3, filter: FX.soft });
-  g.append(sprite(name, c[0] - wpx / 2, by - hpx, wpx, hpx));
+  const pic = sprite(name, c[0] - wpx / 2, by - hpx, wpx, hpx);
+  if (facesDownLeft(f)) pic.setAttribute("transform", "translate(" + (2 * c[0]).toFixed(1) + " 0) scale(-1 1)");
+  g.append(pic);
   if (fresh) g.append(sv("ellipse", { cx: c[0], cy: by - 4, rx: wpx * 0.55, ry: wpx * 0.2, fill: "none", stroke: pal.accent, "stroke-width": 3, opacity: 0.85, class: "blink amb" }));
   if (f.lane && f.laneState) { const on = f.laneState === "lit"; g.append(sv("circle", { cx: c[0] + wpx * 0.3, cy: by - hpx * 0.8, r: 5, fill: on ? pal.accent : shade(pal.dark, 20), stroke: "#000", "stroke-width": 1, class: on ? "flick amb" : "" })); }   // the handoff tray: lit once that handoff was recorded
   if (o && f.family !== "crate") {   // a count plate: how often it was used; amber dot: it asked you; red dot: denied or failed
@@ -1042,7 +1134,7 @@ function rail(run) {
   grip.setAttribute("role", "separator"); grip.setAttribute("aria-orientation", "vertical"); grip.title = "Drag to resize, double-click to reset";
   side.append(grip);
   if (run.asks.length) {
-    const needs = el("section", "glass asking"), head = el("h3", "", "Needs your OK");
+    const needs = el("section", "glass asking"), head = el("h3", "", "To approve");
     head.append(el("small", "", run.asks.length + " waiting"));
     needs.append(head, asks(run));
     side.append(needs);
@@ -1057,10 +1149,40 @@ function rail(run) {
   side.append(box, events);
   return side;
 }
+function needsBox(run) {   // the top-left card's "needs you" list: only what waits on the user, hidden when nothing does
+  const rows = needsYou([run], (id) => state.feeds[id], Date.now() / 1000, state.dismissed), box = el("div", "needs");
+  if (!rows.length) { box.hidden = true; return box; }
+  box.setAttribute("role", "region"); box.setAttribute("aria-label", "Needs you");
+  box.append(el("div", "needs-head", "Needs you \u00b7 " + rows.length));
+  for (const r of rows.slice(0, 4)) {
+    const row = el("div", "need " + r.kind), age = el("span", "age", ageText(Date.now() / 1000 - r.since));
+    age.dataset.since = String(r.since);
+    row.append(el("i"), el("span", "grow", r.text), age);
+    const look = el("button", "mini", r.kind === "approval" ? "Open" : "Look");
+    look.type = "button";
+    look.addEventListener("click", () => { setRail(true); if (r.kind === "failure" && r.who !== "clyde") state.filter[run.id] = r.who; draw(); });
+    row.append(look);
+    if (r.kind === "approval") {
+      const deny = el("button", "mini", "Deny");
+      deny.type = "button";
+      deny.addEventListener("click", async () => { deny.disabled = true; try { await api("/api/answer", { run: run.id, id: r.id, allow: false }); } catch (e) { $status.textContent = String(e); } refresh(); });
+      row.append(deny);
+    } else {
+      const dismiss = el("button", "mini", "Dismiss");
+      dismiss.type = "button";
+      dismiss.addEventListener("click", () => { state.dismissed.push(r.key); store("station.dismissed", JSON.stringify(state.dismissed.slice(-200))); draw(); });
+      row.append(dismiss);
+    }
+    box.append(row);
+  }
+  if (rows.length > 4) { const more = el("button", "mini", "+" + (rows.length - 4) + " more"); more.type = "button"; more.addEventListener("click", () => { setRail(true); }); box.append(more); }
+  return box;
+}
 function paintHeader() {   // the link chip and the crew counts: only what the server answered and the runs recorded
   const kind = linkState(state.link.ok, state.runs);
   $link.className = "chip link " + kind;
-  $linkText.textContent = kind === "live" ? "live" : kind === "standby" ? "standby: nothing running" : "link down" + (state.link.reason ? ": " + state.link.reason : "");
+  $linkText.textContent = kind === "live" ? "live" : kind === "standby" ? "standby" : "link down";
+  $link.title = kind === "live" ? "The server answers and a run is live" : kind === "standby" ? "The server answers, nothing is running" : "The server did not answer" + (state.link.reason ? ": " + state.link.reason : "");
   $retry.hidden = kind !== "down";
   $counts.textContent = state.runs.length ? countsText(crewCounts(state.runs, crewList)) : "";
 }
@@ -1069,7 +1191,7 @@ let lastSignature = "";
 function draw() {
   paintHeader();
   // Rebuild only when something visible changed: a rebuild every few seconds would swap the buttons out from under a click.
-  const signature = JSON.stringify([state.runs, Object.keys(state.feeds).map((id) => [id, state.feeds[id].length]), state.filter, state.theme]);
+  const signature = JSON.stringify([state.dismissed, state.runs, Object.keys(state.feeds).map((id) => [id, state.feeds[id].length]), state.filter, state.theme]);
   if (signature === lastSignature) return;
   lastSignature = signature;
   $rail.classList.toggle("alert", state.runs.some((r) => r.asks.length));   // a request for your OK never hides behind a closed panel
@@ -1080,9 +1202,9 @@ function draw() {
     const section = el("section", "run");
     const head = el("div", "run-head");
     const spend = "$" + run.spend.usd.toFixed(4) + (run.spend.unpriced ? " + " + run.spend.unpriced + " unpriced" : "");
-    head.append(el("h2", "", run.task || run.id), el("span", "chip " + run.status, run.status.replace("_", " ")), el("span", "chip", spend), el("span", "chip", run.id));
+    head.append(el("h2", "", run.task || run.id), el("span", "chip " + run.status, run.status.replace("_", " ")), el("span", "chip", spend), el("span", "chip run-id", run.id));
     const info = el("div", "run-info");
-    info.append(head, el("div", "clyde", "Clyde: " + run.clyde));
+    info.append(head, el("div", "clyde", "Clyde: " + run.clyde), needsBox(run));
     section.append(info);
     const body = el("div", "run-body");
     body.append(mapSection(run), rail(run));
@@ -1152,6 +1274,8 @@ document.addEventListener("pointerdown", (e) => {
 });
 document.addEventListener("dblclick", (e) => { if (e.target.classList && e.target.classList.contains("railgrip")) { document.documentElement.style.removeProperty("--railw"); store("station.railw", ""); } });
 for (const pack in CREW) for (const anim in CREW[pack]) for (const dir in CREW[pack][anim]) preload(pack, anim, dir);   // every picture is fetched once up front, so a frame never blinks while it loads
+try { state.dismissed = JSON.parse(stored("station.dismissed") || "[]"); } catch (e) { state.dismissed = []; }
+setInterval(() => { for (const age of document.querySelectorAll("[data-since]")) age.textContent = ageText(Date.now() / 1000 - Number(age.dataset.since)); }, 15000);   // how long each row has waited
 refresh();
 setInterval(refresh, 5000);   // picks up runs that start after the page opened
 requestAnimationFrame(loop);
