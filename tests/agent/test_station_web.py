@@ -351,6 +351,9 @@ class TestPage(unittest.TestCase):
         self.assertIn('memberState(run, m) === "working"', page)
         self.assertNotIn('dotClass(m.doing) === "on").length', page)
 
+    def test_on_a_phone_the_crew_panel_starts_under_the_header(self):
+        self.assertIn(".rail { top: 96px; }", station_web.PAGE)   # the header wraps to two lines there and would cover the panel's title and its buttons
+
     def test_the_scene_is_built_with_svg_nodes_and_text_and_a_private_window_cannot_break_the_page(self):
         page = station_web.PAGE
         self.assertIn("createElementNS", page)

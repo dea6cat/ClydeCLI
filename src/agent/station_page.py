@@ -277,7 +277,7 @@ button.act.allow { border-color: rgba(123,214,166,.6); } button.act.deny { borde
 .needs button.mini:hover { background: rgba(37,29,20,.09); border-color: #251d14; }
 .needs button.mini:focus-visible { outline-color: #8c2f39; }
 /* phones: the header may wrap to two rows (the counts keep their line), so the run's card sits below it; this block comes last so it wins */
-@media (max-width: 700px) { header { flex-wrap: wrap; row-gap: 4px; } #counts { flex-basis: 100%; order: 5; white-space: normal; } .run-info { top: 96px; padding: 8px 12px; } .run-head h2 { font-size: 14px; flex-basis: 100%; } .run-info .chip.run-id { display: none; } }
+@media (max-width: 700px) { header { flex-wrap: wrap; row-gap: 4px; } #counts { flex-basis: 100%; order: 5; white-space: normal; } .run-info { top: 96px; padding: 8px 12px; } .rail { top: 96px; }   /* the crew panel starts under the header, which wraps to two lines here */ .run-head h2 { font-size: 14px; flex-basis: 100%; } .run-info .chip.run-id { display: none; } }
 @media (pointer: coarse) { header .tool, button.mini, button.act { min-height: 40px; padding-inline: 14px; } }
 @media (prefers-reduced-motion: reduce) { .link.live i, .dot.on, .portrait .lamp.on { animation: none; } * { transition-duration: .01ms !important; } }
 </style>
