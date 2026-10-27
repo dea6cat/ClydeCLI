@@ -6,6 +6,7 @@ The sheets (file names as they came from the generator):
   furniture  "Isometric Pixel-Art Furniture Asset Sheet.png"   20 pieces of furniture, each in an unlit and a lit version
   tiles      "Art Deco Isometric Tileset Collection.png"       floors, walls, rails, pictures, a clock, an awning, a neon sign, lights
   scenery    "Isometric Fantasy City Asset Sheet.png"          moon, clouds, trees, hedge, lamp post, stars
+  backs      "Isometric Pixel-Art Furniture Back Views.jpeg"   16 pieces seen from behind (optional); only the plain back panels are used
 """
 from __future__ import annotations
 
@@ -27,6 +28,7 @@ TILES = {0: "floor-parquet", 4: "wall-brick-a", 5: "wall-brick-b", 6: "wall-glas
          14: "balustrade-a", 15: "balustrade-b", 20: "tower-a", 21: "tower-b", 24: "gatepost-a", 25: "gatepost-b", 26: "clock-a", 27: "clock-b",
          28: "picture-city", 29: "picture-hills-a", 30: "picture-hills-b", 31: "picture-leaf", 32: "awning-a", 33: "awning-b", 34: "neon-a", 35: "neon-b",
          36: "lights-a", 37: "lights-b"}
+BACKS = {5: "cupboard"}   # of the 16 pieces on the back-views sheet only the plain-panel backs are true backs: the others show their fronts (doors, grille, kneehole)
 GRASS, ROCK = (180, 64, 262, 94), (125, 205, 235, 275)   # boxes in the island picture: grass, and the cliff face
 SPLIT = {2: ("floor-runner", "floor-checker"), 3: ("floor-stone", "floor-water")}   # two tiles that came out as one piece
 SCENERY = {0: "island", 12: "car-black", 13: "car-red", 14: "car-green", 1: "moon", 2: "stars", 3: "cloud-1", 4: "cloud-2", 5: "cloud-3", 6: "cloud-4", 7: "cloud-5", 8: "tree-blossom", 9: "tree-pine", 10: "hedge", 11: "lamppost"}
@@ -71,6 +73,12 @@ def main(src: Path, dest: Path) -> int:
     assert len(boxes) == 17, f"scenery sheet: {len(boxes)} pieces, expected 17"
     for i, name in SCENERY.items():
         crop(rgba, boxes[i]).save(dest / f"scene-{name}.png")
+    back_sheet = src / "Isometric Pixel-Art Furniture Back Views.jpeg"
+    if back_sheet.exists():
+        rgba, boxes = pieces(back_sheet, "checker", 4)
+        assert len(boxes) == 16, f"back-views sheet: {len(boxes)} pieces, expected 16"
+        for i, name in BACKS.items():
+            crop(rgba, boxes[i]).save(dest / f"furn-{name}-back.png")
     island = Image.open(dest / "scene-island.png")   # its grass and its cliff face tile as the island's surface and the rock under it
     patch = island.crop(GRASS).convert("RGBA")   # mirrored on both axes, so its edges meet their own copies and no seam shows when it repeats
     grass = Image.new("RGBA", (patch.width * 2, patch.height * 2))
@@ -80,7 +88,7 @@ def main(src: Path, dest: Path) -> int:
         grass.paste(part, ((i % 2) * patch.width, (i // 2) * patch.height))
     grass.save(dest / "scene-grass.png")
     island.crop(ROCK).save(dest / "scene-rock.png")
-    print(len(FURNITURE) * 2 + len(TILES) + 4 + len(SCENERY) + 2, "pictures")
+    print(len(FURNITURE) * 2 + len(TILES) + 4 + len(SCENERY) + 2 + (len(BACKS) if back_sheet.exists() else 0), "pictures")
     return 0
 
 

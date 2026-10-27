@@ -66,11 +66,12 @@ for (const n of [1, 2, 3, 4, 5, 7, 10]) {
     const trip = A.workerTrips([{ t: 1001, who: r.id, kind: "tool_use", tool: { read: "Read", write: "Edit", shell: "Bash", web: "WebFetch", mcp: "mcp__x", other: "Foo" }[f] }], r.id, p, 1000)[0], to = [b.x + b.w / 2 - st[0], b.y + b.d / 2 - st[1]];
     if (!trip || trip.face[0] * to[0] + trip.face[1] * to[1] <= 0) LAYOUT.push(tag + r.id + " does not face its " + f + " furniture");
   }
-  // 1c. a one-sided piece never stands against a south or east wall, where its front would face out of the room
+  // 1c. a one-sided piece never stands against a south or east wall, where its front would face out of the room, unless it has a back picture and shows that; and a back picture is only for a south or east wall
   for (const f of p.furniture) {
     if (["table", "smalltable"].includes(f.family) || f.room.kind === "outbox") continue;
-    const r = f.room, cx = f.box[0] + f.box[2] / 2 - r.x, cy = f.box[1] + f.box[3] / 2 - r.y, dS = r.d - cy, dE = r.w - cx;
-    if (Math.min(dS, dE) < 2.2 && Math.min(dS, dE) < Math.min(cx, cy)) LAYOUT.push(tag + f.family + " in " + r.id + " stands against the " + (dS < dE ? "south" : "east") + " wall");
+    const r = f.room, cx = f.box[0] + f.box[2] / 2 - r.x, cy = f.box[1] + f.box[3] / 2 - r.y, dS = r.d - cy, dE = r.w - cx, south = Math.min(dS, dE) < 2.2 && Math.min(dS, dE) < Math.min(cx, cy);
+    if (south && !f.back) LAYOUT.push(tag + f.family + " in " + r.id + " stands against the " + (dS < dE ? "south" : "east") + " wall");
+    if (f.back && !south) LAYOUT.push(tag + f.family + " in " + r.id + " shows its back but is not against a south or east wall");
   }
   // 2. nothing stands inside another thing, and everything is inside its room
   for (let i = 0; i < solids.length; i++) for (let j = i + 1; j < solids.length; j++) if (overlap(solids[i], solids[j])) LAYOUT.push(tag + solids[i].what + " overlaps " + solids[j].what);
