@@ -58,6 +58,21 @@ class RunStore(unittest.TestCase):
         for path in (run.root / "orders", next((run.root / "orders").glob("*.json"))):
             self.assertEqual(stat.S_IMODE(path.stat().st_mode) & 0o077, 0, path)
 
+    def test_stop_is_asked_once_for_a_working_run_and_blocks_new_orders(self):
+        run = Run.create("t", {"workers": [{"name": "worker-1", "model": "m"}]})
+        with self.assertRaises(ValueError):
+            run.stop()   # still planning
+        run.set_status("running")
+        self.assertFalse(run.stop_requested())
+        run.stop()
+        self.assertTrue(run.stop_requested())
+        self.assertEqual([e["kind"] for e in run.events()].count("stop_requested"), 1)
+        with self.assertRaises(ValueError):
+            run.stop()   # already stopping
+        with self.assertRaises(ValueError):
+            run.order("one more")
+        self.assertEqual(stat.S_IMODE((run.root / "stop").stat().st_mode) & 0o077, 0)
+
     def test_files_are_private(self):
         run = Run.create("t", {})
         run.event("clyde", "x")

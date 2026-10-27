@@ -4,6 +4,7 @@
     events.jsonl      one line per thing that happened (who, kind, data), appended as it happens
     ledger.jsonl      one line per model call group: who, model, usage, estimated USD
     approvals/<n>.json  a worker's request for a yes or no; written pending, answered by the REPL or `clyde station`
+    stop                present once the user asked, from the station, for every worker to stop
     orders/<n>.json     the user's request, from the station, to add a worker with a task or to give a worker a task; written pending, taken or refused by the run
     workers/<name>/   transcript.json and summary.md for each worker
 
@@ -201,6 +202,8 @@ class Run:
         pending = self.pending_orders()
         if state.get("status") != "running":
             raise ValueError("the run is not working right now: tasks and new workers can only be given while it is")
+        if self.stop_requested():
+            raise ValueError("the run is stopping")
         if not task:
             raise ValueError("say what the task is")
         if len(task) > ORDER_CHARS:
@@ -216,6 +219,20 @@ class Run:
                     {"id": order_id, "task": task, "status": "pending", "t": time.time(), **({"worker": worker} if worker else {})})
         self.event("user", "ordered", order=order_id, task=task[:200], **({"worker": worker} if worker else {}))
         return order_id
+
+    def stop(self) -> None:
+        """The user's request that every worker stop where it is: the run ends as stopped, pending requests are denied and nothing lands.
+        Raises ValueError (the reason, fit to show the user) when the run is not working or is already stopping."""
+        if self.state().get("status") != "running":
+            raise ValueError("the run is not working right now: there is nothing to stop")
+        if self.stop_requested():
+            raise ValueError("the run is already stopping")
+        (self.root / "stop").write_text("", encoding="utf-8")
+        os.chmod(self.root / "stop", 0o600)
+        self.event("user", "stop_requested")
+
+    def stop_requested(self) -> bool:
+        return (self.root / "stop").exists()
 
     def pending_orders(self) -> list[dict[str, Any]]:
         rows = [_read_json(p) for p in sorted((self.root / "orders").glob("*.json"))]

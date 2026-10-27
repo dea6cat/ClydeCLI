@@ -264,6 +264,17 @@ class TestAnswer(StationWebCase):
         self.assertEqual((status, "not working" in json.loads(text)["error"]), (409, True))
         self.assertEqual(len(run.pending_orders()), 1)   # only the first was filed
 
+    def test_the_page_can_stop_a_working_run_once_and_is_told_why_when_it_cannot(self):
+        run = self.run_with_events()
+        cookie = self.login()
+        self.assertEqual(self.request("POST", "/api/stop", token=self.token, body={"run": run.id})[0], 403)   # no cookie
+        self.assertEqual(self.request("POST", "/api/stop", cookie=cookie, token=self.token, body={"run": "../x"})[0], 400)
+        status, _, text = self.request("POST", "/api/stop", cookie=cookie, token=self.token, body={"run": run.id})
+        self.assertEqual((status, json.loads(text)), (200, {"ok": True}))
+        self.assertTrue(run.stop_requested())
+        status, _, text = self.request("POST", "/api/stop", cookie=cookie, token=self.token, body={"run": run.id})
+        self.assertEqual((status, "already stopping" in json.loads(text)["error"]), (409, True))
+
     def test_a_post_without_the_token_or_with_the_wrong_shape_changes_nothing(self):
         run = self.run_with_events()
         thread, got = self._waiting(run)
@@ -319,6 +330,11 @@ class TestPage(unittest.TestCase):
     def test_the_first_steps_card_is_ticked_by_records_and_can_be_hidden(self):
         page = station_web.PAGE
         for needle in ("function questBox", '"First steps"', "station.quests", "quests(state.runs"):
+            self.assertIn(needle, page)
+
+    def test_the_page_can_stop_a_working_run_after_a_confirm(self):
+        page = station_web.PAGE
+        for needle in ('id="stopRun"', '"Stop run"', 'api("/api/stop"', "function openStop", "stop_requested"):
             self.assertIn(needle, page)
 
     def test_the_scene_is_built_with_svg_nodes_and_text_and_a_private_window_cannot_break_the_page(self):
