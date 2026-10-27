@@ -190,6 +190,52 @@ class TestCompactConversation(unittest.TestCase):
         self.assertIn("Postgres 16", str(provider.requests[0]))   # the summarizer sees the old summary to update it
         self.assertIn("step 0", str(provider.requests[0]))        # and the requests older than the recent messages
 
+    def test_your_own_messages_come_back_word_for_word_whatever_the_summary_says(self):
+        from src.compact_service.service import compact_conversation
+        conv = self._make_conversation([
+            Message(role="user", content="Use Postgres 16 and never add an ORM, and do not touch migrations/."),
+            Message(role="assistant", content="Understood."),
+            Message(role="user", content=[ToolResultContentBlock(tool_use_id="t1", content="SECRET TOOL OUTPUT")]),
+            Message(role="user", content=[TextContentBlock(text="Now add the login page.")]),
+        ])
+        result = asyncio.run(compact_conversation(conv, FakeProvider(reply("A short summary that dropped every constraint.")), "fake-model"))
+        text = result.summary_text
+        self.assertIn("Your own messages, word for word", text)
+        self.assertIn("Use Postgres 16 and never add an ORM, and do not touch migrations/.", text)
+        self.assertIn("Now add the login page.", text)
+        self.assertNotIn("SECRET TOOL OUTPUT", text)   # a tool result is not something you said
+        self.assertLess(text.index("Postgres 16"), text.index("login page"))   # oldest first
+        again = asyncio.run(compact_conversation(self._make_conversation([Message(role="user", content="x"), Message(role="assistant", content="y")]),
+                                                 FakeProvider(ProviderError("fake", "down")), "fake-model"))
+        self.assertIn("--- you said ---\nx", again.summary_text)   # the fallback summary keeps them too
+
+    def test_the_pinned_words_fit_a_budget_newest_first_and_a_long_message_loses_its_middle(self):
+        from src.compact_service import service
+        words = [f"message {i} " + "w" * 900 for i in range(20)] + ["START " + "m" * 5_000 + " END"]
+        block = service._pin(words)
+        self.assertLessEqual(len(block), service.PIN_CHARS + service.PIN_EACH + 600)
+        self.assertIn("START", block)
+        self.assertIn(" END", block)
+        self.assertIn("characters left out", block)
+        self.assertIn("message 19 ", block)       # the newest of the rest is kept
+        self.assertNotIn("message 0 ", block)     # the oldest went
+        self.assertRegex(block, r"\(\d+ older messages are not kept here\.\)")
+        self.assertEqual(service._pin([]), "")
+
+    def test_a_second_compaction_carries_the_first_ones_words_on_once_and_the_summarizer_does_not_see_them_twice(self):
+        from src.compact_service.service import compact_conversation
+        conv = self._make_conversation([
+            Message(role="user", content="(first) never use an ORM"), Message(role="assistant", content="ok"),
+        ])
+        asyncio.run(compact_conversation(conv, FakeProvider(reply("Summary one.")), "fake-model"))
+        conv.messages += [Message(role="user", content="second: add the login page"), Message(role="assistant", content="ok")]
+        provider = FakeProvider(reply("Summary two."))
+        result = asyncio.run(compact_conversation(conv, provider, "fake-model"))
+        self.assertEqual(result.summary_text.count("(first) never use an ORM"), 1)   # carried on, a leading bracket does not lose it
+        self.assertEqual(result.summary_text.count("second: add the login page"), 1)
+        self.assertEqual(result.summary_text.count("Your own messages, word for word"), 1)
+        self.assertNotIn("--- you said ---", str(provider.requests[0]))   # the summarizer gets the previous summary without the block
+
     def test_boundary_and_summary_inserted(self):
         """Boundary and summary messages are inserted into conversation."""
         from src.compact_service.service import compact_conversation
