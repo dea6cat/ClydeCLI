@@ -25,7 +25,7 @@ from src.agent.agent_types import GENERAL, AgentType
 from src.agent.conversation import Conversation as History
 from src.agent import cli_workers
 from src.agent.harness import LOCAL_PROVIDERS, RUNNABLE_KINDS, Harness, can_work, discover_all, harness_by_name
-from src.agent.runs import Run, outbox_dir
+from src.agent.runs import MAX_TEAM, Run, outbox_dir
 from src.providers.base import stream_with_retry
 from src.providers.types import Conversation, Message
 from src.security.git_safe import git_cmd, git_env
@@ -271,19 +271,49 @@ def _work(run: Run, name: str, role: RoleAssignment, provider: Any, prompt: str,
     return out
 
 
+def _given_tools(role: RoleAssignment, advisor: bool, registry: Any, parent: ToolContext) -> list[str]:
+    if role.harness.kind == "cli":
+        return cli_workers.granted_tools(role.provider_name, advisor)
+    return [] if advisor else offered_tools(registry, AgentType(GENERAL, "orchestrated worker"), parent.permission_rules)
+
+
 def _record_tools(run: Run, plan: OrchestrationPlan, names: list[str], registry: Any, parent: ToolContext) -> None:
     """Record what each member was given to work with, so what the station shows as a capability is on record: a native
     worker the tools its loop is offered, a CLI worker its adapter's list, and a master or advisor model call none."""
-    def given(role: RoleAssignment, advisor: bool) -> list[str]:
-        if role.harness.kind == "cli":
-            return cli_workers.granted_tools(role.provider_name, advisor)
-        return [] if advisor else offered_tools(registry, AgentType(GENERAL, "orchestrated worker"), parent.permission_rules)
-
     run.event("master", "tools", tools=[])
     if plan.advisor:
-        run.event("advisor", "tools", tools=given(plan.advisor, True))
+        run.event("advisor", "tools", tools=_given_tools(plan.advisor, True, registry, parent))
     for name, role in zip(names, plan.workers):
-        run.event(name, "tools", tools=given(role, False))
+        run.event(name, "tools", tools=_given_tools(role, False, registry, parent))
+
+
+def _hand_over(run: Run, order: dict[str, Any], names: list[str], role: RoleAssignment, root: Path,
+               registry: Any, parent: ToolContext) -> tuple[str, Path] | None:
+    """Take a user's order for one more worker: its worktree, its place in the run's roles, its tools and Clyde's hand-off,
+    all recorded. Returns the new worker's name and worktree, or None after recording why the order was refused."""
+    if len(names) >= MAX_TEAM:
+        run.settle_order(order["id"], "refused", why=f"the team is full ({MAX_TEAM} workers)")
+        run.event("clyde", "order_refused", order=order["id"], note=f"the team is full ({MAX_TEAM} workers)")
+        return None
+    name = f"worker-{len(names) + 1}"
+    tree = run.root / "workspaces" / name
+    branch = f"clyde-run-{run.id}-{name}"
+    try:
+        _git(root, "worktree", "add", "-q", "-b", branch, str(tree), "HEAD")
+    except (RuntimeError, OSError) as e:
+        run.settle_order(order["id"], "refused", why=str(e)[:200])
+        run.event("clyde", "order_refused", order=order["id"], note=f"no worktree for it: {str(e)[:150]}")
+        return None
+    state = run.state()
+    roles = state.get("roles") or {}
+    run.update(roles={**roles, "workers": [*roles.get("workers", []), {"name": name, "model": role.ref}],
+                      "kinds": {**roles.get("kinds", {}), name: role.harness.kind}},
+               workspaces={**state.get("workspaces", {}), name: {"path": str(tree), "branch": branch}})
+    names.append(name)
+    run.event(name, "tools", tools=_given_tools(role, False, registry, parent))
+    run.event("clyde", "check", target=name, reason="brief", order=order["id"])   # Clyde takes the new worker its task
+    run.settle_order(order["id"], "accepted", worker=name)
+    return name, tree
 
 
 def orchestrate(plan: OrchestrationPlan, spec: str, *, workspace: Path, parent: ToolContext, registry: Any,
@@ -338,12 +368,21 @@ def orchestrate(plan: OrchestrationPlan, spec: str, *, workspace: Path, parent: 
         serial = any(w.provider_name in LOCAL_PROVIDERS for w in plan.workers)
         if serial:
             run.event("clyde", "serialized", note="a local model is among the workers: one at a time")
-        with ThreadPoolExecutor(max_workers=1 if serial else len(names)) as pool:
-            futures = [pool.submit(_work, run, n, w, provider_of(w), f"{t}\n\nThe overall spec, for context only. The other workers cover the rest: do only your task above.\n{spec}",
-                                   Path(workspaces[n]["path"]), parent, registry, cancel)
+
+        def prompt_for(task: str) -> str:
+            return f"{task}\n\nThe overall spec, for context only. The other workers cover the rest: do only your task above.\n{spec}"
+
+        with ThreadPoolExecutor(max_workers=1 if serial else MAX_TEAM) as pool:
+            futures = [pool.submit(_work, run, n, w, provider_of(w), prompt_for(t), Path(workspaces[n]["path"]), parent, registry, cancel)
                        for n, w, t in zip(names, plan.workers, split)]
-            while not all(f.done() for f in futures):
+            while True:
                 try:
+                    for order in (() if cancel.is_set() else run.pending_orders()):   # the user added a worker from the station, on the first worker's model
+                        joined = _hand_over(run, order, names, plan.workers[0], root, registry, parent)
+                        if joined:
+                            futures.append(pool.submit(_work, run, joined[0], plan.workers[0], provider_of(plan.workers[0]), prompt_for(order["task"]), joined[1], parent, registry, cancel))
+                    if all(f.done() for f in futures):
+                        break
                     for ask in run.pending():
                         run.event("clyde", "check", target=ask["who"], reason="approval", approval=ask["id"])   # Clyde brings it to you
                         run.answer(ask["id"], bool(on_approval and on_approval(ask)))
@@ -351,12 +390,14 @@ def orchestrate(plan: OrchestrationPlan, spec: str, *, workspace: Path, parent: 
                 except KeyboardInterrupt:   # Ctrl-C: tell every worker to stop, then wait for them to wind down
                     cancel.set()
             results = [f.result() for f in futures]
+        run.set_status("stopped" if cancel.is_set() else "reviewing")
+        for late in run.pending_orders():   # the station only files orders while the run is working: this one slipped in as it ended
+            run.settle_order(late["id"], "refused", why="the run had moved on")
+            run.event("clyde", "order_refused", order=late["id"], note="the run had moved on")
         if cancel.is_set():
-            run.set_status("stopped")
             _cleanup(run)
             return Outcome(run, "Stopped before the review.", "none", [r["name"] for r in results if not r["ok"]], notes)
 
-        run.set_status("reviewing")
         digest = "\n\n".join(
             f"## {r['name']} ({'finished' if r['ok'] else 'FAILED'}), files: {', '.join(r['files']) or 'none'}\n"
             f"{r['summary'][:_SUMMARY_CHARS]}\n\n```diff\n{r['patch'][:_PATCH_CHARS]}\n```" for r in results)
