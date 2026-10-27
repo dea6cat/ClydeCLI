@@ -125,6 +125,8 @@ class TestArt(StationWebCase):
         furniture = re.search(r"const FURN = \{(.*?)\};", station_web.PAGE, re.S).group(1)
         for name in re.findall(r':\s*"([a-z\-]+)"', furniture):
             names |= {f"furn-{name}-off", f"furn-{name}-on"}   # each piece of furniture has an unlit and a lit picture
+        names |= {f"tile-wall-{kind}-{side}" for kind in ("glass", "brick") for side in ("a", "b")}   # the walls are built from these names in code
+        self.assertIn('"tile-wall-" + kind', station_web.PAGE)
         self.assertGreater(len(names), 20)
         for name in names:
             self.assertTrue((station_web.ART / f"{name}.png").is_file(), name)

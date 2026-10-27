@@ -69,7 +69,7 @@ body.cinema #cinemaTab { display: block; }
 .railgrip::after { content: ""; position: absolute; left: 5px; top: 40%; bottom: 40%; width: 2px; border-radius: 2px; background: var(--ink); opacity: 0; transition: opacity .15s; }
 .railgrip:hover::after { opacity: .35; }
 header .tool:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-@media (max-width: 700px) { header .muted:not(#status) { display: none; } }
+@media (max-width: 700px) { header > .muted:not(#status):not(#counts) { display: none; } }
 .muted { color: var(--muted); }
 .spacer { flex: 1; }
 select { font: inherit; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); }
@@ -122,7 +122,7 @@ button.act:focus-visible, .card:focus-visible, select:focus-visible { outline: 2
 /* A run: the scene on the left, a glass rail on the right (crew, what needs your OK, the event feed), as StarNet frames its station. */
 .run-body, .scene-col, .stage { position: absolute; inset: 0; }
 .zoom { position: absolute; left: 12px; bottom: 72px; display: flex; gap: 6px; z-index: 3; }
-@media (max-width: 700px) { .zoom { left: auto; right: 12px; bottom: 12px; } }   /* the legend wraps tall on a phone, so the zoom keys move out from under it */
+@media (max-width: 700px) { .zoom { left: auto; right: 12px; bottom: 110px; } }   /* the legend wraps tall on a phone, so the zoom keys move out from under it */
 .zoom button { width: 30px; height: 30px; border-radius: 8px; border: 1px solid rgba(255,255,255,.25); background: rgba(10,10,16,.65); color: #fff; font: 600 16px/1 system-ui; cursor: pointer; backdrop-filter: blur(6px); }
 .zoom button:hover { background: rgba(10,10,16,.85); } .zoom button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .rail { position: absolute; top: 12px; right: 12px; bottom: 12px; z-index: 5; width: min(var(--railw, 340px), calc(100vw - 24px)); display: flex; flex-direction: column; gap: 12px; min-height: 0; transition: transform .25s ease; }
@@ -238,6 +238,8 @@ button.act.allow { border-color: rgba(123,214,166,.6); } button.act.deny { borde
 .needs button.mini { border-color: rgba(37,29,20,.55); background: transparent; color: #251d14; }
 .needs button.mini:hover { background: rgba(37,29,20,.09); border-color: #251d14; }
 .needs button.mini:focus-visible { outline-color: #8c2f39; }
+/* phones: the header may wrap to two rows (the counts keep their line), so the run's card sits below it; this block comes last so it wins */
+@media (max-width: 700px) { header { flex-wrap: wrap; row-gap: 4px; } #counts { flex-basis: 100%; order: 5; white-space: normal; } .run-info { top: 96px; padding: 8px 12px; } .run-head h2 { font-size: 14px; flex-basis: 100%; } .run-info .chip.run-id { display: none; } }
 @media (pointer: coarse) { header .tool, button.mini, button.act { min-height: 40px; padding-inline: 14px; } }
 @media (prefers-reduced-motion: reduce) { .link.live i, .dot.on, .portrait .lamp.on { animation: none; } * { transition-duration: .01ms !important; } }
 </style>
@@ -508,9 +510,9 @@ function bayLayout(i, wall) {   // a workshop floor plan: every one-sided piece 
   let cx = 2.2, cy = 2.0;   // the north row starts clear of the west column
   for (const [f, len, dep] of PIECES) {
     if (vertical && lane(cx, cx + len)) cx = door + 1.6;
-    if (cx + len <= w - 0.5) { slots[f] = { box: [cx, 0.3, len, dep], stand: [cx + len / 2, 0.3 + dep + 1.0] }; cx += len + 0.5; continue; }
+    if (cx + len <= w - 0.5) { slots[f] = { box: [cx, 0.15, len, dep], stand: [cx + len / 2, 0.15 + dep + 1.0] }; cx += len + 0.5; continue; }
     if (!vertical && lane(cy, cy + len)) cy = door + 1.6;
-    slots[f] = { box: [0.3, cy, dep, len], stand: [0.3 + dep + 1.0, cy + len / 2] };   // what does not fit on the north wall goes down the west wall
+    slots[f] = { box: [0.15, cy, dep, len], stand: [0.15 + dep + 1.0, cy + len / 2] };   // what does not fit on the north wall goes down the west wall
     cy += len + 0.5;
   }
   const home = vertical ? [door, d * 0.56] : [w * 0.56, door], check = wall === "n" ? [door, home[1] - 1.7] : wall === "s" ? [door, home[1] + 1.7] : [home[0] + 1.7, door];
@@ -719,15 +721,13 @@ function wallRuns(a, b, gaps) {   // the stretches of a wall between its doorway
   for (const [g0, g1] of gaps.slice().sort((x, y) => x[0] - y[0]).concat([[b, b]])) { if (g0 > from) runs.push([from, g0]); from = Math.max(from, g1); }
   return runs;
 }
-function wallPanel(layer, plane, c, a, b, color, pal) {   // a back wall: solid to the waist, glass above it, so you can see through it into the next room
-  poly(layer, wallQuad(plane, c, a, b, 0, 28, 0), color, { stroke: "#000", "stroke-width": 0.8, "stroke-opacity": 0.5 });
-  poly(layer, wallQuad(plane, c, a, b, 28, WALL, 0), pal.screen, { opacity: 0.16, stroke: pal.trim, "stroke-width": 1 });
-  poly(layer, wallQuad(plane, c, a, b, WALL - 3, WALL, 0), pal.trim);
-  poly(layer, wallQuad(plane, c, a, b, 26, 30, 0), pal.trim);
-  const P = (u, h) => plane === "x" ? at(c, u, 0, h) : at(u, c, 0, h);
-  let bars = "";
-  for (let u = Math.ceil(a / 2) * 2; u < b; u += 2) if (u > a) bars += lineAt(P(u, 30), P(u, WALL));
-  layer.append(sv("path", { d: bars, stroke: pal.trim, "stroke-width": 1.4, opacity: 0.7 }));
+const WALL_OFF = 7;   // how far below a wall's centre line the picture's bottom edge sits (the wall has thickness)
+function wallRun(layer, plane, c, a, b, kind) {   // a back wall of sprites, two tiles to a piece: the "-a" pictures run along x (the north wall), the "-b" ones along y (the west wall); glass-topped for a see-through room, solid brick where things hang on it
+  const n = Math.max(1, Math.round((b - a) / 2)), name = "tile-wall-" + kind + (plane === "y" ? "-a" : "-b"), [sw, sh] = SPR[name];
+  for (let i = 0; i < n; i++) {
+    const u0 = a + (b - a) * i / n, u1 = a + (b - a) * (i + 1) / n, mid = plane === "y" ? at((u0 + u1) / 2, c, 0) : at(c, (u0 + u1) / 2, 0), w = (u1 - u0) * HX + 4, h = sh * w / sw;
+    layer.append(sprite(name, mid[0] - w / 2, mid[1] - h + WALL_OFF, w, h));
+  }
 }
 function paved(layer, defs, x, y, w, d, name, uid) {   // a floor: the picture repeated over blocks of 2 x 2 tiles and cut to the rectangle
   const [sw, sh] = SPR[name], k = 4 * HX / sw, id = "fc" + uid + Math.round(x * 7 + y * 13 + w * 3), clip = sv("clipPath", { id }), g = sv("g", { "clip-path": "url(#" + id + ")" }), blocks = [];
@@ -766,16 +766,14 @@ function worldStatic(layer, defs, p, pal, uid, words) {   // the slab, the court
     else if (r.kind === "bay") for (const g of r.rugs) { poly(layer, quad(g.box[0], g.box[1], g.box[2], g.box[3], 0), g.c1, { opacity: 0.9, stroke: g.c2, "stroke-width": 1.6 }); poly(layer, quad(g.box[0] + 0.25, g.box[1] + 0.25, g.box[2] - 0.5, g.box[3] - 0.5, 0), "none", { stroke: g.c2, "stroke-width": 0.8, opacity: 0.6 }); }
     else if (r.kind === "bar") poly(layer, quad(r.x + 3.5, r.y + 6.8, 5, 3, 0), pal.rug1, { opacity: 0.9, stroke: pal.rug2, "stroke-width": 1.6 });
     const gaps = (side) => doorsOf(p, r).filter((d) => d[0] === side).map((d) => [d[1], d[2]]);
-    for (const [a, b] of wallRuns(r.y, r.y + r.d, gaps("w"))) wallPanel(layer, "x", r.x, a, b, pal.wallL, pal);
-    for (const [a, b] of wallRuns(r.x, r.x + r.w, gaps("n"))) wallPanel(layer, "y", r.y, a, b, pal.wallR, pal);
-    layer.append(sv("path", { d: lineAt(at(r.x, r.y, 0, 0), at(r.x, r.y, 0, WALL)), stroke: pal.trim, "stroke-width": 4 }));
+    for (const [a, b] of wallRuns(r.y, r.y + r.d, gaps("w"))) wallRun(layer, "x", r.x, a, b, r.kind === "bay" ? "glass" : "brick");
+    for (const [a, b] of wallRuns(r.x, r.x + r.w, gaps("n"))) wallRun(layer, "y", r.y, a, b, r.kind === "bay" ? "glass" : "brick");
     const title = r.kind === "deck" ? words.deck : r.kind === "outbox" ? words.outbox : r.kind === "bar" ? words.bar : words.bay + " " + number(r.id);
     plaque(layer, "y", r.y, r.x + r.w / 2, WALL + 16, title, pal, 0);
     const hang = (name, u, h, wpx) => { const [sw, sh] = SPR[name], c = at(u, r.y, 0, h); layer.append(sprite(name, c[0] - wpx / 2, c[1] - wpx * sh / sw / 2, wpx, wpx * sh / sw)); };   // something hung on the back wall
     if (r.kind === "deck") { hang("tile-clock-b", r.x + 13, 40, 34); hang("tile-picture-city", r.x + 8, 38, 30); hang("tile-picture-hills-b", r.x + 18, 38, 34); }
     else if (r.kind === "bar") { hang("tile-neon-b", r.x + 6, 42, 52); hang("tile-picture-leaf", r.x + 2.5, 38, 26); hang("tile-picture-hills-b", r.x + 9.5, 38, 32); }
     else if (r.kind === "outbox") hang("tile-clock-b", r.x + 4, 40, 30);
-    else if (r.kind === "bay" && r.wall !== "e") hang("tile-picture-hills-b", r.x + r.w / 2, 36, 30);
   }
 }
 function frontStatic(layer, defs, p, pal, uid) {   // what stands in front of the crew: a rail along each hallway, with a post every so often
@@ -1183,7 +1181,8 @@ function needsBox(run) {   // the top-left card's "needs you" list: only what wa
 function paintHeader() {   // the link chip and the crew counts: only what the server answered and the runs recorded
   const kind = linkState(state.link.ok, state.runs);
   $link.className = "chip link " + kind;
-  $linkText.textContent = kind === "live" ? "live" : kind === "standby" ? "standby: nothing running" : "link down" + (state.link.reason ? ": " + state.link.reason : "");
+  $linkText.textContent = kind === "live" ? "live" : kind === "standby" ? "standby" : "link down";
+  $link.title = kind === "live" ? "The server answers and a run is live" : kind === "standby" ? "The server answers, nothing is running" : "The server did not answer" + (state.link.reason ? ": " + state.link.reason : "");
   $retry.hidden = kind !== "down";
   $counts.textContent = state.runs.length ? countsText(crewCounts(state.runs, crewList)) : "";
 }
@@ -1203,7 +1202,7 @@ function draw() {
     const section = el("section", "run");
     const head = el("div", "run-head");
     const spend = "$" + run.spend.usd.toFixed(4) + (run.spend.unpriced ? " + " + run.spend.unpriced + " unpriced" : "");
-    head.append(el("h2", "", run.task || run.id), el("span", "chip " + run.status, run.status.replace("_", " ")), el("span", "chip", spend), el("span", "chip", run.id));
+    head.append(el("h2", "", run.task || run.id), el("span", "chip " + run.status, run.status.replace("_", " ")), el("span", "chip", spend), el("span", "chip run-id", run.id));
     const info = el("div", "run-info");
     info.append(head, el("div", "clyde", "Clyde: " + run.clyde), needsBox(run));
     section.append(info);
