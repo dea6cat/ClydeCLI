@@ -48,6 +48,15 @@ class Plan(unittest.TestCase):
         self.assertIn("one at a time", orchestration.format_plan(plan))
 
 
+class TeamSize(unittest.TestCase):
+    def test_a_plan_has_at_most_as_many_workers_as_the_station_has_room_for(self):
+        from src.agent.runs import MAX_TEAM
+        harnesses = [_harness("provider:m"), _harness("provider:w")]
+        many = [("provider:w", "m")] * (MAX_TEAM + 1)
+        self.assertIn(f"At most {MAX_TEAM} workers", build_plan("t", ("provider:m", "m"), None, many, harnesses))
+        self.assertNotIsInstance(build_plan("t", ("provider:m", "m"), None, many[:MAX_TEAM], harnesses), str)
+
+
 class CostCapPrompt(unittest.TestCase):
     def test_the_cap_is_a_positive_number_of_dollars_or_empty(self):
         from src.repl.orchestrate import _parse_cap
