@@ -14,6 +14,7 @@ from typing import Any, Callable
 from ..runtime import activity
 from ..tool_system.checks import edit_check_for
 from . import trace
+from ..security import injection
 from ..tool_system.registry import ToolRegistry
 from ..tool_system.context import ToolContext
 from ..tool_system.hooks import run_lifecycle
@@ -505,7 +506,9 @@ def run_agent_loop(
                 edit_check = edit_check_for(tool_name, tool_input, tool_context.workspace_root)
                 result = tool_registry.dispatch(ToolCall(name=tool_name, input=tool_input, tool_use_id=tool_id),
                                                 tool_context)
-                result_output = result.output
+                result_output, flagged = injection.guard(tool_name, result.output)   # an outside tool's answer that addresses the model gets a notice
+                if flagged:
+                    trace.record("injection_flag", tool=tool_name, findings=flagged)
                 # New lint/type problems ride on the edit's own result (like hook feedback), so the
                 # model sees them on its next turn without breaking tool_use/tool_result pairing.
                 problems = edit_check.report() if edit_check and not result.is_error else None
