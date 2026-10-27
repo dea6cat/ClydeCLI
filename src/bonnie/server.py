@@ -286,8 +286,7 @@ class Bonnie:
         self.events.emit("automation", automation=row["id"], name=row["name"])
 
     def tick(self, now: datetime.datetime) -> None:
-        for row in automations.due(self.project, now):
-            automations.mark_ran(row["id"], now)
+        for row in automations.due(self.project, now, claim=True):   # claimed in one step: a second window asking now gets nothing
             self.fire(row)
 
     def start_scheduler(self, every: float = 20.0) -> None:
@@ -573,7 +572,14 @@ def make_server(bonnie: Bonnie, host: str = "127.0.0.1", port: int = 0) -> Threa
             elif url.path == "/api/artifact":
                 self._artifact_preview(query.get("path", [""])[0])
             elif url.path == "/api/automations":
-                self._json(200, {"automations": [{**a, "when": automations.describe(a["schedule"])} for a in automations.listing(bonnie.project)]})
+                self._json(200, {"automations": [{**a, "when": automations.describe(a["schedule"]), "last": next(iter(automations.history(bonnie.project, a["id"], 1)), None)}
+                                                 for a in automations.listing(bonnie.project)]})
+            elif url.path == "/api/automation/history":
+                automation_id = query.get("id", [""])[0]
+                if not _ID.match(automation_id):
+                    self._json(400, {"error": "unknown automation"})
+                else:
+                    self._json(200, {"history": automations.history(bonnie.project, automation_id, 20)})
             elif url.path == "/api/providers":
                 self._json(200, providers.listing(bonnie.repl.registry))
             elif url.path == "/api/dirs":
@@ -849,6 +855,7 @@ def make_server(bonnie: Bonnie, host: str = "127.0.0.1", port: int = 0) -> Threa
             if row is None:
                 self._json(404, {"error": "no such automation"})
             elif action == "run":
+                automations.record(row, "ran", "you pressed Run now")
                 bonnie.fire(row)
                 self._json(200, {"queued": bonnie.control.prompts.qsize()})
             else:

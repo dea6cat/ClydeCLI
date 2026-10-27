@@ -324,6 +324,7 @@ main[data-view="auto"] #auto-view { display: flex; }
 .arow .n { font-weight: 700; }
 .arow .pr { color: var(--dim); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .arow .mt { font: 400 12px/1.5 var(--mono); color: var(--dim); }
+.arow .alog { font: 400 12px/1.6 var(--mono); color: var(--dim); padding: 4px 0 0 10px; border-left: 2px solid var(--line); }
 .arow.off .n { color: var(--dim); }
 .arow .ctl { display: flex; gap: 8px; flex-wrap: wrap; }
 .art-top { display: flex; align-items: center; gap: 14px; padding: 12px 22px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
@@ -1429,10 +1430,20 @@ function paintAutomations(rows) {
     run.addEventListener("click", act("run", () => toast("Queued \u201c" + a.name + "\u201d")));
     pause.addEventListener("click", act(a.paused ? "resume" : "pause"));
     del.addEventListener("click", act("delete"));
+    const log = h("div", { class: "alog", hidden: "" }), more = h("button", { type: "button", class: "btn cut" }, "History");
+    more.addEventListener("click", async () => {
+      if (!log.hidden) { log.hidden = true; return; }
+      try {
+        const rows = (await api("/api/automation/history?id=" + encodeURIComponent(a.id))).history;
+        log.replaceChildren(...(rows.length ? rows.map((e) => h("div", {}, when(e.t) + " \u00b7 " + e.what + " \u00b7 " + e.why)) : [h("div", {}, "Nothing decided yet.")]));
+        log.hidden = false;
+      } catch (e) { toast(e.message); }
+    });
     return h("div", { class: "arow" + (a.paused ? " off" : "") },
       h("div", { class: "n" }, a.name), h("div", { class: "pr", title: a.prompt }, a.prompt),
       h("div", { class: "mt" }, [a.when, a.paused ? "paused" : "next " + when(a.next_run), a.last_run ? "last " + when(a.last_run) : "never run", a.edits ? "can change files" : "read-only"].join(" \u00b7 ")),
-      h("div", { class: "ctl" }, run, pause, del));
+      ...(a.last ? [h("div", { class: "mt", title: a.last.why }, "Last decision: " + a.last.what + " \u00b7 " + a.last.why)] : []),
+      h("div", { class: "ctl" }, run, pause, del, more), log);
   }) : [h("div", { class: "art-empty" }, "No automations in this project yet.")]));
 }
 async function loadAutomations() { paintAutomations((await api("/api/automations")).automations); }
