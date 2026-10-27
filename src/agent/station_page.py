@@ -127,7 +127,8 @@ button.act:focus-visible, .card:focus-visible, select:focus-visible { outline: 2
 .zoom button:hover { background: rgba(10,10,16,.85); } .zoom button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .rail { position: absolute; top: 12px; right: 12px; bottom: 12px; z-index: 5; width: min(var(--railw, 340px), calc(100vw - 24px)); display: flex; flex-direction: column; gap: 12px; min-height: 0; transition: transform .25s ease; }
 body.rail-off .rail { transform: translateX(calc(100% + 24px)); visibility: hidden; transition: transform .25s ease, visibility 0s .25s; }
-.rail > .glass.crew { flex: 1 1 auto; }
+.rail > .glass.crew { flex: 1 1 0; min-height: 120px; }   /* the crew list gives way first and scrolls */
+.rail > .glass.asking { flex: none; max-height: 45%; overflow: auto; }   /* a request is never squeezed: it keeps its buttons and scrolls inside if it is long */
 .glass { background: linear-gradient(125deg, rgba(255,255,255,.07), rgba(255,255,255,.02) 48%, transparent), color-mix(in srgb, var(--panel) 86%, transparent);
   border: 1px solid color-mix(in srgb, var(--ink) 14%, transparent); border-radius: 12px; box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 6px 22px rgba(0,0,0,.28); min-height: 0; display: flex; flex-direction: column; }
 .glass.asking { border-color: var(--warn); box-shadow: 0 0 0 1px color-mix(in srgb, var(--warn) 50%, transparent), 0 6px 22px rgba(0,0,0,.28); }
@@ -197,6 +198,48 @@ body.rail-off .rail { transform: translateX(calc(100% + 24px)); visibility: hidd
 @media (prefers-reduced-motion: reduce) {
   .portrait .lamp, .dot, .map .lane.waiting, .amb, .blink, .blink2, .blink3, .flick, .flick2, .drift, .drift2, .spin, .spinr, .rain, .puff, .sweep, .twinkle, .mote, .bars, .glint, .drive { animation: none !important; }
 }
+
+/* ---- polish: the chrome is ink glass with brass hairlines whatever the system theme (the island is always night); one ivory telegram slip, the list of what needs you ---- */
+body { --panel: #15172a; --ink: #efe6cc; --muted: #aaa28e; --line: #3b3a52; --accent: #7bd6a6; --ok: #7bd6a6; --warn: #e9a94c; --bad: #f08a82; --idle: #8b8577; --brass: #c99a2e; --brass-soft: rgba(201,154,46,.38); --display: "Futura", "Avenir Next", "Century Gothic", "Trebuchet MS", system-ui, sans-serif; background: #0b0e1c; }
+h1, .glass h3, .run-head h2, .crew-row .nm, .needs-head { font-family: var(--display); }
+header, .run-info, .legend, .glass { background: linear-gradient(160deg, rgba(255,255,255,.055), rgba(255,255,255,0) 42%), rgba(15,17,32,.86); border: 1px solid var(--brass-soft); box-shadow: inset 0 0 0 1px rgba(0,0,0,.45), 0 10px 28px rgba(0,0,0,.4); backdrop-filter: blur(10px); }
+header { border-radius: 14px; padding: 7px 12px; gap: 10px; }
+h1 { font-size: 17px; font-weight: 600; letter-spacing: .02em; color: #f6ecce; }
+.run-info { border-radius: 14px; padding: 12px 14px; }
+.run-head h2 { font-size: 16px; font-weight: 600; letter-spacing: .01em; }
+.clyde { color: var(--muted); }
+.chip { background: rgba(255,255,255,.04); font-variant-numeric: tabular-nums; }
+.chip.running, .chip.reviewing { background: rgba(123,214,166,.1); }
+header .tool, button.mini, button.act { font-family: inherit; border: 1px solid rgba(239,230,204,.28); background: rgba(255,255,255,.04); color: var(--ink); border-radius: 8px; transition: background .15s, border-color .15s; }
+header .tool:hover, button.mini:hover, button.act:hover { background: rgba(201,154,46,.16); border-color: var(--brass); }
+header .tool[aria-pressed="true"] { border-color: var(--brass); background: rgba(201,154,46,.12); }
+header .tool:focus-visible, button.mini:focus-visible, button.act:focus-visible, #cinemaTab:focus-visible, .crew-row:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+button.act.allow { border-color: rgba(123,214,166,.6); } button.act.deny { border-color: rgba(240,138,130,.6); }
+.glass { border-radius: 14px; }
+.glass h3 { padding: 11px 14px 9px; font-size: 15px; font-weight: 600; letter-spacing: .01em; text-transform: none; border-bottom: 1px solid var(--brass-soft); }
+.glass h3 small { font-family: system-ui, sans-serif; font-size: 12px; font-variant-numeric: tabular-nums; }
+.glass.asking { border-color: var(--warn); }
+.crew-row { border-radius: 10px; }
+.crew-row:hover, .crew-row[aria-pressed="true"] { background: rgba(201,154,46,.09); border-color: var(--brass-soft); }
+.portrait { border-color: var(--brass-soft); }
+.rail .ask { border-radius: 10px; }
+.log { font-variant-numeric: tabular-nums; }
+.legend { border-radius: 12px; font-size: 12px; padding: 7px 12px; }
+.legend summary { color: var(--ink); }
+#cinemaTab { background: rgba(15,17,32,.86); border-color: var(--brass-soft); }
+#counts, .need .age { font-variant-numeric: tabular-nums; }
+/* the telegram slip */
+.needs { margin: 12px -4px -4px; padding: 10px 14px 12px; background: #eee2c2; color: #251d14; border-radius: 6px; border: 0; border-left: 5px solid #8c2f39; box-shadow: inset 0 1px 0 rgba(255,255,255,.55), 0 10px 22px rgba(0,0,0,.45); }
+.needs-head { font-size: 15px; font-weight: 600; letter-spacing: .01em; text-transform: none; color: #8c2f39; margin-bottom: 4px; }
+.need { padding: 6px 0; border-top: 1px dashed rgba(37,29,20,.28); font-size: 14px; }
+.need:first-of-type { border-top: 0; }
+.need i { background: #b26a12; } .need.failure i { background: #a3302a; }
+.need .age { color: #655840; }
+.needs button.mini { border-color: rgba(37,29,20,.55); background: transparent; color: #251d14; }
+.needs button.mini:hover { background: rgba(37,29,20,.09); border-color: #251d14; }
+.needs button.mini:focus-visible { outline-color: #8c2f39; }
+@media (pointer: coarse) { header .tool, button.mini, button.act { min-height: 40px; padding-inline: 14px; } }
+@media (prefers-reduced-motion: reduce) { .link.live i, .dot.on, .portrait .lamp.on { animation: none; } * { transition-duration: .01ms !important; } }
 </style>
 </head>
 <body>
@@ -1070,7 +1113,7 @@ function rail(run) {
   grip.setAttribute("role", "separator"); grip.setAttribute("aria-orientation", "vertical"); grip.title = "Drag to resize, double-click to reset";
   side.append(grip);
   if (run.asks.length) {
-    const needs = el("section", "glass asking"), head = el("h3", "", "Needs your OK");
+    const needs = el("section", "glass asking"), head = el("h3", "", "To approve");
     head.append(el("small", "", run.asks.length + " waiting"));
     needs.append(head, asks(run));
     side.append(needs);
