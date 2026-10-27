@@ -106,8 +106,11 @@ def _nearest_hint(content: str, old: str) -> str:
     )
 
 
-def _apply_single_edit(content: str, old: str, new: str) -> tuple[str, str | None]:
-    """Replace the unique region old_string refers to; (new content, what the match ignored or None when exact).
+MAX_EDITS = 50   # in one call
+
+
+def _span(content: str, old: str, new: str) -> tuple[int, int, str, str | None]:
+    """Where the unique region old_string refers to is, and what replaces it: (start, end, text, what the match ignored or None when exact).
     Raises ToolInputError when none or several match."""
     resolved = _resolve_edit(content, old)
     if resolved is None:
@@ -121,7 +124,62 @@ def _apply_single_edit(content: str, old: str, new: str) -> tuple[str, str | Non
     # old_string replaced whole lines but new_string dropped the final newline: don't merge the next line.
     if old.endswith("\n") and rendered and not rendered.endswith("\n") and end < len(content) and content[end] != "\n":
         rendered += "\n"
+    return start, end, rendered, how
+
+
+def _apply_single_edit(content: str, old: str, new: str) -> tuple[str, str | None]:
+    """Replace the unique region old_string refers to; (new content, what the match ignored or None when exact)."""
+    start, end, rendered, how = _span(content, old, new)
     return content[:start] + rendered + content[end:], how
+
+
+def _apply_edits(content: str, edits: list[dict[str, Any]]) -> tuple[str, list[str]]:
+    """Every edit matched against the ORIGINAL content (not one after another), all or nothing: (the new content, what loose matches ignored).
+    Raises ToolInputError naming the edit that cannot be made, or two that touch the same text."""
+    spans: list[tuple[int, int, str, int]] = []
+    ignored: list[str] = []
+    for i, e in enumerate(edits):
+        old, new = e["old_string"], e["new_string"]
+        try:
+            if e.get("replace_all"):
+                if old not in content:
+                    raise ToolInputError("old_string not found in file" + _nearest_hint(content, old))
+                found, at = [], content.find(old)
+                while old and at != -1:
+                    found.append((at, at + len(old), new, i))
+                    at = content.find(old, at + len(old))
+                spans += found
+            else:
+                start, end, text, how = _span(content, old, new)
+                spans.append((start, end, text, i))
+                if how and how not in ignored:
+                    ignored.append(how)
+        except ToolInputError as err:
+            raise ToolInputError(f"edits[{i}]: {err}") from err
+    spans.sort()
+    for before, after in zip(spans, spans[1:]):
+        if after[0] < before[1]:
+            raise ToolInputError(f"edits[{before[3]}] and edits[{after[3]}] touch the same text: merge them into one edit")
+    for start, end, text, _ in reversed(spans):
+        content = content[:start] + text + content[end:]
+    return content, ignored
+
+
+def _edits_of(tool_input: dict[str, Any]) -> list[dict[str, Any]] | None:
+    """The `edits` list of a call that has one, checked; None for the single old_string/new_string form."""
+    edits = tool_input.get("edits")
+    if edits is None:
+        return None
+    if "old_string" in tool_input or "new_string" in tool_input:
+        raise ToolInputError("give either old_string and new_string or edits, not both")
+    if not isinstance(edits, list) or not edits:
+        raise ToolInputError("edits must be a list of one or more {old_string, new_string}")
+    if len(edits) > MAX_EDITS:
+        raise ToolInputError(f"at most {MAX_EDITS} edits in one call")
+    for i, e in enumerate(edits):
+        if not isinstance(e, dict) or not isinstance(e.get("old_string"), str) or not isinstance(e.get("new_string"), str) or not e["old_string"]:
+            raise ToolInputError(f"edits[{i}] needs a non-empty old_string and a new_string, both text")
+    return edits
 
 
 class FileEditTool:
@@ -130,7 +188,9 @@ class FileEditTool:
             name="Edit",
             description=(
                 "Performs string replacements in files. old_string should match the file exactly; "
-                "a unique match that differs only in trailing whitespace or indentation is also accepted."
+                "a unique match that differs only in trailing whitespace or indentation is also accepted. "
+                "To change several places in one file, give edits (a list of old_string/new_string) in one call instead of several calls: "
+                "each is matched against the file as it is now, none may touch the same text, and all are made or none."
             ),
             input_schema={
                 "type": "object",
@@ -140,8 +200,11 @@ class FileEditTool:
                     "old_string": {"type": "string"},
                     "new_string": {"type": "string"},
                     "replace_all": {"type": "boolean"},
+                    "edits": {"type": "array", "items": {"type": "object", "additionalProperties": False,
+                                                          "properties": {"old_string": {"type": "string"}, "new_string": {"type": "string"}, "replace_all": {"type": "boolean"}},
+                                                          "required": ["old_string", "new_string"]}},
                 },
-                "required": ["file_path", "old_string", "new_string"],
+                "required": ["file_path"],
             },
             is_destructive=True,
             max_result_size_chars=100_000,
@@ -170,14 +233,14 @@ class FileEditTool:
 
     def run(self, tool_input: dict[str, Any], context: ToolContext) -> ToolResult:
         file_path = tool_input["file_path"]
-        old = tool_input["old_string"]
-        new = tool_input["new_string"]
+        edits = _edits_of(tool_input)
+        old, new = tool_input.get("old_string"), tool_input.get("new_string")
         replace_all = bool(tool_input.get("replace_all", False))
 
         if not isinstance(file_path, str):
             raise ToolInputError("file_path must be a string")
-        if not isinstance(old, str) or not isinstance(new, str):
-            raise ToolInputError("old_string/new_string must be strings")
+        if edits is None and (not isinstance(old, str) or not isinstance(new, str)):
+            raise ToolInputError("give old_string and new_string (both text), or edits")
 
         path = context.ensure_allowed_path(file_path)
 
@@ -188,7 +251,10 @@ class FileEditTool:
 
         original_file = path.read_text(encoding="utf-8", errors="replace")
         how = None
-        if replace_all:
+        if edits is not None:
+            updated, ignored = _apply_edits(original_file, edits)
+            how = " and ".join(ignored) or None
+        elif replace_all:
             if old not in original_file:
                 raise ToolInputError("old_string not found in file" + _nearest_hint(original_file, old))
             updated = original_file.replace(old, new)
@@ -212,12 +278,13 @@ class FileEditTool:
         hunks = unified_diff_hunks(diff_lines)
         output = {
             "filePath": str(path),
-            "oldString": old,
-            "newString": new,
+            "oldString": old if edits is None else f"({len(edits)} edits)",
+            "newString": new if edits is None else f"({len(edits)} edits)",
             "originalFile": original_file,
             "structuredPatch": hunks,
             "userModified": False,
-            "replaceAll": bool(replace_all),
+            "replaceAll": bool(replace_all) or bool(edits and any(e.get("replace_all") for e in edits)),
+            **({"edits": len(edits)} if edits is not None else {}),
         }
         if how:
             # The match was not exact: say so to the model (it may have misread the file) and to the user and the trace.

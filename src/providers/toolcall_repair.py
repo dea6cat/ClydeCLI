@@ -48,6 +48,18 @@ def _unwrap_nested(args: dict) -> tuple[dict, str] | None:
     return None
 
 
+def _edits_as_list(name: str, args: dict) -> dict:
+    """Edit's `edits` sent as a JSON string, or as one edit object instead of a list (some models do both), made the list it should be."""
+    edits = args.get("edits")
+    if name != "Edit" or edits is None:
+        return args
+    if isinstance(edits, str):
+        edits = loads_tolerant(edits)
+    if isinstance(edits, dict):
+        edits = [edits]
+    return {**args, "edits": edits} if isinstance(edits, list) else args
+
+
 def coerce_tool_args(name: str, args, known: tuple[str, ...] = ()) -> tuple[str, dict]:
     """Normalize a model's (name, arguments) into a clean (name, dict). A name found inside a
     wrapper overrides an empty or unknown outer name. Pure."""
@@ -55,7 +67,7 @@ def coerce_tool_args(name: str, args, known: tuple[str, ...] = ()) -> tuple[str,
     args = _as_arg_dict(args)
     unwrapped = _unwrap_nested(args)
     if unwrapped is None:
-        return name, args
+        return name, _edits_as_list(name, args)
     inner, wrapped_name = unwrapped
     eff_name = name
     if wrapped_name and (not name or (known and name not in known)):
@@ -63,8 +75,8 @@ def coerce_tool_args(name: str, args, known: tuple[str, ...] = ()) -> tuple[str,
     # A wrapper that repeats the called tool's own name is the model echoing the call it is making (seen from
     # Qwen2.5-Coder GGUF), so any tool can be unwrapped then: no real schema has a `name` equal to its tool.
     if eff_name in _UNWRAP_TOOLS or (name and wrapped_name == name):
-        return eff_name, inner
-    return name, args
+        return eff_name, _edits_as_list(eff_name, inner)
+    return name, _edits_as_list(name, args)
 
 
 _TRAILING_COMMA_RE = re.compile(r",(\s*[}\]])")
