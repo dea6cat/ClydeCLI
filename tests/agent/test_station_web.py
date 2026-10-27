@@ -342,7 +342,8 @@ class TestPage(unittest.TestCase):
         art = Path(station_web.__file__).parent / "station_art"
         self.assertIn('f.back ? "-back"', station_web.PAGE)
         self.assertIn("back: true", station_web.PAGE)
-        self.assertTrue((art / "furn-cupboard-back.png").is_file())   # the cupboard is the one piece the layout turns its back to the camera
+        for name in ("file-cabinet", "writer-desk", "safe", "radio", "switchboard", "cupboard"):   # the six a workshop is furnished with
+            self.assertTrue((art / f"furn-{name}-back.png").is_file(), name)
 
     def test_the_scene_is_built_with_svg_nodes_and_text_and_a_private_window_cannot_break_the_page(self):
         page = station_web.PAGE

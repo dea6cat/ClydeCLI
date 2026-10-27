@@ -622,14 +622,22 @@ function shade(hex, pct) {
 function hash(a, b) { let h = Math.imul(a | 0, 374761393) + Math.imul(b | 0, 668265263) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; }
 const BAY_SIZES = [[12, 12], [13, 12], [12, 13], [13, 13]];   // workshop sizes in tiles, so neighbours differ
 const PIECES = [["read", 1.6, 1.1], ["write", 2.4, 1.2], ["mcp", 1.6, 1.1], ["shell", 1.5, 1.2], ["web", 1.4, 1.1], ["other", 1.5, 1.1]];   // [family, length along the wall, depth]
+const BACK_WIDE_LEFT = ["write", "mcp"];   // the back pictures of these show their long side on the left; the others on the right, so the mirror differs by wall
+const BACK_PAIRS = [["other", "web"], ["shell", "mcp"], ["read", "write"]];   // which two pieces of a workshop show their back, on the south and east walls; by room number, so neighbours differ
 function bayLayout(i, wall) {   // a workshop floor plan: every one-sided piece against the north or west wall (the pictures only show a front), but a piece with a back picture against the south wall, the door on `wall`, and a clear lane from the door across the room
-  const [w, d] = BAY_SIZES[i % BAY_SIZES.length], vertical = wall !== "e", door = vertical ? w - 2.6 : d - 2.6, slots = {}, lane = (a, b) => a < door + 1.5 && b > door - 1.5;
+  const [onSouth, onEast] = BACK_PAIRS[i % BACK_PAIRS.length], [w, d] = BAY_SIZES[i % BAY_SIZES.length], vertical = wall !== "e", door = vertical ? w - 2.6 : d - 2.6, slots = {}, lane = (a, b) => a < door + 1.5 && b > door - 1.5;
   let cx = 2.2, cy = 2.0;   // the north row starts clear of the west column
   for (const [f, len, dep] of PIECES) {
-    if (f === "other") {   // the cupboard has a back picture: it stands against the south wall, turned into the room, and shows its back
+    if (f === onSouth) {   // against the south wall, turned into the room, so it shows its back
       let sx = w - 0.5 - len - 1.0;
       if (vertical && lane(sx, sx + len)) sx = door - 1.6 - len;   // the south wall holds the entry, or the way on to the next workshop in the arm
-      slots[f] = { box: [sx, d - 0.15 - dep, len, dep], stand: [sx + len / 2, d - 0.15 - dep - 1.0], back: true, flip: false };
+      slots[f] = { box: [sx, d - 0.15 - dep, len, dep], stand: [sx + len / 2, d - 0.15 - dep - 1.0], back: true, flip: !BACK_WIDE_LEFT.includes(f) };
+      continue;
+    }
+    if (f === onEast) {   // against the east wall, the same
+      let ey = 3.4;
+      if (!vertical && lane(ey, ey + len)) ey = door - 1.6 - len;   // the east wall holds the entry of a workshop on the east arm
+      slots[f] = { box: [w - 0.15 - dep, ey, dep, len], stand: [w - 0.15 - dep - 1.0, ey + len / 2], back: true, flip: BACK_WIDE_LEFT.includes(f) };
       continue;
     }
     if (vertical && lane(cx, cx + len)) cx = door + 1.6;
@@ -916,7 +924,9 @@ const FURN = { read: "file-cabinet", write: "writer-desk", shell: "safe", web: "
 function furnitureSprite(f, pal, now, defs, uid) {
   const g = sv("g", {}), [x, y, w, d] = f.box, o = f.obj, fl = f.room.f, id = "fg" + uid + f.family + Math.round(x * 3 + y * 5) + fl, fresh = o && o.last && now - o.last < 4;
   const lit = fresh || (f.family === "approvals" && o && o.pending) || (f.family === "crate" && o && o.state === "landed") || (f.lane && f.laneState === "lit") || f.family === "bar";
-  const name = "furn-" + FURN[f.family] + (f.back ? "-back" : lit ? "-on" : "-off"), [sw, sh] = SPR[name], c = at(x + w / 2, y + d / 2, fl), wpx = Math.max(30, (w + d) * HX * 0.62), hpx = wpx * sh / sw, by = c[1] + (w + d) * HY / 2;
+  const name = "furn-" + FURN[f.family] + (f.back ? "-back" : lit ? "-on" : "-off"), [sw, sh] = SPR[name], [fw, fh] = SPR["furn-" + FURN[f.family] + "-off"], c = at(x + w / 2, y + d / 2, fl), by = c[1] + (w + d) * HY / 2;
+  let wpx = Math.max(30, (w + d) * HX * 0.62), hpx = wpx * sh / sw;
+  if (f.back) { hpx = wpx * fh / fw; wpx = hpx * sw / sh; }   // from behind it stands as tall as its front picture does
   poly(g, quad(x, y, w, d, fl), "#000", { opacity: 0.3, filter: FX.soft });
   const pic = sprite(name, c[0] - wpx / 2, by - hpx, wpx, hpx);
   if (facesDownLeft(f)) pic.setAttribute("transform", "translate(" + (2 * c[0]).toFixed(1) + " 0) scale(-1 1)");

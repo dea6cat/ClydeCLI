@@ -28,7 +28,9 @@ TILES = {0: "floor-parquet", 4: "wall-brick-a", 5: "wall-brick-b", 6: "wall-glas
          14: "balustrade-a", 15: "balustrade-b", 20: "tower-a", 21: "tower-b", 24: "gatepost-a", 25: "gatepost-b", 26: "clock-a", 27: "clock-b",
          28: "picture-city", 29: "picture-hills-a", 30: "picture-hills-b", 31: "picture-leaf", 32: "awning-a", 33: "awning-b", 34: "neon-a", 35: "neon-b",
          36: "lights-a", 37: "lights-b"}
-BACKS = {5: "cupboard"}   # of the 16 pieces on the back-views sheet only the plain-panel backs are true backs: the others show their fronts (doors, grille, kneehole)
+BACKS = {0: "file-cabinet", 1: "writer-desk", 2: "safe", 3: "radio", 4: "switchboard", 5: "cupboard"}   # the six a workshop is furnished with, by their place on the back-views sheet
+# Also on that sheet, ready to cut when the front office, the bar or the post room get pieces turned their back to the camera: 6 signing desk, 7 cash register,
+# 8 report desk, 10 mail cabinet, 11 bar, 15 bookcase (9, 12, 13 are spare plain panels, 14 a curved counter).
 GRASS, ROCK = (180, 64, 262, 94), (125, 205, 235, 275)   # boxes in the island picture: grass, and the cliff face
 SPLIT = {2: ("floor-runner", "floor-checker"), 3: ("floor-stone", "floor-water")}   # two tiles that came out as one piece
 SCENERY = {0: "island", 12: "car-black", 13: "car-red", 14: "car-green", 1: "moon", 2: "stars", 3: "cloud-1", 4: "cloud-2", 5: "cloud-3", 6: "cloud-4", 7: "cloud-5", 8: "tree-blossom", 9: "tree-pine", 10: "hedge", 11: "lamppost"}
