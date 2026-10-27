@@ -19,6 +19,7 @@ from ..context_system.context_analyzer import (
     get_context_window_for_model,
 )
 from ..context_system.microcompact import microcompact_messages, strip_images_from_messages
+from ..agent import cache_stats, trace
 from ..agent.cost_tracker import CostTracker, estimate_usd
 from ..agent.history import HistoryLog
 from ..startup.setup import run_setup
@@ -278,6 +279,9 @@ def cost_command_call(args: str, context: CommandContext) -> LocalCommandResult:
             unpriced = unpriced or usd is None
         suffix = " (excludes models with unknown prices)" if unpriced else ""
         lines.append(f"  Estimated total: ${total:.4f}{suffix}")
+
+    if cache := cache_stats.describe(cache_stats.analyze(trace.read_events())):   # from the traced requests: nothing here when tracing was off or no model cached
+        lines += ["", *cache]
 
     if tracker.events:
         lines.append("")
