@@ -1066,6 +1066,12 @@ function buildScene(run) {
     g.append(sv("title", {}, tip));
     if (f.obj) described.push((f.room.kind === "bay" ? words.bay + " " + number(f.room.id) : f.room.kind === "deck" ? words.deck : words.outbox) + ": " + tip);
     dyn.push({ el: g, depth: () => f.box[0] + f.box[2] / 2 + f.box[1] + f.box[3] / 2 });
+    if (f.back) {   // a piece that shows its back has a low glass wall behind it, on the room's south or east edge, drawn in front of it (glass: it is still seen through)
+      const r = f.room, [bx, by, bw, bd] = f.box, wall = sv("g", {}), south = Math.abs(by + bd - (r.y + r.d)) < 0.5;
+      if (south) wallRun(wall, "y", r.y + r.d, Math.max(r.x + 0.2, bx - 0.3), Math.min(r.x + r.w - 0.2, bx + bw + 0.3), "glass");
+      else wallRun(wall, "x", r.x + r.w, Math.max(r.y + 0.2, by - 0.3), Math.min(r.y + r.d - 0.2, by + bd + 0.3), "glass");
+      dyn.push({ el: wall, depth: () => (south ? bx + bw / 2 + r.y + r.d : r.x + r.w + by + bd / 2) + 0.2 });
+    }
   }
   for (const q of p.props) dyn.push({ el: propSprite(q, pal, defs, uid), depth: () => q.x + q.y + 0.3 });
   const deck = layout.rooms.find((r) => r.id === "deck"), cards = {};
