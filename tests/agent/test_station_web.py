@@ -342,9 +342,17 @@ class TestPage(unittest.TestCase):
         art = Path(station_web.__file__).parent / "station_art"
         self.assertIn('f.back ? "-back"', station_web.PAGE)
         self.assertIn("back: true", station_web.PAGE)
-        self.assertIn("a workshop's south and east edges are low glass walls too", station_web.PAGE)
-        for name in ("file-cabinet", "writer-desk", "safe", "radio", "switchboard", "cupboard"):   # the six a workshop is furnished with
+        self.assertIn("every room's south and east edges are low glass walls too", station_web.PAGE)
+        for name in ("file-cabinet", "writer-desk", "safe", "radio", "switchboard", "cupboard", "signing-desk", "cash-register", "report-desk", "mail-cabinet", "bar", "bookcase"):
             self.assertTrue((art / f"furn-{name}-back.png").is_file(), name)
+
+    def test_the_crew_panel_counts_with_the_same_rule_as_the_header(self):
+        page = station_web.PAGE
+        self.assertIn('memberState(run, m) === "working"', page)
+        self.assertNotIn('dotClass(m.doing) === "on").length', page)
+
+    def test_on_a_phone_the_crew_panel_starts_under_the_header(self):
+        self.assertIn(".rail { top: 96px; }", station_web.PAGE)   # the header wraps to two lines there and would cover the panel's title and its buttons
 
     def test_the_scene_is_built_with_svg_nodes_and_text_and_a_private_window_cannot_break_the_page(self):
         page = station_web.PAGE

@@ -277,7 +277,7 @@ button.act.allow { border-color: rgba(123,214,166,.6); } button.act.deny { borde
 .needs button.mini:hover { background: rgba(37,29,20,.09); border-color: #251d14; }
 .needs button.mini:focus-visible { outline-color: #8c2f39; }
 /* phones: the header may wrap to two rows (the counts keep their line), so the run's card sits below it; this block comes last so it wins */
-@media (max-width: 700px) { header { flex-wrap: wrap; row-gap: 4px; } #counts { flex-basis: 100%; order: 5; white-space: normal; } .run-info { top: 96px; padding: 8px 12px; } .run-head h2 { font-size: 14px; flex-basis: 100%; } .run-info .chip.run-id { display: none; } }
+@media (max-width: 700px) { header { flex-wrap: wrap; row-gap: 4px; } #counts { flex-basis: 100%; order: 5; white-space: normal; } .run-info { top: 96px; padding: 8px 12px; } .rail { top: 96px; }   /* the crew panel starts under the header, which wraps to two lines here */ .run-head h2 { font-size: 14px; flex-basis: 100%; } .run-info .chip.run-id { display: none; } }
 @media (pointer: coarse) { header .tool, button.mini, button.act { min-height: 40px; padding-inline: 14px; } }
 @media (prefers-reduced-motion: reduce) { .link.live i, .dot.on, .portrait .lamp.on { animation: none; } * { transition-duration: .01ms !important; } }
 </style>
@@ -709,14 +709,18 @@ function plan(layout) {
     for (const q of r.tpl.props) prop(q[0], r.x + q[1], r.y + q[2]);
   }
   const dk = layout.rooms.find((r) => r.id === "deck");
-  const deckBoxes = { approvals: [3, 8, 3, 1.6], ledger: [13.4, 0.3, 2.8, 1.3] };
-  for (const o of dk.objects) furniture.push({ room: deck, family: o.family, obj: o, box: [deck.x + deckBoxes[o.family][0], deck.y + deckBoxes[o.family][1], deckBoxes[o.family][2], deckBoxes[o.family][3]] });
+  // The signing desk stands against the south edge and the cash register against the east one, both showing their back (a back picture has its back on the right: mirrored on the south wall, not on the east).
+  const deckBoxes = { approvals: [3, 10.25, 3, 1.6, { back: true, flip: true }], ledger: [DW - 1.45, 0.8, 1.3, 2.8, { back: true, flip: false }] };
+  for (const o of dk.objects) furniture.push({ room: deck, family: o.family, obj: o, box: [deck.x + deckBoxes[o.family][0], deck.y + deckBoxes[o.family][1], deckBoxes[o.family][2], deckBoxes[o.family][3]], ...deckBoxes[o.family][4] });
   furniture.push({ room: deck, family: "desk", obj: null, lane: "report", box: [deck.x + 2, deck.y + 2, 3, 2] }, { room: deck, family: "desk", obj: null, lane: "review", box: [deck.x + 21, deck.y + 2, 3, 2] },
-                 { room: deck, family: "table", obj: null, box: [deck.x + 11, deck.y + 5, 4.2, 2] });
+                 { room: deck, family: "table", obj: null, box: [deck.x + 11, deck.y + 5, 4.2, 2] },
+                 { room: deck, family: "desk", obj: null, box: [deck.x + 15.2, deck.y + 10.25, 3, 1.6], back: true, flip: true },   // a clerk's desk against the south edge, and two shelves of files beside the way in from the south arm
+                 { room: deck, family: "shelf", obj: null, box: [deck.x + 8.3, deck.y + 10.75, 1.7, 1.1], back: true, flip: true }, { room: deck, family: "shelf", obj: null, box: [deck.x + 10, deck.y + 10.75, 1.7, 1.1], back: true, flip: true });
   for (const [kind, x, y, size] of [["plant", 2.2, 10.8], ["plant", 24.8, 10.6], ["lamp", 9, 1.3], ["lamp", 17.4, 1.3], ["bookcase", 0.3, 8.0, 3.2], ["tank", 24.6, 8.8], ["coat", 7.6, 10.8]]) prop(kind, deck.x + x, deck.y + y, size);
   const ob = layout.rooms.find((r) => r.kind === "outbox");
   const ox = rooms.outbox.x, oy = rooms.outbox.y;   // a post room: pigeonhole cabinets along the back wall (the one that lights up is the real outbox), sacks and crates in the corner
-  furniture.push({ room: rooms.outbox, family: "mailbox", obj: null, box: [ox + 1.2, oy + 0.3, 1.8, 1.1] }, { room: rooms.outbox, family: "mailbox", obj: null, box: [ox + 3.2, oy + 0.3, 1.8, 1.1] },
+  furniture.push({ room: rooms.outbox, family: "mailbox", obj: null, box: [ox + 1.4, oy + 5.75, 1.8, 1.1], back: true, flip: true }, { room: rooms.outbox, family: "mailbox", obj: null, box: [ox + 3.4, oy + 5.75, 1.8, 1.1], back: true, flip: true },
+                 { room: rooms.outbox, family: "mailbox", obj: null, box: [ox + 1.2, oy + 0.3, 1.8, 1.1] }, { room: rooms.outbox, family: "mailbox", obj: null, box: [ox + 3.2, oy + 0.3, 1.8, 1.1] },
                  { room: rooms.outbox, family: "crate", obj: ob, box: [ox + 5.2, oy + 0.3, 1.8, 1.1] });
   for (const [kind, x, y, size] of [["crates", 6.9, 5.7], ["plant", 7.3, 3.6], ["lamp", 0.6, 6.3]]) prop(kind, rooms.outbox.x + x, rooms.outbox.y + y, size);
   // Each workshop gets its own look: a rug style and colours, and a few extra pieces, all picked from the room's number and placed only where they fit.
@@ -752,7 +756,8 @@ function plan(layout) {
   const crowd = [[6.8, 3.0], [8.2, 3.0], [9.6, 3.0], [2.6, 4.6], [4.2, 4.6], [5.8, 4.6], [7.4, 4.6], [9.0, 4.6], [10.4, 4.6], [6.4, 6.0], [8.2, 6.0], [10.2, 6.0]].map((q) => [bar.x + q[0], bar.y + q[1]]);   // where the workers stand, one place each, round the counter
   bayRooms.forEach((r, i) => { barSpots[r.id] = crowd[i % crowd.length]; });
   // the speakeasy: a counter along the back with stools, sofas and a little table in front; the way through (row 5) stays clear
-  furniture.push({ room: bar, family: "bar", obj: null, box: [bar.x + 1.5, bar.y + 0.5, 6, 1.4] }, { room: bar, family: "sofa", obj: null, box: [bar.x + 0.5, bar.y + 6.4, 1.4, 3.2] },
+  furniture.push({ room: bar, family: "bar", obj: null, box: [bar.x + 5.3, bar.y + 8.45, 5, 1.4], back: true, flip: true, fit: "width" },   // a service counter against the south edge, seen from behind
+                 { room: bar, family: "bar", obj: null, box: [bar.x + 1.5, bar.y + 0.5, 6, 1.4] }, { room: bar, family: "sofa", obj: null, box: [bar.x + 0.5, bar.y + 6.4, 1.4, 3.2] },
                  { room: bar, family: "sofa", obj: null, box: [bar.x + 8.4, bar.y + 0.5, 3.2, 1.4] }, { room: bar, family: "smalltable", obj: null, box: [bar.x + 3.2, bar.y + 7.2, 1.8, 1.4] });
   for (const [kind, x, y] of [["plant", 0.9, 4.0], ["plant", 11.1, 4.0], ["plant", 11.3, 9.2], ["lamp", 9.2, 3.0], ["lamp", 0.8, 3.0]]) prop(kind, bar.x + x, bar.y + y);
   lanes.landing = [[deck.x + DW - 1, 6], [rooms.outbox.x + 1.5, 6]];
@@ -921,13 +926,13 @@ function doorsOf(p, r) {   // where a room's wall has a doorway: [side, from, to
   return [[r.wall, along - 1, along + 1], ...(r.through ? [[opposite, along - 1, along + 1]] : [])];
 }
 const FURN = { read: "file-cabinet", write: "writer-desk", shell: "safe", web: "radio", mcp: "switchboard", other: "cupboard", approvals: "signing-desk", ledger: "cash-register",
-  desk: "report-desk", table: "planning-table", crate: "mail-cabinet", mailbox: "mail-cabinet", bar: "bar", sofa: "sofa", smalltable: "small-table" };   // the picture for each kind of furniture
+  desk: "report-desk", table: "planning-table", crate: "mail-cabinet", mailbox: "mail-cabinet", shelf: "bookcase", bar: "bar", sofa: "sofa", smalltable: "small-table" };   // the picture for each kind of furniture
 function furnitureSprite(f, pal, now, defs, uid) {
   const g = sv("g", {}), [x, y, w, d] = f.box, o = f.obj, fl = f.room.f, id = "fg" + uid + f.family + Math.round(x * 3 + y * 5) + fl, fresh = o && o.last && now - o.last < 4;
   const lit = fresh || (f.family === "approvals" && o && o.pending) || (f.family === "crate" && o && o.state === "landed") || (f.lane && f.laneState === "lit") || f.family === "bar";
   const name = "furn-" + FURN[f.family] + (f.back ? "-back" : lit ? "-on" : "-off"), [sw, sh] = SPR[name], [fw, fh] = SPR["furn-" + FURN[f.family] + "-off"], c = at(x + w / 2, y + d / 2, fl), by = c[1] + (w + d) * HY / 2;
   let wpx = Math.max(30, (w + d) * HX * 0.62), hpx = wpx * sh / sw;
-  if (f.back) { hpx = wpx * fh / fw; wpx = hpx * sw / sh; }   // from behind it stands as tall as its front picture does
+  if (f.back && f.fit !== "width") { hpx = wpx * fh / fw; wpx = hpx * sw / sh; }   // from behind it stands as tall as its front picture does (the bar's front has a bottle shelf above the counter, so it is sized by its width)
   poly(g, quad(x, y, w, d, fl), "#000", { opacity: 0.3, filter: FX.soft });
   const pic = sprite(name, c[0] - wpx / 2, by - hpx, wpx, hpx);
   if (facesDownLeft(f)) pic.setAttribute("transform", "translate(" + (2 * c[0]).toFixed(1) + " 0) scale(-1 1)");
@@ -1068,7 +1073,7 @@ function buildScene(run) {
     if (f.obj) described.push((f.room.kind === "bay" ? words.bay + " " + number(f.room.id) : f.room.kind === "deck" ? words.deck : words.outbox) + ": " + tip);
     dyn.push({ el: g, depth: () => f.box[0] + f.box[2] / 2 + f.box[1] + f.box[3] / 2 });
   }
-  for (const r of p.bayRooms) {   // a workshop's south and east edges are low glass walls too, all along, with the doorways left open; drawn in front of what stands behind them (glass: it is still seen through), piece by piece so people and furniture sort correctly
+  for (const r of Object.values(p.rooms)) {   // every room's south and east edges are low glass walls too, all along, with the doorways left open; drawn in front of what stands behind them (glass: it is still seen through), piece by piece so people and furniture sort correctly
     const gaps = (side) => doorsOf(p, r).filter((d) => d[0] === side).map((d) => [d[1], d[2]]);
     for (const [a, b] of wallRuns(r.x, r.x + r.w, gaps("s"))) for (let u = a; u < b - 0.01; u += 2) { const e = Math.min(b, u + 2), wall = sv("g", {}); wallRun(wall, "y", r.y + r.d, u, e, "glass"); dyn.push({ el: wall, depth: () => (u + e) / 2 + r.y + r.d + 0.2 }); }
     for (const [a, b] of wallRuns(r.y, r.y + r.d, gaps("e"))) for (let u = a; u < b - 0.01; u += 2) { const e = Math.min(b, u + 2), wall = sv("g", {}); wallRun(wall, "x", r.x + r.w, u, e, "glass"); dyn.push({ el: wall, depth: () => r.x + r.w + (u + e) / 2 + 0.2 }); }
@@ -1313,7 +1318,7 @@ function rail(run) {
     side.append(needs);
   }
   const box = el("section", "glass crew"), head = el("h3", "", "Crew"), body = el("div", "body");
-  const working = crew.filter((m) => dotClass(m.doing) === "on").length, waiting = crew.filter((m) => dotClass(m.doing) === "wait").length;
+  const working = crew.filter((m) => memberState(run, m) === "working").length, waiting = crew.filter((m) => memberState(run, m) === "waiting").length;   // the same rule as the header counts, so the two never disagree
   const tools = el("span", "head-tools");
   tools.append(el("small", "", crew.length + " · " + working + " working" + (waiting ? " · " + waiting + " waiting" : "")));
   if (run.status === "running" && crew.filter((m) => /^worker-/.test(m.name)).length < MAX_TEAM) {   // a worker can join only while the run is working
