@@ -27,7 +27,7 @@ const code = fs.readFileSync(process.argv[2], "utf8");
 const reduced = process.argv[3] === "reduced";
 const ctx = { Math, console, parseInt, REDUCED: reduced };
 vm.createContext(ctx);
-vm.runInContext(code + "\nthis.__api = { QUIET, plan, bounds, family, workerTrips, orchestratorTrips, walkerState, tripState, tripEnd };", ctx);
+vm.runInContext(code + "\nthis.__api = { memberState, crewCounts, countsText, linkState, QUIET, plan, bounds, family, workerTrips, orchestratorTrips, walkerState, tripState, tripEnd };", ctx);
 const A = ctx.__api, fails = [];
 const FAMILIES = ["read", "write", "shell", "web", "mcp", "other"];
 const bay = (i) => ({ id: "worker-" + i, kind: "bay", members: [], objects: FAMILIES.map((f) => ({ family: f, tools: [f], used: 0, asked: 0, allowed: 0, denied: 0, failed: 0, last: null })) });
@@ -146,6 +146,14 @@ else {
   if (last && job.t0 < A.tripEnd(last) - 1e-9) MOTION.push("a check started before the walk Clyde was on ended: he would jump");
   if (last && Math.hypot(job.go[0][0] - last.back[last.back.length - 1][0], job.go[0][1] - last.back[last.back.length - 1][1]) > 1e-9) MOTION.push("a check did not start where the leisure walk ended");
 }
+// 8. the header: working only while the run is live, waiting and failed shown only when there are some, the link neutral until something runs
+const crewOf = (r) => r.crew, mk = (status, ...doing) => ({ status, crew: doing.map((d) => ({ name: "x", doing: d })) });
+const counts = A.crewCounts([mk("running", "using Edit", "idle", "waiting for approval", "failed"), mk("done", "using Read", "finished")], crewOf);
+if (counts.working !== 1 || counts.waiting !== 1 || counts.failed !== 1 || counts.idle !== 3) MOTION.push("crew counts were " + JSON.stringify(counts));
+if (A.crewCounts([mk("done", "using Edit")], crewOf).working !== 0) MOTION.push("someone is working in a finished run");
+if (A.countsText({ working: 2, waiting: 0, failed: 0, idle: 5 }) !== "2 working \u00b7 5 idle") MOTION.push("counts text: " + A.countsText({ working: 2, waiting: 0, failed: 0, idle: 5 }));
+if (A.countsText({ working: 1, waiting: 2, failed: 1, idle: 0 }) !== "1 working \u00b7 2 waiting \u00b7 1 failed \u00b7 0 idle") MOTION.push("counts text with waiting and failed");
+if (A.linkState(false, [mk("running")]) !== "down" || A.linkState(true, []) !== "standby" || A.linkState(true, [mk("done")]) !== "standby" || A.linkState(true, [mk("running")]) !== "live") MOTION.push("link states are wrong");
 console.log(JSON.stringify({ layout: LAYOUT, motion: MOTION }));
 """
 
@@ -155,7 +163,7 @@ class StationScene(unittest.TestCase):
     def _run(self, *flags: str) -> dict[str, list[str]]:
         with tempfile.TemporaryDirectory() as tmp:
             code, harness = Path(tmp) / "page_blocks.js", Path(tmp) / "harness.js"
-            code.write_text(_block("geometry") + _block("motion"), encoding="utf-8")
+            code.write_text(_block("geometry") + _block("motion") + _block("status"), encoding="utf-8")
             harness.write_text(HARNESS, encoding="utf-8")
             done = subprocess.run(["node", str(harness), str(code), *flags], capture_output=True, text=True, timeout=60, check=False)
         self.assertEqual(done.returncode, 0, done.stderr)

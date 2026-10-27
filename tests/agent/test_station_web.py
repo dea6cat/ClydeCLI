@@ -272,6 +272,12 @@ class TestPage(unittest.TestCase):
         self.assertTrue({"deck", "bay", "outbox", "read", "write", "shell", "web", "mcp", "other", "task", "results", "review", "report", "landing", "table"} <= words)
         self.assertNotIn('id="theme"', station_web.PAGE)
 
+    def test_the_header_shows_the_link_and_the_crew_counts_and_cinema_hides_every_panel(self):
+        page = station_web.PAGE
+        for needle in ('id="link"', 'id="counts"', 'id="cinemaToggle"', 'id="cinemaTab"', "body.cinema .rail", "railgrip", "station.cinema", "station.railw"):
+            self.assertIn(needle, page)
+        self.assertNotIn("disconnected:", page)   # the link chip says it now
+
     def test_the_scene_is_built_with_svg_nodes_and_text_and_a_private_window_cannot_break_the_page(self):
         page = station_web.PAGE
         self.assertIn("createElementNS", page)

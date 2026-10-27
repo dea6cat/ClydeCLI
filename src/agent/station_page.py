@@ -49,6 +49,17 @@ header .spacer { display: none; }
 header .tool { font: inherit; font-size: 13px; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; white-space: nowrap; }
 header .tool[aria-pressed="true"] { border-color: var(--accent); }
 header .tool.alert { border-color: var(--warn); color: var(--warn); animation: pulse 1.2s ease-in-out infinite; }
+header .link { display: inline-flex; align-items: center; gap: 6px; }
+header .link i { width: 8px; height: 8px; border-radius: 50%; background: var(--idle); }
+header .link.live i { background: var(--accent); animation: pulse 1.2s ease-in-out infinite; } header .link.down i { background: var(--bad); } header .link.down { color: var(--bad); border-color: var(--bad); }
+#counts { font-size: 13px; white-space: nowrap; }
+body.cinema header, body.cinema .run-info, body.cinema .legend, body.cinema .zoom, body.cinema .rail { display: none; }   /* cinema: only the island */
+#cinemaTab { display: none; position: fixed; top: 10px; left: 10px; z-index: 6; opacity: .45; font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; }
+#cinemaTab:hover, #cinemaTab:focus-visible { opacity: 1; }
+body.cinema #cinemaTab { display: block; }
+.railgrip { position: absolute; left: -8px; top: 0; bottom: 0; width: 12px; cursor: col-resize; touch-action: none; z-index: 1; }
+.railgrip::after { content: ""; position: absolute; left: 5px; top: 40%; bottom: 40%; width: 2px; border-radius: 2px; background: var(--ink); opacity: 0; transition: opacity .15s; }
+.railgrip:hover::after { opacity: .35; }
 header .tool:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 @media (max-width: 700px) { header .muted:not(#status) { display: none; } }
 .muted { color: var(--muted); }
@@ -106,7 +117,7 @@ button.act:focus-visible, .card:focus-visible, select:focus-visible { outline: 2
 @media (max-width: 700px) { .zoom { left: auto; right: 12px; bottom: 12px; } }   /* the legend wraps tall on a phone, so the zoom keys move out from under it */
 .zoom button { width: 30px; height: 30px; border-radius: 8px; border: 1px solid rgba(255,255,255,.25); background: rgba(10,10,16,.65); color: #fff; font: 600 16px/1 system-ui; cursor: pointer; backdrop-filter: blur(6px); }
 .zoom button:hover { background: rgba(10,10,16,.85); } .zoom button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.rail { position: absolute; top: 12px; right: 12px; bottom: 12px; z-index: 5; width: min(340px, calc(100vw - 24px)); display: flex; flex-direction: column; gap: 12px; min-height: 0; transition: transform .25s ease; }
+.rail { position: absolute; top: 12px; right: 12px; bottom: 12px; z-index: 5; width: min(var(--railw, 340px), calc(100vw - 24px)); display: flex; flex-direction: column; gap: 12px; min-height: 0; transition: transform .25s ease; }
 body.rail-off .rail { transform: translateX(calc(100% + 24px)); visibility: hidden; transition: transform .25s ease, visibility 0s .25s; }
 .rail > .glass.crew { flex: 1 1 auto; }
 .glass { background: linear-gradient(125deg, rgba(255,255,255,.07), rgba(255,255,255,.02) 48%, transparent), color-mix(in srgb, var(--panel) 86%, transparent);
@@ -183,10 +194,15 @@ body.rail-off .rail { transform: translateX(calc(100% + 24px)); visibility: hidd
 <body>
 <main>
   <header>
-    <h1>Clyde station</h1><span class="muted">what the team recorded, live</span><span id="status" class="muted" aria-live="polite"></span>
+    <h1>Clyde station</h1>
+    <span id="link" class="chip link standby" role="status"><i></i><span id="linkText">standby</span></span>
+    <button id="linkRetry" class="tool" type="button" hidden>Retry</button>
+    <span id="counts" class="muted" aria-live="polite"></span><span id="status" class="muted" aria-live="polite"></span>
     <span class="spacer"></span>
     <button id="railToggle" class="tool" type="button" aria-pressed="true" title="Show or hide the crew and the events">Crew &amp; events</button>
+    <button id="cinemaToggle" class="tool" type="button" aria-pressed="false" title="Hide every panel and show only the island (C)">Cinema</button>
   </header>
+  <button id="cinemaTab" type="button" title="Bring the panels back (C or Esc)">&#9666; panels</button>
   <div id="runs"></div>
 </main>
 <script>
@@ -194,10 +210,11 @@ body.rail-off .rail { transform: translateX(calc(100% + 24px)); visibility: hidd
 const TOKEN = "__TOKEN__";
 const NS = "http://www.w3.org/2000/svg";
 const REDUCED = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-const state = { runs: [], feeds: {}, filter: {}, polling: {}, theme: "city", loadedAt: Date.now() / 1000, scenes: [] };
+const state = { runs: [], feeds: {}, filter: {}, polling: {}, theme: "city", loadedAt: Date.now() / 1000, scenes: [], link: { ok: true, reason: "" } };
 const $runs = document.getElementById("runs");
 const $status = document.getElementById("status");
 const $rail = document.getElementById("railToggle");
+const $link = document.getElementById("link"), $linkText = document.getElementById("linkText"), $retry = document.getElementById("linkRetry"), $counts = document.getElementById("counts");
 let UID = 0;
 
 // A theme is a look (palette, materials, backdrop) and the words it gives the same things. It never changes what a room, object or hallway means.
@@ -232,6 +249,7 @@ async function api(path, body) {
   if (!response.ok) throw new Error(path + " " + response.status);
   return response.json();
 }
+// <status>
 function dotClass(doing) {
   if (/approval/.test(doing)) return "wait";
   if (/failed|stopped/.test(doing)) return "bad";
@@ -239,6 +257,28 @@ function dotClass(doing) {
   if (doing === "idle") return "";
   return "on";
 }
+const LIVE_RUN = ["running", "reviewing", "awaiting_approval"];
+function memberState(run, member) {   // working only while the run itself is live: a missed "finished" event cannot leave someone working for ever
+  const dot = dotClass(member.doing || "");
+  if (dot === "on") return LIVE_RUN.includes(run.status) ? "working" : "idle";
+  return dot === "wait" ? "waiting" : dot === "bad" ? "failed" : "idle";
+}
+function crewCounts(runs, crewOf) {
+  const counts = { working: 0, waiting: 0, idle: 0, failed: 0 };
+  for (const run of runs) for (const member of crewOf(run)) counts[memberState(run, member)]++;
+  return counts;
+}
+function countsText(counts) {
+  const parts = [counts.working + " working"];
+  if (counts.waiting) parts.push(counts.waiting + " waiting");
+  if (counts.failed) parts.push(counts.failed + " failed");
+  parts.push(counts.idle + " idle");
+  return parts.join(" \u00b7 ");
+}
+function linkState(reachable, runs) {   // live only when the server answered and a run is live; standby is neutral, never green
+  return !reachable ? "down" : runs.some((run) => LIVE_RUN.includes(run.status)) ? "live" : "standby";
+}
+// </status>
 function clock(t) { return new Date(t * 1000).toLocaleTimeString([], { hour12: false }); }
 function number(name) { const m = /(\d+)$/.exec(name); return m ? m[1] : ""; }
 // <motion>
@@ -998,6 +1038,9 @@ function feed(run) {
 function rail(run) {
   const side = el("aside", "rail"), crew = crewList(run);
   side.setAttribute("aria-label", "Crew, approvals and events");
+  const grip = el("div", "railgrip");
+  grip.setAttribute("role", "separator"); grip.setAttribute("aria-orientation", "vertical"); grip.title = "Drag to resize, double-click to reset";
+  side.append(grip);
   if (run.asks.length) {
     const needs = el("section", "glass asking"), head = el("h3", "", "Needs your OK");
     head.append(el("small", "", run.asks.length + " waiting"));
@@ -1014,8 +1057,17 @@ function rail(run) {
   side.append(box, events);
   return side;
 }
+function paintHeader() {   // the link chip and the crew counts: only what the server answered and the runs recorded
+  const kind = linkState(state.link.ok, state.runs);
+  $link.className = "chip link " + kind;
+  $linkText.textContent = kind === "live" ? "live" : kind === "standby" ? "standby: nothing running" : "link down" + (state.link.reason ? ": " + state.link.reason : "");
+  $retry.hidden = kind !== "down";
+  $counts.textContent = state.runs.length ? countsText(crewCounts(state.runs, crewList)) : "";
+}
+function setLink(ok, reason) { state.link = { ok, reason: reason || "" }; paintHeader(); }
 let lastSignature = "";
 function draw() {
+  paintHeader();
   // Rebuild only when something visible changed: a rebuild every few seconds would swap the buttons out from under a click.
   const signature = JSON.stringify([state.runs, Object.keys(state.feeds).map((id) => [id, state.feeds[id].length]), state.filter, state.theme]);
   if (signature === lastSignature) return;
@@ -1041,8 +1093,8 @@ function draw() {
 async function refresh() {
   try {
     state.runs = (await api("/api/state")).runs;
-    $status.textContent = "";
-  } catch (e) { $status.textContent = "disconnected: " + e.message; }
+    setLink(true);
+  } catch (e) { setLink(false, e.message); }
   draw();
   for (const run of state.runs) follow(run.id);
 }
@@ -1054,6 +1106,7 @@ async function follow(id) {
   while (state.polling[id]) {
     try {
       const data = await api("/api/events?run=" + encodeURIComponent(id) + "&after=" + after);
+      setLink(true);
       if (data.events.length) {
         state.feeds[id] = (state.feeds[id] || []).concat(data.events);
         after = data.next;
@@ -1062,7 +1115,7 @@ async function follow(id) {
         if (fresh && at >= 0) state.runs[at] = fresh;
         draw();
       }
-    } catch (e) { $status.textContent = "disconnected: " + e.message; await new Promise((r) => setTimeout(r, 2000)); }
+    } catch (e) { setLink(false, e.message); await new Promise((r) => setTimeout(r, 2000)); }
   }
 }
 function setRail(on) {   // the crew and events panel slides away so the scene has the whole window
@@ -1073,6 +1126,31 @@ function setRail(on) {   // the crew and events panel slides away so the scene h
 const savedRail = stored("station.rail");
 setRail(savedRail === null ? window.innerWidth >= 900 : savedRail === "1");
 $rail.addEventListener("click", () => setRail(document.body.classList.contains("rail-off")));
+$retry.addEventListener("click", () => refresh());
+const $cinema = document.getElementById("cinemaToggle");
+function setCinema(on) {   // every panel away: the island alone, remembered, with a slim tab to bring them back
+  document.body.classList.toggle("cinema", on);
+  $cinema.setAttribute("aria-pressed", String(on));
+  store("station.cinema", on ? "1" : "0");
+}
+setCinema(stored("station.cinema") === "1");
+$cinema.addEventListener("click", () => setCinema(true));
+document.getElementById("cinemaTab").addEventListener("click", () => setCinema(false));
+document.addEventListener("keydown", (e) => {
+  if (e.ctrlKey || e.metaKey || e.altKey || /^(INPUT|SELECT|TEXTAREA)$/.test((e.target.tagName || ""))) return;
+  if (e.key === "c" || e.key === "C") setCinema(!document.body.classList.contains("cinema"));
+  else if (e.key === "Escape" && document.body.classList.contains("cinema")) setCinema(false);
+});
+const railW = stored("station.railw");   // the panel's width: drag its edge; a double click puts it back
+if (railW) document.documentElement.style.setProperty("--railw", railW + "px");
+document.addEventListener("pointerdown", (e) => {
+  if (!e.target.classList || !e.target.classList.contains("railgrip")) return;
+  e.preventDefault();
+  const move = (m) => { const w = Math.round(Math.max(260, Math.min(560, window.innerWidth - m.clientX - 12))); document.documentElement.style.setProperty("--railw", w + "px"); store("station.railw", String(w)); };
+  const stop = () => { document.removeEventListener("pointermove", move); document.removeEventListener("pointerup", stop); };
+  document.addEventListener("pointermove", move); document.addEventListener("pointerup", stop);
+});
+document.addEventListener("dblclick", (e) => { if (e.target.classList && e.target.classList.contains("railgrip")) { document.documentElement.style.removeProperty("--railw"); store("station.railw", ""); } });
 for (const pack in CREW) for (const anim in CREW[pack]) for (const dir in CREW[pack][anim]) preload(pack, anim, dir);   // every picture is fetched once up front, so a frame never blinks while it loads
 refresh();
 setInterval(refresh, 5000);   // picks up runs that start after the page opened
