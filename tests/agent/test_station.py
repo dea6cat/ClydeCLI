@@ -78,6 +78,17 @@ class Station(unittest.TestCase):
         console.print(station.render(run))
         self.assertIn("of $2.00", self.buffer.getvalue())
 
+    def test_a_worker_whose_request_was_answered_is_working_again_not_still_waiting(self):
+        run = self._run()
+        thread = self._waiting_ask(run)
+        crew = {name: doing for name, _model, doing in station._crew(run)}
+        self.assertEqual(crew["worker-2"], "waiting for approval")
+        run.answer(run.pending()[0]["id"], True)
+        thread.join(5)
+        crew = {name: doing for name, _model, doing in station._crew(run)}
+        self.assertEqual(crew["worker-2"], "working")   # its own next event may be a long tool away
+        self.assertEqual(crew["worker-1"], "using Edit")   # nobody else changed
+
     def test_every_active_run_is_shown_and_approve_answers_the_oldest_ask_across_them(self):
         first, second = self._run(), self._run()
         old = Run.create("long gone", {"master": "a:big", "workers": []})

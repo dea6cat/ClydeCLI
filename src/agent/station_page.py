@@ -1313,7 +1313,7 @@ function rail(run) {
     side.append(needs);
   }
   const box = el("section", "glass crew"), head = el("h3", "", "Crew"), body = el("div", "body");
-  const working = crew.filter((m) => dotClass(m.doing) === "on").length, waiting = crew.filter((m) => dotClass(m.doing) === "wait").length;
+  const working = crew.filter((m) => memberState(run, m) === "working").length, waiting = crew.filter((m) => memberState(run, m) === "waiting").length;   // the same rule as the header counts, so the two never disagree
   const tools = el("span", "head-tools");
   tools.append(el("small", "", crew.length + " · " + working + " working" + (waiting ? " · " + waiting + " waiting" : "")));
   if (run.status === "running" && crew.filter((m) => /^worker-/.test(m.name)).length < MAX_TEAM) {   // a worker can join only while the run is working

@@ -56,9 +56,15 @@ def snapshot(run: Run) -> dict[str, Any]:
     people += [(w["name"], w["model"]) for w in roles.get("workers", [])]
     last: dict[str, dict[str, Any]] = {}
     constraint: dict[str, str] = {}
+    asked_by: dict[Any, str] = {}
     for e in events:
         if e["kind"] == "constraint":
             constraint[e["who"]] = e.get("note", "")
+        if e["kind"] == "approval_asked":
+            asked_by[e.get("approval")] = e["who"]
+        if e["kind"] == "approval_answered" and e.get("approval") in asked_by:   # the user answered: the worker that asked is working again, not still waiting
+            last[asked_by[e["approval"]]] = e
+            continue
         if e["kind"] not in ("tools", "constraint", "check"):   # bookkeeping, not what a member is doing
             last[e["who"]] = e
     crew = [{"name": n, "model": m, "kind": kinds.get(n), "doing": _doing(last.get(n)), "constraint": constraint.get(n)} for n, m in people]

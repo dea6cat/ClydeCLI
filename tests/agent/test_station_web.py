@@ -346,6 +346,11 @@ class TestPage(unittest.TestCase):
         for name in ("file-cabinet", "writer-desk", "safe", "radio", "switchboard", "cupboard"):   # the six a workshop is furnished with
             self.assertTrue((art / f"furn-{name}-back.png").is_file(), name)
 
+    def test_the_crew_panel_counts_with_the_same_rule_as_the_header(self):
+        page = station_web.PAGE
+        self.assertIn('memberState(run, m) === "working"', page)
+        self.assertNotIn('dotClass(m.doing) === "on").length', page)
+
     def test_the_scene_is_built_with_svg_nodes_and_text_and_a_private_window_cannot_break_the_page(self):
         page = station_web.PAGE
         self.assertIn("createElementNS", page)
