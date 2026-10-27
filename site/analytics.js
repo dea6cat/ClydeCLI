@@ -13,8 +13,9 @@
   }
   // features.html -> "features"; the home page, however it is reached -> "home"
   function pageName(pathname) {
-    var last = String(pathname || "").split("/").filter(Boolean).pop() || "";
-    last = last.replace(/\.html$/, "");
+    var parts = String(pathname || "").split("/").filter(Boolean), last = (parts.pop() || "").replace(/\.html$/, "");
+    // the documentation tab: docs/usage.html -> "docs-usage", so it is not mistaken for the home page's own "features"; docs/ -> "docs"
+    if (last === "docs" || parts.pop() === "docs") return last && last !== "index" && last !== "docs" ? "docs-" + (slug(last) || "page") : "docs";
     return !last || last === "index" || last === "ClydeCLI" ? "home" : slug(last) || "home";
   }
   // A ?ref=label in the link says where it was placed (github-readme); otherwise the site the visitor came from, as a host name;

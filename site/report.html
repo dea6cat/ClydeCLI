@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Report an issue · ClydeCLI</title>
+<meta name="description" content="Report a bug, ask for a feature or ask a question about ClydeCLI. The form opens GitHub with your text filled in.">
+<meta name="theme-color" content="#e8e5dd" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f1a14" media="(prefers-color-scheme: dark)">
+<link rel="icon" type="image/svg+xml" href="brand/clyde-mark.svg">
+<script>document.documentElement.className = "js";</script>
+<link rel="stylesheet" href="site.css">
+<link rel="stylesheet" href="engraving.css">
+<link rel="stylesheet" href="docs.css">
+</head>
+<body>
+<div class="glow" aria-hidden="true"></div>
+<div class="frame">
+<header>
+  <b><img src="brand/clyde-mark.svg" alt="" width="24" height="24">ClydeCLI</b>
+  <nav><a href="./">Home</a><a href="features.html">Features</a><a href="docs/">Docs</a><a href="bonnie.html">Bonnie</a><a href="keys.html">API keys</a><a href="https://github.com/dea6cat/ClydeCLI">Source</a><a href="report.html" aria-current="page">Report an issue</a></nav>
+</header>
+<div class="strip"><span class="chip">ISSUES</span><span class="mono">Tell us what broke, what is missing, or what is unclear.</span></div>
+<main class="report">
+  <h1 class="enter" style="--i:0">Report an issue</h1>
+  <p class="enter lead" style="--i:1">Write it here and the button opens a new GitHub issue with your text filled in. You read it over and press Submit on GitHub, where a free account is needed. Nothing is sent from this page.</p>
+  <p>Check the <a href="https://github.com/dea6cat/ClydeCLI/issues?q=is%3Aissue">open issues</a> and the <a href="docs/releases.html">release notes</a> first: it may already be fixed in the latest version.</p>
+
+  <form id="issue" action="https://github.com/dea6cat/ClydeCLI/issues/new" method="get" target="_blank" rel="noopener">
+    <label for="kind">What is it?</label>
+    <select id="kind" name="labels">
+      <option value="bug">A bug: something does not work</option>
+      <option value="enhancement">A feature request</option>
+      <option value="documentation">The docs are wrong or unclear</option>
+      <option value="question">A question</option>
+    </select>
+    <label for="title">Title</label>
+    <input id="title" name="title" required maxlength="140" autocomplete="off" placeholder="One line: what went wrong">
+    <label for="what">What happened, and what did you expect?</label>
+    <textarea id="what" name="body" required maxlength="5000" placeholder="Steps to reproduce, the exact command, and the error text if there was one."></textarea>
+    <div class="row">
+      <div><label for="version">Clyde version</label><input id="version" maxlength="40" placeholder="clyde --version"></div>
+      <div><label for="os">Your system</label><input id="os" maxlength="80" placeholder="macOS 15, Python 3.14, Ollama"></div>
+    </div>
+    <p class="dim mono" style="margin-top:14px">Do not paste API keys or private code. Issues on GitHub are public.</p>
+    <button type="submit">Open on GitHub</button>
+  </form>
+  <p class="dim">Prefer to write it on GitHub directly? <a href="https://github.com/dea6cat/ClydeCLI/issues/new">Start a blank issue</a>. For a security problem, follow the <a href="docs/security.html">security policy</a> instead of opening a public issue.</p>
+</main>
+<footer><a href="https://github.com/dea6cat/ClydeCLI/blob/main/LICENSE">PolyForm Noncommercial 1.0.0</a> · <a href="https://github.com/dea6cat/ClydeCLI">github.com/dea6cat/ClydeCLI</a> · <a href="privacy.html">Privacy</a></footer>
+</div>
+<script src="site.js" defer></script>
+<script src="engraving.js" defer></script>
+<script src="report.js" defer></script>
+<script src="analytics.js" defer></script>
+</body>
+</html>

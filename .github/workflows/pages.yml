@@ -1,10 +1,11 @@
-# Publishes site/ (the project website) to GitHub Pages when it changes on main.
+# Publishes site/ (the project website) to GitHub Pages when it changes on main. The documentation tab (site/docs/) is generated here
+# from the repository's Markdown by tools/build_docs.py, so a docs or changelog change redeploys it too.
 name: Website
 
 on:
   push:
     branches: [main]
-    paths: ["site/**", ".github/workflows/pages.yml"]
+    paths: ["site/**", "docs/**", "CHANGELOG.md", "SECURITY.md", "CONTRIBUTING.md", "GOVERNANCE.md", "EGRESS.md", "THIRD_PARTY.md", "tools/build_docs.py", ".github/workflows/pages.yml"]
   workflow_dispatch:
 
 permissions:
@@ -25,6 +26,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
+      - run: python3 tools/build_docs.py
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site
