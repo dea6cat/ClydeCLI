@@ -150,6 +150,30 @@ class TestToolOutput(unittest.TestCase):
         self.assertEqual(first["text"] + second["text"] + third["text"], text)
         self.assertNotIn("next_offset", third)
 
+    def test_a_cut_output_can_be_searched_instead_of_paged(self):
+        from src.tool_system.errors import ToolInputError
+        text = "".join(f"line {i}\n" for i in range(1, 20_001)) + "Error: the real reason\nlast line\n"
+        ref = context_cache.stash(text)
+        tool, ctx = RetrieveContextTool(), ToolContext(workspace_root=Path.cwd())
+        found = tool.run({"reference": ref, "contains": "the real REASON"}, ctx).output   # any case, literal text
+        self.assertEqual((found["total_matching_lines"], found["matches"]), (1, [{"line": 20_001, "text": "Error: the real reason"}]))
+        around = tool.run({"reference": ref, "contains": "line 77", "lines": 1}, ctx).output["matches"]
+        self.assertEqual(around[0], {"line": 76, "text": "line 76\nline 77\nline 78"})
+        tight = tool.run({"reference": ref, "contains": "line 1000"}, ctx).output
+        self.assertEqual(tight["total_matching_lines"], 11)            # line 1000 and line 1000x
+        merged = tool.run({"reference": ref, "contains": "line 5", "lines": 5}, ctx).output["matches"]
+        self.assertTrue(all(a["line"] + a["text"].count("\n") + 1 < b["line"] for a, b in zip(merged, merged[1:])))   # blocks that touch were merged
+        spread = context_cache.stash("".join(f"hit {i}\nplain\nplain\n" for i in range(150)))   # a hit every third line: no two blocks touch
+        many = tool.run({"reference": spread, "contains": "hit"}, ctx).output
+        self.assertEqual((len(many["matches"]), many["total_matching_lines"]), (100, 150))
+        self.assertIn("50 more blocks", many["more"])
+        self.assertEqual(tool.run({"reference": ref, "contains": "no such text"}, ctx).output["matches"], [])
+        for bad in ({"contains": " "}, {"contains": "x", "lines": 9}, {"contains": "x", "lines": -1}):
+            with self.assertRaises(ToolInputError):
+                tool.run({"reference": ref, **bad}, ctx)
+        wide = context_cache.stash("a" * 5_000 + " needle\n")
+        self.assertEqual(tool.run({"reference": wide, "contains": "needle"}, ctx).output["matches"][0]["text"], "a" * 500 + " …")   # one enormous line is cut
+
     def test_encoded_files_are_never_cut(self):
         from src.tool_system.protocol import ToolResult
         from src.tool_system.registry import _clip_result
