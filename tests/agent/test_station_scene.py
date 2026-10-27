@@ -27,7 +27,7 @@ const code = fs.readFileSync(process.argv[2], "utf8");
 const reduced = process.argv[3] === "reduced";
 const ctx = { Math, console, parseInt, REDUCED: reduced };
 vm.createContext(ctx);
-vm.runInContext(code + "\nthis.__api = { bonds, partnerOf, assignBarSpots, facesDownLeft, needsYou, ageText, memberState, crewCounts, countsText, linkState, QUIET, plan, bounds, family, workerTrips, orchestratorTrips, walkerState, tripState, tripEnd };", ctx);
+vm.runInContext(code + "\nthis.__api = { callName, withName, NAME_MAX, bonds, partnerOf, assignBarSpots, facesDownLeft, needsYou, ageText, memberState, crewCounts, countsText, linkState, QUIET, plan, bounds, family, workerTrips, orchestratorTrips, walkerState, tripState, tripEnd };", ctx);
 const A = ctx.__api, fails = [];
 const FAMILIES = ["read", "write", "shell", "web", "mcp", "other"];
 const bay = (i) => ({ id: "worker-" + i, kind: "bay", members: [], objects: FAMILIES.map((f) => ({ family: f, tools: [f], used: 0, asked: 0, allowed: 0, denied: 0, failed: 0, last: null })) });
@@ -212,6 +212,14 @@ if (rowsOf([nrun("r1", "done")], { r1: [] }).length) MOTION.push("rows with noth
 const order = rowsOf([nrun("r1", "running", [{ id: "a", who: "w", tool: "Edit", t: nowT - 10 }])], { r1: [{ t: nowT - 100, who: "worker-2", kind: "failed" }] });
 if (order.length !== 2 || order[0].kind !== "failure") MOTION.push("the longest-waiting row goes first");
 if (A.ageText(5) !== "5s" || A.ageText(125) !== "2m" || A.ageText(7300) !== "2h" || A.ageText(200000) !== "2d") MOTION.push("age text");
+// 10. a name you give is a label per run: the real id stays, an empty or identical name takes it away, the length is capped, other runs and people are untouched
+let nm = A.withName({}, "r1", "worker-2", "  Fixer   Bob ");
+if (A.callName(nm, "r1", "worker-2") !== "Fixer Bob" || A.callName(nm, "r2", "worker-2") !== "worker-2" || A.callName(nm, "r1", "worker-1") !== "worker-1") MOTION.push("a name is per run and per person: " + JSON.stringify(nm));
+if (A.callName(A.withName(nm, "r1", "worker-2", ""), "r1", "worker-2") !== "worker-2" || A.callName(A.withName(nm, "r1", "worker-2", "worker-2"), "r1", "worker-2") !== "worker-2") MOTION.push("an empty or identical name must remove the label");
+if (A.callName(A.withName({}, "r1", "w", "x".repeat(90)), "r1", "w").length !== A.NAME_MAX) MOTION.push("a name is capped");
+if (nm["r1|worker-2"] !== "Fixer Bob" || Object.keys(A.withName(nm, "r1", "worker-3", "A")).length !== 2) MOTION.push("naming must not change the old map or other labels");
+const named = A.needsYou([nrun("r1", "running", [{ id: "a1", who: "worker-1", tool: "Bash", t: nowT - 90 }])], ne({ r1: [] }), nowT, [], (id, w) => A.callName({ "r1|worker-1": "Fixer" }, id, w));
+if (named[0].text !== "Fixer wants to use Bash" || named[0].who !== "worker-1") MOTION.push("needs-you shows the name but keeps the id: " + JSON.stringify(named));
 console.log(JSON.stringify({ layout: LAYOUT, motion: MOTION }));
 """
 
