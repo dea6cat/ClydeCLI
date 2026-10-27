@@ -342,8 +342,8 @@ class TestPage(unittest.TestCase):
         art = Path(station_web.__file__).parent / "station_art"
         self.assertIn('f.back ? "-back"', station_web.PAGE)
         self.assertIn("back: true", station_web.PAGE)
-        self.assertIn("a workshop's south and east edges are low glass walls too", station_web.PAGE)
-        for name in ("file-cabinet", "writer-desk", "safe", "radio", "switchboard", "cupboard"):   # the six a workshop is furnished with
+        self.assertIn("every room's south and east edges are low glass walls too", station_web.PAGE)
+        for name in ("file-cabinet", "writer-desk", "safe", "radio", "switchboard", "cupboard", "signing-desk", "cash-register", "report-desk", "mail-cabinet", "bar", "bookcase"):
             self.assertTrue((art / f"furn-{name}-back.png").is_file(), name)
 
     def test_the_crew_panel_counts_with_the_same_rule_as_the_header(self):
