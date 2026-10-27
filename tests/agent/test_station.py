@@ -69,6 +69,15 @@ class Station(unittest.TestCase):
         self.assertEqual(run.pending(), [])
         self.assertEqual(station.command(self._console(), "approve", run.id), 1)   # nothing left to answer
 
+    def test_the_cap_shows_beside_the_spend_when_the_run_has_one(self):
+        run = self._run()
+        self.assertIsNone(station.snapshot(run)["spend"]["cap"])
+        run.update(cap_usd=2.0)
+        self.assertEqual(station.snapshot(run)["spend"]["cap"], 2.0)
+        console = self._console()
+        console.print(station.render(run))
+        self.assertIn("of $2.00", self.buffer.getvalue())
+
     def test_every_active_run_is_shown_and_approve_answers_the_oldest_ask_across_them(self):
         first, second = self._run(), self._run()
         old = Run.create("long gone", {"master": "a:big", "workers": []})

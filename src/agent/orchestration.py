@@ -320,10 +320,12 @@ def _hand_over(run: Run, order: dict[str, Any], names: list[str], role: RoleAssi
 
 def orchestrate(plan: OrchestrationPlan, spec: str, *, workspace: Path, parent: ToolContext, registry: Any,
                 providers: dict[str, Any], on_approval: Callable[[dict[str, Any]], bool] | None = None,
-                cancel: threading.Event | None = None, on_start: Callable[[Run], None] | None = None) -> Outcome | str:
+                cancel: threading.Event | None = None, on_start: Callable[[Run], None] | None = None,
+                cost_cap: float | None = None) -> Outcome | str:
     """Run the plan to the point where the user decides. `on_approval(ask)` answers a worker's request from the
     caller's thread (None: every request is denied). `on_start(run)` is called once the run exists, before any model call.
-    Returns an Outcome, or the reason it could not start."""
+    `cost_cap` (USD): the run stops, as with Ctrl-C, once its priced spend reaches it; a model call already under way finishes first,
+    and spend with no price (an unpriced model) cannot be counted. Returns an Outcome, or the reason it could not start."""
     root = repo_root(workspace)
     if isinstance(root, str):
         return root
@@ -334,7 +336,20 @@ def orchestrate(plan: OrchestrationPlan, spec: str, *, workspace: Path, parent: 
     run = Run.create(plan.task, {"master": plan.master.ref, "advisor": plan.advisor.ref if plan.advisor else None,
                                  "workers": [{"name": n, "model": w.ref} for n, w in zip(names, plan.workers)], "kinds": kinds,
                                  "orchestrators": ["clyde", "bonnie"]})
-    run.update(spec=spec, repo=str(root), workspaces={})
+    run.update(spec=spec, repo=str(root), workspaces={}, **({"cap_usd": cost_cap} if cost_cap is not None else {}))
+    capped = [False]
+
+    def hit_cap() -> bool:   # True the moment the run's priced spend reaches the cap: recorded once, and everything is told to stop
+        if cost_cap is None or cancel.is_set():
+            return False
+        usd = run.total_spend()[0]
+        if usd < cost_cap:
+            return False
+        run.event("clyde", "cost_cap", usd=usd, cap=cost_cap, note=f"spend reached ${usd:.4f} of the ${cost_cap:.2f} cap")
+        capped[0] = True
+        cancel.set()
+        return True
+
     _record_tools(run, plan, names, registry, parent)
     if on_start:
         on_start(run)   # e.g. open the tmux panes: the run and its team are already recorded
@@ -383,6 +398,7 @@ def orchestrate(plan: OrchestrationPlan, spec: str, *, workspace: Path, parent: 
                     for n, w, t in zip(names, plan.workers, split)]
             while True:
                 try:
+                    hit_cap()
                     if run.stop_requested() and not cancel.is_set():   # the user pressed Stop in the station: the same path as Ctrl-C
                         run.event("clyde", "stopping", note="you asked every worker to stop")
                         cancel.set()
@@ -424,13 +440,14 @@ def orchestrate(plan: OrchestrationPlan, spec: str, *, workspace: Path, parent: 
                 r, before = f.result(), by_worker.get(n)
                 by_worker[n] = {**r, "summary": f"{before['summary']}\n\nThen, a task from the user: {r['summary']}" if before else r["summary"]}
             results = list(by_worker.values())
+        hit_cap()   # the last calls may have crossed it
         run.set_status("stopped" if cancel.is_set() else "reviewing")
         for late in run.pending_orders():   # the station only files orders while the run is working: this one slipped in as it ended
             run.settle_order(late["id"], "refused", why="the run had moved on")
             run.event("clyde", "order_refused", order=late["id"], note="the run had moved on")
         if cancel.is_set():
             _cleanup(run)
-            return Outcome(run, "Stopped before the review.", "none", [r["name"] for r in results if not r["ok"]], notes)
+            return Outcome(run, "Stopped at the cost cap." if capped[0] else "Stopped before the review.", "none", [r["name"] for r in results if not r["ok"]], notes)
 
         digest = "\n\n".join(
             f"## {r['name']} ({'finished' if r['ok'] else 'FAILED'}), files: {', '.join(r['files']) or 'none'}\n"
@@ -441,6 +458,10 @@ def orchestrate(plan: OrchestrationPlan, spec: str, *, workspace: Path, parent: 
             review = _advise(run, plan.advisor, provider_of(plan.advisor), f"Spec:\n{spec}\n\nWorkers:\n{digest}", cancel, notes)
             (run.root / "advisor.md").write_text(review, encoding="utf-8")
             run.event("advisor", "reviewed")
+        if hit_cap():   # the review pushed it over: no report call
+            run.set_status("stopped")
+            _cleanup(run)
+            return Outcome(run, "Stopped at the cost cap.", "none", [r["name"] for r in results if not r["ok"]], notes)
         run.event("master", "reporting")
         report = _model_text(provider_of(plan.master), plan.master.model, REPORT_SYSTEM,
                              f"Spec:\n{spec}\n\nWorkers:\n{digest}\n\nAdvisor review:\n{review or '(no advisor)'}", run, "master")

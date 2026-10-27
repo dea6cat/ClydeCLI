@@ -105,6 +105,28 @@ def _pick_model(repl: Any, title: str, runnable: list[Harness], *, optional: boo
     return name, model
 
 
+def _parse_cap(text: str) -> float | None | str:
+    """The cap in USD from what the user typed: None for empty (no cap), the number, or why it is not one."""
+    text = text.strip().lstrip("$")
+    if not text:
+        return None
+    try:
+        cap = float(text)
+    except ValueError:
+        return "A number of dollars, like 2 or 0.50, or leave it empty for no limit."
+    return cap if cap > 0 and cap < 1_000_000 else "More than zero, please."
+
+
+def _ask_cap(console: Any) -> float | None:
+    """Ask for the run's cost cap until it is empty (no cap) or a good number. Only models with a price count towards it."""
+    while True:
+        cap = _parse_cap(Prompt.ask("[dim]Stop the run if it costs more than (USD; empty for no limit; local models cost nothing, unpriced ones cannot be counted)[/dim]",
+                                    console=console, default="", show_default=False))
+        if not isinstance(cap, str):
+            return cap
+        console.print(f"[yellow]{cap}[/yellow]")
+
+
 def _approval(repl: Any, status: Any):
     def ask(row: dict[str, Any]) -> bool:
         status.stop()
@@ -161,6 +183,7 @@ def orchestrate_cmd(repl: Any, arg: str) -> None:
     if not Confirm.ask("Run the team on this spec?", console=console, default=True):
         return
 
+    cap = _ask_cap(console)
     from src.agent import panes
     from src.providers import build_registry
     show_panes = bool(panes.tmux_path()) and Confirm.ask("Open a tmux pane for each team member?", console=console, default=False)
@@ -170,7 +193,7 @@ def orchestrate_cmd(repl: Any, arg: str) -> None:
     try:
         outcome = orchestrate(plan, state.spec or task, workspace=workspace, parent=repl.tool_context, registry=repl.tool_registry,
                               providers=build_registry(), on_approval=_approval(repl, status),
-                              on_start=(lambda run: console.print(f"[dim]{escape(panes.open_panes(run))}[/dim]")) if show_panes else None)
+                              cost_cap=cap, on_start=(lambda run: console.print(f"[dim]{escape(panes.open_panes(run))}[/dim]")) if show_panes else None)
     finally:
         status.stop()
     if isinstance(outcome, str):

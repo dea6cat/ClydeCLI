@@ -48,6 +48,14 @@ class Plan(unittest.TestCase):
         self.assertIn("one at a time", orchestration.format_plan(plan))
 
 
+class CostCapPrompt(unittest.TestCase):
+    def test_the_cap_is_a_positive_number_of_dollars_or_empty(self):
+        from src.repl.orchestrate import _parse_cap
+        self.assertEqual((_parse_cap(""), _parse_cap("  "), _parse_cap("2"), _parse_cap("$0.50")), (None, None, 2.0, 0.5))
+        for bad in ("abc", "0", "-1", "1e9", "nan"):
+            self.assertIsInstance(_parse_cap(bad), str, bad)
+
+
 class HandOver(unittest.TestCase):
     def test_a_full_team_refuses_the_order_and_says_so(self):
         with tempfile.TemporaryDirectory() as tmp, patch("src.agent.runs.clyde_home", return_value=Path(tmp)):
@@ -240,6 +248,35 @@ class EndToEnd(unittest.TestCase):
         listed = subprocess.run(["git", "worktree", "list"], cwd=self.repo, capture_output=True, text=True, check=False).stdout
         self.assertEqual(len(listed.strip().splitlines()), 1)
         self.assertFalse((self.repo / "c.txt").exists())
+
+    def test_the_run_stops_when_its_priced_spend_reaches_the_cap_and_says_so(self):
+        w1 = FakeProvider(reply("done a", usage=USAGE), name="w1")
+        w2 = FakeProvider(reply("done b", usage=USAGE), name="w2")
+        providers = {"m": FakeProvider(reply('{"tasks": ["a", "b"]}', usage=USAGE), reply("ok\nVERDICT: APPROVE", usage=USAGE), name="m"),
+                     "adv": FakeProvider(reply("fine", usage=USAGE), name="adv"), "w1": w1, "w2": w2}
+        plan = build_plan("t", ("provider:m", "m"), ("provider:adv", "m"), [("provider:w1", "m"), ("provider:w2", "m")], [_harness(f"provider:{n}") for n in providers])
+        with patch("src.agent.cost_tracker.estimate_usd", return_value=1.0):   # every call costs a dollar
+            outcome = orchestrate(plan, "spec", workspace=self.repo, parent=ToolContext(workspace_root=self.repo), registry=build_default_registry(),
+                                  providers=providers, cost_cap=2.5)
+        run = outcome.run
+        self.assertEqual((run.state()["status"], outcome.report, run.state()["cap_usd"]), ("stopped", "Stopped at the cost cap.", 2.5))
+        events = [(e["who"], e["kind"]) for e in run.events()]
+        self.assertEqual(events.count(("clyde", "cost_cap")), 1)
+        self.assertNotIn(("advisor", "reviewing"), events)   # no review, no report: nothing more is bought
+        self.assertNotIn(("master", "reporting"), events)
+        self.assertGreaterEqual(run.total_spend()[0], 2.5)
+        listed = subprocess.run(["git", "worktree", "list"], cwd=self.repo, capture_output=True, text=True, check=False).stdout
+        self.assertEqual(len(listed.strip().splitlines()), 1)
+
+    def test_a_run_under_its_cap_finishes_as_usual_and_unpriced_spend_is_not_counted(self):
+        providers = {"m": FakeProvider(reply('{"tasks": ["a"]}', usage=USAGE), reply("ok\nVERDICT: APPROVE", usage=USAGE), name="m"), "w1": FakeProvider(reply("x", usage=USAGE), name="w1")}
+        plan = build_plan("t", ("provider:m", "m"), None, [("provider:w1", "m")], [_harness(f"provider:{n}") for n in providers])
+        with patch("src.agent.cost_tracker.estimate_usd", return_value=None):   # no price: the cap cannot see it
+            outcome = orchestrate(plan, "spec", workspace=self.repo, parent=ToolContext(workspace_root=self.repo), registry=build_default_registry(),
+                                  providers=providers, cost_cap=0.01)
+        self.assertEqual(outcome.run.state()["status"], "awaiting_approval")
+        self.assertNotIn(("clyde", "cost_cap"), [(e["who"], e["kind"]) for e in outcome.run.events()])
+        land(outcome.run, approve=False)
 
     def test_a_worker_never_has_more_than_its_lead(self):
         from src.tool_system.permissions import ToolPermissionContext
