@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-27
+
 ### Security
 
 - Clyde now requires certifi 2026.10.19 or later, the bundle of root certificates its HTTPS requests trust. That release drops the emSign ECC Root CA - G3 after eMudhra's weak-key incident; an older bundle kept trusting it, which left connections open to interception.
@@ -820,6 +822,7 @@ The focus was on building a solid foundation with clean architecture, comprehens
 
 ---
 
+[0.8.0]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.8.0
 [0.7.0]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.7.0
 [0.6.0]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.6.0
 [0.5.11]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.5.11

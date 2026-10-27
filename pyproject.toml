@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "clyde-cli"
-version = "0.7.0"
+version = "0.8.0"
 description = "A coding-agent harness for your terminal: bring any LLM, cloud or local, and Clyde turns it into an agent"
 readme = "README.md"
 # SPDX (PEP 639): the "(portions MIT)" detail lives in LICENSE. setuptools >=77 accepts the expression form; the old table form is deprecated.
