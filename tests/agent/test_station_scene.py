@@ -27,7 +27,7 @@ const code = fs.readFileSync(process.argv[2], "utf8");
 const reduced = process.argv[3] === "reduced";
 const ctx = { Math, console, parseInt, REDUCED: reduced };
 vm.createContext(ctx);
-vm.runInContext(code + "\nthis.__api = { facesDownLeft, needsYou, ageText, memberState, crewCounts, countsText, linkState, QUIET, plan, bounds, family, workerTrips, orchestratorTrips, walkerState, tripState, tripEnd };", ctx);
+vm.runInContext(code + "\nthis.__api = { bonds, partnerOf, assignBarSpots, facesDownLeft, needsYou, ageText, memberState, crewCounts, countsText, linkState, QUIET, plan, bounds, family, workerTrips, orchestratorTrips, walkerState, tripState, tripEnd };", ctx);
 const A = ctx.__api, fails = [];
 const FAMILIES = ["read", "write", "shell", "web", "mcp", "other"];
 const bay = (i) => ({ id: "worker-" + i, kind: "bay", members: [], objects: FAMILIES.map((f) => ({ family: f, tools: [f], used: 0, asked: 0, allowed: 0, denied: 0, failed: 0, last: null })) });
@@ -38,7 +38,7 @@ const overlap = (a, b) => Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x) > 
 const boxOf = (b) => ({ x: b[0], y: b[1], w: b[2], d: b[3] });
 const propBox = (q) => q.kind === "bookcase" ? { x: q.x, y: q.y, w: 0.9, d: q.size || 3.4 } : { x: q.x - 0.45, y: q.y - 0.45, w: 0.9, d: 0.9 };
 const LAYOUT = [], MOTION = [];
-for (const n of [1, 2, 3, 4, 5, 7]) {
+for (const n of [1, 2, 3, 4, 5, 7, 10]) {
   const p = A.plan(layoutFor(n)), tag = "n=" + n + ": ";
   const solids = [...p.furniture.map((f) => ({ what: f.family + " in " + f.room.id, ...boxOf(f.box) })), ...p.props.map((q) => ({ what: q.kind + " near " + q.x.toFixed(1) + "," + q.y.toFixed(1), ...propBox(q) }))];
   // 1. every path a person can take is clear of every solid
@@ -160,6 +160,26 @@ if (A.crewCounts([mk("done", "using Edit")], crewOf).working !== 0) MOTION.push(
 if (A.countsText({ working: 2, waiting: 0, failed: 0, idle: 5 }) !== "2 working \u00b7 5 idle") MOTION.push("counts text: " + A.countsText({ working: 2, waiting: 0, failed: 0, idle: 5 }));
 if (A.countsText({ working: 1, waiting: 2, failed: 1, idle: 0 }) !== "1 working \u00b7 2 waiting \u00b7 1 failed \u00b7 0 idle") MOTION.push("counts text with waiting and failed");
 if (A.linkState(false, [mk("running")]) !== "down" || A.linkState(true, []) !== "standby" || A.linkState(true, [mk("done")]) !== "standby" || A.linkState(true, [mk("running")]) !== "live") MOTION.push("link states are wrong");
+// 11. who stands beside whom at the bar comes only from recorded hand-offs (checks), saturating, and an unbonded pair gets no special place
+{
+  const q = A.plan(layoutFor(4)), names = ["worker-1", "worker-2", "worker-3", "worker-4"], ch = (who, target, n) => Array.from({ length: n }, () => ({ kind: "check", who, target, reason: "brief" }));
+  const none = A.bonds([{ kind: "tool_use", who: "worker-1", tool: "Edit" }, { kind: "check", who: "clyde", target: "outbox", reason: "landing" }]);
+  if (Object.keys(none).length) MOTION.push("a bond came from something that was not a hand-off: " + JSON.stringify(none));
+  const b = A.bonds([...ch("clyde", "worker-2", 3), ...ch("bonnie", "worker-3", 1), ...ch("clyde", "worker-3", 3)]);
+  if (b["clyde|worker-2"] !== 0.5 || b["bonnie|worker-3"] !== 0.25 || b["clyde|worker-3"] !== 0.5) MOTION.push("strengths: " + JSON.stringify(b));
+  const heavy = A.bonds(ch("clyde", "worker-1", 200));
+  if (!(heavy["clyde|worker-1"] < 1 && heavy["clyde|worker-1"] > 0.98)) MOTION.push("strength must approach 1 and never reach it");
+  if (A.bonds([...ch("clyde", "worker-2", 3), ...ch("bonnie", "worker-4", 40)])["clyde|worker-2"] !== 0.5) MOTION.push("one pair's strength moved because another pair grew");
+  if (A.partnerOf(b, "worker-3").name !== "clyde" || A.partnerOf(b, "worker-1") !== null) MOTION.push("partner: the strongest, or nobody");
+  const spots = A.assignBarSpots(q, b, names), near = (w, o) => Math.hypot(spots[w][0] - spots[o][0], spots[w][1] - spots[o][1]);
+  if (!(near("worker-2", "clyde") < near("worker-2", "bonnie") || near("worker-2", "clyde") < 2.6)) MOTION.push("a worker with a bond does not stand beside its partner");
+  if (new Set(names.map((w) => spots[w].join())).size !== 4 || names.some((w) => spots[w].join() === spots.clyde.join() || spots[w].join() === spots.bonnie.join())) MOTION.push("two people at one place in the bar");
+  const base = A.assignBarSpots(q, {}, names);
+  if (JSON.stringify(base["worker-1"]) !== JSON.stringify(q.crowd[0])) MOTION.push("with no bonds the places are taken in order");
+  const bonded = { ...q, bonds: b }, started = A.workerTrips([{ t: 1001, who: "worker-2", kind: "tool_use", tool: "Edit" }, { t: 1100, who: "clyde", kind: "check", target: "worker-1", reason: "brief" }], "worker-2", bonded, live, true).filter((x) => x.leisure);
+  const alone = A.workerTrips([{ t: 1001, who: "worker-2", kind: "tool_use", tool: "Edit" }, { t: 1100, who: "clyde", kind: "check", target: "worker-1", reason: "brief" }], "worker-2", { ...q, bonds: {} }, live, true).filter((x) => x.leisure);
+  if (!started.length || !alone.length || started[0].t0 < 1100 + A.QUIET - 1e-9 || alone[0].t0 >= started[0].t0) MOTION.push("a bonded worker leaves with its partner (after the whole run is quiet), an unbonded one after its own quiet");
+}
 // 10. furniture faces into its room: the pictures face down-right, so a piece on the north wall is mirrored to face down-left and a piece on the west wall keeps its picture
 {
   const q = A.plan(layoutFor(3)), bay = q.rooms["worker-1"], wallN = { room: bay, box: [bay.x + 3, bay.y + 0.3, 1.5, 1] }, wallW = { room: bay, box: [bay.x + 0.3, bay.y + 3.5, 1, 1.5] };

@@ -331,6 +331,21 @@ function countsText(counts) {
 function linkState(reachable, runs) {   // live only when the server answered and a run is live; standby is neutral, never green
   return !reachable ? "down" : runs.some((run) => LIVE_RUN.includes(run.status)) ? "live" : "standby";
 }
+// Who works with whom, read only from what the run recorded: each `check` (Clyde taking a worker its task or an approval, Bonnie collecting its result) is one
+// real hand-off between that pair. strength = score / (score + BOND_HALF): it saturates, so one pair's number never moves because another pair grew, and a pair
+// with no hand-off has strength 0, which means "no bond", never "a weak one".
+const BOND_W = 2, BOND_HALF = 6;
+function bonds(events) {
+  const score = {};
+  for (const e of events) if (e.kind === "check" && (e.who === "clyde" || e.who === "bonnie") && e.target && e.target !== "outbox") score[e.who + "|" + e.target] = (score[e.who + "|" + e.target] || 0) + BOND_W;
+  const out = {};
+  for (const k of Object.keys(score)) out[k] = Math.round(score[k] / (score[k] + BOND_HALF) * 1000) / 1000;
+  return out;
+}
+function partnerOf(b, worker) {   // the orchestrator this worker has worked with most, or null when none was recorded
+  const c = b["clyde|" + worker] || 0, n = b["bonnie|" + worker] || 0;
+  return c === 0 && n === 0 ? null : c >= n ? { name: "clyde", strength: c } : { name: "bonnie", strength: n };
+}
 const NEEDS_MAX_AGE = 3 * 24 * 3600;   // a failure older than this drops off the list; a pending request never does
 function ageText(seconds) {
   const s = Math.max(0, Math.round(seconds));
@@ -399,8 +414,9 @@ function faceTo(box, from) { return [box[0] + box[2] / 2 - from[0], box[1] + box
 function workerTrips(events, name, scene, liveFrom, leisure) {
   const trips = [], home = scene.homes[name];
   let lastOwn = -Infinity;
+  const together = scene.bonds && partnerOf(scene.bonds, name);   // with a partner it leaves when the partner does: after the whole run has been quiet
   for (const e of events) {
-    if (e.who === name && e.t >= liveFrom) lastOwn = Math.max(lastOwn, e.t);
+    if ((e.who === name || together) && e.t >= liveFrom) lastOwn = Math.max(lastOwn, e.t);
     if (e.who !== name || e.kind !== "tool_use" || e.t < liveFrom) continue;
     const stand = scene.stands[name + ":" + family(e.tool)];
     if (!stand) continue;
@@ -414,6 +430,18 @@ function workerTrips(events, name, scene, liveFrom, leisure) {
     trips.push(...leisureTrips(name, scene, { room: name, at: home }, quietFrom, liveFrom + 10800, 0, false).trips);
   }
   return trips;
+}
+function assignBarSpots(scene, b, workers) {   // at the bar a worker stands beside the orchestrator it worked with most; workers with no bond take the other places in order
+  const spots = { clyde: scene.barSpots.clyde, bonnie: scene.barSpots.bonnie }, free = scene.crowd.slice();
+  const bonded = workers.map((w) => ({ w, p: partnerOf(b, w) })).filter((x) => x.p).sort((x, y) => y.p.strength - x.p.strength || (x.w < y.w ? -1 : 1));
+  for (const { w, p } of bonded) {
+    if (!free.length) break;
+    let best = 0;
+    for (let i = 1; i < free.length; i++) if (dist(free[i], spots[p.name]) < dist(free[best], spots[p.name])) best = i;
+    spots[w] = free.splice(best, 1)[0];
+  }
+  for (const w of workers) if (!spots[w]) spots[w] = free.length ? free.shift() : scene.crowd[workers.indexOf(w) % scene.crowd.length];
+  return spots;
 }
 // When nothing has been recorded for QUIET seconds (by anyone), Clyde and Bonnie walk to the bar together, stay a while, now and then look
 // into a workshop and come back. It is scenery, a function of the recorded times and the clock: any recorded event ends it (after the leg they
@@ -617,8 +645,8 @@ function plan(layout) {
   });
   const bar = rooms.bar;
   const barSpots = { clyde: [bar.x + 4.0, bar.y + 3.0], bonnie: [bar.x + 5.4, bar.y + 3.0] };   // where Clyde and Bonnie lean on the counter
-  const crowd = [[6.8, 3.0], [8.2, 3.0], [9.6, 3.0], [2.6, 4.6], [4.2, 4.6], [5.8, 4.6], [7.4, 4.6], [9.0, 4.6]];   // and where the workers stand, one spot each, round the counter
-  bayRooms.forEach((r, i) => { barSpots[r.id] = [bar.x + crowd[i % crowd.length][0], bar.y + crowd[i % crowd.length][1]]; });
+  const crowd = [[6.8, 3.0], [8.2, 3.0], [9.6, 3.0], [2.6, 4.6], [4.2, 4.6], [5.8, 4.6], [7.4, 4.6], [9.0, 4.6], [10.4, 4.6], [6.4, 6.0], [8.2, 6.0], [10.2, 6.0]].map((q) => [bar.x + q[0], bar.y + q[1]]);   // where the workers stand, one place each, round the counter
+  bayRooms.forEach((r, i) => { barSpots[r.id] = crowd[i % crowd.length]; });
   // the speakeasy: a counter along the back with stools, sofas and a little table in front; the way through (row 5) stays clear
   furniture.push({ room: bar, family: "bar", obj: null, box: [bar.x + 1.5, bar.y + 0.5, 6, 1.4] }, { room: bar, family: "sofa", obj: null, box: [bar.x + 0.5, bar.y + 6.4, 1.4, 3.2] },
                  { room: bar, family: "sofa", obj: null, box: [bar.x + 8.4, bar.y + 0.5, 3.2, 1.4] }, { room: bar, family: "smalltable", obj: null, box: [bar.x + 3.2, bar.y + 7.2, 1.8, 1.4] });
@@ -641,7 +669,7 @@ function plan(layout) {
       if (!props.some((q) => (q.kind === "car" || q.kind === "tower") && Math.hypot(q.x - px, q.y - py) < 3.2)) prop(k % 3 ? "tree" : "lamppost", px, py);
     }
   });
-  return { rooms, lot, bayRooms, corridors, edges, homes, stands, checkStands, barSpots, route, furniture, props, lanes, deckCx, DW, DD, slab };
+  return { rooms, lot, bayRooms, corridors, edges, homes, stands, checkStands, barSpots, crowd, route, furniture, props, lanes, deckCx, DW, DD, slab };
 }
 function bounds(p) {   // the rooms with a little air round them: the island and its rock run on past the edges of the picture
   let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
@@ -947,6 +975,8 @@ function buildScene(run) {
     described.push(name + ": " + (card.doing || ""));
     return person;
   });
+  p.bonds = bonds(events);
+  p.barSpots = assignBarSpots(p, p.bonds, p.bayRooms.map((r) => r.id));
   const trips = {};
   for (const person of people) {
     if (person.name === "clyde" || person.name === "bonnie") trips[person.name] = orchestratorTrips(events, person.name, p, liveFrom, !run.asks.length && run.status !== "awaiting_approval");   // not while an approval waits for you
