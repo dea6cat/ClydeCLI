@@ -58,6 +58,14 @@ header .link.live i { background: var(--accent); animation: pulse 1.2s ease-in-o
 .need { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 13px; padding: 3px 0; }
 .need i { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); flex: none; } .need.failure i { background: var(--bad); }
 .need .age { color: var(--muted); font-size: 12px; }
+.quests { margin-top: 8px; padding-top: 8px; border-top: 1px solid color-mix(in srgb, var(--ink) 14%, transparent); }
+.quests-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+.quest { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; font-size: 13px; padding: 3px 0; }
+.quest i { width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid var(--muted); flex: none; align-self: center; }
+.quest.done i { background: var(--ok); border-color: var(--ok); }
+.quest.done .grow { color: var(--muted); text-decoration: line-through; }
+.quest .age { color: var(--muted); font-size: 12px; }
+.quest .grow { flex: 1 1 140px; min-width: 0; }
 .need .grow { flex: 1 1 140px; min-width: 0; overflow-wrap: anywhere; }
 button.mini { font: inherit; font-size: 12px; padding: 2px 9px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; }
 button.mini:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -293,7 +301,7 @@ button.act.allow { border-color: rgba(123,214,166,.6); } button.act.deny { borde
 const TOKEN = "__TOKEN__";
 const NS = "http://www.w3.org/2000/svg";
 const REDUCED = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-const state = { dismissed: [], names: {}, editing: false, runs: [], feeds: {}, filter: {}, polling: {}, theme: "city", loadedAt: Date.now() / 1000, scenes: [], link: { ok: true, reason: "" } };
+const state = { dismissed: [], names: {}, quests: { done: {}, hidden: false }, editing: false, runs: [], feeds: {}, filter: {}, polling: {}, theme: "city", loadedAt: Date.now() / 1000, scenes: [], link: { ok: true, reason: "" } };
 const $runs = document.getElementById("runs");
 const $status = document.getElementById("status");
 const $aw = document.getElementById("addWorker"), $awTask = document.getElementById("awTask"), $awError = document.getElementById("awError"), $awSend = document.getElementById("awSend");
@@ -408,6 +416,25 @@ function needsYou(runs, eventsOf, now, dismissed, nameOf) {   // everything wait
     if (run.status === "failed") rows.push({ key: run.id + ":runfailed", kind: "failure", run: run.id, who: "clyde", text: "the run failed", since: events.length ? events[events.length - 1].t : run.started });
   }
   return rows.filter((r) => !dismissed.includes(r.key) && (r.kind === "approval" || now - r.since < NEEDS_MAX_AGE)).sort((a, b) => a.since - b.since);
+}
+// First steps: small things to try, each ticked only by a fact the run recorded (or, for naming, a name you gave). A step once seen stays ticked.
+const QUESTS = [
+  { key: "run", title: "Start a run", hint: "Type /orchestrate in Clyde." },
+  { key: "tool", title: "See a worker use a tool", hint: "A worker walks to a piece of furniture when it does." },
+  { key: "answer", title: "Answer a request", hint: "Allow or deny what a worker asks for." },
+  { key: "add", title: "Add a worker", hint: "While a run is working: Add worker in the crew panel." },
+  { key: "name", title: "Give someone a name", hint: "Rename on a crew card." },
+  { key: "land", title: "Land or discard a run", hint: "The decision at the end of a run." },
+];
+function quests(runs, eventsOf, names, seen) {   // QUESTS with `done`: from the recorded events, the names you gave, and what was ticked before
+  const found = { run: runs.length > 0, name: Object.keys(names || {}).length > 0 };
+  for (const run of runs) for (const e of eventsOf(run.id) || []) {
+    if (e.kind === "tool_use" && /^worker-/.test(e.who)) found.tool = true;
+    if (e.who === "user" && e.kind === "approval_answered") found.answer = true;
+    if (e.who === "user" && e.kind === "ordered") found.add = true;
+    if (e.who === "user" && (e.kind === "landed" || e.kind === "discarded")) found.land = true;
+  }
+  return QUESTS.map((q) => Object.assign({}, q, { done: !!(found[q.key] || (seen && seen[q.key])) }));
 }
 // </status>
 function clock(t) { return new Date(t * 1000).toLocaleTimeString([], { hour12: false }); }
@@ -1269,6 +1296,25 @@ function sendAdd() {
   api("/api/order", { run: addingTo, task: $awTask.value }).then(() => { $aw.close(); $status.textContent = "Asked Clyde for one more worker."; refresh(); },
     (e) => { $awError.textContent = e.message; $awSend.disabled = false; });
 }
+function questBox() {   // the first-steps card: until every step is ticked or you hide it
+  const list = quests(state.runs, (id) => state.feeds[id], state.names, state.quests.done), box = el("div", "quests");
+  let changed = false;
+  for (const q of list) if (q.done && !state.quests.done[q.key]) { state.quests.done[q.key] = true; changed = true; }
+  if (changed) store("station.quests", JSON.stringify(state.quests));
+  if (state.quests.hidden || list.every((q) => q.done)) { box.hidden = true; return box; }
+  box.setAttribute("role", "region"); box.setAttribute("aria-label", "First steps");
+  const head = el("div", "quests-head"), hide = el("button", "mini", "Hide");
+  hide.type = "button";
+  hide.addEventListener("click", () => { state.quests.hidden = true; store("station.quests", JSON.stringify(state.quests)); redraw(); });
+  head.append(el("span", "", "First steps \u00b7 " + list.filter((q) => q.done).length + " of " + list.length), hide);
+  box.append(head);
+  for (const q of list) {
+    const row = el("div", "quest" + (q.done ? " done" : ""));
+    row.append(el("i"), el("span", "grow", q.title), q.done ? el("span", "age", "done") : el("span", "age", q.hint));
+    box.append(row);
+  }
+  return box;
+}
 function needsBox(run) {   // the top-left card's "needs you" list: only what waits on the user, hidden when nothing does
   const rows = needsYou([run], (id) => state.feeds[id], Date.now() / 1000, state.dismissed, (id, w) => callName(state.names, id, w)), box = el("div", "needs");
   if (!rows.length) { box.hidden = true; return box; }
@@ -1312,7 +1358,7 @@ function draw() {
   paintHeader();
   // Rebuild only when something visible changed: a rebuild every few seconds would swap the buttons out from under a click.
   if (state.editing) return;
-  const signature = JSON.stringify([state.dismissed, state.names, state.runs, Object.keys(state.feeds).map((id) => [id, state.feeds[id].length]), state.filter, state.theme]);
+  const signature = JSON.stringify([state.dismissed, state.names, state.quests, state.runs, Object.keys(state.feeds).map((id) => [id, state.feeds[id].length]), state.filter, state.theme]);
   if (signature === lastSignature) return;
   lastSignature = signature;
   $rail.classList.toggle("alert", state.runs.some((r) => r.asks.length));   // a request for your OK never hides behind a closed panel
@@ -1326,6 +1372,7 @@ function draw() {
     head.append(el("h2", "", run.task || run.id), el("span", "chip " + run.status, run.status.replace("_", " ")), el("span", "chip", spend), el("span", "chip run-id", run.id));
     const info = el("div", "run-info");
     info.append(head, el("div", "clyde", "Clyde: " + run.clyde), needsBox(run));
+    if (run === state.runs[0]) info.append(questBox());
     section.append(info);
     const body = el("div", "run-body");
     body.append(mapSection(run), rail(run));
@@ -1398,6 +1445,7 @@ document.addEventListener("pointerdown", (e) => {
 document.addEventListener("dblclick", (e) => { if (e.target.classList && e.target.classList.contains("railgrip")) { document.documentElement.style.removeProperty("--railw"); store("station.railw", ""); } });
 for (const pack in CREW) for (const anim in CREW[pack]) for (const dir in CREW[pack][anim]) preload(pack, anim, dir);   // every picture is fetched once up front, so a frame never blinks while it loads
 try { state.dismissed = JSON.parse(stored("station.dismissed") || "[]"); } catch (e) { state.dismissed = []; }
+try { state.quests = Object.assign({ done: {}, hidden: false }, JSON.parse(stored("station.quests") || "{}")); } catch (e) { state.quests = { done: {}, hidden: false }; }
 try { state.names = JSON.parse(stored("station.names") || "{}") || {}; } catch (e) { state.names = {}; }
 setInterval(() => { for (const age of document.querySelectorAll("[data-since]")) age.textContent = ageText(Date.now() / 1000 - Number(age.dataset.since)); }, 15000);   // how long each row has waited
 refresh();

@@ -313,6 +313,11 @@ class TestPage(unittest.TestCase):
         for needle in ("function crewItem", '"Rename"', "station.names", "withName(", "callName("):
             self.assertIn(needle, page)
 
+    def test_the_first_steps_card_is_ticked_by_records_and_can_be_hidden(self):
+        page = station_web.PAGE
+        for needle in ("function questBox", '"First steps"', "station.quests", "quests(state.runs"):
+            self.assertIn(needle, page)
+
     def test_the_scene_is_built_with_svg_nodes_and_text_and_a_private_window_cannot_break_the_page(self):
         page = station_web.PAGE
         self.assertIn("createElementNS", page)
