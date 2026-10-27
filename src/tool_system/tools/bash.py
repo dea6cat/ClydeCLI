@@ -4,6 +4,7 @@ import os
 import re
 import shlex
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -126,6 +127,14 @@ def is_major_command(command: str) -> bool:
     return any(p.search(low) for p in _MAJOR_PATTERNS) or bool(re.search(r"\bbranch\s+-D\b", command))
 
 
+_REMOVES = re.compile(r"\b(rm|rmdir|mv|unlink)\b|\buv\s+tool\s+uninstall\s+clyde|\bpip3?\s+uninstall\b")
+
+
+def removes_running_install(command: str) -> bool:
+    """Whether a command deletes or moves the environment this Clyde runs from (its imports load lazily, so it fails on the next one)."""
+    return bool(_REMOVES.search(command)) and sys.prefix in command.replace("~", os.path.expanduser("~"))
+
+
 _TEMP_ROOTS = ("/tmp", "/private/tmp", "/var/folders", "/private/var/folders", "/dev")
 
 
@@ -207,6 +216,8 @@ class BashTool:
             return PermissionResult.allow()  # Input validation happens in run()
         if any(pat.search(command) for pat in _DANGEROUS_PATTERNS):
             return PermissionResult.deny("refusing to run potentially dangerous command")
+        if removes_running_install(command):
+            return PermissionResult.ask(message=f"This deletes the Clyde that is running ({sys.prefix}); it stops working as soon as it is gone: {command}")
         if reaches_outside_project(command, context, tool_input.get("cwd")):
             return PermissionResult.ask(message=f"Run shell command that reaches outside the project: {command}")
         if is_read_only_command(command):

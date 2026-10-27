@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A Report an issue page on the website: a form for a bug, a feature request, a documentation fix or a question that opens GitHub's new-issue page with the title, label, text, Clyde version and system filled in. Nothing is sent from the site and nothing is stored; the issue is submitted on GitHub, which needs a GitHub account. Security problems are pointed to the security policy instead.
 - The site's visit counter names the docs pages `docs-<page>` (`docs` for the tab's front page), so `docs/features.html` is not counted as the Features page.
 
+### Fixed
+
+- "All in" no longer asks before every command that only looks at something outside the project (`ls`, `find`, `cat` of a path elsewhere): a search of the home folder had asked a dozen times in a row. It still asks before anything that changes or deletes outside the project, before a major move, and before a secret file is read.
+- A command that deletes or moves the environment Clyde itself runs from (for example `rm -rf ~/.local/share/uv/tools/clyde-cli`) now says so in its question, with the folder named. Before, it read like any other command outside the project, and once it ran, the next lazy import failed with `ImportError: cannot import name 'refine' from 'src'` and a traceback.
+
 ## [0.8.0] - 2026-10-27
 
 ### Security
