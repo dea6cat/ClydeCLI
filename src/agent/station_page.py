@@ -1414,7 +1414,7 @@ function draw() {
   for (const run of state.runs) {
     const section = el("section", "run");
     const head = el("div", "run-head");
-    const spend = "$" + run.spend.usd.toFixed(4) + (run.spend.unpriced ? " + " + run.spend.unpriced + " unpriced" : "");
+    const spend = "$" + run.spend.usd.toFixed(4) + (run.spend.cap != null ? " of $" + run.spend.cap.toFixed(2) : "") + (run.spend.unpriced ? " + " + run.spend.unpriced + " unpriced" : "");
     head.append(el("h2", "", run.task || run.id), el("span", "chip " + run.status, run.status.replace("_", " ")), el("span", "chip", spend), el("span", "chip run-id", run.id));
     const info = el("div", "run-info");
     info.append(head, el("div", "clyde", "Clyde: " + run.clyde), needsBox(run));

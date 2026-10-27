@@ -66,7 +66,7 @@ def snapshot(run: Run) -> dict[str, Any]:
     status = state.get("status", "?")
     clyde = f"waiting on you for {len(asks)} request{'s' if len(asks) != 1 else ''}" if asks else _CLYDE.get(status, status)
     usd, unpriced = run.total_spend()
-    spend = {"usd": usd, "unpriced": unpriced}
+    spend = {"usd": usd, "unpriced": unpriced, "cap": state.get("cap_usd")}
     return {"id": run.id, "task": state.get("task") or "", "status": status, "started": state.get("started"),
             "clyde": clyde, "crew": crew, "asks": [{k: a.get(k) for k in ("id", "who", "tool", "message", "t")} for a in asks],
             "spend": spend, "events": len(events), "layout": station_layout.build(state, events, asks, crew, clyde, spend)}
@@ -79,7 +79,8 @@ def _crew(run: Run) -> list[tuple[str, str, str]]:
 
 def render(run: Run) -> Table:
     snap = snapshot(run)
-    spend = f"${snap['spend']['usd']:.4f}" + (f" + {snap['spend']['unpriced']} unpriced" if snap["spend"]["unpriced"] else "")
+    spend = f"${snap['spend']['usd']:.4f}" + (f" of ${snap['spend']['cap']:.2f}" if snap["spend"]["cap"] is not None else "") \
+        + (f" + {snap['spend']['unpriced']} unpriced" if snap["spend"]["unpriced"] else "")
     table = Table(box=None, pad_edge=False, header_style="bold", title=f"{run.id} · {snap['status']} · {spend}",
                   caption=snap["task"][:100], title_justify="left", caption_justify="left")
     for col in ("WHO", "MODEL", "DOING"):
