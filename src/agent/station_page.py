@@ -134,6 +134,18 @@ body.rail-off .rail { transform: translateX(calc(100% + 24px)); visibility: hidd
 .glass.asking { border-color: var(--warn); box-shadow: 0 0 0 1px color-mix(in srgb, var(--warn) 50%, transparent), 0 6px 22px rgba(0,0,0,.28); }
 .glass h3 { margin: 0; padding: 10px 14px 8px; font-size: 12px; letter-spacing: 2.2px; text-transform: uppercase; display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
   border-bottom: 1px solid color-mix(in srgb, var(--ink) 12%, transparent); font-weight: 700; }
+.head-tools { display: flex; align-items: baseline; gap: 10px; }
+.head-tools button.mini { min-height: 28px; }
+dialog#addWorker { width: min(440px, calc(100vw - 32px)); padding: 18px 20px; color: var(--ink); background: #0f1120; border: 1px solid var(--brass-soft, rgba(201,154,46,.5)); border-radius: 14px; box-shadow: 0 18px 50px rgba(0,0,0,.6); }
+dialog#addWorker::backdrop { background: rgba(5,6,14,.6); }
+dialog#addWorker h2 { margin: 0 0 6px; font-size: 18px; }
+dialog#addWorker p { margin: 0 0 12px; font-size: 13px; line-height: 1.45; }
+dialog#addWorker label { display: block; margin-bottom: 6px; font-weight: 600; font-size: 13px; }
+dialog#addWorker textarea { box-sizing: border-box; width: 100%; padding: 8px 10px; font: inherit; color: var(--ink); background: rgba(255,255,255,.06); border: 1px solid var(--brass-soft, rgba(201,154,46,.5)); border-radius: 8px; resize: vertical; }
+dialog#addWorker textarea:focus-visible, dialog#addWorker button:focus-visible { outline: 2px solid var(--brass, #c99a2e); outline-offset: 2px; }
+dialog#addWorker .aw-error { min-height: 1.2em; margin: 8px 0 0; color: var(--bad); }
+dialog#addWorker .aw-actions { display: flex; justify-content: flex-end; gap: 8px; }
+dialog#addWorker .aw-actions button { min-height: 40px; padding: 0 16px; }
 .glass h3 small { font-size: 11px; letter-spacing: .4px; text-transform: none; color: var(--muted); font-weight: 500; }
 .glass .body { padding: 6px; overflow: auto; min-height: 0; }
 .crew-row { display: grid; grid-template-columns: 46px minmax(0, 1fr); gap: 10px; width: 100%; padding: 8px; margin: 0 0 2px; border: 1px solid transparent; border-radius: 10px; text-align: left; background: none; font: inherit; color: inherit; cursor: pointer; }
@@ -258,6 +270,16 @@ button.act.allow { border-color: rgba(123,214,166,.6); } button.act.deny { borde
   <button id="cinemaTab" type="button" title="Bring the panels back (C or Esc)">&#9666; panels</button>
   <div id="runs"></div>
 </main>
+<dialog id="addWorker" aria-labelledby="awTitle">
+  <form id="awForm">
+    <h2 id="awTitle">Add a worker</h2>
+    <p class="muted">Clyde takes your task to a new worker on the same model as worker-1. It joins this run now, and the events list records it.</p>
+    <label for="awTask">What should it do?</label>
+    <textarea id="awTask" rows="5" maxlength="2000" required></textarea>
+    <p id="awError" class="aw-error" role="alert"></p>
+    <div class="aw-actions"><button type="button" id="awCancel" class="mini">Cancel</button><button type="submit" id="awSend" class="mini act">Add worker</button></div>
+  </form>
+</dialog>
 <script>
 "use strict";
 const TOKEN = "__TOKEN__";
@@ -266,6 +288,7 @@ const REDUCED = window.matchMedia && window.matchMedia("(prefers-reduced-motion:
 const state = { dismissed: [], runs: [], feeds: {}, filter: {}, polling: {}, theme: "city", loadedAt: Date.now() / 1000, scenes: [], link: { ok: true, reason: "" } };
 const $runs = document.getElementById("runs");
 const $status = document.getElementById("status");
+const $aw = document.getElementById("addWorker"), $awTask = document.getElementById("awTask"), $awError = document.getElementById("awError"), $awSend = document.getElementById("awSend");
 const $rail = document.getElementById("railToggle");
 const $link = document.getElementById("link"), $linkText = document.getElementById("linkText"), $retry = document.getElementById("linkRetry"), $counts = document.getElementById("counts");
 let UID = 0;
@@ -299,7 +322,11 @@ async function api(path, body) {
   const options = { headers: { "X-Station-Token": TOKEN } };
   if (body !== undefined) { options.method = "POST"; options.headers["Content-Type"] = "application/json"; options.body = JSON.stringify(body); }
   const response = await fetch(path, options);
-  if (!response.ok) throw new Error(path + " " + response.status);
+  if (!response.ok) {
+    let why = "";
+    try { why = (await response.json()).error || ""; } catch (e) { /* no readable reason */ }
+    throw new Error(why || path + " " + response.status);
+  }
   return response.json();
 }
 // <status>
@@ -1171,13 +1198,35 @@ function rail(run) {
   }
   const box = el("section", "glass crew"), head = el("h3", "", "Crew"), body = el("div", "body");
   const working = crew.filter((m) => dotClass(m.doing) === "on").length, waiting = crew.filter((m) => dotClass(m.doing) === "wait").length;
-  head.append(el("small", "", crew.length + " · " + working + " working" + (waiting ? " · " + waiting + " waiting" : "")));
+  const tools = el("span", "head-tools");
+  tools.append(el("small", "", crew.length + " · " + working + " working" + (waiting ? " · " + waiting + " waiting" : "")));
+  if (run.status === "running" && crew.filter((m) => /^worker-/.test(m.name)).length < MAX_TEAM) {   // a worker can join only while the run is working
+    const add = el("button", "mini", "Add worker");
+    add.type = "button";
+    add.addEventListener("click", () => openAdd(run));
+    tools.append(add);
+  }
+  head.append(tools);
   for (const m of crew) body.append(crewRow(run, m));
   box.append(head, body);
   const events = el("section", "glass");
   events.append(feed(run));
   side.append(box, events);
   return side;
+}
+// The add-worker dialog lives outside the part the page rebuilds, so a redraw never takes it away from under your typing.
+const MAX_TEAM = 12;   // as the server's: a run holds at most this many workers
+let addingTo = "";
+function openAdd(run) {
+  addingTo = run.id;
+  $awTask.value = ""; $awError.textContent = ""; $awSend.disabled = false;
+  $aw.showModal();
+  $awTask.focus();
+}
+function sendAdd() {
+  $awSend.disabled = true; $awError.textContent = "";
+  api("/api/order", { run: addingTo, task: $awTask.value }).then(() => { $aw.close(); $status.textContent = "Asked Clyde for one more worker."; refresh(); },
+    (e) => { $awError.textContent = e.message; $awSend.disabled = false; });
 }
 function needsBox(run) {   // the top-left card's "needs you" list: only what waits on the user, hidden when nothing does
   const rows = needsYou([run], (id) => state.feeds[id], Date.now() / 1000, state.dismissed), box = el("div", "needs");
@@ -1288,6 +1337,8 @@ function setCinema(on) {   // every panel away: the island alone, remembered, wi
 setCinema(stored("station.cinema") === "1");
 $cinema.addEventListener("click", () => setCinema(true));
 document.getElementById("cinemaTab").addEventListener("click", () => setCinema(false));
+document.getElementById("awCancel").addEventListener("click", () => $aw.close());
+document.getElementById("awForm").addEventListener("submit", (e) => { e.preventDefault(); sendAdd(); });
 document.addEventListener("keydown", (e) => {
   if (e.ctrlKey || e.metaKey || e.altKey || /^(INPUT|SELECT|TEXTAREA)$/.test((e.target.tagName || ""))) return;
   if (e.key === "c" || e.key === "C") setCinema(!document.body.classList.contains("cinema"));

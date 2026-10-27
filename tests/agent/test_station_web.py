@@ -244,6 +244,23 @@ class TestAnswer(StationWebCase):
         thread.join(5)
         self.assertEqual(got, [False])
 
+    def test_the_page_can_order_a_worker_for_a_working_run_and_is_told_why_when_it_cannot(self):
+        run = self.run_with_events()   # still waiting on an approval: working
+        run.set_status("running")
+        cookie = self.login()
+        status, _, text = self.request("POST", "/api/order", cookie=cookie, token=self.token, body={"run": run.id, "task": "write c.txt"})
+        self.assertEqual((status, json.loads(text)["ok"]), (200, True))
+        self.assertEqual([o["task"] for o in run.pending_orders()], ["write c.txt"])
+        self.assertEqual(self.request("POST", "/api/order", token=self.token, body={"run": run.id, "task": "x"})[0], 403)   # no cookie
+        self.assertEqual(self.request("POST", "/api/order", cookie=cookie, token=self.token, body={"run": run.id, "task": 5})[0], 400)
+        self.assertEqual(self.request("POST", "/api/order", cookie=cookie, token=self.token, body={"run": "../x", "task": "x"})[0], 400)
+        status, _, text = self.request("POST", "/api/order", cookie=cookie, token=self.token, body={"run": run.id, "task": "  "})
+        self.assertEqual((status, "say what" in json.loads(text)["error"]), (409, True))
+        run.set_status("reviewing")
+        status, _, text = self.request("POST", "/api/order", cookie=cookie, token=self.token, body={"run": run.id, "task": "late"})
+        self.assertEqual((status, "not working" in json.loads(text)["error"]), (409, True))
+        self.assertEqual(len(run.pending_orders()), 1)   # only the first was filed
+
     def test_a_post_without_the_token_or_with_the_wrong_shape_changes_nothing(self):
         run = self.run_with_events()
         thread, got = self._waiting(run)
@@ -283,6 +300,12 @@ class TestPage(unittest.TestCase):
     def test_the_top_left_card_lists_what_waits_on_the_user(self):
         page = station_web.PAGE
         for needle in ("function needsBox", '"Needs you"', "needsYou(", "station.dismissed", 'api("/api/answer"', "data-since" if False else "dataset.since"):
+            self.assertIn(needle, page)
+
+    def test_the_page_can_ask_for_one_more_worker_up_to_the_servers_team_size(self):
+        from src.agent.runs import MAX_TEAM
+        page = station_web.PAGE
+        for needle in ('id="addWorker"', '"Add worker"', 'api("/api/order"', "function openAdd", f"const MAX_TEAM = {MAX_TEAM};"):
             self.assertIn(needle, page)
 
     def test_the_scene_is_built_with_svg_nodes_and_text_and_a_private_window_cannot_break_the_page(self):

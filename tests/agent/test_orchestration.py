@@ -1,6 +1,7 @@
 """Orchestration end to end with scripted models: split, concurrent workers in worktrees, approvals, review, outbox."""
 from __future__ import annotations
 
+import json
 import subprocess
 import tempfile
 import unittest
@@ -44,6 +45,19 @@ class Plan(unittest.TestCase):
         harnesses = [_harness("provider:ollama", models=("qwen",)), _harness("provider:a")]
         plan = build_plan("t", ("provider:a", "m"), None, [("provider:ollama", "qwen")], harnesses)
         self.assertIn("one at a time", orchestration.format_plan(plan))
+
+
+class HandOver(unittest.TestCase):
+    def test_a_full_team_refuses_the_order_and_says_so(self):
+        with tempfile.TemporaryDirectory() as tmp, patch("src.agent.runs.clyde_home", return_value=Path(tmp)):
+            run = Run.create("t", {"workers": []})
+            run.set_status("running")
+            order = {"id": run.order("one more"), "task": "one more"}
+            names = [f"worker-{i}" for i in range(1, 13)]
+            self.assertIsNone(orchestration._hand_over(run, order, names, None, Path(tmp), None, None))
+            self.assertEqual(len(names), 12)
+            self.assertEqual(run.pending_orders(), [])
+            self.assertIn(("clyde", "order_refused"), [(e["who"], e["kind"]) for e in run.events()])
 
 
 class Split(unittest.TestCase):
@@ -113,6 +127,36 @@ class EndToEnd(unittest.TestCase):
         listed = subprocess.run(["git", "worktree", "list"], cwd=self.repo, capture_output=True, text=True, check=False).stdout
         self.assertEqual(len(listed.strip().splitlines()), 1)   # the worktrees were removed
         self.assertNotIn("clyde-run", subprocess.run(["git", "branch"], cwd=self.repo, capture_output=True, text=True, check=False).stdout)
+
+    def test_a_worker_the_user_adds_mid_run_gets_its_task_through_clyde_and_is_recorded(self):
+        started = []
+        w1 = FakeProvider(reply(tool_calls=[("Bash", {"command": "echo hi > c.txt"})]), reply("tried"), reply("did the extra"), reply("did the extra"), name="w1")
+        w2 = FakeProvider(reply("nothing to do"), name="w2")
+
+        def on_approval(ask):   # the first request arrives while the run works: this is the moment the user adds a worker
+            started[0].order("write c.txt")
+            return False
+
+        providers = {"m": FakeProvider(reply('{"tasks": ["a", "b"]}', usage=USAGE), reply("ok\nVERDICT: APPROVE", usage=USAGE), name="m"),
+                     "adv": FakeProvider(reply("fine"), name="adv"), "w1": w1, "w2": w2}
+        plan = build_plan("t", ("provider:m", "m"), ("provider:adv", "m"), [("provider:w1", "m"), ("provider:w2", "m")], [_harness(f"provider:{n}") for n in providers])
+        outcome = orchestrate(plan, "spec", workspace=self.repo, parent=ToolContext(workspace_root=self.repo), registry=build_default_registry(),
+                              providers=providers, on_approval=on_approval, on_start=started.append)
+        run = outcome.run
+        events = run.events()
+        self.assertEqual([r["name"] for r in run.state()["roles"]["workers"]], ["worker-1", "worker-2", "worker-3"], [(e["who"], e["kind"], e.get("note")) for e in events])
+        self.assertEqual(run.state()["roles"]["kinds"]["worker-3"], "provider")
+        self.assertIn("worker-3", run.state()["workspaces"])
+        kinds = [(e["who"], e["kind"]) for e in events]
+        for pair in (("user", "ordered"), ("worker-3", "tools"), ("worker-3", "started"), ("worker-3", "finished")):
+            self.assertIn(pair, kinds)
+        self.assertLess(kinds.index(("user", "ordered")), kinds.index(("worker-3", "started")))   # asked first, then it began
+        self.assertIn(("clyde", "worker-3", "brief"), [(e["who"], e.get("target"), e.get("reason")) for e in events if e["kind"] == "check"])
+        self.assertIn(("bonnie", "worker-3", "result"), [(e["who"], e.get("target"), e.get("reason")) for e in events if e["kind"] == "check"])
+        order = json.loads(next((run.root / "orders").glob("*.json")).read_text())
+        self.assertEqual((order["status"], order["worker"]), ("accepted", "worker-3"))
+        self.assertEqual(run.pending_orders(), [])
+        land(run, approve=False)
 
     def test_a_command_waits_for_an_approval_and_a_no_reaches_the_worker(self):
         asked = []
