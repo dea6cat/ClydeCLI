@@ -36,7 +36,7 @@
 | `/skills scan` / `/skills allow <name>` | Rescan skills with SkillSpector (LLM review when your model allows) and show verdicts; let a held-back skill, plugin or `mcp:<server>` in |
 | `/rewind` | Undo the model's file edits and/or the conversation back to before one of your messages |
 | `/laya` | Laya's status, and how its stuck checks and difficulty scores lined up with how traced turns ended |
-| `/cost`      | Tokens and estimated cost per model |
+| `/cost`      | Tokens and estimated cost per model, and how the prompt cache did (hits, and each miss with what it cost) |
 | `/context`   | Context window usage and auto-compact threshold |
 | `/compact`   | Summarize the conversation to free context |
 | `/clear`     | Clear history         |
