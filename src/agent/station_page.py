@@ -482,6 +482,11 @@ function walkerState(trips, home, t) {
 // </motion>
 
 // <geometry>
+function facesDownLeft(f) {   // the pictures face down-right (toward +x); a piece against its room's north wall must face down-left (toward +y), so its picture is mirrored
+  if (f.flip !== undefined) return f.flip;
+  const r = f.room, cx = f.box[0] + f.box[2] / 2 - r.x, cy = f.box[1] + f.box[3] / 2 - r.y;
+  return cy < cx;
+}
 function convexHull(points) {   // the outline of a set of points (monotone chain), in order
   const pts = points.slice().sort((p, q) => p[0] - q[0] || p[1] - q[1]), cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]), build = (list) => { const h = []; for (const q of list) { while (h.length >= 2 && cross(h[h.length - 2], h[h.length - 1], q) <= 0) h.pop(); h.push(q); } h.pop(); return h; };
   return build(pts).concat(build(pts.slice().reverse()));
@@ -597,9 +602,9 @@ function plan(layout) {
   const crowd = [[6.8, 3.0], [8.2, 3.0], [9.6, 3.0], [2.6, 4.6], [4.2, 4.6], [5.8, 4.6], [7.4, 4.6], [9.0, 4.6]];   // and where the workers stand, one spot each, round the counter
   bayRooms.forEach((r, i) => { barSpots[r.id] = [bar.x + crowd[i % crowd.length][0], bar.y + crowd[i % crowd.length][1]]; });
   // the speakeasy: a counter along the back with stools, sofas and a little table in front; the way through (row 5) stays clear
-  furniture.push({ room: bar, family: "bar", obj: null, box: [bar.x + 1.5, bar.y + 0.5, 6, 1.4] }, { room: bar, family: "sofa", obj: null, box: [bar.x + 0.6, bar.y + 7.6, 3.4, 1.4] },
-                 { room: bar, family: "sofa", obj: null, box: [bar.x + 7.6, bar.y + 7.6, 3.4, 1.4] }, { room: bar, family: "smalltable", obj: null, box: [bar.x + 4.8, bar.y + 7.8, 1.8, 1.4] });
-  for (const [kind, x, y] of [["plant", 0.9, 4.0], ["plant", 11.1, 4.0], ["plant", 11.1, 1.1], ["lamp", 9.2, 3.0], ["lamp", 0.8, 3.0]]) prop(kind, bar.x + x, bar.y + y);
+  furniture.push({ room: bar, family: "bar", obj: null, box: [bar.x + 1.5, bar.y + 0.5, 6, 1.4] }, { room: bar, family: "sofa", obj: null, box: [bar.x + 0.5, bar.y + 6.4, 1.4, 3.2] },
+                 { room: bar, family: "sofa", obj: null, box: [bar.x + 8.4, bar.y + 0.5, 3.2, 1.4] }, { room: bar, family: "smalltable", obj: null, box: [bar.x + 3.2, bar.y + 7.2, 1.8, 1.4] });
+  for (const [kind, x, y] of [["plant", 0.9, 4.0], ["plant", 11.1, 4.0], ["plant", 11.3, 9.2], ["lamp", 9.2, 3.0], ["lamp", 0.8, 3.0]]) prop(kind, bar.x + x, bar.y + y);
   lanes.landing = [[deck.x + DW - 1, 6], [rooms.outbox.x + 1.5, 6]];
   // the island: every room and hallway on one slab that follows their outline, with a few trees and lamps round its edge
   const xs = Object.values(rooms), gx = [Math.min(...xs.map((r) => r.x)), Math.max(...xs.map((r) => r.x + r.w))], gy = [Math.min(...xs.map((r) => r.y)), Math.max(...xs.map((r) => r.y + r.d))];
@@ -776,7 +781,9 @@ function furnitureSprite(f, pal, now, defs, uid) {
   const lit = fresh || (f.family === "approvals" && o && o.pending) || (f.family === "crate" && o && o.state === "landed") || (f.lane && f.laneState === "lit") || f.family === "bar";
   const name = "furn-" + FURN[f.family] + (lit ? "-on" : "-off"), [sw, sh] = SPR[name], c = at(x + w / 2, y + d / 2, fl), wpx = Math.max(30, (w + d) * HX * 0.62), hpx = wpx * sh / sw, by = c[1] + (w + d) * HY / 2;
   poly(g, quad(x, y, w, d, fl), "#000", { opacity: 0.3, filter: FX.soft });
-  g.append(sprite(name, c[0] - wpx / 2, by - hpx, wpx, hpx));
+  const pic = sprite(name, c[0] - wpx / 2, by - hpx, wpx, hpx);
+  if (facesDownLeft(f)) pic.setAttribute("transform", "translate(" + (2 * c[0]).toFixed(1) + " 0) scale(-1 1)");
+  g.append(pic);
   if (fresh) g.append(sv("ellipse", { cx: c[0], cy: by - 4, rx: wpx * 0.55, ry: wpx * 0.2, fill: "none", stroke: pal.accent, "stroke-width": 3, opacity: 0.85, class: "blink amb" }));
   if (f.lane && f.laneState) { const on = f.laneState === "lit"; g.append(sv("circle", { cx: c[0] + wpx * 0.3, cy: by - hpx * 0.8, r: 5, fill: on ? pal.accent : shade(pal.dark, 20), stroke: "#000", "stroke-width": 1, class: on ? "flick amb" : "" })); }   // the handoff tray: lit once that handoff was recorded
   if (o && f.family !== "crate") {   // a count plate: how often it was used; amber dot: it asked you; red dot: denied or failed

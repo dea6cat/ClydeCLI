@@ -27,7 +27,7 @@ const code = fs.readFileSync(process.argv[2], "utf8");
 const reduced = process.argv[3] === "reduced";
 const ctx = { Math, console, parseInt, REDUCED: reduced };
 vm.createContext(ctx);
-vm.runInContext(code + "\nthis.__api = { needsYou, ageText, memberState, crewCounts, countsText, linkState, QUIET, plan, bounds, family, workerTrips, orchestratorTrips, walkerState, tripState, tripEnd };", ctx);
+vm.runInContext(code + "\nthis.__api = { facesDownLeft, needsYou, ageText, memberState, crewCounts, countsText, linkState, QUIET, plan, bounds, family, workerTrips, orchestratorTrips, walkerState, tripState, tripEnd };", ctx);
 const A = ctx.__api, fails = [];
 const FAMILIES = ["read", "write", "shell", "web", "mcp", "other"];
 const bay = (i) => ({ id: "worker-" + i, kind: "bay", members: [], objects: FAMILIES.map((f) => ({ family: f, tools: [f], used: 0, asked: 0, allowed: 0, denied: 0, failed: 0, last: null })) });
@@ -154,6 +154,16 @@ if (A.crewCounts([mk("done", "using Edit")], crewOf).working !== 0) MOTION.push(
 if (A.countsText({ working: 2, waiting: 0, failed: 0, idle: 5 }) !== "2 working \u00b7 5 idle") MOTION.push("counts text: " + A.countsText({ working: 2, waiting: 0, failed: 0, idle: 5 }));
 if (A.countsText({ working: 1, waiting: 2, failed: 1, idle: 0 }) !== "1 working \u00b7 2 waiting \u00b7 1 failed \u00b7 0 idle") MOTION.push("counts text with waiting and failed");
 if (A.linkState(false, [mk("running")]) !== "down" || A.linkState(true, []) !== "standby" || A.linkState(true, [mk("done")]) !== "standby" || A.linkState(true, [mk("running")]) !== "live") MOTION.push("link states are wrong");
+// 10. furniture faces into its room: the pictures face down-right, so a piece on the north wall is mirrored to face down-left and a piece on the west wall keeps its picture
+{
+  const q = A.plan(layoutFor(3)), bay = q.rooms["worker-1"], wallN = { room: bay, box: [bay.x + 3, bay.y + 0.3, 1.5, 1] }, wallW = { room: bay, box: [bay.x + 0.3, bay.y + 3.5, 1, 1.5] };
+  if (!A.facesDownLeft(wallN) || A.facesDownLeft(wallW)) MOTION.push("north-wall pieces are mirrored and west-wall pieces keep their picture");
+  if (A.facesDownLeft({ room: bay, box: wallN.box, flip: false }) || !A.facesDownLeft({ room: bay, box: wallW.box, flip: true })) MOTION.push("an explicit facing wins");
+  const sofas = q.furniture.filter((f) => f.family === "sofa");
+  if (sofas.length !== 2 || sofas.filter((f) => A.facesDownLeft(f)).length !== 1) MOTION.push("one bar sofa faces down-left from the north wall, the other faces down-right from the west wall");
+  const bar = q.furniture.find((f) => f.family === "bar");
+  if (!A.facesDownLeft(bar)) MOTION.push("the bar counter on the north wall faces the room");
+}
 // 9. what waits on the user: a pending request (never ages out), a worker whose last event is a failure, a failed run; not what recovered, was dismissed or is days old
 const ne = (events) => (id) => events[id] || [], nowT = 10 * 24 * 3600;
 const nrun = (id, status, asks) => ({ id, status, asks: asks || [], started: nowT - 500 });
