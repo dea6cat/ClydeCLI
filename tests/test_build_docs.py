@@ -89,6 +89,18 @@ class Site(unittest.TestCase):
         for page in self.pages:
             self.assertEqual(len(re.findall(r"<script", (self.out / page).read_text())), 4, page)   # the template's own, and no more
 
+    def test_every_page_names_its_canonical_url_and_the_sitemap_lists_them(self):
+        for page in self.pages:
+            url = build_docs.SITE + "docs/" + ("" if page == "index.html" else page)
+            self.assertIn(f'<link rel="canonical" href="{url}">', (self.out / page).read_text(), page)
+        site = Path(tempfile.mkdtemp())
+        (site / "index.html").write_text("")
+        (site / "features.html").write_text("")
+        build_docs.sitemap(site, self.pages)
+        locs = re.findall(r"<loc>(.*?)</loc>", (site / "sitemap.xml").read_text())
+        self.assertEqual(locs[:3], [build_docs.SITE, build_docs.SITE + "features.html", build_docs.SITE + "docs/"])
+        self.assertEqual(len(locs), len(set(locs)))
+
 
 if __name__ == "__main__":
     unittest.main()

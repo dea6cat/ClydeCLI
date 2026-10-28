@@ -16,6 +16,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 REPO = "https://github.com/dea6cat/ClydeCLI"
+SITE = "https://dea6cat.github.io/ClydeCLI/"
 
 # (group, source, output name, title). The group order is the sidebar order.
 PAGES = [
@@ -206,6 +207,7 @@ TEMPLATE = """<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{title} · ClydeCLI docs</title>
 <meta name="description" content="{description}">
+<link rel="canonical" href="{canonical}">
 <meta name="theme-color" content="#e8e5dd" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0f1a14" media="(prefers-color-scheme: dark)">
 <link rel="icon" type="image/svg+xml" href="../brand/clyde-mark.svg">
@@ -273,7 +275,7 @@ def build(out: Path) -> list[str]:
 
     def emit(name: str, title: str, content: str, source: str, summary: str) -> None:
         edit = f'<a href="{REPO}/blob/main/{source}">Edit this page on GitHub</a>' if source else ""
-        text = TEMPLATE.format(title=html.escape(title), description=html.escape(summary[:200]), repo=REPO, sidebar=sidebar(name, version), content=content, edit=edit)
+        text = TEMPLATE.format(title=html.escape(title), description=html.escape(summary[:200]), canonical=SITE + "docs/" + (f"{name}.html" if name != "index" else ""), repo=REPO, sidebar=sidebar(name, version), content=content, edit=edit)
         (out / f"{name}.html").write_text(text, encoding="utf-8")
         written.append(f"{name}.html")
         index.append({"title": title, "url": f"{name}.html" if name != "index" else "./", "text": plain(re.sub(r"<h1[^>]*>.*?</h1>", "", content, count=1, flags=re.S))[:30000]})
@@ -305,6 +307,17 @@ def build(out: Path) -> list[str]:
     return written
 
 
+def sitemap(site: Path, pages: list[str]) -> None:
+    """`sitemap.xml` for the site root: the hand-written pages next to `docs/` plus every generated docs page."""
+    urls = ["", *sorted(p.name for p in site.glob("*.html") if p.name not in ("index.html", "bonny.html"))]
+    urls += ["docs/"] + [f"docs/{p}" for p in sorted(pages) if p != "index.html"]
+    body = "".join(f"<url><loc>{SITE}{u}</loc></url>" for u in urls)
+    (site / "sitemap.xml").write_text(f'<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{body}</urlset>\n', encoding="utf-8")
+
+
 if __name__ == "__main__":
     target = Path(sys.argv[sys.argv.index("--out") + 1]) if "--out" in sys.argv else ROOT / "site" / "docs"
-    print(f"wrote {len(build(target))} pages to {target}")
+    written = build(target)
+    print(f"wrote {len(written)} pages to {target}")
+    if "--out" not in sys.argv:
+        sitemap(ROOT / "site", written)
