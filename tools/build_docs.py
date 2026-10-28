@@ -25,7 +25,6 @@ PAGES = [
     ("Guide", "docs/features.md", "features", "Features"),
     ("Guide", "docs/messaging.md", "messaging", "Messaging"),
     ("Guide", "docs/status.md", "status", "Status"),
-    ("Guide", "docs/telemetry.md", "telemetry", "Telemetry"),
     ("Guide", "docs/project-structure.md", "project-structure", "Project structure"),
     ("Research", "docs/research/README.md", "research", "Research notes"),
     ("Research", "docs/research/small-models.md", "research-small-models", "Small models"),
@@ -239,7 +238,6 @@ TEMPLATE = """<!doctype html>
 </div>
 <script src="../site.js" defer></script>
 <script src="../docs.js" defer></script>
-<script src="../analytics.js" defer></script>
 </body>
 </html>
 """

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- All telemetry. `clyde telemetry` and its first-run notice are gone, along with the usage counters (runs, provider errors, tuning, Bonnie features), the Cloudflare Worker in `worker/`, the website's visit counter (`site/analytics.js`) and `docs/telemetry.md`. Clyde and the website no longer send anything about their use.
+
 ### Added
 
 - A Docs tab on the website. `tools/build_docs.py` turns the repository's Markdown (the guide in `docs/`, the research notes, the security, contributing, governance and egress pages, and this changelog) into site pages with a sidebar and a search box that works offline in the browser, so nobody has to open GitHub to read them; a Releases page lists every version from this file. The pages are generated when the site is deployed (a change to any of those files redeploys it) and are not committed. Links between pages stay on the site; links to source files go to GitHub. The page text is escaped, never passed through as HTML.
