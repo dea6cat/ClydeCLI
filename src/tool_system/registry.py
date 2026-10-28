@@ -122,10 +122,12 @@ def _is_major(spec: ToolSpec, tool_input: dict[str, Any], context: ToolContext) 
     """What "all in" mode still asks about: hard to undo, outside the project, or touching secrets."""
     name = spec.name.lower()
     if name == "bash":
-        from .tools.bash import is_major_command, reaches_outside_project
-        # Reaching outside the project is always worth a yes, even when everything else plays without asking.
+        from .tools.bash import is_major_command, is_read_only_command, reaches_outside_project
+        # Changing something outside the project is always worth a yes, even when everything else plays without asking. Only
+        # looking (ls, find, cat) is let through: asking for every one made all-in ask a dozen times for a search of the home folder.
         command = str(tool_input.get("command", ""))
-        return is_major_command(command) or reaches_outside_project(command, context, tool_input.get("cwd")) or _reads_secret(spec, tool_input)
+        outside = reaches_outside_project(command, context, tool_input.get("cwd")) and not is_read_only_command(command)
+        return is_major_command(command) or outside or _reads_secret(spec, tool_input)
     path = tool_input.get("file_path") or tool_input.get("notebook_path") or (tool_input.get("path") if name in ("grep", "glob") else None)
     if isinstance(path, str) and path:
         from pathlib import Path

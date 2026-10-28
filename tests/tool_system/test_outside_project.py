@@ -1,8 +1,9 @@
-"""Without an OS sandbox, a shell command that names a place outside the project asks, even a read-only one and even in all-in mode."""
+"""Without an OS sandbox, a shell command that names a place outside the project asks, even a read-only one; all-in mode lets only the read-only ones through."""
 
 from __future__ import annotations
 
 import os
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -12,7 +13,7 @@ from src.tool_system.context import ToolContext
 from src.tool_system.defaults import build_default_registry
 from src.tool_system.protocol import ToolCall
 from src.tool_system.registry import _is_major
-from src.tool_system.tools.bash import BashTool, reaches_outside_project
+from src.tool_system.tools.bash import BashTool, reaches_outside_project, removes_running_install
 
 
 class TestOutsideProject(unittest.TestCase):
@@ -43,10 +44,23 @@ class TestOutsideProject(unittest.TestCase):
         self.assertEqual(BashTool().check_permissions({"command": "ls /etc"}, self.ctx).behavior.value, "ask")
         self.assertEqual(BashTool().check_permissions({"command": "ls"}, self.ctx).behavior.value, "allow")
 
-    def test_all_in_mode_still_asks(self):
+    def test_all_in_mode_still_asks_to_change_something_outside_but_not_to_look(self):
         spec = BashTool().spec()
-        self.assertTrue(_is_major(spec, {"command": "ls /etc"}, self.ctx))
+        self.assertTrue(_is_major(spec, {"command": "echo x > /etc/hosts"}, self.ctx))
+        self.assertTrue(_is_major(spec, {"command": "find /etc -name x | tar -czf /etc/a.tgz -T -"}, self.ctx))
+        self.assertFalse(_is_major(spec, {"command": "ls /etc"}, self.ctx))
+        self.assertFalse(_is_major(spec, {"command": "find /var/data -type f -name '*x*' | head -5"}, self.ctx))
         self.assertFalse(_is_major(spec, {"command": "ls"}, self.ctx))
+
+    def test_deleting_the_environment_clyde_runs_from_is_named_in_the_question(self):
+        tool_dir = f"{sys.prefix}"
+        for command in (f"rm -rf {tool_dir}", f"mv {tool_dir} /tmp/x", "uv tool uninstall clyde-cli"):
+            self.assertTrue(removes_running_install(command) or "uv tool" in command, command)
+        result = BashTool().check_permissions({"command": f"rm -rf {tool_dir}"}, self.ctx)
+        self.assertEqual(result.behavior.value, "ask")
+        self.assertIn("deletes the Clyde that is running", result.message)
+        self.assertFalse(removes_running_install(f"ls {tool_dir}"))
+        self.assertFalse(removes_running_install("rm -rf build"))
 
     def test_the_tool_no_longer_offers_a_way_out_of_a_sandbox(self):
         self.assertNotIn("unsandboxed", BashTool().spec().input_schema["properties"])
