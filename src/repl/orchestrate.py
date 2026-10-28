@@ -17,9 +17,16 @@ from rich.table import Table
 from src.agent import briefing
 from src.agent.harness import RUNNABLE_KINDS, Harness, can_work, discover_all
 from src.agent.orchestration import build_plan, format_plan, land, orchestrate
+from src.repl.esc import WATCHER
 from src.ui.picker import Choice, pick
 
 _NONE, _DONE = "-", "done"
+
+
+def _ask(prompt: Any, *args: Any, **kwargs: Any) -> Any:
+    """Prompt.ask / Confirm.ask with the Esc watcher paused: it reads the terminal in cbreak mode and would eat the typing."""
+    with WATCHER.paused():
+        return prompt.ask(*args, **kwargs)
 
 
 def _need_model(repl: Any) -> bool:
@@ -38,7 +45,7 @@ def grill(repl: Any, state: briefing.BriefingState) -> briefing.BriefingState:
         if state.complete:
             break
         console.print(f"\n[bold]{escape(text)}[/bold]")
-        answer = Prompt.ask("[dim]Answer (empty to stop asking)[/dim]", console=console, default="", show_default=False).strip()
+        answer = _ask(Prompt, "[dim]Answer (empty to stop asking)[/dim]", console=console, default="", show_default=False).strip()
         briefing.save_state(state)
         if not answer:
             with console.status("[dim]Writing the spec…[/dim]", spinner="dots"):
@@ -120,7 +127,7 @@ def _parse_cap(text: str) -> float | None | str:
 def _ask_cap(console: Any) -> float | None:
     """Ask for the run's cost cap until it is empty (no cap) or a good number. Only models with a price count towards it."""
     while True:
-        cap = _parse_cap(Prompt.ask("[dim]Stop the run if it costs more than (USD; empty for no limit; local models cost nothing, unpriced ones cannot be counted)[/dim]",
+        cap = _parse_cap(_ask(Prompt, "[dim]Stop the run if it costs more than (USD; empty for no limit; local models cost nothing, unpriced ones cannot be counted)[/dim]",
                                     console=console, default="", show_default=False))
         if not isinstance(cap, str):
             return cap
@@ -131,7 +138,7 @@ def _approval(repl: Any, status: Any):
     def ask(row: dict[str, Any]) -> bool:
         status.stop()
         repl.console.print(f"\n[bold yellow]{escape(row['who'])}[/bold yellow] wants to use [bold]{escape(row['tool'])}[/bold]:\n{escape(row['message'][:800])}")
-        allowed = Confirm.ask("Allow?", console=repl.console, default=False)
+        allowed = _ask(Confirm, "Allow?", console=repl.console, default=False)
         status.start()
         return allowed
     return ask
@@ -180,13 +187,13 @@ def orchestrate_cmd(repl: Any, arg: str) -> None:
 
     state = grill(repl, briefing.start_briefing(task))
     console.print("\n[bold]Spec[/bold]\n" + escape(state.spec or ""))
-    if not Confirm.ask("Run the team on this spec?", console=console, default=True):
+    if not _ask(Confirm, "Run the team on this spec?", console=console, default=True):
         return
 
     cap = _ask_cap(console)
     from src.agent import panes
     from src.providers import build_registry
-    show_panes = bool(panes.tmux_path()) and Confirm.ask("Open a tmux pane for each team member?", console=console, default=False)
+    show_panes = bool(panes.tmux_path()) and _ask(Confirm, "Open a tmux pane for each team member?", console=console, default=False)
     console.print("[dim]Workers run side by side. Watch from another terminal: clyde station (or clyde station web for the browser)[/dim]")
     status = console.status("[dim]Team working…[/dim]", spinner="dots")
     status.start()
@@ -209,7 +216,7 @@ def orchestrate_cmd(repl: Any, arg: str) -> None:
     console.print(f"[dim]Run {run.id} · spend ≈ ${usd:.4f}" + (f" (+{unpriced} call(s) with no price)" if unpriced else "") + f" · {run.root}[/dim]")
     if run.state().get("status") == "stopped":
         return
-    if Confirm.ask("Land the finished work in the outbox?", console=console, default=outcome.verdict == "approve"):
+    if _ask(Confirm, "Land the finished work in the outbox?", console=console, default=outcome.verdict == "approve"):
         out = land(run, approve=True)
         console.print(f"Landed in [bold]{out}[/bold]. Apply a worker's changes with: git apply {out}/worker-1/changes.patch")
     else:
