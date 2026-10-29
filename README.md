@@ -68,18 +68,15 @@ Setup connects a model: any of 13 providers with your key, or one running on you
 | [Usage](docs/usage.md) | slash commands, skills, hooks, MCP, modes, updates, memory, plans, rewind, permission rules |
 | [Features](docs/features.md) | every feature in detail: providers, local models, cardShuffle, Bonnie, Laya, SkillSpector |
 | [Status](docs/status.md) and [FEATURE_LIST.md](FEATURE_LIST.md) | what works, what does not, the roadmap |
-| [Telemetry](docs/telemetry.md) | exactly what is counted, where it goes, how to turn it off |
 | [Project structure](docs/project-structure.md) | where things live in `src/` |
 | [Setup guide](docs/guide/SETUP_GUIDE.md) and [testing guide](docs/guide/TESTING.md) | detailed installation; how the tests run |
 | [Research notes](docs/research/) | the measurements behind the claims: local models, small-model fixes, `clyde tune`, the October security review, the fine-tuning data |
 | [CHANGELOG.md](CHANGELOG.md) | version history |
 
-## 🔒 Privacy and telemetry
+## 🔒 Privacy
 
-Telemetry is **on for a new install** (an update asks once, default No), with a notice the first time you run Clyde in a terminal.
-It sends counts and words from a fixed list, never a prompt, a path, a model's name or an error message. `clyde telemetry show` prints
-what is queued, `clyde telemetry off` stops it and deletes the queue, and `DO_NOT_TRACK=1` or `CLYDE_TELEMETRY=off` always win.
-Details: [docs/telemetry.md](docs/telemetry.md) and the [privacy page](https://dea6cat.github.io/ClydeCLI/privacy.html).
+ClydeCLI collects no usage data and sends no error reports. Your prompts go to the model provider you chose and nowhere else;
+[EGRESS.md](EGRESS.md) lists every way Clyde uses the network. See also the [privacy page](https://dea6cat.github.io/ClydeCLI/privacy.html).
 
 ## 🛡️ Security
 

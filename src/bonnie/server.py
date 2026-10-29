@@ -34,7 +34,6 @@ from typing import Any
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
 from src.runtime import activity
-from src import telemetry
 from src.config import clyde_home
 from src.providers import keys
 from src.agent.session import Session
@@ -411,18 +410,6 @@ def _tool_event(ev: Any) -> dict:
             "summary": str(summarize_tool_result(ev.tool_name, ev.tool_output) or "")[:500], **({"results": found[:10]} if found else {})}
 
 
-# POST route -> the word telemetry records for it (see telemetry.BONNIE_FEATURES).
-_USAGE = {
-    "/api/prompt": "prompt", "/api/steer": "steer", "/api/stop": "stop", "/api/permission": "permission", "/api/vote": "vote",
-    "/api/feedback": "feedback", "/api/theme": "theme", "/api/theme/image": "theme_image", "/api/theme/image/remove": "theme_image_remove",
-    "/api/artifact/reveal": "artifact_reveal", "/api/session/new": "session_new", "/api/session/open": "session_open",
-    "/api/session/delete": "session_delete", "/api/session/restore": "session_restore", "/api/session/pin": "session_pin",
-    "/api/mode": "mode", "/api/model": "model", "/api/project": "project", "/api/dirs/create": "dir_create", "/api/attachments": "attachment",
-    "/api/providers/connect": "provider_connect", "/api/providers/disconnect": "provider_disconnect", "/api/providers/custom": "provider_custom",
-    "/api/automation/create": "automation_create", "/api/automation/pause": "automation_pause", "/api/automation/resume": "automation_resume",
-    "/api/automation/delete": "automation_delete", "/api/automation/run": "automation_run",
-}
-
 
 class _Server(ThreadingHTTPServer):
     daemon_threads = True
@@ -470,9 +457,6 @@ def make_server(bonnie: Bonnie, host: str = "127.0.0.1", port: int = 0) -> Threa
             return {f"127.0.0.1:{port_}", f"localhost:{port_}"}
 
         def _send(self, status: int, body: bytes, ctype: str, cache: str = "no-store", csp: str = _CSP, extra: dict | None = None) -> None:
-            feature = _USAGE.get(urlparse(self.path).path) if self.command == "POST" and 200 <= status < 300 else None
-            if feature:   # counted for telemetry (a word from a fixed list, never what was said) before the answer goes out
-                telemetry.record("bonnie_use", feature=feature)
             self.send_response(status)
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(body)))
@@ -963,7 +947,6 @@ def main(model: str | None = None, port: int | None = None, open_browser: bool =
     url = f"http://localhost:{server.server_address[1]}/?k={server.launch_secret}"   # type: ignore[attr-defined]
     threading.Thread(target=server.serve_forever, name="bonnie-http", daemon=True).start()
     bonnie.start_scheduler()
-    telemetry.record("bonnie_start")
     projects.remember(Path.cwd())
     moved = f"  (port {DEFAULT_PORT} was taken; `clyde luv bonnie PORT` picks one)" if not port and server.server_address[1] != DEFAULT_PORT else ""
     print(f"Bonnie is running. Open this link once, in your browser: {url}  (Ctrl+C to stop){moved}")

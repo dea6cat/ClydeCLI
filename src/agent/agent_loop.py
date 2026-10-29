@@ -28,7 +28,6 @@ from .repeat_guard import RepeatedCall, RepeatGuard
 from .conversation import Conversation
 from ..context_system import build_context_prompt, instruction_filter
 from ..output_styles import resolve_output_style
-from .. import telemetry
 from ..providers import model_size
 from ..providers.base import Provider, stream_with_retry
 from ..providers.convert import append_response, to_canonical
@@ -393,19 +392,9 @@ def run_agent_loop(
 
     last_user_visible_message: str | None = None
     repeat_guard = RepeatGuard()
-    run_stats = {"tool_calls": 0, "tool_errors": 0, "repeats_refused": 0, "first_input_tokens": 0}
     consecutive_errors = 0
     recoveries, carried = 0, ""   # carried: a cut-off reply's text, which the next reply continues
 
-    def record_run(outcome: str, turns: int) -> None:
-        if not telemetry.enabled():
-            return
-        kind, model_class = telemetry.describe(provider, model)
-        telemetry.record("run", surface=telemetry.surface(), outcome=outcome, provider=telemetry.provider_word(provider), turns=turns,
-                         tool_calls=run_stats["tool_calls"],
-                         tool_errors=run_stats["tool_errors"], repeats_refused=run_stats["repeats_refused"],
-                         first_input_tokens=telemetry.token_bucket(run_stats["first_input_tokens"]),
-                         index="none" if not index else "names" if names_only else "full", provider_kind=kind, model_size=model_class)
     total_usage: dict[str, int] = {"input_tokens": 0, "output_tokens": 0}
     spent = 0   # max_tokens: what the provider reports, cached prompt included; an estimate when it reports nothing
     turn_count = 0
@@ -418,7 +407,6 @@ def run_agent_loop(
     if hooks.get("UserPromptSubmit"):
         blocked, added = run_lifecycle(hooks, "UserPromptSubmit", {"prompt": _last_prompt(conversation)}, tool_context.cwd)
         if blocked:
-            record_run("done", 0)
             return AgentLoopResult(response_text=f"Prompt blocked by a UserPromptSubmit hook: {blocked}", usage=None, num_turns=0)
         if added:
             conversation.add_user_message(_HOOK_CONTEXT + added)
@@ -446,8 +434,6 @@ def run_agent_loop(
         if max_tokens:
             spent += sum(response.usage.get(k) or 0 for k in _BUDGET_KEYS) if response.usage else \
                 trace.estimate_tokens(request) + trace.estimate_tokens(SimpleNamespace(messages=[response.message]))
-        if turn_count == 1:
-            run_stats["first_input_tokens"] = (response.usage or {}).get("input_tokens", 0) or 0
         append_response(conversation, response.message)
 
         final_assistant_content = response.message.text or ""
@@ -478,7 +464,6 @@ def run_agent_loop(
                     stop_blocks += 1
                     conversation.add_user_message(_STOP_HOOK + blocked)
                     continue
-            record_run("done", turn_count)
             return AgentLoopResult(
                 response_text=final_assistant_content,
                 usage=_usage_or_none(),
@@ -487,7 +472,6 @@ def run_agent_loop(
 
         stop_blocks = 0   # as Claude Code: the Stop cap counts blocks with no tool call between them
         for tc in tool_calls:
-            run_stats["tool_calls"] += 1
             tool_id = tc.id
             tool_name, tool_input = coerce_tool_args(tc.name, tc.arguments, known_tools)
             if is_deferred(tool_name, only):
@@ -539,15 +523,11 @@ def run_agent_loop(
                 )
                 conversation.add_tool_result_message(tool_id, result_output, is_error=result.is_error)
                 repeat_guard.record(tool_name, tool_input, result_output)
-                run_stats["tool_errors"] += bool(result.is_error)
                 consecutive_errors = consecutive_errors + 1 if result.is_error else 0
             except Exception as e:
                 error_str = f"Error: {e}"
-                run_stats["tool_errors"] += 1
                 consecutive_errors += 1
-                if isinstance(e, RepeatedCall):
-                    run_stats["repeats_refused"] += 1
-                else:
+                if not isinstance(e, RepeatedCall):
                     repeat_guard.record(tool_name, tool_input, error_str)
                 _trace_tool(tool_name, tool_input, started, True, error_str)
                 if verbose:
@@ -560,17 +540,14 @@ def run_agent_loop(
                 conversation.add_tool_result_message(tool_id, error_str, is_error=True)
 
         if repeat_guard.stuck:
-            record_run("stuck", turn_count)
             return AgentLoopResult(response_text=repeat_guard.stop_reply(), usage=_usage_or_none(), num_turns=turn_count)
         if consecutive_errors >= _MAX_CONSECUTIVE_TOOL_ERRORS:
-            record_run("stalled", turn_count)
             return AgentLoopResult(response_text=_STALLED_REPLY, usage=_usage_or_none(), num_turns=turn_count)
         # Checked once the turn's tool results are in, so the saved session has no call without its result. A stop the
-        # caller asked for, like an interrupt: no "run" telemetry (its outcome words are fixed in the Worker's schema).
+        # caller asked for, like an interrupt.
         if max_tokens and spent > max_tokens:
             return AgentLoopResult(response_text=MAX_TOKENS_REPLY, usage=_usage_or_none(), num_turns=turn_count)
 
-    record_run("max_turns", turn_count)
     # Out of tool turns: one more request, with no tools, for the model to say where the task stands (Kilo does the
     # same); a fixed "[Max tool turns reached]" told the user nothing. It stays as the fallback if this fails.
     conversation.add_user_message(_WRAP_UP)
