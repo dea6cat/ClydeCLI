@@ -134,6 +134,56 @@ class TestCustomProvider(unittest.TestCase):
         keys.remove_custom("other")
         self.assertNotIn("providers", (self.home / ".clyde" / "settings.json").read_text())   # no empty leftover
 
+    def _repl_logout(self, arg, provider_name="anthropic"):
+        """Run /logout on a stand-in REPL; returns (printed text, the stand-in)."""
+        from types import SimpleNamespace
+
+        from src.repl.core import ClydeREPL
+
+        buf = io.StringIO()
+        repl = SimpleNamespace(console=Console(file=buf, width=200), registry={"old": 1}, provider_name=provider_name)
+        with patch("src.repl.core.build_registry", return_value={"new": 1}):
+            ClydeREPL._handle_logout(repl, arg)
+        return buf.getvalue(), repl
+
+    def test_repl_logout_removes_the_key_and_rebuilds_the_registry(self):
+        keys.connect("openai", "k")
+        out, repl = self._repl_logout("openai")
+        self.assertNotIn("openai", keys.saved_providers())
+        self.assertIn("Removed the saved openai key", out)
+        self.assertEqual(repl.registry, {"new": 1})
+        self.assertNotIn("/model", out)
+
+    def test_repl_logout_of_the_current_provider_says_it_stays_until_switched(self):
+        keys.connect("openai", "k")
+        out, _ = self._repl_logout("openai", provider_name="openai")
+        self.assertIn("/model", out)
+
+    def test_repl_logout_removes_a_custom_provider(self):
+        keys.add_custom("mine", "https://x/v1")
+        keys.connect("mine", "k")
+        keys.PROVIDER_KEY_ENV.pop("mine")
+        _, repl = self._repl_logout("mine")
+        self.assertEqual(keys.custom_providers(), {})
+        self.assertEqual(repl.registry, {"new": 1})
+
+    def test_repl_logout_unknown_or_empty_provider_changes_nothing(self):
+        for arg in ("nope", None):
+            out, repl = self._repl_logout(arg)
+            self.assertEqual(repl.registry, {"old": 1})
+            self.assertTrue(out.strip())
+
+    def test_logout_with_a_corrupt_keys_file_reports_it_and_changes_nothing(self):
+        from src.cli import handle_logout
+
+        keys.keys_file().parent.mkdir(parents=True, exist_ok=True)
+        keys.keys_file().write_text("{not json")
+        out, repl = self._repl_logout("openai")
+        self.assertIn("Fix or remove the file", out)
+        self.assertEqual(repl.registry, {"old": 1})
+        with patch("src.cli.Console"):
+            self.assertEqual(handle_logout("openai"), 1)
+
     def test_a_keyless_server_still_connects(self):
         answers = iter(["custom", "vllm", "openai", "http://localhost:8000/v1", "qwen3"])
         with patch("src.cli.prompt_secret", return_value=""), \

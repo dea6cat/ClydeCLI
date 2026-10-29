@@ -246,7 +246,7 @@ _HELP_TEXT = """
 - `/plugins` - Installed, Errors and Stats tabs: what each plugin added, what went wrong, Space turns one on or off
 - `/debug [path]` - Show the last turn's model and tool calls from the trace, or the trace file path
 - `/login [provider]` - Connect a provider or replace its key, or add an OpenAI-compatible one (`custom`), then switch to a model
-- `/logout [provider]` - Remove a saved API key and, for custom providers, remove from settings
+- `/logout <provider>` - Remove a saved API key (and the entry of a custom provider)
 - `/rewind` - Undo the model's file edits and/or the conversation back to before one of your messages
 - `/check` - Run the project's ruff, mypy and pytest and show a summary
 - `/map [question]` - Query the repo's code map: no argument lists the hubs; also `update`, `explain X`, `affected X`, `path A B`
@@ -2894,39 +2894,17 @@ class ClydeREPL:
         return True
 
     def _handle_logout(self, provider: str | None = None) -> None:
-        """Remove a provider's saved API key and, if custom, its settings entry."""
-        from src.providers import keys
+        """Remove a provider's saved API key (and its settings entry if custom), then rebuild the registry."""
+        from src.cli import _key_name, handle_logout
 
         if not provider:
             self.console.print("[red]Usage: /logout <provider>[/red]")
             return
-
-        # Map ollama-cloud to ollama for key name
-        name = "ollama" if provider == "ollama-cloud" else provider
-        if name not in keys.PROVIDER_KEY_ENV:
-            self.console.print(f"[red]Unknown provider: {provider}[/red]")
+        if handle_logout(provider, self.console) != 0:
             return
-
-        # Remove saved key from keys.json and unset env var
-        if keys.disconnect(name):
-            self.console.print(f"[green]✓ Removed the saved {provider} key.[/green]")
-        else:
-            self.console.print(f"[yellow]No saved key for {provider}.[/yellow]")
-
-        # Remove custom provider from settings.json if applicable
-        if name in keys.custom_providers():
-            problem = keys.remove_custom(name)
-            if problem:
-                self.console.print(f"[red]Couldn't remove {provider} from settings.json: {problem}[/red]")
-            else:
-                self.console.print(f"[green]✓ Removed the {provider} provider from ~/.clyde/settings.json.[/green]")
-
-        # Check if env var still set in shell
-        env = keys.PROVIDER_KEY_ENV.get(name)
-        if env and os.environ.get(env):
-            self.console.print(f"[dim]{env} is still set in your shell. To remove it permanently:[/dim]")
-            self.console.print(f"[dim]  echo 'unset {env}' >> ~/.zshrc  # or ~/.bashrc[/dim]")
-            self.console.print(f"[dim]  source ~/.zshrc[/dim]")
+        self.registry = build_registry()
+        if _key_name(provider) == _key_name(self.provider_name):
+            self.console.print("[dim]The current model keeps its client until you switch: use /model.[/dim]")
 
     def _retry_last(self, user_input: str, max_turns: int) -> None:
         """Send the message that hit the rejected key once more, with the fixed key or model."""
