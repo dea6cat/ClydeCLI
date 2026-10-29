@@ -246,6 +246,7 @@ _HELP_TEXT = """
 - `/plugins` - Installed, Errors and Stats tabs: what each plugin added, what went wrong, Space turns one on or off
 - `/debug [path]` - Show the last turn's model and tool calls from the trace, or the trace file path
 - `/login [provider]` - Connect a provider or replace its key, or add an OpenAI-compatible one (`custom`), then switch to a model
+- `/logout <provider>` - Remove a saved API key (and the entry of a custom provider)
 - `/rewind` - Undo the model's file edits and/or the conversation back to before one of your messages
 - `/check` - Run the project's ruff, mypy and pytest and show a summary
 - `/map [question]` - Query the repo's code map: no argument lists the hubs; also `update`, `explain X`, `affected X`, `path A B`
@@ -451,6 +452,7 @@ class ClydeREPL:
             "/debug",
             "/rewind",
             "/login",
+            "/logout",
             "/laya",
             "/tune",
             "/council",
@@ -1601,6 +1603,8 @@ class ClydeREPL:
             self._rewind()
         elif cmd == '/login' or cmd.startswith('/login '):
             self._handle_relogin(raw.split(maxsplit=1)[1].strip() if " " in raw.strip() else None, title="Connect a provider")
+        elif cmd == '/logout' or cmd.startswith('/logout '):
+            self._handle_logout(raw.split(maxsplit=1)[1].strip() if " " in raw.strip() else None)
         elif cmd == '/laya':
             self._show_laya()
         elif cmd == '/tune' or cmd.startswith('/tune '):
@@ -2888,6 +2892,19 @@ class ClydeREPL:
             self.console.print(f"[yellow]Your shell exports {env} with the old key, and it overrides the saved one when "
                                f"ClydeCLI starts.[/yellow] Update or remove it in your shell profile.")
         return True
+
+    def _handle_logout(self, provider: str | None = None) -> None:
+        """Remove a provider's saved API key (and its settings entry if custom), then rebuild the registry."""
+        from src.cli import _key_name, handle_logout
+
+        if not provider:
+            self.console.print("[red]Usage: /logout <provider>[/red]")
+            return
+        if handle_logout(provider, self.console) != 0:
+            return
+        self.registry = build_registry()
+        if _key_name(provider) == _key_name(self.provider_name):
+            self.console.print("[dim]The current model keeps its client until you switch: use /model.[/dim]")
 
     def _retry_last(self, user_input: str, max_turns: int) -> None:
         """Send the message that hit the rejected key once more, with the fixed key or model."""

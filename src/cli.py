@@ -918,20 +918,25 @@ def handle_plugin_import(console: Console, assume_yes: bool = False, quiet: bool
     return 0
 
 
-def handle_logout(provider: str) -> int:
+def handle_logout(provider: str, console: Console | None = None) -> int:
     from src.providers import keys
 
-    console = Console()
+    console = console or Console()
     name = _key_name(provider)
     custom = name in keys.custom_providers()   # also registers custom providers' key names
     if name not in keys.PROVIDER_KEY_ENV:
         console.print(f"[red]Unknown provider: {provider}[/red]")
         return 1
     env = keys.PROVIDER_KEY_ENV[name]
-    if keys.disconnect(name):
-        console.print(f"[green]✓ Removed the saved {provider} key.[/green]")
+    try:
+        removed = keys.disconnect(name)
+    except keys.KeysFileError as e:
+        console.print(f"[red]{e}[/red]")
+        return 1
+    if removed:
+        console.print(f"[green]✓ Removed the saved {name} key.[/green]")
     else:
-        console.print(f"[yellow]No saved key for {provider}.[/yellow]")
+        console.print(f"[yellow]No saved key for {name}.[/yellow]")
     if custom:
         problem = keys.remove_custom(name)
         if problem:
@@ -939,7 +944,7 @@ def handle_logout(provider: str) -> int:
             return 1
         console.print(f"[green]✓ Removed the {provider} provider from ~/.clyde/settings.json.[/green]")
     if os.environ.get(env):
-        console.print(f"[dim]{env} is still set in your shell.[/dim]")
+        console.print(f"[dim]{env} is still set in your shell. Remove its export line from your shell profile.[/dim]")
     return 0
 
 
