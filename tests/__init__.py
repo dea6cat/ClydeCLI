@@ -12,10 +12,6 @@ os.environ["HOME"] = _TEST_HOME
 os.environ.pop("XDG_CONFIG_HOME", None)
 atexit.register(shutil.rmtree, _TEST_HOME, ignore_errors=True)
 
-# The suite must never reach the real telemetry receiver, whatever a test turns on; telemetry tests that want an endpoint set one.
-from src import telemetry  # noqa: E402
-telemetry.DEFAULT_ENDPOINT = ""
-
 # The REPL refreshes the repo code map in the background; never from the test suite.
 os.environ.setdefault("CLYDE_MAP", "off")
 

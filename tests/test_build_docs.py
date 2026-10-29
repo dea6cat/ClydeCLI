@@ -87,7 +87,7 @@ class Site(unittest.TestCase):
 
     def test_no_page_carries_a_script_from_the_markdown(self):
         for page in self.pages:
-            self.assertEqual(len(re.findall(r"<script", (self.out / page).read_text())), 4, page)   # the template's own, and no more
+            self.assertEqual(len(re.findall(r"<script", (self.out / page).read_text())), 3, page)   # the template's own, and no more
 
     def test_every_page_names_its_canonical_url_and_the_sitemap_lists_them(self):
         for page in self.pages:

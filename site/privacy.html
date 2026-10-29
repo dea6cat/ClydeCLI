@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Privacy · ClydeCLI</title>
-<meta name="description" content="What this website counts, what Clyde and Bonnie can report when you opt in, and how to switch both off.">
+<meta name="description" content="Neither this website nor ClydeCLI collects anything about you.">
 <meta name="theme-color" content="#e8e5dd" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0f1a14" media="(prefers-color-scheme: dark)">
 <link rel="canonical" href="https://dea6cat.github.io/ClydeCLI/privacy.html">
@@ -22,28 +22,16 @@
 </header>
 <main>
   <h1 class="enter" style="--i:0">Privacy</h1>
-  <p class="enter lead" style="--i:1">This site counts visits, and Clyde can count how it is used if you ask it to. Both are counts only: no cookies, no accounts, nothing that identifies you.</p>
-  <h2>This website</h2>
-  <dl class="grid">
-    <div class="cut"><dt>What it counts</dt><dd>Which page was opened, which tab, screenshot tab, copy button or link to another site was clicked, and the site you came from, as a host name such as <code>github.com</code> (or a label like <code>github-readme</code> that a link carries in <code>?ref=</code>).</dd></div>
-    <div class="cut"><dt>What it does not</dt><dd>No cookie, no stored identifier, no fingerprint, no search or page text, and nothing from the address after the page name. The counter sees your IP address, as any web server does; GoatCounter uses it only to tell visitors apart, as a non-identifiable hash.</dd></div>
-    <div class="cut"><dt>Do Not Track</dt><dd>If your browser sends Do Not Track or Global Privacy Control, nothing is sent. Automated browsers are flagged so they are not counted.</dd></div>
-    <div class="cut"><dt>Switch it off</dt><dd><button type="button" id="analytics-optout" class="cut">Turn counting off in this browser</button> It sets one flag in this browser's local storage; nothing is sent about it.</dd></div>
-  </dl>
-  <p class="dim">The script is <a href="analytics.js">analytics.js</a>, about a hundred lines, and it is the only script that reports. The counts go to the project's <a href="https://www.goatcounter.com/">GoatCounter</a>, an open-source counter that, in its own words, counts unique visits "without cookies using a non-identifiable hash". GoatCounter's privacy policy applies to what it receives.</p>
+  <p class="enter lead" style="--i:1">Neither this website nor ClydeCLI counts visits, reports usage or sends error reports. No cookies, no accounts, no analytics script.</p>
   <h2>Clyde and Bonnie</h2>
   <dl class="grid">
-    <div class="cut"><dt>On for new installs</dt><dd>A new install has it on, and says so the first time Clyde runs in a terminal. If you already had Clyde, an update asks once and stays off unless you say yes. It is never switched on by itself in an editor, a script or CI. Stop it any time with <code>clyde telemetry off</code>, which also deletes what is queued. <code>CLYDE_TELEMETRY=off</code> and <code>DO_NOT_TRACK=1</code> always win.</dd></div>
-    <div class="cut"><dt>Counts only</dt><dd>How many tool calls failed, which size of model, which built-in provider was used (one you added yourself is just "custom"), which kind of provider error, how a tuning run ended, which Bonnie features get used (just the name, such as automations or themes). Never prompts, files, paths, model names or error text; every field is a number or a word from a fixed list.</dd></div>
-    <div class="cut"><dt>See it first</dt><dd><code>clyde telemetry show</code> prints exactly what is queued and everything that can be recorded. <code>clyde telemetry off</code> stops it and deletes the queue.</dd></div>
-    <div class="cut"><dt>Everything else</dt><dd>Telemetry is only one of the ways Clyde uses the network. <a href="https://github.com/dea6cat/ClydeCLI/blob/main/EGRESS.md">What leaves your machine</a> lists all of them: what each sends, when, and how to turn it off.</dd></div>
-    <div class="cut"><dt>Where it goes</dt><dd>Only while it is on, to a small Cloudflare Worker whose code is in the repository's <a href="https://github.com/dea6cat/ClydeCLI/tree/main/worker">worker</a> folder. It re-checks every event, refuses anything off the list, and keeps only daily totals: no event, no install id and no address is stored. Cloudflare sees your IP address at its edge as with any web request; the Worker never reads it. You can send somewhere else, or nowhere, with <code>clyde telemetry endpoint</code> and <code>clyde telemetry off</code>.</dd></div>
+    <div class="cut"><dt>Your prompts and code</dt><dd>They go to the model provider you chose, and nowhere else. With a local model they stay on this machine.</dd></div>
+    <div class="cut"><dt>Everything else</dt><dd><a href="https://github.com/dea6cat/ClydeCLI/blob/main/EGRESS.md">What leaves your machine</a> lists every way Clyde uses the network: what each sends, when, and how to turn it off.</dd></div>
   </dl>
 </main>
 <footer><a href="https://github.com/dea6cat/ClydeCLI/blob/main/LICENSE">PolyForm Noncommercial 1.0.0</a> · <a href="https://github.com/dea6cat/ClydeCLI">github.com/dea6cat/ClydeCLI</a> · <a href="privacy.html">Privacy</a></footer>
 </div>
 <script src="site.js" defer></script>
 <script src="engraving.js" defer></script>
-<script src="analytics.js" defer></script>
 </body>
 </html>

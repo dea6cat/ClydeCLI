@@ -26,7 +26,6 @@ from rich.console import Console
 from rich.prompt import Confirm
 from rich.table import Table
 
-from src import telemetry
 from src.tuning import tune_profile
 from src.providers import model_eval
 from src.providers.base import ProviderError, get_json, post_json
@@ -489,29 +488,20 @@ def run(console: Console, model: str | None = None, ctx: int | None = None, reas
 
     chosen = choose(rows, profile)
     _show(console, rows, chosen)
-    outcome = "kept"
     if chosen is rows[0]:
         console.print("[bold]Keep your current setup.[/bold] Nothing tested was better without costing memory, speed or quality.")
     else:
-        outcome = "declined"
         console.print(f"[bold]Recommended: {chosen.cand.label}.[/bold]")
         if can_apply() and Confirm.ask("Apply it now? This sets the Ollama app's environment and restarts it (a loaded model unloads)", default=True, console=console):
-            outcome = "failed"
             if apply(console, chosen.cand.env):
-                outcome = "applied"
                 console.print("\n".join(["Applied. Ollama is restarting; the setting lasts until the next reboot, rerun `clyde tune` then.",
                                           *ctx_hint(name, chosen.cand.ctx, rows[0].cand.ctx)]))
         elif owns_server() and Confirm.ask("Apply it? Clyde keeps the setting and starts `ollama serve` with it whenever it needs one", default=True, console=console):
-            outcome = "failed"
             if apply_to_clyde_server(console, chosen.cand.env):
-                outcome = "applied"
                 console.print("\n".join(["Applied. Ollama is running with it.", *ctx_hint(name, chosen.cand.ctx, rows[0].cand.ctx)]))
         else:
             console.print(apply_hint(chosen.cand.env, name, chosen.cand.ctx, rows[0].cand.ctx))
     tune_profile.save(profile, {"model": name, "ctx": chosen.cand.ctx, "env": chosen.cand.env})
-    base_memory = rows[0].perf.memory_bytes
-    telemetry.record("tune", outcome=outcome, memory_saved_pct=telemetry.saved_bucket(
-        100 * (base_memory - chosen.perf.memory_bytes) / base_memory if base_memory else 0))
     return 0
 
 

@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import re
 import unittest
-import urllib.parse
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -32,16 +31,9 @@ class TestEgressDoc(unittest.TestCase):
         for host in ("api.anthropic.com", "html.duckduckgo.com", "api.github.com", "huggingface.co", "ollama.com"):
             self.assertIn(host, found, host)
 
-    def test_the_doc_names_the_telemetry_endpoint_the_client_really_uses(self):
-        # tests/__init__.py blanks telemetry.DEFAULT_ENDPOINT so no test can reach it, so read the value that ships from the source
-        shipped = re.search(r'^DEFAULT_ENDPOINT = "([^"]+)"', (ROOT / "src" / "telemetry.py").read_text(encoding="utf-8"), re.M)
-        self.assertIsNotNone(shipped, "src/telemetry.py has no default endpoint")
-        host = urllib.parse.urlparse(shipped.group(1)).hostname
-        self.assertTrue(host and host in self.doc, host)
-
     def test_the_off_switches_the_doc_promises_exist_in_the_code(self):
         source = "\n".join(p.read_text(encoding="utf-8") for p in (ROOT / "src").rglob("*.py"))
-        for switch in ("CLYDE_NO_UPDATE_CHECK", "CLYDE_TELEMETRY", "DO_NOT_TRACK", "CLYDE_CLOUD_REVIEW", "CLYDE_SKILL_SCAN", "HF_HUB_OFFLINE"):
+        for switch in ("CLYDE_NO_UPDATE_CHECK", "CLYDE_CLOUD_REVIEW", "CLYDE_SKILL_SCAN", "HF_HUB_OFFLINE"):
             self.assertIn(switch, self.doc.upper(), f"{switch} is not in EGRESS.md")
             self.assertIn(switch, source, f"EGRESS.md promises {switch} but the code never reads it")
 

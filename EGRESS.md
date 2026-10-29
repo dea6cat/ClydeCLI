@@ -25,7 +25,6 @@ This is the point of the tool, and it is the only place your content goes.
 | What | Goes to | Sent | When | Turn it off |
 |---|---|---|---|---|
 | Update check | `api.github.com` (newest commit and tags) and `github.com` (`git ls-remote`) | nothing but your IP address and the user agent `clyde-cli` | at the start of the terminal UI, in the background, at most once a day | `CLYDE_NO_UPDATE_CHECK=1` |
-| Telemetry | `clyde-telemetry.bonnieclydesub.workers.dev` (a Cloudflare Worker, code in `worker/`) | counts and fixed words only (how many tool calls failed, which built-in provider and size of model, which Bonnie features get used), never prompts, paths, file contents, model names or error text. Run `clyde telemetry show` to see exactly what is queued | in one batch when Clyde exits, if telemetry is on. On for a new install (with a notice); an existing install is asked once and stays off unless you say yes | `clyde telemetry off` (deletes the queue), `DO_NOT_TRACK=1` or `CLYDE_TELEMETRY=off` |
 
 The Worker keeps only daily totals: no event, no install id and no address is stored. Cloudflare sees your IP address at its edge, as with
 any web request; the Worker never reads it. See [the privacy page](https://dea6cat.github.io/ClydeCLI/privacy.html).
@@ -69,8 +68,7 @@ certificate, `/proxy ca`, is for). Servers on this machine (Ollama, oMLX) never 
 ## 5. What does not leave
 
 - **Bonnie** serves its page on `127.0.0.1` only, and the page loads nothing from outside (no fonts, scripts or images from the web).
-- **Your prompts and code are never part of telemetry.** The schema cannot carry them; `clyde telemetry show` prints what it can.
-- **The website** (`dea6cat.github.io/ClydeCLI`) has its own anonymous visit counter on GoatCounter. That is the website, not the app.
+- **The website** (`dea6cat.github.io/ClydeCLI`) and the app collect no usage data and send no error reports.
 
 ## Links Clyde prints but never fetches
 
