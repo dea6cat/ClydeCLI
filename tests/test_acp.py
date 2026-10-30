@@ -66,7 +66,7 @@ class TestAcp(unittest.TestCase):
         self.assertEqual((self.ws / "hello.txt").read_text(), "hi\n")
         self.to_agent.write(json.dumps({"jsonrpc": "2.0", "method": "session/cancel", "params": {"sessionId": sid}}) + "\n")
         self.assertEqual(self.call(5, "initialize", {})["result"]["protocolVersion"], 1)   # an idle cancel doesn't kill it
-        unknown = self.call(4, "session/load", {})
+        unknown = self.call(4, "session/no_such_method", {})
         self.assertEqual(unknown["error"]["code"], -32601)
         self.to_agent.close()
         self.thread.join(5)
@@ -97,6 +97,35 @@ class TestAcp(unittest.TestCase):
             error = self.call(2, "session/new", {"cwd": str(self.ws), "mcpServers": []})["error"]
         self.assertEqual(error["code"], -32000)
         self.assertIn("clyde login", error["message"])
+
+    def _talk(self, text="create the file hello.txt"):
+        self.call(1, "initialize", {"protocolVersion": 1})
+        sid = self.call(2, "session/new", {"cwd": str(self.ws), "mcpServers": []})["result"]["sessionId"]
+        self.call(3, "session/prompt", {"sessionId": sid, "prompt": [{"type": "text", "text": text}]})
+        return sid
+
+    def test_a_saved_session_is_reopened_with_its_history_replayed_and_known_to_the_model(self):
+        init = self.call(1, "initialize", {"protocolVersion": 1})
+        self.assertIs(init["result"]["agentCapabilities"]["loadSession"], True)
+        sid = self._talk()
+        self.updates.clear()
+        self.provider._responses.append(reply("You asked me for hello.txt."))
+        loaded = self.call(4, "session/load", {"sessionId": sid, "cwd": str(self.ws), "mcpServers": []})["result"]
+        self.assertEqual(loaded["configOptions"][0]["id"], "model")
+        replay = [(u["sessionUpdate"], u["content"]["text"]) for u in self.updates]
+        self.assertEqual(replay[0], ("user_message_chunk", "create the file hello.txt"))
+        self.assertIn(("agent_message_chunk", "Made hello.txt."), replay)
+        done = self.call(5, "session/prompt", {"sessionId": sid, "prompt": [{"type": "text", "text": "what did I ask?"}]})
+        self.assertEqual(done["result"], {"stopReason": "end_turn"})
+        seen = " ".join(repr(m) for m in self.provider.requests[-1]["conversation"].messages)
+        self.assertIn("create the file hello.txt", seen)
+
+    def test_a_session_that_is_not_saved_or_not_a_session_id_is_refused(self):
+        self.call(1, "initialize", {"protocolVersion": 1})
+        missing = self.call(2, "session/load", {"sessionId": "20200101_000000", "cwd": str(self.ws)})["error"]
+        self.assertIn("session not found", missing["message"])
+        escape = self.call(3, "session/load", {"sessionId": "../../etc/passwd", "cwd": str(self.ws)})["error"]
+        self.assertIn("not a session id", escape["message"])
 
     def test_a_handler_that_exits_the_process_still_gets_an_error_reply(self):
         with patch("src.repl.core.ClydeREPL", side_effect=SystemExit(1)):
