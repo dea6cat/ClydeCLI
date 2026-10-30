@@ -97,6 +97,20 @@ class TestAcp(unittest.TestCase):
             error = self.call(2, "session/new", {"cwd": str(self.ws), "mcpServers": []})["error"]
         self.assertEqual(error["code"], -32000)
         self.assertIn("clyde login", error["message"])
+        self.assertTrue(error["message"].startswith("Authentication required"))
+
+    def test_switching_to_a_model_whose_provider_has_no_key_asks_for_auth(self):
+        nokey = FakeProvider(name="gem", models=("g1",))
+        nokey.is_available = lambda: False
+        with patch("src.repl.core.build_registry", return_value={"glm": self.provider, "gem": nokey}):
+            sid = self.call(2, "session/new", {"cwd": str(self.ws), "mcpServers": []})["result"]["sessionId"]
+            error = self.call(3, "session/set_config_option", {"sessionId": sid, "configId": "model", "value": "gem:g1"})["error"]
+            unknown = self.call(4, "session/set_config_option", {"sessionId": sid, "configId": "model", "value": "nope:x"})["error"]
+        self.assertEqual(error["code"], -32000)
+        self.assertTrue(error["message"].startswith("Authentication required"))
+        self.assertIn("no key for gem", error["message"])
+        self.assertEqual(unknown["code"], -32603)
+        self.assertIn("can't switch to nope:x", unknown["message"])
 
     def _talk(self, text="create the file hello.txt"):
         self.call(1, "initialize", {"protocolVersion": 1})

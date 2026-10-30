@@ -24,6 +24,7 @@ from typing import Any, TextIO
 
 PROTOCOL_VERSION = 1
 AUTH_REQUIRED = -32000
+AUTH_REQUIRED_PREFIX = "Authentication required"   # clients such as Sylvie recognise a sign-in error by this start
 # Terminal auth: the editor runs `clyde login` in a terminal. Zed adds the args to the agent's own `--acp` command
 # (`clyde --acp login`), so cli.py lets a subcommand win over the flag.
 AUTH_METHODS = [{"id": "login", "name": "Connect a provider", "type": "terminal", "args": ["login"],
@@ -157,7 +158,7 @@ class Server:
 
         # before the REPL: with nothing connected it can't resolve a model and exits, which would leave the editor waiting
         if not usable(build_registry()):
-            raise AuthRequired("No provider is connected. Run `clyde login`, or start Ollama or oMLX.")
+            raise AuthRequired(f"{AUTH_REQUIRED_PREFIX}: no provider is connected. Run `clyde login`, or start Ollama or oMLX.")
 
         # ponytail: one working directory per process; editors start one agent process per project
         if params.get("cwd"):
@@ -223,11 +224,15 @@ class Server:
         return {"configOptions": _config_options(repl)}
 
     def on_session_set_config_option(self, params: dict) -> dict:
+        from src.providers import usable
         from src.ui.settings_screen import settings
 
         repl, config_id, value = self.sessions[params["sessionId"]], params.get("configId"), str(params.get("value"))
         if config_id == "model":
             if not repl._switch_model(value):
+                name = value.partition(":")[0]
+                if name in repl.registry and name not in usable(repl.registry):   # a known provider with no key
+                    raise AuthRequired(f"{AUTH_REQUIRED_PREFIX}: Clyde has no key for {name}. Run `clyde login` to add one.")
                 raise ValueError(f"can't switch to {value}")
             return {"configOptions": _config_options(repl)}
         setting = next((s for s in settings() if _setting_id(s) == config_id), None)
