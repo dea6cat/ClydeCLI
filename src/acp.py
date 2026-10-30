@@ -1,8 +1,8 @@
 """clyde --acp: speak the Agent Client Protocol (agentclientprotocol.com) on stdio, so editors that
 support it (Zed, JetBrains through an adapter) can run Clyde as their agent.
 
-Newline-delimited JSON-RPC 2.0, protocol version 1. Supported: initialize, session/new,
-session/prompt, session/cancel, authenticate and session/set_config_option (the model picker and the `/settings` toggles:
+Newline-delimited JSON-RPC 2.0, protocol version 1. Supported: initialize, session/new, session/load (a saved session,
+its messages replayed), session/fork (a copy of a session), session/prompt, session/cancel, authenticate and session/set_config_option (the model picker and the `/settings` toggles:
 select options in the session/new reply); the agent streams session/update (agent_message_chunk,
 tool_call, tool_call_update) and asks session/request_permission before anything that needs a yes.
 Logs go to stderr, never stdout.
@@ -24,6 +24,7 @@ from typing import Any, TextIO
 
 PROTOCOL_VERSION = 1
 AUTH_REQUIRED = -32000
+AUTH_REQUIRED_PREFIX = "Authentication required"   # clients such as Sylvie recognise a sign-in error by this start
 # Terminal auth: the editor runs `clyde login` in a terminal. Zed adds the args to the agent's own `--acp` command
 # (`clyde --acp login`), so cli.py lets a subcommand win over the flag.
 AUTH_METHODS = [{"id": "login", "name": "Connect a provider", "type": "terminal", "args": ["login"],
@@ -33,6 +34,7 @@ _KINDS = {"read": "read", "edit": "edit", "write": "edit", "notebookedit": "edit
 
 
 _LINES = re.compile(r"L(\d+)(?::L?(\d+))?")   # Zed's file mentions end in #L115:116
+_SESSION_ID = re.compile(r"[\w.-]+")           # a saved session's file name: no path separators
 
 
 def _link_text(block: dict) -> str:
@@ -143,38 +145,94 @@ class Server:
     # -- agent methods ----------------------------------------------------------------------------
     def on_initialize(self, params: dict) -> dict:
         return {"protocolVersion": PROTOCOL_VERSION, "authMethods": AUTH_METHODS,
-                "agentCapabilities": {"loadSession": False,
+                "agentCapabilities": {"loadSession": True, "sessionCapabilities": {"fork": {}},
                                       "promptCapabilities": {"image": False, "audio": False, "embeddedContext": False}}}
 
     def on_authenticate(self, params: dict) -> dict:
         return {}   # login happens in the terminal the editor opened; the next session/new sees the saved key
 
-    def on_session_new(self, params: dict) -> dict:
+    def _new_repl(self, params: dict) -> Any:
         from rich.console import Console
         from src.providers import usable
         from src.repl.core import ClydeREPL, build_registry
 
         # before the REPL: with nothing connected it can't resolve a model and exits, which would leave the editor waiting
         if not usable(build_registry()):
-            raise AuthRequired("No provider is connected. Run `clyde login`, or start Ollama or oMLX.")
+            raise AuthRequired(f"{AUTH_REQUIRED_PREFIX}: no provider is connected. Run `clyde login`, or start Ollama or oMLX.")
 
         # ponytail: one working directory per process; editors start one agent process per project
         if params.get("cwd"):
             os.chdir(params["cwd"])
         repl = ClydeREPL(model=self.model, console=Console(stderr=True, soft_wrap=True), headless=True)
         repl.stream = True
-        sid = f"sess_{uuid.uuid4().hex[:16]}"
-        repl.tool_context.permission_handler = lambda tool, message, rule: self._ask(sid, tool, message)
         repl.tool_context.ask_user = None
+        return repl
+
+    def _register(self, repl: Any) -> str:
+        """Hand the session to the editor under Clyde's own session id, so the id still names it after a restart."""
+        sid = repl.session.session_id
+        repl.tool_context.permission_handler = lambda tool, message, rule: self._ask(sid, tool, message)
         self.sessions[sid] = repl
-        return {"sessionId": sid, "configOptions": _config_options(repl)}
+        return sid
+
+    def on_session_new(self, params: dict) -> dict:
+        repl = self._new_repl(params)
+        return {"sessionId": self._register(repl), "configOptions": _config_options(repl)}
+
+    def _saved(self, params: dict) -> Any:
+        """The session the editor named: the one open in this process, else the one saved on disk."""
+        from src.agent.session import Session
+
+        wanted = str(params.get("sessionId", ""))
+        if not _SESSION_ID.fullmatch(wanted):     # the id names a file in the sessions folder
+            raise ValueError(f"not a session id: {wanted!r}")
+        saved = self.sessions[wanted].session if wanted in self.sessions else Session.load(wanted)
+        if saved is None:
+            raise ValueError(f"session not found: {wanted}")
+        return saved
+
+    def on_session_fork(self, params: dict) -> dict:
+        """A new session that starts as a copy of another; the original is left as it is."""
+        from src.agent.conversation import Conversation
+        from src.agent.session import Session
+
+        source = self._saved(params)
+        repl = self._new_repl(params)
+        copy = Session.create(source.provider, source.model)
+        while copy.session_id in self.sessions or copy.session_id == source.session_id:   # unsaved sessions don't claim their id
+            copy.session_id = f"{copy.session_id}_{uuid.uuid4().hex[:4]}"
+        copy.conversation = Conversation.from_dict(source.conversation.to_dict())
+        copy.cwd = source.cwd
+        repl._switch_session(copy)
+        if repl.auto_save:
+            copy.save()
+        return {"sessionId": self._register(repl), "configOptions": _config_options(repl)}
+
+    def on_session_load(self, params: dict) -> dict:
+        """Reopen a saved session and replay its messages, so the editor and the model both have the history."""
+        from src.repl.core import _message_text
+
+        saved = self._saved(params)
+        repl = self._new_repl(params)
+        repl._switch_session(saved)
+        sid = self._register(repl)
+        for message in saved.conversation.messages:
+            text = _message_text(message)
+            kind = {"user": "user_message_chunk", "assistant": "agent_message_chunk"}.get(message.role)
+            if text and kind:
+                self.notify("session/update", {"sessionId": sid, "update": {"sessionUpdate": kind, "content": {"type": "text", "text": text}}})
+        return {"configOptions": _config_options(repl)}
 
     def on_session_set_config_option(self, params: dict) -> dict:
+        from src.providers import usable
         from src.ui.settings_screen import settings
 
         repl, config_id, value = self.sessions[params["sessionId"]], params.get("configId"), str(params.get("value"))
         if config_id == "model":
             if not repl._switch_model(value):
+                name = value.partition(":")[0]
+                if name in repl.registry and name not in usable(repl.registry):   # a known provider with no key
+                    raise AuthRequired(f"{AUTH_REQUIRED_PREFIX}: Clyde has no key for {name}. Run `clyde login` to add one.")
                 raise ValueError(f"can't switch to {value}")
             return {"configOptions": _config_options(repl)}
         setting = next((s for s in settings() if _setting_id(s) == config_id), None)

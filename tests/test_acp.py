@@ -66,7 +66,7 @@ class TestAcp(unittest.TestCase):
         self.assertEqual((self.ws / "hello.txt").read_text(), "hi\n")
         self.to_agent.write(json.dumps({"jsonrpc": "2.0", "method": "session/cancel", "params": {"sessionId": sid}}) + "\n")
         self.assertEqual(self.call(5, "initialize", {})["result"]["protocolVersion"], 1)   # an idle cancel doesn't kill it
-        unknown = self.call(4, "session/load", {})
+        unknown = self.call(4, "session/no_such_method", {})
         self.assertEqual(unknown["error"]["code"], -32601)
         self.to_agent.close()
         self.thread.join(5)
@@ -97,6 +97,74 @@ class TestAcp(unittest.TestCase):
             error = self.call(2, "session/new", {"cwd": str(self.ws), "mcpServers": []})["error"]
         self.assertEqual(error["code"], -32000)
         self.assertIn("clyde login", error["message"])
+        self.assertTrue(error["message"].startswith("Authentication required"))
+
+    def test_switching_to_a_model_whose_provider_has_no_key_asks_for_auth(self):
+        nokey = FakeProvider(name="gem", models=("g1",))
+        nokey.is_available = lambda: False
+        with patch("src.repl.core.build_registry", return_value={"glm": self.provider, "gem": nokey}):
+            sid = self.call(2, "session/new", {"cwd": str(self.ws), "mcpServers": []})["result"]["sessionId"]
+            error = self.call(3, "session/set_config_option", {"sessionId": sid, "configId": "model", "value": "gem:g1"})["error"]
+            unknown = self.call(4, "session/set_config_option", {"sessionId": sid, "configId": "model", "value": "nope:x"})["error"]
+        self.assertEqual(error["code"], -32000)
+        self.assertTrue(error["message"].startswith("Authentication required"))
+        self.assertIn("no key for gem", error["message"])
+        self.assertEqual(unknown["code"], -32603)
+        self.assertIn("can't switch to nope:x", unknown["message"])
+
+    def _talk(self, text="create the file hello.txt"):
+        self.call(1, "initialize", {"protocolVersion": 1})
+        sid = self.call(2, "session/new", {"cwd": str(self.ws), "mcpServers": []})["result"]["sessionId"]
+        self.call(3, "session/prompt", {"sessionId": sid, "prompt": [{"type": "text", "text": text}]})
+        return sid
+
+    def test_a_saved_session_is_reopened_with_its_history_replayed_and_known_to_the_model(self):
+        init = self.call(1, "initialize", {"protocolVersion": 1})
+        self.assertIs(init["result"]["agentCapabilities"]["loadSession"], True)
+        sid = self._talk()
+        self.updates.clear()
+        self.provider._responses.append(reply("You asked me for hello.txt."))
+        loaded = self.call(4, "session/load", {"sessionId": sid, "cwd": str(self.ws), "mcpServers": []})["result"]
+        self.assertEqual(loaded["configOptions"][0]["id"], "model")
+        replay = [(u["sessionUpdate"], u["content"]["text"]) for u in self.updates]
+        self.assertEqual(replay[0], ("user_message_chunk", "create the file hello.txt"))
+        self.assertIn(("agent_message_chunk", "Made hello.txt."), replay)
+        done = self.call(5, "session/prompt", {"sessionId": sid, "prompt": [{"type": "text", "text": "what did I ask?"}]})
+        self.assertEqual(done["result"], {"stopReason": "end_turn"})
+        seen = " ".join(repr(m) for m in self.provider.requests[-1]["conversation"].messages)
+        self.assertIn("create the file hello.txt", seen)
+
+    def test_a_fork_is_a_new_session_that_starts_with_the_history_and_leaves_the_original_alone(self):
+        from src.agent.session import Session
+
+        init = self.call(1, "initialize", {"protocolVersion": 1})
+        self.assertIn("fork", init["result"]["agentCapabilities"]["sessionCapabilities"])
+        sid = self._talk()
+        before = len(Session.load(sid).conversation.messages)
+        self.updates.clear()
+        self.provider._responses.append(reply("You asked me for hello.txt."))
+        forked = self.call(4, "session/fork", {"sessionId": sid, "cwd": str(self.ws), "mcpServers": []})["result"]
+        self.assertNotEqual(forked["sessionId"], sid)
+        self.assertEqual(forked["configOptions"][0]["id"], "model")
+        self.assertEqual(self.updates, [])          # a fork starts from the copy: nothing is replayed
+        done = self.call(5, "session/prompt", {"sessionId": forked["sessionId"], "prompt": [{"type": "text", "text": "what did I ask?"}]})
+        self.assertEqual(done["result"], {"stopReason": "end_turn"})
+        seen = " ".join(repr(m) for m in self.provider.requests[-1]["conversation"].messages)
+        self.assertIn("create the file hello.txt", seen)
+        self.assertEqual(len(Session.load(sid).conversation.messages), before)
+        self.assertGreater(len(Session.load(forked["sessionId"]).conversation.messages), before)
+
+    def test_a_fork_of_a_session_that_is_not_there_is_refused(self):
+        self.call(1, "initialize", {"protocolVersion": 1})
+        error = self.call(2, "session/fork", {"sessionId": "20200101_000000", "cwd": str(self.ws)})["error"]
+        self.assertIn("session not found", error["message"])
+
+    def test_a_session_that_is_not_saved_or_not_a_session_id_is_refused(self):
+        self.call(1, "initialize", {"protocolVersion": 1})
+        missing = self.call(2, "session/load", {"sessionId": "20200101_000000", "cwd": str(self.ws)})["error"]
+        self.assertIn("session not found", missing["message"])
+        escape = self.call(3, "session/load", {"sessionId": "../../etc/passwd", "cwd": str(self.ws)})["error"]
+        self.assertIn("not a session id", escape["message"])
 
     def test_a_handler_that_exits_the_process_still_gets_an_error_reply(self):
         with patch("src.repl.core.ClydeREPL", side_effect=SystemExit(1)):
