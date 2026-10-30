@@ -2,7 +2,7 @@
 support it (Zed, JetBrains through an adapter) can run Clyde as their agent.
 
 Newline-delimited JSON-RPC 2.0, protocol version 1. Supported: initialize, session/new, session/load (a saved session,
-its messages replayed), session/prompt, session/cancel, authenticate and session/set_config_option (the model picker and the `/settings` toggles:
+its messages replayed), session/fork (a copy of a session), session/prompt, session/cancel, authenticate and session/set_config_option (the model picker and the `/settings` toggles:
 select options in the session/new reply); the agent streams session/update (agent_message_chunk,
 tool_call, tool_call_update) and asks session/request_permission before anything that needs a yes.
 Logs go to stderr, never stdout.
@@ -144,7 +144,7 @@ class Server:
     # -- agent methods ----------------------------------------------------------------------------
     def on_initialize(self, params: dict) -> dict:
         return {"protocolVersion": PROTOCOL_VERSION, "authMethods": AUTH_METHODS,
-                "agentCapabilities": {"loadSession": True,
+                "agentCapabilities": {"loadSession": True, "sessionCapabilities": {"fork": {}},
                                       "promptCapabilities": {"image": False, "audio": False, "embeddedContext": False}}}
 
     def on_authenticate(self, params: dict) -> dict:
@@ -178,17 +178,40 @@ class Server:
         repl = self._new_repl(params)
         return {"sessionId": self._register(repl), "configOptions": _config_options(repl)}
 
-    def on_session_load(self, params: dict) -> dict:
-        """Reopen a saved session and replay its messages, so the editor and the model both have the history."""
+    def _saved(self, params: dict) -> Any:
+        """The session the editor named: the one open in this process, else the one saved on disk."""
         from src.agent.session import Session
-        from src.repl.core import _message_text
 
         wanted = str(params.get("sessionId", ""))
         if not _SESSION_ID.fullmatch(wanted):     # the id names a file in the sessions folder
             raise ValueError(f"not a session id: {wanted!r}")
-        saved = Session.load(wanted)
+        saved = self.sessions[wanted].session if wanted in self.sessions else Session.load(wanted)
         if saved is None:
             raise ValueError(f"session not found: {wanted}")
+        return saved
+
+    def on_session_fork(self, params: dict) -> dict:
+        """A new session that starts as a copy of another; the original is left as it is."""
+        from src.agent.conversation import Conversation
+        from src.agent.session import Session
+
+        source = self._saved(params)
+        repl = self._new_repl(params)
+        copy = Session.create(source.provider, source.model)
+        while copy.session_id in self.sessions or copy.session_id == source.session_id:   # unsaved sessions don't claim their id
+            copy.session_id = f"{copy.session_id}_{uuid.uuid4().hex[:4]}"
+        copy.conversation = Conversation.from_dict(source.conversation.to_dict())
+        copy.cwd = source.cwd
+        repl._switch_session(copy)
+        if repl.auto_save:
+            copy.save()
+        return {"sessionId": self._register(repl), "configOptions": _config_options(repl)}
+
+    def on_session_load(self, params: dict) -> dict:
+        """Reopen a saved session and replay its messages, so the editor and the model both have the history."""
+        from src.repl.core import _message_text
+
+        saved = self._saved(params)
         repl = self._new_repl(params)
         repl._switch_session(saved)
         sid = self._register(repl)

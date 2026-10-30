@@ -120,6 +120,31 @@ class TestAcp(unittest.TestCase):
         seen = " ".join(repr(m) for m in self.provider.requests[-1]["conversation"].messages)
         self.assertIn("create the file hello.txt", seen)
 
+    def test_a_fork_is_a_new_session_that_starts_with_the_history_and_leaves_the_original_alone(self):
+        from src.agent.session import Session
+
+        init = self.call(1, "initialize", {"protocolVersion": 1})
+        self.assertIn("fork", init["result"]["agentCapabilities"]["sessionCapabilities"])
+        sid = self._talk()
+        before = len(Session.load(sid).conversation.messages)
+        self.updates.clear()
+        self.provider._responses.append(reply("You asked me for hello.txt."))
+        forked = self.call(4, "session/fork", {"sessionId": sid, "cwd": str(self.ws), "mcpServers": []})["result"]
+        self.assertNotEqual(forked["sessionId"], sid)
+        self.assertEqual(forked["configOptions"][0]["id"], "model")
+        self.assertEqual(self.updates, [])          # a fork starts from the copy: nothing is replayed
+        done = self.call(5, "session/prompt", {"sessionId": forked["sessionId"], "prompt": [{"type": "text", "text": "what did I ask?"}]})
+        self.assertEqual(done["result"], {"stopReason": "end_turn"})
+        seen = " ".join(repr(m) for m in self.provider.requests[-1]["conversation"].messages)
+        self.assertIn("create the file hello.txt", seen)
+        self.assertEqual(len(Session.load(sid).conversation.messages), before)
+        self.assertGreater(len(Session.load(forked["sessionId"]).conversation.messages), before)
+
+    def test_a_fork_of_a_session_that_is_not_there_is_refused(self):
+        self.call(1, "initialize", {"protocolVersion": 1})
+        error = self.call(2, "session/fork", {"sessionId": "20200101_000000", "cwd": str(self.ws)})["error"]
+        self.assertIn("session not found", error["message"])
+
     def test_a_session_that_is_not_saved_or_not_a_session_id_is_refused(self):
         self.call(1, "initialize", {"protocolVersion": 1})
         missing = self.call(2, "session/load", {"sessionId": "20200101_000000", "cwd": str(self.ws)})["error"]
