@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import platform
 import sys
 from pathlib import Path
 
@@ -574,7 +575,22 @@ def handle_setup(console: Console, assume_yes: bool = False) -> int:
     else:
         console.print(f"• Laya's model isn't downloaded ({laya_client.DOWNLOAD_SIZE}); run [bold]clyde setup[/bold] to get it.")
 
-    # 7b) Ollama tuning: loads the model several times, so only after a yes (never with --yes)
+    # 7b) oMLX on Apple Silicon: install up front so any MLX model is ready on first use
+    if sys.platform == "darwin" and platform.machine() == "arm64":
+        from src.providers.omlx import _exe, install
+        if _exe() is None:
+            if assume_yes:
+                console.print("• oMLX not installed; run [bold]clyde setup[/bold] without --yes to install it.")
+            elif Confirm.ask("Install oMLX now so any MLX model is ready on first use?", default=True):
+                install(console.print)
+                if _exe() is not None:
+                    console.print("[green]✓ oMLX installed.[/green]")
+                else:
+                    console.print("[yellow]oMLX install didn't finish; will retry on first MLX model use.[/yellow]")
+        else:
+            console.print("✓ oMLX already installed.")
+
+    # 7c) Ollama tuning: loads the model several times, so only after a yes (never with --yes)
     from src.tuning import tune
     tune.offer(console, assume_yes=assume_yes)
 

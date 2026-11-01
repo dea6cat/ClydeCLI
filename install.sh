@@ -35,6 +35,30 @@ log "Installing ClydeCLI…"
 uv tool install --force --python 3.14 "$REPO" || { echo "uv tool install failed." >&2; exit 1; }
 PATH="$(uv tool dir --bin 2>/dev/null || echo "$HOME/.local/bin"):$PATH"; export PATH
 
+# 3) oMLX for Apple Silicon (first-use ready)
+if [ "$(uname -s)" = "Darwin" ] && [ "$(uname -m)" = "arm64" ]; then
+  log "Installing oMLX for Apple Silicon…"
+  CLYDE_HOME="${CLYDE_HOME:-$HOME/.clyde}"
+  OMLX_DIR="$CLYDE_HOME/omlx"
+  if [ ! -d "$OMLX_DIR/src" ]; then
+    git clone --quiet --depth 1 --branch v0.7.2 https://github.com/jundot/omlx.git "$OMLX_DIR/src" || echo "Could not clone oMLX; will install on first use." >&2
+    if [ -d "$OMLX_DIR/src" ]; then
+      uv venv --quiet --seed --python 3.13 "$OMLX_DIR/venv" || echo "Could not create oMLX venv; will install on first use." >&2
+      if [ -d "$OMLX_DIR/venv" ]; then
+        uv pip install --quiet --python "$OMLX_DIR/venv/bin/python" -e "$OMLX_DIR/src" || echo "Could not install oMLX; will install on first use." >&2
+        if [ -f "$OMLX_DIR/venv/bin/omlx" ]; then
+          if command -v xcrun >/dev/null 2>&1 && xcrun -f metal >/dev/null 2>&1; then
+            log "Building oMLX Metal kernels…"
+            make -C "$OMLX_DIR/src" kernels PYTHON="$OMLX_DIR/venv/bin/python" >/dev/null 2>&1 || echo "Metal kernels failed; oMLX runs without them." >&2
+          else
+            echo "No Metal toolchain; oMLX runs without native kernels." >&2
+          fi
+        fi
+      fi
+    fi
+  fi
+fi
+
 # 3) onboarding. Read answers from the terminal even when piped from `curl | sh`.
 log "Running clyde setup…"
 if [ -r /dev/tty ]; then
