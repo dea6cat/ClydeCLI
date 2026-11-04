@@ -151,7 +151,7 @@ class TestOMLX(unittest.TestCase):
             self.assertEqual(self.provider._fetch_models(), ["Parable-4B-MLX-8bit", "Qwen3-8B-4bit"])   # bare folder names, no embedder
             self.assertEqual(self.provider._entry("Qwen3-8B-4bit")["estimated_size"], 10)
 
-    def _download(self, *updates, interrupt=False):
+    def _download(self, *updates, interrupt=False, served=None):
         task = {"task_id": "t1", "repo_id": "mlx-community/Qwen3-8B-4bit", "status": "pending"}
         polls = [{"tasks": [{**task, **u}]} for u in updates]
         calls, seen = [], []
@@ -165,16 +165,40 @@ class TestOMLX(unittest.TestCase):
                 raise KeyboardInterrupt
             return polls.pop(0)
         with patch.object(self.provider, "_ensure_server"), patch.object(omlx, "post_json", side_effect=post), \
-                patch.object(omlx, "get_json", side_effect=poll), patch.object(omlx.time, "sleep"):
+                patch.object(omlx, "get_json", side_effect=poll), patch.object(omlx.time, "sleep"), \
+                patch.object(self.provider, "_status", return_value=[] if served is None else [served]):
             try:
                 return self.provider.download("mlx-community/Qwen3-8B-4bit", seen.append), seen, calls
             except (ProviderError, KeyboardInterrupt) as e:
                 return e, seen, calls
 
     def test_a_download_waits_for_omlx_and_names_the_model_as_omlx_serves_it(self):
-        model, seen, _ = self._download({"status": "downloading", "progress": 40.0}, {"status": "completed", "progress": 100.0})
+        folder = Path(self.tmp) / "models" / "mlx-community" / "Qwen3-8B-4bit"
+        folder.mkdir(parents=True)
+        with patch.object(omlx, "settings_file", return_value=Path(self.tmp) / "omlx-settings.json"):
+            model, seen, _ = self._download({"status": "downloading", "progress": 40.0}, {"status": "completed", "progress": 100.0},
+                                            served={"id": "Qwen3-8B-4bit", "model_path": str(folder)})
         self.assertEqual(model, "Qwen3-8B-4bit")
         self.assertEqual([t["progress"] for t in seen], [40.0, 100.0])
+
+    def test_a_download_into_a_folder_clyde_does_not_search_adds_that_folder(self):
+        root, settings = Path(self.tmp) / "app-models", Path(self.tmp) / "omlx-settings.json"
+        folder = root / "mlx-community" / "Qwen3-8B-4bit"
+        folder.mkdir(parents=True)
+        (folder / "config.json").write_text("{}")
+        (folder / "model.safetensors").write_text("w")
+        settings.write_text(json.dumps({"model": {"model_dirs": [str(Path(self.tmp) / "own")]}}))
+        done = ({"status": "completed", "progress": 100.0},)
+        with patch.object(omlx, "settings_file", return_value=settings), patch.object(omlx, "LMSTUDIO_MODELS", Path(self.tmp) / "none"):
+            model, _, _ = self._download(*done, served={"id": "Qwen3-8B-4bit", "model_path": str(folder)})
+            self.assertEqual(model, "Qwen3-8B-4bit")
+            self.assertEqual(omlx.on_disk(), {"Qwen3-8B-4bit": folder})   # the models list and /models remove see it now
+        self.assertEqual(json.loads(settings.read_text())["model"]["model_dirs"], [str(Path(self.tmp) / "own"), str(root)])
+
+    def test_a_completed_download_oMLX_does_not_serve_is_an_error_not_a_silent_success(self):
+        error, _, _ = self._download({"status": "completed", "progress": 100.0})
+        self.assertIsInstance(error, ProviderError)
+        self.assertIn("doesn't serve it", str(error))
 
     def test_a_failed_download_says_why(self):
         error, _, _ = self._download({"status": "failed", "error": "401 gated repo"})

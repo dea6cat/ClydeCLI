@@ -6,6 +6,7 @@ import unittest
 from contextlib import nullcontext
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from unittest.mock import patch
 
 from rich.console import Console
@@ -35,6 +36,24 @@ class _Repl:
 
     class _esc:
         paused = staticmethod(nullcontext)
+
+
+class TestGetOmlx(unittest.TestCase):
+    def _run(self, on_disk):
+        repl = _Repl()
+        provider = type("P", (), {"_ensure_server": lambda self: None, "download": lambda self, repo, progress: "Coder-4bit"})()
+        repl.registry = {"omlx": provider}
+        with patch.object(local_models.omlx, "on_disk", return_value=on_disk), patch.object(local_models, "_offer_eval"):
+            local_models._get_omlx(repl, MLX)
+        return repl.console.export_text()
+
+    def test_the_download_says_which_folder_the_model_is_in(self):
+        text = self._run({"Coder-4bit": Path("/models/mlx-community/Coder-4bit")})
+        self.assertIn("Downloaded omlx:Coder-4bit", text)
+        self.assertIn("in /models/mlx-community/Coder-4bit", text)
+
+    def test_no_folder_line_when_clyde_cannot_find_one(self):
+        self.assertNotIn(" in /", self._run({}))
 
 
 class TestConfirm(unittest.TestCase):
