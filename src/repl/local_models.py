@@ -408,7 +408,8 @@ def _get_omlx(repl: Any, offer: fit.Offer) -> None:
     except KeyboardInterrupt:
         repl.console.print("Download stopped. Running it again resumes it.")
         return
-    repl.console.print(f"[green]✓ Downloaded omlx:{model}[/green]")
+    folder = omlx.on_disk().get(model)   # where Clyde finds it: download() has put its folder in oMLX's list
+    repl.console.print(f"[green]✓ Downloaded omlx:{model}[/green]" + (f"\n[dim]  in {folder}[/dim]" if folder else ""))
     _offer_eval(repl, omlx_provider, model, offer)
 
 

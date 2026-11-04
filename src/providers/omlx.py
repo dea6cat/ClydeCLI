@@ -146,8 +146,12 @@ def adopt_lmstudio_models() -> bool:
     """Let oMLX serve the models LM Studio downloaded, where they are: its folder (publisher/model, a layout oMLX reads)
     joins oMLX's model folders in ~/.omlx/settings.json, next to oMLX's own. Nothing is copied or moved. True when the
     folder was added; a settings file that can't be read is left alone."""
-    if not LMSTUDIO_MODELS.is_dir():
-        return False
+    return LMSTUDIO_MODELS.is_dir() and add_model_dir(LMSTUDIO_MODELS)
+
+
+def add_model_dir(folder: Path) -> bool:
+    """Add `folder` to the model folders in ~/.omlx/settings.json, keeping oMLX's own. True when it was added; False when
+    it was already listed or the settings file can't be read (left alone)."""
     path = settings_file()
     try:
         data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
@@ -157,9 +161,9 @@ def adopt_lmstudio_models() -> bool:
     if not isinstance(model, dict):
         return False
     dirs = model.get("model_dirs") or [str(Path.home() / ".omlx" / "models")]   # [] means oMLX's own folder: keep it
-    if str(LMSTUDIO_MODELS) in dirs:
+    if str(folder) in dirs:
         return False
-    model["model_dirs"] = [*dirs, str(LMSTUDIO_MODELS)]
+    model["model_dirs"] = [*dirs, str(folder)]
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2), encoding="utf-8")
     return True
@@ -406,7 +410,26 @@ class OMLXProvider(OpenAICompatProvider):
             raise ProviderError(self.name, f"oMLX's download of {repo_id} {task['status']}: {task.get('error') or 'no reason given'}")
         self._status_cache = None
         self.__dict__.pop("_models_cache", None)
-        return repo_id.rsplit("/", 1)[-1]
+        return self._keep_downloaded(repo_id)
+
+    def _keep_downloaded(self, repo_id: str) -> str:
+        """Check the model is where oMLX serves it from, and that Clyde looks there. The server downloads into its own
+        first model folder, which isn't always one in ~/.omlx/settings.json (oMLX's app, brew, --model-dir): the folder
+        joins the list when it's missing, so the model isn't served and then lost. The id, or ProviderError when oMLX
+        doesn't list it."""
+        publisher, _, model = repo_id.rpartition("/")
+        for attempt in range(3):   # oMLX re-discovers its models as the task completes
+            served = next((m for m in self._status() if m.get("id") == model), None)
+            if served is not None:
+                break
+            self._status_cache = None
+            time.sleep(attempt + 1)
+        else:
+            raise ProviderError(self.name, f"oMLX says {repo_id} downloaded but doesn't serve it; check its model folder in {settings_file()}")
+        folder = Path(served.get("model_path") or "")
+        if folder.is_dir() and folder.resolve() not in {p.resolve() for p in on_disk().values()}:
+            add_model_dir(folder.parents[1] if publisher and folder.parent.name == publisher else folder.parent)
+        return model
 
     def estimate(self, model: str) -> int | None:
         """oMLX's estimate of the memory the model needs once loaded, in bytes."""
