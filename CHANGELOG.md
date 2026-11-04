@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-04
+
 ### Removed
 
 - All telemetry. `clyde telemetry` and its first-run notice are gone, along with the usage counters (runs, provider errors, tuning, Bonnie features), the Cloudflare Worker in `worker/`, the website's visit counter (`site/analytics.js`) and `docs/telemetry.md`. Clyde and the website no longer send anything about their use.
@@ -840,6 +842,7 @@ The focus was on building a solid foundation with clean architecture, comprehens
 
 ---
 
+[0.9.0]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.9.0
 [0.8.0]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.8.0
 [0.7.0]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.7.0
 [0.6.0]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.6.0
