@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- An MLX model downloaded through oMLX is no longer lost when oMLX saves it somewhere Clyde doesn't look. oMLX downloads into its own first model folder, which isn't always one in `~/.omlx/settings.json` (the oMLX app, Homebrew, `--model-dir`); the download said it was done and `/eval` ran, but the model was then missing from `/models`, the model list and remove. After a download Clyde now asks the server where it put the model and adds that folder to oMLX's model folders, and a download oMLX reports as completed but doesn't serve is an error instead of a silent success. `/models local` also prints the folder the model went to.
 - "All in" no longer asks before every command that only looks at something outside the project (`ls`, `find`, `cat` of a path elsewhere): a search of the home folder had asked a dozen times in a row. It still asks before anything that changes or deletes outside the project, before a major move, and before a secret file is read.
 - A command that deletes or moves the environment Clyde itself runs from (for example `rm -rf ~/.local/share/uv/tools/clyde-cli`) now says so in its question, with the folder named. Before, it read like any other command outside the project, and once it ran, the next lazy import failed with `ImportError: cannot import name 'refine' from 'src'` and a traceback.
 
