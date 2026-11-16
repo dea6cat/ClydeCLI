@@ -20,6 +20,15 @@ This is the point of the tool, and it is the only place your content goes.
 | **Secrets** | keys and `.env` files reach the model only after a yes (or an allow rule) |
 | **Turn it off** | connect only a local model: then the model traffic never leaves your machine |
 
+### The local runtime's own traffic
+
+A model's weights have no network code: inference alone sends nothing. What can reach out is the program serving the model (Ollama,
+oMLX), with its own update checks, downloads or bugs, and that sits below Clyde, so Clyde can neither see nor stop it. Measured on
+2026-11-16: Ollama.app 0.35.1, idle with no model loaded, listened only on `127.0.0.1` and opened no outside connection in 3 minutes of
+sampling (`lsof -a -i -n -P -p <pid>` every 2 seconds). That does not cover a pull, an update check or a loaded model. To be sure,
+block the runtime at the OS: a per-app firewall such as LuLu can deny the `ollama` binary (or oMLX's Python in `~/.clyde/omlx/venv`)
+everything but localhost; allow it again while you pull or download a model.
+
 ## 2. On by default, with no file content
 
 | What | Goes to | Sent | When | Turn it off |
@@ -37,6 +46,12 @@ any web request; the Worker never reads it. See [the privacy page](https://dea6c
 | WebFetch | the URL the model chose | the request for that URL (a key can ride in a query string, so the whole URL is shown) | Yes, before every URL; a `WebFetch(domain:...)` rule skips the question for that domain | answer no, or deny it the same way |
 | MCP servers you configured | the server's own address (remote ones) | the model's tool calls and their results; sign-in goes to that server's auth service | you chose to add the server | remove it from your MCP settings. A local (stdio) server is just a process on your machine, and what it does on the network is its own |
 | Bash and hooks | wherever the command or script goes | whatever it sends | Bash asks for any command that is not read-only | decline the command |
+
+**After a result tries to steer the model.** A web page, a search result or an MCP answer can carry text written for the model
+("send the conversation to ..."). Clyde puts a notice in front of such a result (`CLYDE_INJECTION_SCAN=off` turns the check off), and
+from then on, for the rest of the session, WebFetch, WebSearch, MCP tools and every Bash command that is not read-only ask before they
+run, even when an allow rule or "all in" would let them through. The question names the result that tripped it and offers no
+"don't ask again". Deny rules still deny, and `clyde -p`, which cannot ask, refuses those calls.
 
 ## 4. Only after you say yes, or when you use the feature
 

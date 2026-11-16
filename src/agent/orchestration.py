@@ -176,6 +176,7 @@ def _worker_context(parent: ToolContext, worktree: Path, run: Run, name: str, ca
         permission_context=ToolPermissionContext.from_iterables(perms.deny_names, perms.deny_prefixes, workspace_root=worktree),
         hooks=parent.hooks,
         permission_rules=parent.permission_rules,
+        injection_sources=parent.injection_sources,
         worktree_root=worktree,
         permission_handler=run.permission_handler(name, cancel),
         ask_user=None,

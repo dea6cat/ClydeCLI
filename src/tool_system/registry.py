@@ -146,6 +146,24 @@ def _is_major(spec: ToolSpec, tool_input: dict[str, Any], context: ToolContext) 
     return False
 
 
+def _sends_out(spec: ToolSpec, tool_input: dict[str, Any]) -> bool:
+    """Whether this call can carry data off the machine: the web and MCP tools, and any Bash command that is not read-only
+    (curl, git push, ssh and dig all count as not read-only)."""
+    from ..security.injection import is_external
+
+    if spec.name.lower() == "bash":
+        from .tools.bash import is_read_only_command
+        return not is_read_only_command(str(tool_input.get("command", "")))
+    return is_external(spec.name)
+
+
+def _clip_input(tool_input: dict[str, Any], limit: int = 300) -> str:
+    import json
+
+    text = json.dumps(tool_input, ensure_ascii=False)
+    return text if len(text) <= limit else f"{text[:limit]}… (+{len(text) - limit} more characters)"
+
+
 def _mcp_alias(spec: ToolSpec, tool_input: dict[str, Any]) -> str | None:
     """The mcp__<server>__<tool> name a generic MCP call is really for, so a deny written for that name also stops this route.
     The resource tools get a name under the server's prefix, so a server-wide deny covers them too."""
@@ -243,8 +261,17 @@ class ToolRegistry:
             permission_result = PermissionResult.ask(f"{spec.name} wants to change {_shown(target, context)}")   # hold mode
         if ruling == "ask" and permission_result.behavior.value == "allow":   # an ask rule: always a prompt
             permission_result = PermissionResult.ask(f"{spec.name}: an ask rule in settings wants your yes")
-        auto = context.auto_approve and not _is_major(spec, call.input, context) and ruling != "ask"
-        if permission_result.behavior.value == "ask" and (ruling == "allow" or auto):
+        tainted = bool(context.injection_sources) and _sends_out(spec, call.input)
+        if tainted and permission_result.behavior.value != "deny":
+            # An outside result already tried to steer the model: what it sends out now could carry this session's data,
+            # so allow rules and "all in" do not wave it through, and no "don't ask again" rule is offered.
+            what = permission_result.message if permission_result.behavior.value == "ask" and permission_result.message else (
+                f"{spec.name} {_clip_input(call.input)}")
+            permission_result = PermissionResult.ask(
+                f"{what}\n(Asking because {context.injection_sources[-1]} returned text addressed to the model this session. "
+                "Check this sends nothing of yours.)")
+        auto = context.auto_approve and not _is_major(spec, call.input, context) and ruling != "ask" and not tainted
+        if permission_result.behavior.value == "ask" and not tainted and (ruling == "allow" or auto):
             if auto and ruling != "allow":
                 trace.record("permission_auto", tool=spec.name, message=permission_result.message)
             permission_result = PermissionResult.allow(permission_result.updated_input)
@@ -268,7 +295,7 @@ class ToolRegistry:
             # Call the permission handler
             prompt = permission_result.message or f"Tool '{spec.name}' requires permission"
             trace.record("permission_ask", tool=spec.name, message=prompt)
-            allowed, _ = context.permission_handler(spec.name, prompt, suggest_rule(spec.name, call.input, context))
+            allowed, _ = context.permission_handler(spec.name, prompt, None if tainted else suggest_rule(spec.name, call.input, context))
             trace.record("permission_answer", tool=spec.name, allowed=allowed)
             if not allowed:
                 return ToolResult(
