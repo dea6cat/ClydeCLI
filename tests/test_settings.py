@@ -30,6 +30,15 @@ class TestSettings(unittest.TestCase):
         self.assertEqual(settings.Approvals.key(root, sorted(allow)), old_rules)
         self.assertEqual(settings.Approvals.key(root, cfg, "srv"), old_mcp)
 
+    def test_toml_settings_apply_under_json(self) -> None:
+        (self.home / "settings.toml").write_text('[permissions]\ndeny = ["Bash(rm:*)"]\n[mcpServers.a]\ncommand = "toml"\n'
+                                                 '[mcpServers.b]\ncommand = "b"\n')
+        settings.json_path().write_text(json.dumps({"permissions": {"deny": ["WebFetch"]}, "mcpServers": {"a": {"command": "json"}}}))
+        merged = settings.read_json()
+        self.assertEqual(merged["permissions"]["deny"], ["Bash(rm:*)", "WebFetch"])
+        self.assertEqual(merged["mcpServers"]["a"]["command"], "json")
+        self.assertEqual(merged["mcpServers"]["b"]["command"], "b")
+
     def test_update_writes_owner_only_and_refuses_a_file_that_is_not_an_object(self) -> None:
         settings.update(lambda data: data.setdefault("a", 1) == 1)
         self.assertEqual(json.loads(settings.json_path().read_text()), {"a": 1})

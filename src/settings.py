@@ -28,13 +28,29 @@ def read_file(path: Path) -> Any:
     return tomllib.loads(text) if Path(path).suffix == ".toml" else json.loads(text)
 
 
-def read_json(path: Path | None = None) -> dict[str, Any]:
-    """The JSON settings file as a dict; {} when it is missing, unreadable or not an object."""
+def _object(path: Path) -> dict[str, Any]:
     try:
-        data = read_file(path or json_path())
+        data = read_file(path)
     except (OSError, ValueError):
         return {}
     return data if isinstance(data, dict) else {}
+
+
+def _merge(base: Any, top: Any) -> Any:
+    if isinstance(base, dict) and isinstance(top, dict):
+        return {**base, **{k: _merge(base.get(k), v) for k, v in top.items()}}
+    if isinstance(base, list) and isinstance(top, list):
+        return base + [v for v in top if v not in base]
+    return top
+
+
+def read_json(path: Path | None = None) -> dict[str, Any]:
+    """One settings file as a dict ({} when missing, unreadable or not an object). With no path: the user's settings,
+    settings.toml with settings.json on top (objects merge entry by entry, JSON winning; lists combine)."""
+    if path is not None:
+        return _object(path)
+    json_file, toml_file = paths()
+    return _merge(_object(toml_file), _object(json_file))
 
 
 def update(change: Callable[[dict[str, Any]], bool], path: Path | None = None) -> bool:
