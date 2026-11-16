@@ -25,11 +25,9 @@ from src.config import clyde_home
 import hashlib
 import json
 import os
-import shutil
 import sys
 import tempfile
 import time
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, NamedTuple
@@ -40,8 +38,6 @@ if TYPE_CHECKING:
     from src.security.scanner.engine import ScanResult
 
 SAFE, CAUTION, BLOCK, ERROR = "SAFE", "CAUTION", "DO_NOT_INSTALL", "ERROR"
-_TIMEOUT_STATIC, _TIMEOUT_LLM = 120, 300   # a review that takes longer is skipped, not waited for
-_CHUNK_SKILLS, _CHUNK_WORKERS = 30, 4   # a scan costs ~2 s plus ~0.25 s per file: big plugins go in parallel chunks
 _RETRY_AFTER = 24 * 3600                # a scan that failed is not repeated at every launch
 
 
@@ -99,10 +95,12 @@ def _store(key: str, entry: dict[str, Any]) -> None:
     _save_cache(cache)
 
 
-def digest(path: Path) -> str:
-    """Content hash of a file or folder (paths and bytes), so a changed item is scanned again."""
+def digest(path: Path, parts: tuple[str, ...] | None = None) -> str:
+    """Content hash of a file or folder (paths and bytes), so a changed item is scanned again; with `parts`, only those
+    files and folders directly under `path` count."""
     h = hashlib.sha256()
-    files = [path] if path.is_file() else sorted(p for p in path.rglob("*") if p.is_file())
+    from src.security.scanner.engine import files_under
+    files = [path] if path.is_file() else sorted(files_under(path, parts))
     for f in files:
         h.update(str(f.relative_to(path) if f != path else f.name).encode())
         try:
@@ -177,7 +175,7 @@ def _to_verdicts(results: list[ScanResult], reviewer: Reviewer | None = None) ->
     return verdicts
 
 
-def scan(path: Path, *, recursive: bool = False, reviewer: Reviewer | None = None) -> list[Verdict]:
+def scan(path: Path, *, recursive: bool = False, reviewer: Reviewer | None = None, parts: tuple[str, ...] | None = None) -> list[Verdict]:
     """Scan with the in-house security scanner, replacing SkillSpector.
 
     The static scan always runs. The LLM review runs when `reviewer` is given
@@ -194,7 +192,7 @@ def scan(path: Path, *, recursive: bool = False, reviewer: Reviewer | None = Non
     try:
         from src.security.scanner import scan as inhouse_scan
 
-        results = inhouse_scan(path, recursive=recursive)
+        results = inhouse_scan(path, recursive=recursive, parts=parts)
     except Exception as e:
         return [Verdict(path.name, ERROR, findings=[f"scan failed: {type(e).__name__}: {e}"])]
     finally:
@@ -212,59 +210,9 @@ def check(kind: str, name: str, path: Path, *, reviewer: Reviewer | None = None,
     """The cached verdict for this exact content, scanning it when it is new or changed. An LLM
     review (`reviewer`) replaces a static-only verdict; a flagged static verdict is reviewed when `reviewer` is given.
     A plugin is judged by the parts ClydeCLI loads, not its whole folder."""
-    if kind != "plugin":
-        return _check(kind, name, path, reviewer, rescan)
-    with tempfile.TemporaryDirectory() as tmp:
-        staged = Path(tmp) / path.name
-        staged.mkdir()
-        for part in _PLUGIN_PARTS:
-            src = path / part
-            if src.is_dir():
-                shutil.copytree(src, staged / part)
-            elif src.is_file():
-                shutil.copy2(src, staged / part)
-        return _check(kind, name, staged, reviewer, rescan)
-
-
-def _chunks(path: Path, tmp: Path) -> list[Path]:
-    """`path` itself, or when it holds many skills, folders of at most _CHUNK_SKILLS skills each (the first
-    also carries everything that isn't a skill, e.g. hooks and .mcp.json)."""
-    skills = sorted(d for d in (path / "skills").iterdir() if d.is_dir()) if (path / "skills").is_dir() else []
-    if len(skills) <= _CHUNK_SKILLS:
-        return [path]
-    chunks = []
-    for i in range(0, len(skills), _CHUNK_SKILLS):
-        chunk = tmp / f"{path.name}-{i // _CHUNK_SKILLS}"
-        (chunk / "skills").mkdir(parents=True)
-        for d in skills[i:i + _CHUNK_SKILLS]:
-            shutil.copytree(d, chunk / "skills" / d.name)
-        if i == 0:
-            for rest in (p for p in path.iterdir() if p.name != "skills"):
-                shutil.copytree(rest, chunk / rest.name) if rest.is_dir() else shutil.copy2(rest, chunk / rest.name)
-        chunks.append(chunk)
-    return chunks
-
-
-def _worst(name: str, verdicts: list[Verdict]) -> Verdict:
-    """One verdict for several: the worst recommendation, every finding. A BLOCK stands even if another
-    part failed to scan; otherwise any failed part makes the whole an ERROR, since it was not fully inspected."""
-    rank = {SAFE: 0, ERROR: 1, CAUTION: 2, BLOCK: 3}
-    worst = max(verdicts, key=lambda v: (rank.get(v.recommendation, 1), v.score))
-    failed = next((v for v in verdicts if v.recommendation == ERROR), None)
-    if failed and worst.recommendation != BLOCK:
-        return Verdict(name, ERROR, findings=failed.findings)
-    return Verdict(name, worst.recommendation, worst.score, worst.severity,
-                   [f"{v.name}: {f}" if len(verdicts) > 1 else f for v in verdicts for f in v.findings], all(v.llm for v in verdicts))
-
-
-def _scan_chunked(name: str, path: Path, reviewer: Reviewer | None) -> Verdict:
-    with tempfile.TemporaryDirectory() as tmp:
-        chunks = _chunks(path, Path(tmp))
-        if len(chunks) == 1:
-            return next(iter(scan(path, reviewer=reviewer)), Verdict(name, ERROR, findings=["empty report"]))
-        with ThreadPoolExecutor(_CHUNK_WORKERS) as pool:
-            parts = list(pool.map(lambda c: next(iter(scan(c, reviewer=reviewer)), Verdict(c.name, ERROR, findings=["empty report"])), chunks))
-    return _worst(name, parts)
+    verdict = _check_cached_or_scan(kind, name, path, reviewer, rescan, _PLUGIN_PARTS if kind == "plugin" else None)
+    _announce_failure(kind, name, verdict)
+    return verdict
 
 
 _announced: set[str] = set()
@@ -283,17 +231,12 @@ def _announce_failure(kind: str, name: str, verdict: Verdict) -> None:
     print(f"\x1b[33m⚠ Scanner could not scan {kind} {name}: {reason}. It is {outcome}.\x1b[0m", file=sys.stderr, flush=True)
 
 
-def _check(kind: str, name: str, path: Path, reviewer: Reviewer | None, rescan: bool) -> Verdict:
-    verdict = _check_cached_or_scan(kind, name, path, reviewer, rescan)
-    _announce_failure(kind, name, verdict)
-    return verdict
-
-
-def _check_cached_or_scan(kind: str, name: str, path: Path, reviewer: Reviewer | None, rescan: bool) -> Verdict:
+def _check_cached_or_scan(kind: str, name: str, path: Path, reviewer: Reviewer | None, rescan: bool,
+                          parts: tuple[str, ...] | None) -> Verdict:
     if not enabled():
         return Verdict(name, SAFE)
     where = str(path) if kind == "skill" else ""
-    key, content = _key(kind, name, where, _load_cache()), digest(path)
+    key, content = _key(kind, name, where, _load_cache()), digest(path, parts)
     entry = _load_cache().get(key) or {}
     cached = Verdict(**entry["verdict"]) if entry.get("hash") == content and "verdict" in entry else None
     failed = entry.get("failed") or {}
@@ -303,7 +246,7 @@ def _check_cached_or_scan(kind: str, name: str, path: Path, reviewer: Reviewer |
     needs_review = cached is not None and reviewer is not None and not cached.llm and cached.recommendation != SAFE
     if cached is not None and not rescan and not needs_review:
         return cached
-    verdict = _scan_chunked(name, path, reviewer)
+    verdict = next(iter(scan(path, reviewer=reviewer, parts=parts)), Verdict(name, ERROR, findings=["empty report"]))
     verdict.name, verdict.approved = name, bool(cached and cached.approved)
     if verdict.recommendation == ERROR:
         # a timeout or a missing report says nothing about the content, so no verdict is kept; the failure is

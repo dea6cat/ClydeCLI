@@ -235,14 +235,18 @@ def scan_file(file_path: Path) -> list[Finding]:
     return findings
 
 
-def scan_skill_folder(skill_path: Path) -> ScanResult:
-    """Scan a skill folder (contains SKILL.md and possibly code files)."""
+def files_under(root: Path, parts: tuple[str, ...] | None = None) -> list[Path]:
+    """Every file under `root`, or with `parts`, only those files and folders directly under it (what a plugin loads)."""
+    tops = [root] if parts is None else [root / p for p in parts]
+    return [f for top in tops for f in ([top] if top.is_file() else top.rglob("*") if top.is_dir() else []) if f.is_file()]
+
+
+def scan_skill_folder(skill_path: Path, parts: tuple[str, ...] | None = None) -> ScanResult:
+    """Scan a skill folder (contains SKILL.md and possibly code files); with `parts`, only those entries of it."""
     all_findings = []
     skill_name = skill_path.name
-
-    # Scan all files in the skill folder
-    for file_path in skill_path.rglob("*"):
-        if file_path.is_file() and should_scan_file(file_path, skill_path):
+    for file_path in files_under(skill_path, parts):
+        if should_scan_file(file_path, skill_path):
             all_findings.extend(scan_file(file_path))
 
     # Calculate score and recommendation
@@ -306,11 +310,8 @@ def _compute_risk_score(findings: list[Finding]) -> tuple[int, str, str]:
     return score, severity_band, recommendation
 
 
-def scan(skill_path: Path, *, recursive: bool = False, env: dict[str, str] | None = None) -> list[ScanResult]:
-    """Main scan function - scans a skill folder or plugin.
-    
-    This replaces the SkillSpector subprocess call with our in-house scanner.
-    """
+def scan(skill_path: Path, *, recursive: bool = False, parts: tuple[str, ...] | None = None) -> list[ScanResult]:
+    """Scan a skill folder or plugin (only `parts` of it, when given), or with `recursive` every SKILL.md folder below it."""
     results = []
 
     if skill_path.is_file():
@@ -325,9 +326,9 @@ def scan(skill_path: Path, *, recursive: bool = False, env: dict[str, str] | Non
                 if subfolder.is_dir() and (subfolder / "SKILL.md").exists():
                     results.append(scan_skill_folder(subfolder))
         else:
-            results.append(scan_skill_folder(skill_path))
+            results.append(scan_skill_folder(skill_path, parts))
 
     return results
 
 
-__all__ = ["scan", "scan_skill_folder", "_compute_risk_score", "ScanResult", "Finding"]
+__all__ = ["scan", "scan_skill_folder", "files_under", "_compute_risk_score", "ScanResult", "Finding"]
