@@ -64,7 +64,7 @@ def _changes_things(spec: ToolSpec, tool_input: dict[str, Any]) -> bool:
     if spec.plan_mode_ok:
         return False
     if spec.name.lower() == "bash":
-        from .tools.bash import is_read_only_command
+        from .shell import is_read_only_command
         return not is_read_only_command(str(tool_input.get("command", "")))
     return spec.is_destructive
 
@@ -116,7 +116,7 @@ def _is_major(spec: ToolSpec, tool_input: dict[str, Any], context: ToolContext) 
     """What "all in" mode still asks about: hard to undo, outside the project, or touching secrets."""
     name = spec.name.lower()
     if name == "bash":
-        from .tools.bash import is_major_command, is_read_only_command, reaches_outside_project
+        from .shell import is_major_command, is_read_only_command, reaches_outside_project
         # Changing something outside the project is always worth a yes, even when everything else plays without asking. Only
         # looking (ls, find, cat) is let through: asking for every one made all-in ask a dozen times for a search of the home folder.
         command = str(tool_input.get("command", ""))
@@ -144,7 +144,7 @@ def _sends_out(spec: ToolSpec, tool_input: dict[str, Any]) -> bool:
     """Whether this call can carry data off the machine: the web and MCP tools, and any Bash command that is not read-only
     (curl, git push, ssh and dig all count as not read-only)."""
     if spec.name.lower() == "bash":
-        from .tools.bash import is_read_only_command
+        from .shell import is_read_only_command
         return not is_read_only_command(str(tool_input.get("command", "")))
     return spec.reaches_network
 

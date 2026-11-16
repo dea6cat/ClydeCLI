@@ -13,7 +13,8 @@ from src.tool_system.context import ToolContext
 from src.tool_system.defaults import build_default_registry
 from src.tool_system.protocol import ToolCall
 from src.tool_system.registry import _is_major
-from src.tool_system.tools.bash import BashTool, reaches_outside_project, removes_running_install
+from src.tool_system.shell import reaches_outside_project, removes_running_install
+from src.tool_system.tools.bash import BashTool
 
 
 class TestOutsideProject(unittest.TestCase):
@@ -108,7 +109,7 @@ class TestFilesAndFoldersOutside(unittest.TestCase):
         self.assertEqual(len(self.asked), 1)                                        # a change there still asks
 
     def test_all_in_after_moving_outside_a_shell_command_that_changes_files_asks(self):
-        from src.tool_system.tools import bash
+        from src.tool_system import shell as bash
         self.ctx.auto_approve = True
         with patch.object(bash, "_TEMP_ROOTS", ()), patch.object(bash.tempfile, "gettempdir", return_value="/nonexistent"):
             self.call("Bash", command=f"cd {self.other}")

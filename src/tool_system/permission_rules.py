@@ -167,7 +167,7 @@ def _matches(rule: str, tool: str, tool_input: dict[str, Any], context: Any, bas
 
 
 def _bash_parts(command: str) -> list[list[str]] | None:
-    from .tools.bash import split_command  # lazy: tools import the registry, which imports this module
+    from .shell import split_command  # lazy: tools import the registry, which imports this module
 
     parts = split_command(command)
     return None if parts is None else [p for p in parts if p]
@@ -199,7 +199,7 @@ def check_rules(tool: str, tool_input: dict[str, Any], context: Any) -> str | No
         return "allow"
     if not parts or any(_part_needs_rule(p, rules["allow"], tool_input, context) for p in parts):
         return None
-    from .tools.bash import reaches_outside_project
+    from .shell import reaches_outside_project
     if (command_reads_secret(command) or reaches_outside_project(command, context, tool_input.get("cwd"))) \
             and not all(any(_matches(r, tool, tool_input, context, w) for r in rules["allow"]) for w in parts):
         return None   # read-only is not a yes to printing a key or reading another folder: only a rule the user wrote covers that
@@ -207,7 +207,7 @@ def check_rules(tool: str, tool_input: dict[str, Any], context: Any) -> str | No
 
 
 def _part_needs_rule(words: list[str], allow: list[str], tool_input: dict[str, Any], context: Any) -> bool:
-    from .tools.bash import _is_read_only_part
+    from .shell import _is_read_only_part
 
     return not _is_read_only_part(words) and not any(_matches(r, "Bash", tool_input, context, words) for r in allow)
 
