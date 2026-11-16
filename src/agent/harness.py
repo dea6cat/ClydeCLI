@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import shutil
+from src.providers.base import LOCAL_PROVIDERS
 from dataclasses import dataclass, field
 
 from src.config import clyde_home
@@ -104,7 +105,6 @@ def discover_clyde_skills() -> list[Harness]:
     return found
 
 
-LOCAL_PROVIDERS = frozenset({"ollama", "omlx"})
 RUNNABLE_KINDS = frozenset({"provider"})   # can lead (master, advisor) and work
 
 

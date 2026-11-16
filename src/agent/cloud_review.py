@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import os
 import re
+from src.providers.base import LOCAL_PROVIDERS
 from dataclasses import replace
 from typing import Any
 
@@ -21,7 +22,7 @@ from ..providers.card_shuffle import _LEAKED_MIN, _LEAKED_TOKENS, CardShuffle
 from ..tool_system.registry import ToolRegistry
 from src import trace
 
-_LOCAL = {"ollama", "omlx", CardShuffle.name}
+_NOT_CLOUD = LOCAL_PROVIDERS | {CardShuffle.name}
 _PRETEND_CALL = re.compile(r"\[TOOL_[A-Z_]+\]|<tool_call>|<function=")
 # First person only ("I can't run", "I don't have access"), a missing file, or the sandbox excuse: an explanation that
 # merely mentions that something cannot access something does not match.
@@ -60,7 +61,7 @@ def review_reply(request: str, reply: str, context: Any, *, registry: dict | Non
         from ..providers import build_registry, keys, pick_default_model, resolve
         keys.load_into_env()
         reg = registry if registry is not None else build_registry()
-        ref = pick_default_model({name: p for name, p in reg.items() if name not in _LOCAL})
+        ref = pick_default_model({name: p for name, p in reg.items() if name not in _NOT_CLOUD})
         resolved = resolve(reg, ref) if ref else None
         if resolved is None:
             return None   # no cloud model connected

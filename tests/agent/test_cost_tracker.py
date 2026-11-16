@@ -36,8 +36,9 @@ class EstimateUsd(unittest.TestCase):
     def test_sibling_entry_is_not_priced_by_shorter_prefix(self):
         self.assertAlmostEqual(estimate_usd("openai:gpt-4.1-mini", {"input_tokens": 1_000_000}), 0.4)
 
-    def test_local_ollama_is_free_and_unpriced_model_is_unknown(self):
+    def test_local_models_are_free_and_unpriced_model_is_unknown(self):
         self.assertEqual(estimate_usd("ollama:qwen3:8b", {"input_tokens": 999}), 0.0)
+        self.assertEqual(estimate_usd("omlx:Qwen3-8B-4bit", {"input_tokens": 999}), 0.0)
         self.assertIsNone(estimate_usd("deepseek:deepseek-v4-pro", {"input_tokens": 999}))
         self.assertIsNone(estimate_usd("anthropic:claude-mythos-5-1", {"input_tokens": 999}))
 

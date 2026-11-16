@@ -23,6 +23,7 @@ import re
 import statistics
 import threading
 import time
+from .base import LOCAL_PROVIDERS
 from concurrent.futures import ThreadPoolExecutor, wait
 from typing import Callable, Iterable
 
@@ -36,7 +37,6 @@ from .types import Conversation, Role
 
 NAME = "cardShuffle"
 TIERS = ("high-roller", "house", "free", "small")
-LOCAL = ("ollama", "omlx")
 
 # Council: `cardShuffle:<tier> council` asks the tier's top models the same question at once, Laya picks the best answer.
 COUNCIL = "council"
@@ -144,7 +144,7 @@ def deck(tier: str, results: dict[str, dict], mode: str = "hold", difficulty: fl
     if tier == "small":
         return ranked
     if tier == "free":
-        ranked = [r for r in ranked if r.partition(":")[0] in LOCAL]
+        ranked = [r for r in ranked if r.partition(":")[0] in LOCAL_PROVIDERS]
     if tier == "house" and mode != "plan" and ranked:
         # The starting card, then stronger ones, then weaker ones.
         mid = len(ranked) // 2 if difficulty is None else round(difficulty * (len(ranked) - 1))

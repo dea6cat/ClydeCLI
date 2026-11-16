@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `~/.clyde/settings.toml` now applies to every setting, not only hooks, checks and trusted folders: permission rules, MCP servers, plugins and custom providers are read from it too. With both files present, settings.json wins entry by entry and lists from the two are combined. Clyde still writes only settings.json.
 
+### Fixed
+
+- oMLX models count as free in the spend line, as Ollama's do, and `/eval` runs them one at a time like Ollama's instead of four at once on the same memory.
+
 ### Removed
 
 - The migration from the config layout used before keys.json (per-provider `api_key` entries in config.json). That layout predates the first release, v0.2.3.

@@ -238,7 +238,7 @@ class TestLoopHelpers(unittest.TestCase):
         from src.agent.agent_loop import _small_local
         self.assertTrue(_small_local(NS(name="omlx", api_key="k")))
         self.assertTrue(_small_local(NS(name="ollama", api_key=None)))
-        self.assertFalse(_small_local(NS(name="ollama", api_key="cloud-key")))   # Ollama's cloud models
+        self.assertFalse(_small_local(NS(name="ollama-cloud", api_key="cloud-key")))   # Ollama's cloud models
         self.assertFalse(_small_local(NS(name="openrouter", api_key="k")))
 
     def test_the_prompt_is_the_users_last_message_not_a_tool_result_or_steering(self):

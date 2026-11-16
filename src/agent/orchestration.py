@@ -24,7 +24,8 @@ from typing import Any, Callable
 from src.agent.agent_types import GENERAL, AgentType
 from src.conversation import Conversation as History
 from src.agent import cli_workers
-from src.agent.harness import LOCAL_PROVIDERS, RUNNABLE_KINDS, Harness, can_work, discover_all, harness_by_name
+from src.providers.base import LOCAL_PROVIDERS
+from src.agent.harness import RUNNABLE_KINDS, Harness, can_work, discover_all, harness_by_name
 from src.agent.runs import MAX_TEAM, Run, outbox_dir
 from src.providers.base import stream_with_retry
 from src.providers.types import Conversation, Message

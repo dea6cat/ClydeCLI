@@ -7,6 +7,7 @@ import os
 import re
 import threading
 import time
+from src.providers.base import LOCAL_PROVIDERS
 from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import Any, Callable
@@ -297,9 +298,8 @@ _STEERING = "The user sent this while you were working; take it into account fro
 
 
 def _small_local(provider: Provider) -> bool:
-    """Ollama on this machine or oMLX: models that do better with a few tools than with all of them."""
-    name = getattr(provider, "name", "")
-    return name == "omlx" or (name == "ollama" and getattr(provider, "api_key", None) is None)
+    """A model served on this machine: models that do better with a few tools than with all of them."""
+    return getattr(provider, "name", "") in LOCAL_PROVIDERS
 
 
 # What Clyde itself adds as user turns; never the user's prompt (local reply review, hooks and tool routing read it).

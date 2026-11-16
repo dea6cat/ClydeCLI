@@ -31,6 +31,10 @@ from .types import Conversation, Message
 _USER_AGENT = f"clyde-cli/{__version__}"
 
 
+# Providers that serve models on this machine: no cost, bounded by its memory, and usually small models.
+LOCAL_PROVIDERS = frozenset({"ollama", "omlx"})
+
+
 @dataclass(slots=True)
 class ProviderResponse:
     message: Message

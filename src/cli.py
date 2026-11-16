@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from src.providers.base import LOCAL_PROVIDERS
+from src.providers.card_shuffle import CardShuffle
 from pathlib import Path
 
 from rich.console import Console
@@ -369,7 +371,7 @@ def run_login_flow(console: Console, registry: dict, default_provider: str = "an
         if provider_name is None:
             return None
 
-    if provider_name not in ("ollama", "omlx", "cardShuffle"):  # local servers and cardShuffle need no key
+    if provider_name not in (*LOCAL_PROVIDERS, CardShuffle.name):  # local servers and cardShuffle need no key
         from src.providers import browser_sign_in
 
         browser = browser_sign_in.PROVIDER_BROWSER_AUTH.get(provider_name)
