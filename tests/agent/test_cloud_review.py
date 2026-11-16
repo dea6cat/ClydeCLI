@@ -60,6 +60,17 @@ class TestReviewReply(unittest.TestCase):
         self.assertEqual(len(self.asked), 1)
         self.assertIn("anthropic:m", self.asked[0])
 
+    def test_only_the_request_and_the_reply_are_sent(self):
+        reg = self._registry(reply("fixed"))
+        self.ctx.goal = "the user's private goal"
+        review_reply("the request", "", self.ctx, registry=reg)
+        sent = reg["anthropic"].requests[0]["conversation"]
+        self.assertEqual(sent.system_prompt, "")
+        self.assertEqual(len(sent.messages), 1)
+        self.assertIn("the request", sent.messages[0].text)
+        self.assertNotIn("private goal", sent.messages[0].text)
+        self.assertEqual(reg["anthropic"].requests[0]["tools"], ())
+
     def test_a_no_is_remembered_and_nothing_is_sent(self):
         self.answer = False
         reg = self._registry()   # an empty script: any request to the cloud model would raise

@@ -14,8 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from src.config import clyde_home
-from src.providers.base import stream_with_retry
-from src.providers.types import Conversation, Message
+from src.providers.base import complete_text
 
 MAX_QUESTIONS = 10
 MAX_ANSWER_CHARS = 4000
@@ -53,8 +52,7 @@ success criteria, and any open decisions. Answer with only the spec, no preamble
 
 
 def _model_text(provider: Any, model: str, prompt: str) -> str:
-    request = Conversation(system_prompt=BRIEFING_SYSTEM, messages=[Message.user(prompt)])
-    return stream_with_retry(provider, request, model, (), lambda _c: None, reasoning="off").message.text or ""
+    return complete_text(provider, model, BRIEFING_SYSTEM, prompt).text
 
 
 def _transcript(state: BriefingState) -> str:

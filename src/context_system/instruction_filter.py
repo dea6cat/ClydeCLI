@@ -74,8 +74,7 @@ def _read_cache() -> dict[str, str]:
 def model_labeler(provider: Any, model: str) -> Callable[[str], str]:
     """Names the language a section is about, with the user's own model. An answer is remembered by the section's text,
     so each section costs one call ever; a failed call answers "general" (keep the section) and is not remembered."""
-    from src.providers.base import ProviderError, stream_with_retry
-    from src.providers.types import Conversation, Message
+    from src.providers.base import ProviderError, complete_text
     cache = _read_cache()
 
     def label(section: str) -> str:
@@ -84,10 +83,10 @@ def model_labeler(provider: Any, model: str) -> Callable[[str], str]:
             return cache[key]
         ask = _ASK.format(section=section.strip()[:_SECTION_CHARS], options=", ".join(LANGUAGES))
         try:
-            reply = stream_with_retry(provider, Conversation("", [Message.user(ask)]), model, (), lambda _chunk: None, retries=0)
+            reply = complete_text(provider, model, "", ask, retries=0)
         except ProviderError:
             return "general"
-        words = re.findall(r"[a-z]+", (reply.message.text or "").lower())
+        words = re.findall(r"[a-z]+", reply.text.lower())
         cache[key] = words[0] if words and words[0] in LANGUAGES else "general"
         try:
             _cache_file().parent.mkdir(parents=True, exist_ok=True)

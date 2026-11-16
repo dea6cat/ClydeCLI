@@ -27,8 +27,7 @@ from src.agent import cli_workers
 from src.providers.base import LOCAL_PROVIDERS
 from src.agent.harness import RUNNABLE_KINDS, Harness, can_work, discover_all, harness_by_name
 from src.agent.runs import MAX_TEAM, Run, outbox_dir
-from src.providers.base import stream_with_retry
-from src.providers.types import Conversation, Message
+from src.providers.base import complete_text
 from src.security.git_safe import git_cmd, git_env
 from src.tool_system.context import ToolContext
 from src.tool_system.permissions import ToolPermissionContext
@@ -150,10 +149,9 @@ def repo_root(start: Path) -> Path | str:
 
 def _model_text(provider: Any, model: str, system: str, prompt: str, run: Run, who: str) -> str:
     """One tool-free model call; its spend goes in the run's ledger."""
-    response = stream_with_retry(provider, Conversation(system_prompt=system, messages=[Message.user(prompt)]),
-                                 model, (), lambda _c: None, reasoning="off")
-    run.spend(who, f"{provider.name}:{model}", response.usage)
-    return response.message.text or ""
+    reply = complete_text(provider, model, system, prompt)
+    run.spend(who, f"{provider.name}:{model}", reply.usage)
+    return reply.text
 
 
 def _split(text: str, count: int) -> list[str] | None:

@@ -13,13 +13,12 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Any, Optional
 
 from src import trace
 from src.conversation import Conversation, Message
 from ..context_system.microcompact import microcompact_messages, strip_images_from_messages
-from ..providers.base import Provider, stream_with_retry
+from ..providers.base import Provider, complete_text
 from ..providers.convert import to_canonical
 from .messages import (
     create_compact_boundary_message,
@@ -162,15 +161,7 @@ async def compact_conversation(
         # Tool blocks are flattened to text: providers reject tool_use/tool_result blocks in a
         # request that defines no tools.
         request = to_canonical(summary_history, SUMMARY_SYSTEM_PROMPT, flatten_tools=True)
-        response = trace.model_call(provider, model, request, lambda: stream_with_retry(
-            provider,
-            request,
-            model,
-            (),
-            lambda _chunk: None,
-            reasoning="off",
-        ))
-        summary_text = (response.message.text or "").strip()
+        summary_text = complete_text(provider, model, SUMMARY_SYSTEM_PROMPT, request).text
     except Exception as e:
         logger.warning(f"Compact LLM call failed: {e}, using text extraction")
         summary_text = _fallback_summary(messages)

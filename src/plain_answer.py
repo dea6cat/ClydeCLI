@@ -30,7 +30,7 @@ def judge(repl: Any) -> tuple[Any, str]:
 def is_plain_yes(provider: Any, model: str, reply: str) -> tuple[bool, str]:
     """(whether `reply` is a plain yes, why not when no verdict came: "" when the model answered)."""
     from src.conversation import Conversation
-    from src.providers.base import stream_with_retry
+    from src.providers.base import complete_text
     from src.providers.convert import to_canonical
     history = Conversation()
     history.add_user_message(f"Reply: {reply}")
@@ -38,8 +38,7 @@ def is_plain_yes(provider: Any, model: str, reply: str) -> tuple[bool, str]:
 
     def ask() -> None:
         try:
-            result["text"] = stream_with_retry(provider, request, model, (), lambda _chunk: None, reasoning="off",
-                                               cancel=cancel).message.text or ""
+            result["text"] = complete_text(provider, model, YES_CHECK, request, cancel=cancel).text
         except Exception as e:  # pylint: disable=broad-exception-caught
             result["error"] = e
 
@@ -51,5 +50,4 @@ def is_plain_yes(provider: Any, model: str, reply: str) -> tuple[bool, str]:
         return False, f"no verdict on your answer within {TIMEOUT_S}s"
     if "error" in result:
         return False, f"couldn't read your answer ({result['error']})"
-    answer = result["text"].rsplit("</think>", 1)[-1]   # a thinking model may still write its reasoning first
-    return answer.strip().strip(".!").upper() == "YES", ""
+    return result["text"].strip(".!").upper() == "YES", ""

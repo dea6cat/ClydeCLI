@@ -306,6 +306,22 @@ def post_stream(url: str, payload: dict, headers: dict | None = None, timeout: i
 MAX_RETRY_AFTER_WAIT_S = 30.0   # longer asks bench the card instead of stalling the turn
 
 
+@dataclass(slots=True)
+class TextReply:
+    text: str
+    usage: dict | None
+
+
+def complete_text(provider, model: str, system: str, prompt: "str | Conversation", *, cancel=None,
+                  retries: int = 3) -> TextReply:
+    """One request with no tools and reasoning off, traced: the reply's text, after any reasoning a model wrote first
+    (`</think>`), and its usage. `prompt` is the user's message, or a whole request already in canonical form."""
+    request = prompt if isinstance(prompt, Conversation) else Conversation(system_prompt=system, messages=[Message.user(prompt)])
+    response = trace.model_call(provider, model, request, lambda: stream_with_retry(
+        provider, request, model, (), lambda _chunk: None, retries=retries, cancel=cancel, reasoning="off"))
+    return TextReply((response.message.text or "").rsplit("</think>", 1)[-1].strip(), response.usage)
+
+
 def stream_with_retry(provider, conversation, model, tools, on_text, *, retries=3, cancel=None,
                       reasoning=None, on_thinking=None) -> ProviderResponse:
     """provider.stream with backoff on retryable ProviderError (429/5xx/connection). Honors a
