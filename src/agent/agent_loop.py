@@ -123,7 +123,14 @@ class AgentLoopResult:
     response_text: str
     usage: dict[str, Any] | None = None  # {"input_tokens": int, "output_tokens": int}
     num_turns: int = 0
-    ran_out: bool = False   # every tool turn used; response_text is then the model's own wrap-up
+    # Why the loop stopped: "done" (the model answered), "blocked" (a prompt hook refused it), "repeat" (it kept making the
+    # same call), "stalled" (failing calls in a row), "budget" (the token budget ran out) or "ran_out" (every tool turn used;
+    # response_text is then the model's own wrap-up).
+    stop_reason: str = "done"
+
+    @property
+    def ran_out(self) -> bool:
+        return self.stop_reason == "ran_out"
 
 
 # After N consecutive failing tool calls (different calls each time, so the repeat guard
@@ -407,7 +414,8 @@ def run_agent_loop(
     if hooks.get("UserPromptSubmit"):
         blocked, added = run_lifecycle(hooks, "UserPromptSubmit", {"prompt": _last_prompt(conversation)}, tool_context.cwd)
         if blocked:
-            return AgentLoopResult(response_text=f"Prompt blocked by a UserPromptSubmit hook: {blocked}", usage=None, num_turns=0)
+            return AgentLoopResult(response_text=f"Prompt blocked by a UserPromptSubmit hook: {blocked}", usage=None, num_turns=0,
+                                   stop_reason="blocked")
         if added:
             conversation.add_user_message(_HOOK_CONTEXT + added)
 
@@ -543,13 +551,13 @@ def run_agent_loop(
                 conversation.add_tool_result_message(tool_id, error_str, is_error=True)
 
         if repeat_guard.stuck:
-            return AgentLoopResult(response_text=repeat_guard.stop_reply(), usage=_usage_or_none(), num_turns=turn_count)
+            return AgentLoopResult(response_text=repeat_guard.stop_reply(), usage=_usage_or_none(), num_turns=turn_count, stop_reason="repeat")
         if consecutive_errors >= _MAX_CONSECUTIVE_TOOL_ERRORS:
-            return AgentLoopResult(response_text=_STALLED_REPLY, usage=_usage_or_none(), num_turns=turn_count)
+            return AgentLoopResult(response_text=_STALLED_REPLY, usage=_usage_or_none(), num_turns=turn_count, stop_reason="stalled")
         # Checked once the turn's tool results are in, so the saved session has no call without its result. A stop the
         # caller asked for, like an interrupt.
         if max_tokens and spent > max_tokens:
-            return AgentLoopResult(response_text=MAX_TOKENS_REPLY, usage=_usage_or_none(), num_turns=turn_count)
+            return AgentLoopResult(response_text=MAX_TOKENS_REPLY, usage=_usage_or_none(), num_turns=turn_count, stop_reason="budget")
 
     # Out of tool turns: one more request, with no tools, for the model to say where the task stands (Kilo does the
     # same); a fixed "[Max tool turns reached]" told the user nothing. It stays as the fallback if this fails.
@@ -568,5 +576,5 @@ def run_agent_loop(
         response_text=wrap_up or MAX_TURNS_REPLY,
         usage=_usage_or_none(),
         num_turns=turn_count,
-        ran_out=True,
+        stop_reason="ran_out",
     )

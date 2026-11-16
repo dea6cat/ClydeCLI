@@ -259,7 +259,7 @@ def _work(run: Run, name: str, role: RoleAssignment, provider: Any, prompt: str,
             result, _ = run_agent(registry, context, agent, prompt, cancel=cancel, conversation=history, on_event=on_event)
             out["summary"] = result.response_text or ""
             run.spend(name, role.ref, result.usage)
-            out["ok"] = True
+            out["ok"] = result.stop_reason == "done"   # gave up (repeat, stall, budget, ran out): not finished
         out["patch"], out["files"] = _snapshot(worktree)
         out["ok"] = out["ok"] and not cancel.is_set()
     except Exception as e:   # a provider error, a stopped request: the run goes on without this worker
