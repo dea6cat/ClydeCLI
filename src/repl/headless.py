@@ -23,7 +23,7 @@ from typing import Any, TextIO
 from rich.console import Console
 
 from src.agent.agent_loop import MAX_TOKENS_REPLY
-from src.agent.conversation import message_dict
+from src.conversation import message_dict
 from src.providers import model_ref
 
 MODES = ("hold", "plan", "all_in")

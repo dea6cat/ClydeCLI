@@ -10,7 +10,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from src.agent import Session
+from src.agent.session import Session
 from src.providers.convert import to_canonical
 from src.repl import ClydeREPL
 from tests.fakes import FakeProvider, reply

@@ -10,7 +10,8 @@ import json
 from rich.markdown import Markdown
 
 from src.repl import ClydeREPL
-from src.agent import Session, Conversation
+from src.agent.session import Session
+from src.conversation import Conversation
 from contextlib import contextmanager
 
 from tests.fakes import FakeProvider, reply

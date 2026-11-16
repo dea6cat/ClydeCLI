@@ -7,7 +7,7 @@ import os
 import unittest
 from unittest.mock import patch
 
-from src.agent.conversation import (
+from src.conversation import (
     Conversation as History,
     Message as HistoryMessage,
     TextContentBlock,

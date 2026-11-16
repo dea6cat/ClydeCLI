@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
-from src.agent import Session
+from src.agent.session import Session
 
 
 class TestSessionArchive(unittest.TestCase):

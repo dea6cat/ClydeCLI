@@ -202,7 +202,7 @@ def trim_old_tool_results(conversation: Any, window: int, keep: int = TRIM_KEEP)
     A small local window fills with file dumps long before auto-compact (80%) summarizes it. The model can read
     a file again, so the results it no longer needs are cleared, newest `keep` first spared.
     """
-    from ..agent.conversation import ToolResultContentBlock
+    from src.conversation import ToolResultContentBlock
     from .token_estimation import count_messages_tokens
 
     if count_messages_tokens(conversation.get_messages()) < window * TRIM_FRACTION:

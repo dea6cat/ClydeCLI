@@ -3,7 +3,7 @@
 A data model, never a wire format: each adapter serializes these fresh into its own
 native JSON on every request and normalizes responses back into them. That
 re-derivation is what makes switching provider or model mid-session safe. ClydeCLI's
-stored history (src/agent/conversation.py) is converted into these by convert.py.
+stored history (src/conversation.py) is converted into these by convert.py.
 """
 from __future__ import annotations
 

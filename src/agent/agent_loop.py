@@ -25,7 +25,7 @@ from ..context_system.microcompact import trim_old_tool_results
 from ..tool_system.deferral import NAMES_ONLY_UP_TO_BILLIONS, VERIFY_PROMPT, advertised, index_prompt, is_deferred, local_tools
 from .cloud_review import review_reply
 from .repeat_guard import RepeatedCall, RepeatGuard
-from .conversation import Conversation
+from src.conversation import Conversation
 from ..context_system import build_context_prompt, instruction_filter
 from ..output_styles import resolve_output_style
 from ..providers import model_size

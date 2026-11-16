@@ -12,7 +12,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from src.agent.agent_loop import run_agent_loop
-from src.agent.conversation import Conversation
+from src.conversation import Conversation
 from src.command_system import create_command_context, execute_command_sync
 from src.tool_system import checks, trust
 from src.tool_system.checks import Problem, detect, new_problems, parse_mypy, parse_ruff

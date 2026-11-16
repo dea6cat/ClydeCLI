@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 from src.agent.agent_loop import run_agent_loop
-from src.agent.conversation import Conversation
+from src.conversation import Conversation
 from src.agent.repeat_guard import RepeatGuard
 from src.tool_system.context import ToolContext
 from src.tool_system.defaults import build_default_registry

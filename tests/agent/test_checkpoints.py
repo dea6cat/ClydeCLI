@@ -90,7 +90,7 @@ class TestRegistryHook(_Home):
 
 class TestRewindCommand(_Home):
     def test_rewind_puts_files_conversation_and_prompt_back(self):
-        from src.agent import Conversation
+        from src.conversation import Conversation
         from src.repl import ClydeREPL
         from tests.fakes import reply
         from tests.repl.test_repl import _fake_provider_env

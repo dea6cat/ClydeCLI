@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from src.agent.agent_types import GENERAL, AgentType
-from src.agent.conversation import Conversation as History
+from src.conversation import Conversation as History
 from src.agent import cli_workers
 from src.agent.harness import LOCAL_PROVIDERS, RUNNABLE_KINDS, Harness, can_work, discover_all, harness_by_name
 from src.agent.runs import MAX_TEAM, Run, outbox_dir

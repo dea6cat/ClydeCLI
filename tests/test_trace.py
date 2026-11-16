@@ -9,7 +9,7 @@ from unittest.mock import Mock, patch
 
 from src import trace
 from src.agent.agent_loop import run_agent_loop
-from src.agent.conversation import Conversation
+from src.conversation import Conversation
 from src.providers.base import ProviderError
 from src.tool_system.context import ToolContext
 from src.tool_system.defaults import build_default_registry

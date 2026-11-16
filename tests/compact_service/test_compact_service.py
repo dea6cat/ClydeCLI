@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any, Optional, Union
 from unittest.mock import patch
 
-from src.agent.conversation import (
+from src.conversation import (
     Conversation,
     Message,
     TextContentBlock,
@@ -146,7 +146,7 @@ class TestCompactConversation(unittest.TestCase):
         self.assertIn("Conversation had", result.summary_text)
 
     def test_the_files_being_worked_on_come_back_after_compaction_as_they_are_now(self):
-        from src.agent.conversation import TextContentBlock, ToolResultContentBlock, ToolUseContentBlock
+        from src.conversation import TextContentBlock, ToolResultContentBlock, ToolUseContentBlock
         from src.compact_service.service import compact_conversation
         root = Path(self.tmpdir.name)
         (root / "app.py").write_text("print('v2')\n")          # changed since it was read
@@ -284,7 +284,7 @@ class TestCompactConversation(unittest.TestCase):
 
     def test_summary_context_never_starts_mid_tool_pair(self):
         """The recent-message slice drops a leading tool result whose call was cut off."""
-        from src.agent.conversation import TextContentBlock, ToolResultContentBlock, ToolUseContentBlock
+        from src.conversation import TextContentBlock, ToolResultContentBlock, ToolUseContentBlock
         from src.compact_service.service import compact_conversation
         messages = []
         for i in range(12):

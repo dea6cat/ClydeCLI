@@ -58,7 +58,7 @@ def run_agent(registry: ToolRegistry, context: ToolContext, agent: Any, prompt: 
     """Run one sub-agent to the end; (AgentLoopResult, note about its model). The caller may pass the
     Conversation to keep it (orchestrated workers save their transcript) and an on_event tool-event callback."""
     from ...agent.agent_loop import run_agent_loop
-    from ...agent.conversation import Conversation
+    from src.conversation import Conversation
 
     provider, model, note = _model_for(agent, context)
     # Own read tracking and todos: the sub-agent must Read a file itself before it may Edit it.

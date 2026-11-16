@@ -29,7 +29,7 @@ def judge(repl: Any) -> tuple[Any, str]:
 
 def is_plain_yes(provider: Any, model: str, reply: str) -> tuple[bool, str]:
     """(whether `reply` is a plain yes, why not when no verdict came: "" when the model answered)."""
-    from src.agent.conversation import Conversation
+    from src.conversation import Conversation
     from src.providers.base import stream_with_retry
     from src.providers.convert import to_canonical
     history = Conversation()

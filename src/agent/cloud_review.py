@@ -75,7 +75,7 @@ def review_reply(request: str, reply: str, context: Any, *, registry: dict | Non
             if not allowed:
                 return None
         from .agent_loop import run_agent_loop
-        from .conversation import Conversation
+        from src.conversation import Conversation
         conversation = Conversation()
         conversation.add_user_message(_REVIEW.format(request=request[-_CHARS:], reply=reply[-_CHARS:]))
         sub = replace(context, read_file_fingerprints={}, todos=[])

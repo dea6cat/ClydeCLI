@@ -90,9 +90,9 @@ from datetime import datetime
 from typing import Any
 
 from src import trace
-from src.agent import Session
+from src.agent.session import Session
 from src.agent.checkpoints import Checkpoints
-from src.agent.conversation import ImageContentBlock
+from src.conversation import ImageContentBlock
 from src.compact_service.service import auto_compact_threshold, compact_conversation, needs_auto_compact
 from src.context_system.context_analyzer import get_context_window_for_model
 from src.config import get_default_model, get_output_style, load_config, set_default_model, set_output_style

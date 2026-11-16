@@ -12,7 +12,7 @@ from datetime import datetime
 from typing import Optional
 from dataclasses import dataclass, field
 
-from .conversation import Conversation
+from src.conversation import Conversation
 
 
 @dataclass

@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 from src.runtime import activity
 from src.agent.agent_loop import run_agent_loop
-from src.agent.conversation import Conversation
+from src.conversation import Conversation
 from src.providers import base
 from src.providers.base import ProviderError
 from src.providers.card_shuffle import LAYA_WAIT, CardShuffle, Verdict

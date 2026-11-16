@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from src.agent.conversation import Conversation, ThinkingContentBlock
+from src.conversation import Conversation, ThinkingContentBlock
 from src.providers.base import ProviderError
 from src.providers.types import Role
 from src.agent.agent_loop import AgentLoopResult, run_agent_loop
