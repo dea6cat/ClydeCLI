@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The "Max history" setting applies: a conversation keeps that many messages (100 unless you change it in /settings), and the first one, your original request or a compaction's summary, always stays. Every conversation used to drop its oldest message past 100, the first one included, whatever the setting said.
 - `/context` shows the window the model really has: the one Ollama or oMLX pinned, else the catalog's. It read a short, out-of-date table of names and reported 200,000 tokens for most local models.
 - oMLX models count as free in the spend line, as Ollama's do, and `/eval` runs them one at a time like Ollama's instead of four at once on the same memory.
 

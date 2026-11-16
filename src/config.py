@@ -66,6 +66,12 @@ def save_config(config: dict[str, Any]) -> None:
     write_json_safely(get_config_path(), config, private=True)   # a crash mid-write leaves the old file, and the last good one is kept as config.json.prev
 
 
+def get_max_history() -> int:
+    """How many messages a conversation keeps (`session.max_history`, /settings), never fewer than 2."""
+    value = load_config().get("session", {}).get("max_history")
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 2 else 100
+
+
 def get_default_model() -> Optional[str]:
     """The saved default model as `provider:model`, or None."""
     return load_config().get("model") or None

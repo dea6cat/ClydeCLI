@@ -69,9 +69,10 @@ class Conversation:
     max_history: int = 100
 
     def add_message(self, role: str, content: Union[str, list[ContentBlock]]):
-        """Add a message to conversation."""
-        if len(self.messages) >= self.max_history:
-            self.messages.pop(0)
+        """Add a message. Past max_history the oldest message after the first goes: the first is the original request
+        (or, after a compaction, its summary)."""
+        if len(self.messages) >= max(2, self.max_history):
+            self.messages.pop(1)
 
         self.messages.append(Message(role=role, content=content))
 
