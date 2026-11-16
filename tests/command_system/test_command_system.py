@@ -189,6 +189,26 @@ class TestBuiltinCommands(unittest.TestCase):
 
 
 
+class TestTodo(unittest.TestCase):
+    def test_todo_shows_and_edits_the_list_the_model_keeps_with_todowrite(self):
+        from src.command_system.builtins import todo_command_call
+        from src.command_system.engine import create_command_context
+        from src.tool_system.context import ToolContext
+        from src.tool_system.tools.todo_write import TodoWriteTool
+
+        tools = ToolContext(workspace_root=Path.cwd())
+        commands = create_command_context(workspace_root=Path.cwd())
+        commands.tool_context = tools
+        TodoWriteTool().run({"todos": [{"content": "Run the tests", "status": "in_progress", "activeForm": "Running the tests"},
+                                       {"content": "Fix the bug", "status": "pending", "activeForm": "Fixing the bug"}]}, tools)
+        self.assertIn("Fix the bug", todo_command_call("", commands).value)
+        todo_command_call("1 completed", commands)
+        todo_command_call("add Write the changelog", commands)
+        old = TodoWriteTool().run({"todos": [{"content": "x", "status": "pending", "activeForm": "x"}]}, tools).output["oldTodos"]
+        self.assertEqual([(t["content"], t["status"]) for t in old],
+                         [("Run the tests", "in_progress"), ("Fix the bug", "completed"), ("Write the changelog", "pending")])
+
+
 class TestInitCommand(unittest.IsolatedAsyncioTestCase):
     """Tests for the /init command implementation."""
 

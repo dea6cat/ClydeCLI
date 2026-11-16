@@ -930,6 +930,7 @@ class ClydeREPL:
             provider=self.provider,
             model=self.model,
         )
+        self.command_context.tool_context = self.tool_context   # /todo edits the model's list
 
         # Merge new commands with built-in list for completion
         self._update_built_in_commands_with_command_system()
@@ -2865,6 +2866,7 @@ class ClydeREPL:
         self.session = loaded_session
         self.tool_context.plan_file = plan_file_for(self.tool_context.workspace_root, loaded_session.session_id)
         self.tool_context.goal, self.tool_context.goal_from_plan = None, False   # a goal belongs to the session that set it
+        self.tool_context.todos = []   # and so does its todo list
         self.checkpoints = Checkpoints(loaded_session.session_id)   # its checkpoints, for /rewind
         trace.start(loaded_session.session_id, **self._trace_options)
         self.command_context.conversation = loaded_session.conversation   # /clear, /compact act on it
