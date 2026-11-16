@@ -101,13 +101,15 @@ class OllamaProvider:
 
     # --- context window ------------------------------------------------------
     def _show(self, model: str) -> dict:
+        """What Ollama says about `model`; {} when it can't say right now. Only an answer is cached, so one timeout
+        doesn't leave the model's window, image support and reasoning unknown for the rest of the session."""
         if model not in self._show_cache:
             try:
                 self._show_cache[model] = post_json(
                     f"{self.host}/api/show", {"model": model},
                     headers=self._headers(), timeout=10, provider=self.name)
-            except Exception:
-                self._show_cache[model] = {}
+            except ProviderError:
+                return {}
         return self._show_cache[model]
 
     def parameter_billions(self, model: str) -> float | None:
