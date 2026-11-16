@@ -22,15 +22,6 @@ Ports rule tables from SkillSpector v2.12.0 (Apache-2.0 licensed).
 from __future__ import annotations
 
 from src.security.scanner.engine import scan
-from src.security.scanner.rules import (
-    RULE_ID_TO_CATEGORY,
-    RULE_ID_TO_EXPLANATION,
-    RULE_ID_TO_SEVERITY,
-)
+from src.security.scanner.rules import RULES
 
-__all__ = [
-    "scan",
-    "RULE_ID_TO_CATEGORY",
-    "RULE_ID_TO_EXPLANATION",
-    "RULE_ID_TO_SEVERITY",
-]
+__all__ = ["scan", "RULES"]

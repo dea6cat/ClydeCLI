@@ -48,7 +48,7 @@ class Station(unittest.TestCase):
     def test_each_member_shows_what_its_last_event_says(self):
         run = self._run()
         thread = self._waiting_ask(run)
-        crew = {name: doing for name, _model, doing in station._crew(run)}
+        crew = {c["name"]: c["doing"] for c in station.snapshot(run)["crew"]}
         self.assertEqual(crew, {"master": "idle", "worker-1": "using Edit", "worker-2": "waiting for approval"})
         run.answer(run.pending()[0]["id"], False)
         thread.join(5)
@@ -81,11 +81,11 @@ class Station(unittest.TestCase):
     def test_a_worker_whose_request_was_answered_is_working_again_not_still_waiting(self):
         run = self._run()
         thread = self._waiting_ask(run)
-        crew = {name: doing for name, _model, doing in station._crew(run)}
+        crew = {c["name"]: c["doing"] for c in station.snapshot(run)["crew"]}
         self.assertEqual(crew["worker-2"], "waiting for approval")
         run.answer(run.pending()[0]["id"], True)
         thread.join(5)
-        crew = {name: doing for name, _model, doing in station._crew(run)}
+        crew = {c["name"]: c["doing"] for c in station.snapshot(run)["crew"]}
         self.assertEqual(crew["worker-2"], "working")   # its own next event may be a long tool away
         self.assertEqual(crew["worker-1"], "using Edit")   # nobody else changed
 

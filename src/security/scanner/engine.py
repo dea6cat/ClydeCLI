@@ -13,16 +13,13 @@ from pathlib import Path
 
 from src.security.scanner.rules import (
     DANGEROUS_BUILTINS,
-    DEFAULT_EXPLANATIONS,
     HORIZONTAL_RUN_CHARS,
-    INSECURE_DESERIALIZERS,
     OS_EXEC_CALLS,
-    RULE_ID_TO_CATEGORY,
-    RULE_ID_TO_SEVERITY,
+    RULE_PATTERNS,
+    RULES,
     SUBPROCESS_CALLS,
     VERTICAL_BLANK_LINES,
     get_compiled_patterns,
-    is_padding_char,
 )
 
 
@@ -104,8 +101,8 @@ def check_whitespace_padding(content: str, file_path: str) -> list[Finding]:
             if blank_streak >= VERTICAL_BLANK_LINES:
                 findings.append(Finding(
                     rule_id="P9",
-                    severity=RULE_ID_TO_SEVERITY.get("P9", "MEDIUM").value,
-                    category=RULE_ID_TO_CATEGORY.get("P9", "Prompt Injection"),
+                    severity=RULES["P9"].severity,
+                    category=RULES["P9"].category,
                     message=f"Found {blank_streak} consecutive blank lines (threshold: {VERTICAL_BLANK_LINES})",
                     file_path=file_path,
                     line_number=i - blank_streak + 1,
@@ -123,8 +120,8 @@ def check_whitespace_padding(content: str, file_path: str) -> list[Finding]:
             if trailing_spaces >= HORIZONTAL_RUN_CHARS:
                 findings.append(Finding(
                     rule_id="P9",
-                    severity=RULE_ID_TO_SEVERITY.get("P9", "MEDIUM").value,
-                    category=RULE_ID_TO_CATEGORY.get("P9", "Prompt Injection"),
+                    severity=RULES["P9"].severity,
+                    category=RULES["P9"].category,
                     message=f"Found {trailing_spaces} trailing spaces (threshold: {HORIZONTAL_RUN_CHARS})",
                     file_path=file_path,
                     line_number=i,
@@ -137,19 +134,16 @@ def check_whitespace_padding(content: str, file_path: str) -> list[Finding]:
 def check_text_patterns_all(content: str, file_path: str) -> list[Finding]:
     """Check content against all text-based regex patterns for all rules."""
     findings = []
-    from src.security.scanner.rules import RULE_PATTERNS
-
-    for rule_id, patterns in RULE_PATTERNS.items():
-        compiled = get_compiled_patterns(rule_id)
-        for pattern, confidence in compiled:
+    for rule_id in RULE_PATTERNS:
+        for pattern, confidence in get_compiled_patterns(rule_id):
             for match in pattern.finditer(content):
                 # Get line number
                 line_number = content[:match.start()].count('\n') + 1
                 findings.append(Finding(
                     rule_id=rule_id,
-                    severity=RULE_ID_TO_SEVERITY.get(rule_id, "MEDIUM").value,
-                    category=RULE_ID_TO_CATEGORY.get(rule_id, "Unknown"),
-                    message=f"{DEFAULT_EXPLANATIONS.get(rule_id, 'Pattern matched')}",
+                    severity=RULES[rule_id].severity,
+                    category=RULES[rule_id].category,
+                    message=RULES[rule_id].explanation,
                     file_path=file_path,
                     line_number=line_number,
                     confidence=confidence,
@@ -171,9 +165,9 @@ def check_ast_python(content: str, file_path: str) -> list[Finding]:
         # AST1/AST2: exec(), eval() and friends, wherever the call sits (`x = eval(input())` too)
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in DANGEROUS_BUILTINS:
             findings.append(Finding(
-                rule_id="AST1" if node.func.id == "exec" else "AST2",
-                severity="CRITICAL",
-                category="Tool Misuse",
+                rule_id=(rule := "AST1" if node.func.id == "exec" else "AST2"),
+                severity=RULES[rule].severity,
+                category=RULES[rule].category,
                 message=f"Found dangerous call to {node.func.id}()",
                 file_path=file_path,
                 line_number=node.lineno,
@@ -187,8 +181,8 @@ def check_ast_python(content: str, file_path: str) -> list[Finding]:
                     if node.func.value.id == "subprocess":
                         findings.append(Finding(
                             rule_id="AST4",
-                            severity="HIGH",
-                            category="Tool Misuse",
+                            severity=RULES["AST4"].severity,
+                            category=RULES["AST4"].category,
                             message=f"Found subprocess.{node.func.attr}() call",
                             file_path=file_path,
                             line_number=node.lineno,
@@ -202,8 +196,8 @@ def check_ast_python(content: str, file_path: str) -> list[Finding]:
                     if node.func.value.id == "os":
                         findings.append(Finding(
                             rule_id="AST5",
-                            severity="HIGH",
-                            category="Tool Misuse",
+                            severity=RULES["AST5"].severity,
+                            category=RULES["AST5"].category,
                             message=f"Found os.{node.func.attr}() call",
                             file_path=file_path,
                             line_number=node.lineno,
@@ -235,14 +229,18 @@ def scan_file(file_path: Path) -> list[Finding]:
     return findings
 
 
-def scan_skill_folder(skill_path: Path) -> ScanResult:
-    """Scan a skill folder (contains SKILL.md and possibly code files)."""
+def files_under(root: Path, parts: tuple[str, ...] | None = None) -> list[Path]:
+    """Every file under `root`, or with `parts`, only those files and folders directly under it (what a plugin loads)."""
+    tops = [root] if parts is None else [root / p for p in parts]
+    return [f for top in tops for f in ([top] if top.is_file() else top.rglob("*") if top.is_dir() else []) if f.is_file()]
+
+
+def scan_skill_folder(skill_path: Path, parts: tuple[str, ...] | None = None) -> ScanResult:
+    """Scan a skill folder (contains SKILL.md and possibly code files); with `parts`, only those entries of it."""
     all_findings = []
     skill_name = skill_path.name
-
-    # Scan all files in the skill folder
-    for file_path in skill_path.rglob("*"):
-        if file_path.is_file() and should_scan_file(file_path, skill_path):
+    for file_path in files_under(skill_path, parts):
+        if should_scan_file(file_path, skill_path):
             all_findings.extend(scan_file(file_path))
 
     # Calculate score and recommendation
@@ -306,11 +304,8 @@ def _compute_risk_score(findings: list[Finding]) -> tuple[int, str, str]:
     return score, severity_band, recommendation
 
 
-def scan(skill_path: Path, *, recursive: bool = False, env: dict[str, str] | None = None) -> list[ScanResult]:
-    """Main scan function - scans a skill folder or plugin.
-    
-    This replaces the SkillSpector subprocess call with our in-house scanner.
-    """
+def scan(skill_path: Path, *, recursive: bool = False, parts: tuple[str, ...] | None = None) -> list[ScanResult]:
+    """Scan a skill folder or plugin (only `parts` of it, when given), or with `recursive` every SKILL.md folder below it."""
     results = []
 
     if skill_path.is_file():
@@ -325,9 +320,9 @@ def scan(skill_path: Path, *, recursive: bool = False, env: dict[str, str] | Non
                 if subfolder.is_dir() and (subfolder / "SKILL.md").exists():
                     results.append(scan_skill_folder(subfolder))
         else:
-            results.append(scan_skill_folder(skill_path))
+            results.append(scan_skill_folder(skill_path, parts))
 
     return results
 
 
-__all__ = ["scan", "scan_skill_folder", "_compute_risk_score", "ScanResult", "Finding"]
+__all__ = ["scan", "scan_skill_folder", "files_under", "_compute_risk_score", "ScanResult", "Finding"]

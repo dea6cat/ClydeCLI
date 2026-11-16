@@ -771,6 +771,7 @@ class ClydeREPL(Engine):
         self.command_registry = builtin_registry()
         self.command_context = create_command_context(workspace_root=Path.cwd(), conversation=self.session.conversation,
                                                       cost_tracker=self.cost_tracker, provider=self.provider, model=self.model)
+        self.command_context.tool_context = self.tool_context   # /todo edits the model's list
 
         # Merge new commands with built-in list for completion
         self._update_built_in_commands_with_command_system()

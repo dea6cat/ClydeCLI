@@ -1,3 +1,4 @@
+"""Write a SKILL.md with the given front matter, for tests that need a skill on disk."""
 from __future__ import annotations
 
 from pathlib import Path

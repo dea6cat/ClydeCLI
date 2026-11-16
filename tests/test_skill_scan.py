@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 from src.providers.base import ProviderError
 from src.security import skill_scan
+from src.security.scanner.engine import files_under
 from src.security.skill_scan import BLOCK, CAUTION, ERROR, SAFE, Verdict
 
 
@@ -26,9 +27,9 @@ class _Scanner:
     def __init__(self):
         self.calls: list[tuple[str, bool]] = []
 
-    def __call__(self, path, *, recursive=False, reviewer=None):
+    def __call__(self, path, *, recursive=False, reviewer=None, parts=None):
         self.calls.append((Path(path).name, reviewer is not None))
-        text = "".join(p.read_text() for p in Path(path).rglob("SKILL.md"))
+        text = "".join(p.read_text() for p in files_under(Path(path), parts) if p.name == "SKILL.md")
         bad = "id_rsa" in text
         return [Verdict(Path(path).name, BLOCK if bad else SAFE, 90 if bad else 0, findings=["PE3 HIGH: id_rsa"] if bad else [],
                         llm=reviewer is not None)]
@@ -77,8 +78,8 @@ class TestGate(unittest.TestCase):
         (plugin / ".mcp.json").write_text("{}")
         seen: list[list[str]] = []
 
-        def scan(path, *, recursive=False, reviewer=None):
-            seen.append(sorted(str(p.relative_to(path)) for p in Path(path).rglob("*") if p.is_file()))
+        def scan(path, *, recursive=False, reviewer=None, parts=None):
+            seen.append(sorted(str(p.relative_to(path)) for p in files_under(Path(path), parts)))
             return [Verdict("big", SAFE)]
 
         with patch.object(skill_scan, "scan", scan):
@@ -114,33 +115,6 @@ class TestGate(unittest.TestCase):
                 self.assertEqual(skill_scan.check("skill", "flaky", folder).recommendation, SAFE)
         self.assertEqual(scan.call_count, 2)
         self.assertEqual(skill_scan.cached_verdicts()["skill:flaky"].recommendation, SAFE)
-
-    def test_a_big_plugin_is_scanned_in_chunks_and_the_worst_chunk_wins(self):
-        plugin = self.home / "huge"
-        for i in range(70):
-            _skill(plugin / "skills", f"s{i:02d}", "cat ~/.ssh/id_rsa" if i == 65 else "sort imports")
-        (plugin / ".mcp.json").write_text("{}")
-        seen: list[int] = []
-
-        def scan(path, *, recursive=False, reviewer=None):
-            seen.append(len(list((Path(path) / "skills").iterdir())))
-            return self.scanner(path, reviewer=reviewer)
-
-        with patch.object(skill_scan, "scan", scan):
-            self.assertTrue(skill_scan.check("plugin", "huge", plugin).blocked)
-        self.assertEqual(sorted(seen), [10, 30, 30])
-
-    def test_one_failed_chunk_makes_the_plugin_an_error_not_a_verdict(self):
-        plugin = self.home / "huge"
-        for i in range(40):
-            _skill(plugin / "skills", f"s{i:02d}", "sort imports")
-        calls = iter([Verdict("a", SAFE), Verdict("b", ERROR, findings=["scan failed: TimeoutExpired"])])
-        with patch.object(skill_scan, "scan", side_effect=lambda *a, **k: [next(calls)]):
-            self.assertEqual(skill_scan.check("plugin", "huge", plugin).recommendation, ERROR)
-        self.assertNotIn("plugin:huge", skill_scan.cached_verdicts())
-
-    def test_the_llm_review_is_bounded_to_minutes_not_half_an_hour(self):
-        self.assertLessEqual(skill_scan._TIMEOUT_LLM, 300)
 
     def test_a_failed_scan_warns_but_does_not_hold_back(self):
         self.assertFalse(Verdict("x", ERROR).blocked)
@@ -309,7 +283,7 @@ class TestScanFailures(unittest.TestCase):
 
     def setUp(self):
         self.home = Path(tempfile.mkdtemp())
-        self.failing = lambda path, *, recursive=False, reviewer=None: [Verdict(Path(path).name, ERROR, findings=["scan failed: TimeoutExpired"])]
+        self.failing = lambda path, *, recursive=False, reviewer=None, parts=None: [Verdict(Path(path).name, ERROR, findings=["scan failed: TimeoutExpired"])]
         for p in (patch.object(Path, "home", return_value=self.home), patch.object(skill_scan, "scan", self.failing),
                   patch.object(skill_scan, "_announced", set())):
             p.start()

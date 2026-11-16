@@ -78,11 +78,6 @@ def snapshot(run: Run) -> dict[str, Any]:
             "spend": spend, "events": len(events), "layout": station_layout.build(state, events, asks, crew, clyde, spend)}
 
 
-def _crew(run: Run) -> list[tuple[str, str, str]]:
-    """(name, model, what it is doing) for the master, advisor and each worker."""
-    return [(c["name"], c["model"], c["doing"]) for c in snapshot(run)["crew"]]
-
-
 def render(run: Run) -> Table:
     snap = snapshot(run)
     spend = f"${snap['spend']['usd']:.4f}" + (f" of ${snap['spend']['cap']:.2f}" if snap["spend"]["cap"] is not None else "") \

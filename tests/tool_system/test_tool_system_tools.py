@@ -468,7 +468,7 @@ class TestMCPTool(ToolSystemTests):
 
 class TestSkillTool(ToolSystemTests):
     def test_skill_runs_markdown_skill(self) -> None:
-        from src.skills.create import create_skill
+        from tests.skills.skill_files import create_skill
 
         skills_dir = self.root / "skills"
         create_skill(
@@ -739,8 +739,7 @@ class TestPlanModeTools(ToolSystemTests):
         # Exit plan mode
         exit_out = ExitPlanModeTool().run({}, self.ctx).output
         self.assertFalse(self.ctx.plan_mode)
-        self.assertFalse(exit_out["isAgent"])
-        self.assertTrue(exit_out["hasTaskTool"])
+        self.assertEqual(exit_out, {"plan": None, "filePath": None})
 
     def test_plan_mode_exit_with_plan(self) -> None:
         """Test exiting plan mode with a plan."""

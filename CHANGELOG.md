@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - `clyde -p`, editors (`clyde --acp`) and Bonnie run on a session engine of their own (`src/agent/engine.py`) instead of a hidden terminal REPL; the terminal extends that engine. What you may notice: they no longer print the terminal's turn footer to stderr, and Auto-refine "before compaction" now runs only in the terminal, as "every N turns" already did.
+- `/todo` shows and edits the session's todo list, the one the model keeps as it works. It kept a separate list in `~/.clyde/todos.json` that the model never saw; that file is no longer read. `/todo <index> <status>` works (it always answered with its usage line).
 - Picking a model in an editor (`clyde --acp`, such as Zed) or in Bonnie changes that session's model only. It also saved it as the default for every later `clyde`; `/model` in the terminal still does.
 - `~/.clyde/settings.toml` now applies to every setting, not only hooks, checks and trusted folders: permission rules, MCP servers, plugins and custom providers are read from it too. With both files present, settings.json wins entry by entry and lists from the two are combined. Clyde still writes only settings.json.
 
@@ -18,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A Gemini reply cut off at its output limit is continued, as other providers' are: Gemini says `MAX_TOKENS`, which was not read as cut off, so the half answer was kept as the whole one.
 - A Google or Ollama stream that drops before the reply is finished is retried (or, once text has shown, continued) instead of being taken as a complete answer.
 - oMLX models get the same repair as Ollama's when they write a tool call as JSON text instead of calling the tool: the call runs instead of the JSON being shown as the answer.
+- `/brief` keeps one briefing per session. Every session read and wrote the same one, so a second window could continue, or clear, a briefing started in the first. A briefing in progress before this update isn't picked up again: start it anew.
 - A team worker that gave up (repeating a failing call, stalling, or out of budget) is reported as not finished; the station showed it as done.
 - A slash command that fails says why. It was run a second time through another path with its error thrown away, and then reported as "Unknown command". A failed `/compact` no longer clears the conversation: it said so and kept nothing.
 - `/harness list` shows your MCP servers. It read `~/.clyde/mcp_servers.json`, a file Clyde never writes, instead of `mcpServers` in your settings.

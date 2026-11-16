@@ -655,57 +655,40 @@ def orchestrate_command_call(args: str, context: CommandContext) -> LocalCommand
 
 
 def todo_command_call(args: str, context: CommandContext) -> LocalCommandResult:
-    """Handle /todo - view and manage Clyde's own todo list."""
-    from ..agent import todos as todo_mod
+    """Handle /todo - view and edit this session's todo list, the one the model keeps with TodoWrite."""
+    def say(text: str) -> LocalCommandResult:
+        return LocalCommandResult(type="text", value=text)
 
+    tools = context.tool_context
+    if tools is None:
+        return say("/todo works in the interactive REPL.")
+    todos: list[dict[str, Any]] = tools.todos
     word, _, rest = args.strip().partition(" ")
-    word = word.strip().lower()
-    todo_list = todo_mod.load()
-
+    word, rest = word.strip().lower(), rest.strip()
     if not word:
-        if not todo_list:
-            return LocalCommandResult(type="text", value="No todos. Add one with /todo add <content>.")
-        lines = ["# Clyde's Todo List", ""]
-        for i, t in enumerate(todo_list):
-            status_icon = {"pending": "○", "in_progress": "●", "completed": "✓"}.get(t.status, "○")
-            lines.append(f"  {i}. [{status_icon}] {t.content}")
-        return LocalCommandResult(type="text", value="\n".join(lines))
-
+        if not todos:
+            return say("No todos. The model keeps one with TodoWrite as it works; add one with /todo add <content>.")
+        icons = {"pending": "○", "in_progress": "●", "completed": "✓"}
+        return say("\n".join(["# Todo list", ""] + [f"  {i}. [{icons.get(t['status'], '○')}] {t['content']}" for i, t in enumerate(todos)]))
     if word == "clear":
-        todo_mod.clear()
-        return LocalCommandResult(type="text", value="Cleared all todos.")
-
+        tools.todos = []
+        return say("Cleared all todos.")
     if word == "add":
         if not rest:
-            return LocalCommandResult(type="text", value="Usage: /todo add <content>")
-        item = todo_mod.add(rest)
-        return LocalCommandResult(type="text", value=f"Added todo #{len(todo_list)}: {item.content}")
-
-    if word == "done":
-        try:
-            index = int(rest)
-        except ValueError:
-            return LocalCommandResult(type="text", value="Usage: /todo done <index>")
-        item = todo_mod.set_status(index, "completed")
-        if item is None:
-            return LocalCommandResult(type="text", value=f"No todo at index {index}.")
-        return LocalCommandResult(type="text", value=f"Marked todo #{index} as completed: {item.content}")
-
-    # /todo <index> <status>
-    parts = rest.split(None, 1)
-    try:
-        index = int(parts[0])
-    except (ValueError, IndexError):
-        return LocalCommandResult(type="text", value="Usage: /todo <index> <status>  (status: pending/in_progress/completed)")
-    if len(parts) < 2:
-        return LocalCommandResult(type="text", value="Usage: /todo <index> <status>  (status: pending/in_progress/completed)")
-    status = parts[1].strip().lower()
-    if status not in {"pending", "in_progress", "completed"}:
-        return LocalCommandResult(type="text", value=f"Invalid status '{status}'. Use: pending, in_progress, completed")
-    item = todo_mod.set_status(index, status)
-    if item is None:
-        return LocalCommandResult(type="text", value=f"No todo at index {index}.")
-    return LocalCommandResult(type="text", value=f"Todo #{index} is now {status}: {item.content}")
+            return say("Usage: /todo add <content>")
+        tools.todos = [*todos, {"content": rest, "status": "pending", "activeForm": rest}]
+        return say(f"Added todo #{len(todos)}: {rest}")
+    index_text, status = (rest, "completed") if word == "done" else (word, rest.lower())
+    usage = "Usage: /todo done <index>" if word == "done" else "Usage: /todo <index> <status>  (status: pending/in_progress/completed)"
+    if not index_text.isdigit() or not status:
+        return say(usage)
+    if status not in ("pending", "in_progress", "completed"):
+        return say(f"Invalid status '{status}'. Use: pending, in_progress, completed")
+    index = int(index_text)
+    if index >= len(todos):
+        return say(f"No todo at index {index}.")
+    tools.todos = [{**t, "status": status} if i == index else t for i, t in enumerate(todos)]
+    return say(f"Todo #{index} is now {status}: {todos[index]['content']}")
 
 
 # Command definitions
@@ -810,7 +793,7 @@ ORCHESTRATE_COMMAND = LocalCommand(
 
 TODO_COMMAND = LocalCommand(
     name="todo",
-    description="View and manage Clyde's own todo list",
+    description="View and edit this session's todo list (the one the model keeps)",
     argument_hint="| add <content> | done <index> | <index> <status> | clear",
     supports_non_interactive=True,
 )

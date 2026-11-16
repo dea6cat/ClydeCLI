@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from src.skills.create import create_skill
+from tests.skills.skill_files import create_skill
 from src.skills.frontmatter import parse_frontmatter
 from src.skills.loader import clear_skill_registry, get_all_skills
 from src.tool_system.context import ToolContext

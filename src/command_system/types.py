@@ -50,6 +50,7 @@ class CommandContext:
     config: dict[str, Any] = field(default_factory=dict)
     provider: Any = None
     model: str | None = None
+    tool_context: Any = None   # the session's ToolContext, where /todo finds the model's todo list
 
 
 # Protocol for local command callables

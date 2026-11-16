@@ -247,6 +247,7 @@ class Engine:
         self.session = session
         self.tool_context.plan_file = plan_file_for(self.tool_context.workspace_root, session.session_id)
         self.tool_context.goal, self.tool_context.goal_from_plan = None, False   # a goal belongs to the session that set it
+        self.tool_context.todos = []   # and so does its todo list
         self.checkpoints = Checkpoints(session.session_id)   # its checkpoints, for /rewind
         trace.start(session.session_id, **self._trace_options)
         session.provider, session.model = self.provider_name, self.model
