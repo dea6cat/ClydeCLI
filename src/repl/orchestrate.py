@@ -46,15 +46,15 @@ def grill(repl: Any, state: briefing.BriefingState) -> briefing.BriefingState:
             break
         console.print(f"\n[bold]{escape(text)}[/bold]")
         answer = _ask(Prompt, "[dim]Answer (empty to stop asking)[/dim]", console=console, default="", show_default=False).strip()
-        briefing.save_state(state)
+        briefing.save_state(state, repl.session.session_id)
         if not answer:
             with console.status("[dim]Writing the spec…[/dim]", spinner="dots"):
                 spec = briefing.synthesize_spec(repl.provider, repl.model, state)
             state = briefing.BriefingState(state.initial_request, state.questions_asked, state.answers, spec, True)
             break
         state = briefing.record_answer(state, answer)
-        briefing.save_state(state)
-    briefing.save_state(state)
+        briefing.save_state(state, repl.session.session_id)
+    briefing.save_state(state, repl.session.session_id)
     return state
 
 
@@ -63,10 +63,10 @@ def brief(repl: Any, arg: str) -> None:
     console = repl.console
     word = arg.strip().partition(" ")[0]
     if word == "clear":
-        briefing.clear_state()
+        briefing.clear_state(repl.session.session_id)
         console.print("Briefing cleared.")
         return
-    state = briefing.load_state()
+    state = briefing.load_state(repl.session.session_id)
     if word == "spec":
         console.print(escape(state.spec) if state and state.complete and state.spec else "No completed spec yet. Run /brief <request>.")
         return

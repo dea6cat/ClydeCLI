@@ -44,11 +44,12 @@ class Briefing(unittest.TestCase):
         state = briefing.start_briefing("x")
         self.assertEqual(briefing.record_answer(state, "stray").answers, [])
         with tempfile.TemporaryDirectory() as tmp, patch("src.agent.briefing.clyde_home", return_value=Path(tmp)):
-            briefing.save_state(briefing.BriefingState("x", ["q"], ["a"], "spec", True))
-            loaded = briefing.load_state()
+            briefing.save_state(briefing.BriefingState("x", ["q"], ["a"], "spec", True), "s1")
+            loaded = briefing.load_state("s1")
             self.assertEqual((loaded.questions_asked, loaded.answers, loaded.complete), (["q"], ["a"], True))
-            briefing.clear_state()
-            self.assertIsNone(briefing.load_state())
+            self.assertIsNone(briefing.load_state("s2"))   # another session has a briefing of its own
+            briefing.clear_state("s1")
+            self.assertIsNone(briefing.load_state("s1"))
 
 
 if __name__ == "__main__":

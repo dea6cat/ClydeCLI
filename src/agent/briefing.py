@@ -99,15 +99,15 @@ def record_answer(state: BriefingState, answer: str) -> BriefingState:
     return replace(state, answers=[*state.answers, answer[:MAX_ANSWER_CHARS]])
 
 
-# --- File persistence for multi-turn briefing sessions ---
+# --- File persistence for multi-turn briefing sessions: one briefing per Clyde session, so two windows never share one ---
 
-def _state_path(session_id: str | None = None) -> Path:
+def _state_path(session_id: str) -> Path:
     folder = briefing_dir()
     folder.mkdir(parents=True, exist_ok=True)
-    return folder / (f"{session_id}.json" if session_id else "current.json")
+    return folder / f"{session_id}.json"
 
 
-def save_state(state: BriefingState, session_id: str | None = None) -> Path:
+def save_state(state: BriefingState, session_id: str) -> Path:
     """Persist a briefing state to disk. Returns the path written."""
     path = _state_path(session_id)
     data = {
@@ -121,7 +121,7 @@ def save_state(state: BriefingState, session_id: str | None = None) -> Path:
     return path
 
 
-def load_state(session_id: str | None = None) -> BriefingState | None:
+def load_state(session_id: str) -> BriefingState | None:
     """Load a briefing state from disk, or None if none exists."""
     path = _state_path(session_id)
     if not path.exists():
@@ -139,7 +139,7 @@ def load_state(session_id: str | None = None) -> BriefingState | None:
         return None
 
 
-def clear_state(session_id: str | None = None) -> None:
+def clear_state(session_id: str) -> None:
     """Remove a persisted briefing state."""
     path = _state_path(session_id)
     try:
