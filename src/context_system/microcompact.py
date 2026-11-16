@@ -20,7 +20,6 @@ CLEARED_MESSAGE = "[Old tool result content cleared]"
 COMPACTABLE_TOOL_NAMES: frozenset[str] = frozenset([
     "Read",
     "Bash",
-    "Shell",
     "Grep",
     "Glob",
     "WebSearch",
@@ -134,7 +133,7 @@ def microcompact_messages(
     compactable_ids: list[str] = []
     for msg in messages:
         content = msg.get("content", [])
-        if msg.get("type") == "assistant" and isinstance(content, list):
+        if msg.get("role") == "assistant" and isinstance(content, list):
             for block in content:
                 if (
                     isinstance(block, dict)
