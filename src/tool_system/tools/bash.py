@@ -246,7 +246,7 @@ class BashTool:
         cd_target = _try_extract_cd(command)
         if cd_target is not None and command.strip().startswith("cd ") and len(command.strip().splitlines()) == 1:
             next_dir = (cwd / cd_target).expanduser().resolve() if not cd_target.is_absolute() else cd_target.expanduser().resolve()
-            context.grant_path(next_dir)   # run only happens after the ask in check_permissions (reaches_outside_project) was answered
+            context.grant_path(next_dir)   # for reading only: run only happens after the ask in check_permissions (reaches_outside_project)
             next_dir = context.ensure_allowed_path(next_dir)
             if not next_dir.exists() or not next_dir.is_dir():
                 return ToolResult(name="Bash", output={"error": f"directory does not exist: {next_dir}"}, is_error=True)

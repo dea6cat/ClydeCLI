@@ -40,7 +40,7 @@ class FileWriteTool:
             return PermissionResult.allow()  # Input validation happens in run()
 
         try:
-            path = context.ensure_allowed_path(file_path)
+            path = context.ensure_allowed_path(file_path, write=True)
         except ToolPermissionError:
             return PermissionResult.allow()  # Path validation happens in run()
 
@@ -59,7 +59,7 @@ class FileWriteTool:
         if not isinstance(content, str):
             raise ToolInputError("content must be a string")
 
-        path = context.ensure_allowed_path(file_path)
+        path = context.ensure_allowed_path(file_path, write=True)
 
         original_file: str | None = None
         if path.exists():

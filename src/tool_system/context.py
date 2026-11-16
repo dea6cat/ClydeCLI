@@ -54,6 +54,8 @@ class ToolContext:
     # Files and folders outside the project that the user approved this session (a folder covers what is under it).
     # Shared with sub-agents like the rules above, so one yes covers the whole session.
     granted_paths: set[Path] = field(default_factory=set)
+    # The subset approved for changes: a yes to read or list a folder is not a yes to write in it.
+    granted_writes: set[Path] = field(default_factory=set)
     # Outside results this session that addressed the model (src/security/injection.py), newest last. While it is not empty,
     # every call that can send something out asks, whatever the allow rules or "all in" say. Shared with sub-agents and
     # workers like the sets above: a page one of them read can steer the others.
@@ -93,7 +95,7 @@ class ToolContext:
         stat = resolved.stat()
         return fingerprint == (int(stat.st_mtime), int(stat.st_size))
 
-    def ensure_allowed_path(self, path: str | Path) -> Path:
+    def ensure_allowed_path(self, path: str | Path, *, write: bool = False) -> Path:
         p = Path(path).expanduser() if isinstance(path, str) else path.expanduser()
         if not p.is_absolute():
             base = self.cwd or self.workspace_root
@@ -102,22 +104,25 @@ class ToolContext:
             return self.permission_context.ensure_path_allowed(p)
         except ToolPermissionError:
             resolved = p.resolve()
-            if any(resolved == g or g in resolved.parents for g in self.granted_paths):
+            if any(resolved == g or g in resolved.parents for g in (self.granted_writes if write else self.granted_paths)):
                 return resolved
             raise
 
-    def outside_path(self, path: str | Path) -> Path | None:
+    def outside_path(self, path: str | Path, *, write: bool = False) -> Path | None:
         """`path` resolved, when it is outside the project and its extra folders and not yet approved; otherwise None."""
         try:
-            self.ensure_allowed_path(path)
+            self.ensure_allowed_path(path, write=write)
             return None
         except ToolPermissionError:
             p = Path(path).expanduser()
             return (p if p.is_absolute() else (self.cwd or self.workspace_root) / p).resolve()
 
-    def grant_path(self, path: Path) -> None:
-        """Remember that the user approved `path` (a file, or a folder and what is under it) for this session."""
+    def grant_path(self, path: Path, *, write: bool = False) -> None:
+        """Remember that the user approved `path` (a file, or a folder and what is under it) for this session: for reading,
+        or with `write` for changes too."""
         self.granted_paths.add(path.resolve())
+        if write:
+            self.granted_writes.add(path.resolve())
 
     def ensure_tool_allowed(self, tool_name: str) -> None:
         if self.permission_context.blocks_tool(tool_name):

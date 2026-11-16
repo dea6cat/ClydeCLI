@@ -108,7 +108,7 @@ _CHANGES_FILES = {"write", "edit", "notebookedit"}
 def _outside_target(spec: ToolSpec, tool_input: dict[str, Any], context: ToolContext):
     """The file or folder this call names when it is outside the project and the user has not approved it yet."""
     raw = tool_input.get(_PATH_FIELDS.get(spec.name.lower(), ""))
-    return context.outside_path(raw) if isinstance(raw, str) and raw else None
+    return context.outside_path(raw, write=spec.name.lower() in _CHANGES_FILES) if isinstance(raw, str) and raw else None
 
 
 def _shown(path, context: ToolContext) -> str:
@@ -133,7 +133,7 @@ def _is_major(spec: ToolSpec, tool_input: dict[str, Any], context: ToolContext) 
         from pathlib import Path
         target = Path(path).expanduser().resolve()
         from .secret_paths import is_secret_path
-        if context.outside_path(path) is not None:
+        if context.outside_path(path, write=name in _CHANGES_FILES) is not None:
             return True
         try:
             inside = target.relative_to(context.workspace_root)
@@ -313,11 +313,11 @@ class ToolRegistry:
                 )
 
         if outside is not None:
-            context.grant_path(outside)   # asked and answered yes (or a saved allow rule): the tool's own path check lets it through
+            context.grant_path(outside, write=spec.name.lower() in _CHANGES_FILES)   # asked and answered yes (or a saved allow rule): the tool's own path check lets it through
         raw_path = call.input.get(_EDIT_PATHS.get(spec.name, ""))
         if context.before_edit is not None and isinstance(raw_path, str):
             try:
-                context.before_edit(context.ensure_allowed_path(raw_path))
+                context.before_edit(context.ensure_allowed_path(raw_path, write=True))
             except Exception:   # a checkpoint must never stop the edit; the tool reports bad paths itself
                 pass
         result = tool.run(call.input, context)

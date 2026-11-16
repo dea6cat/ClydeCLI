@@ -220,7 +220,7 @@ class FileEditTool:
             return PermissionResult.allow()  # Input validation happens in run()
 
         try:
-            path = context.ensure_allowed_path(file_path)
+            path = context.ensure_allowed_path(file_path, write=True)
         except ToolPermissionError:
             return PermissionResult.allow()  # Path validation happens in run()
 
@@ -242,7 +242,7 @@ class FileEditTool:
         if edits is None and (not isinstance(old, str) or not isinstance(new, str)):
             raise ToolInputError("give old_string and new_string (both text), or edits")
 
-        path = context.ensure_allowed_path(file_path)
+        path = context.ensure_allowed_path(file_path, write=True)
 
         if not path.exists():
             raise ToolInputError(f"file does not exist: {path}")

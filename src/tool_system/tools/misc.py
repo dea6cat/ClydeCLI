@@ -110,7 +110,7 @@ class NotebookEditTool:
         if edit_mode != "insert" and cell_id is None:
             raise ToolInputError(f"cell_id is required when edit_mode={edit_mode}")
 
-        path = context.ensure_allowed_path(notebook_path)
+        path = context.ensure_allowed_path(notebook_path, write=True)
         if path.suffix.lower() != ".ipynb":
             raise ToolInputError("notebook_path must be a .ipynb file")
         if not path.exists():
