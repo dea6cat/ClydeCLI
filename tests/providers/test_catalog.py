@@ -36,8 +36,7 @@ class CatalogLookup(unittest.TestCase):
         # 'gpt-4o-mini-...' must resolve to gpt-4o-mini, not the shorter gpt-4o.
         mini = catalog.lookup("gpt-4o-mini-2024-07-18")
         base = catalog.lookup("gpt-4o-2024-08-06")
-        self.assertEqual(mini.default_max_tokens, 16384)
-        self.assertEqual(base.default_max_tokens, 16384)
+        self.assertLess(mini.input_per_mtok, base.input_per_mtok)   # mini is priced as mini, not as gpt-4o
         # 'o1-mini' (128k) is a longer prefix than the bare 'o1' full model (200k),
         # so a reasoning-mini variant must not inherit the larger window.
         self.assertEqual(catalog.lookup("o1-mini-2024-09-12").context_window, 128000)
