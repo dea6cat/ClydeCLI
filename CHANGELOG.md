@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `clyde -p`, editors (`clyde --acp`) and Bonnie run on a session engine of their own (`src/agent/engine.py`) instead of a hidden terminal REPL; the terminal extends that engine. What you may notice: they no longer print the terminal's turn footer to stderr, and Auto-refine "before compaction" now runs only in the terminal, as "every N turns" already did.
 - Picking a model in an editor (`clyde --acp`, such as Zed) or in Bonnie changes that session's model only. It also saved it as the default for every later `clyde`; `/model` in the terminal still does.
 - `~/.clyde/settings.toml` now applies to every setting, not only hooks, checks and trusted folders: permission rules, MCP servers, plugins and custom providers are read from it too. With both files present, settings.json wins entry by entry and lists from the two are combined. Clyde still writes only settings.json.
 

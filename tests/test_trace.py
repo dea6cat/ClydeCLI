@@ -193,7 +193,7 @@ class TestDebugCommand(TraceTestCase):
                                 reply("ok", usage={"input_tokens": 6, "output_tokens": 2}),
                                 reply("again", usage={"input_tokens": 9, "output_tokens": 1}),
                                 name="glm", models=("glm-4.5",))
-        with patch("src.repl.core.build_registry", return_value={"glm": provider}), \
+        with patch("src.agent.engine.build_registry", return_value={"glm": provider}), \
                 patch("src.repl.core.keys.load_into_env"):
             repl = ClydeREPL(model="glm:glm-4.5")
             repl.console.print = Mock()

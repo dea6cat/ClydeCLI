@@ -64,10 +64,10 @@ class TestReplPrompt(unittest.TestCase):
 
     def _servers(self, answers, headless=False, taken=frozenset({"mine"})):
         from rich.console import Console
-        from src.repl.core import ClydeREPL
+        from src.agent.engine import Engine
 
-        repl = ClydeREPL.__new__(ClydeREPL)
-        repl.console, repl.headless = Console(file=open(os.devnull, "w")), headless
+        repl = Engine.__new__(Engine)
+        repl.console, repl.interactive = Console(file=open(os.devnull, "w")), not headless
         with patch("rich.prompt.Confirm.ask", side_effect=answers) as ask:
             got = repl._project_mcp_servers(self.repo, set(taken))
         return got, ask.call_count

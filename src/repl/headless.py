@@ -73,7 +73,7 @@ def run(prompt: str, *, model: str | None = None, mode: str = "hold", output_for
         max_turns: int = 20, time_limit: float | None = None, max_tokens: int | None = None,
         stdin: TextIO | None = None, stdout: TextIO | None = None) -> int:
     """Run one headless turn; return the process exit status."""
-    from src.repl.core import ClydeREPL
+    from src.agent.engine import Engine
 
     out = stdout or sys.stdout
     err = Console(stderr=True, soft_wrap=True)   # one log line per event, never wrapped
@@ -84,8 +84,8 @@ def run(prompt: str, *, model: str | None = None, mode: str = "hold", output_for
     if time_limit and not hasattr(signal, "SIGALRM"):   # Windows has no alarm signal
         err.print("[red]--time-limit isn't supported on Windows[/red]; use the caller's timeout, which sends an interrupt.")
         return 2
-    repl = ClydeREPL(model=model, console=err, headless=True)
-    repl._set_mode(mode)
+    engine = Engine(model=model, console=err)
+    engine.set_mode(mode)
     denied: list[str] = []
 
     def deny(tool_name: str, message: str, suggestion: str | None) -> tuple[bool, bool]:
@@ -95,21 +95,18 @@ def run(prompt: str, *, model: str | None = None, mode: str = "hold", output_for
         err.print(message, markup=False, highlight=False)
         return False, False
 
-    repl.tool_context.permission_handler = deny
-    repl.tool_context.ask_user = None
+    engine.tool_context.permission_handler = deny
     written: set[int] = set()
 
     def stream_messages(_event: Any = None) -> None:
         # Called on each tool event: the assistant message with its tool calls is in by then, its results land on the
         # next call, so a run killed mid-tool loses only that tool's result.
-        for msg in repl.session.conversation.messages:
+        for msg in engine.session.conversation.messages:
             if id(msg) not in written:
                 written.add(id(msg))
                 out.write(json.dumps({"type": "message", "message": message_dict(msg)}, ensure_ascii=False) + "\n")
                 out.flush()
 
-    if output_format == "stream-json":
-        repl.on_event_hook = stream_messages
     # A CI cancel or a harness timeout sends SIGTERM: as an interrupt it reaches the running command, whose process group is
     # then killed (src/system/proc.py), and the result line still says what happened.
     previous = signal.signal(signal.SIGTERM, _interrupt)
@@ -117,18 +114,19 @@ def run(prompt: str, *, model: str | None = None, mode: str = "hold", output_for
     if time_limit:
         signal.setitimer(signal.ITIMER_REAL, time_limit)
     try:
-        repl.chat(text, max_turns=max_turns, max_tokens=max_tokens)
+        engine.send(text, max_turns=max_turns, max_tokens=max_tokens,
+                    on_event=stream_messages if output_format == "stream-json" else None)
     except _OutOfTime:
-        repl.last_error = f"time limit reached ({time_limit:g}s)"
+        engine.last_error = f"time limit reached ({time_limit:g}s)"
     except KeyboardInterrupt:
-        repl.last_error = "interrupted"
+        engine.last_error = "interrupted"
     finally:
         if time_limit:
             signal.setitimer(signal.ITIMER_REAL, 0)
             signal.signal(signal.SIGALRM, previous_alarm)
         signal.signal(signal.SIGTERM, previous)
 
-    result, error = repl.last_result, repl.last_error
+    result, error = engine.last_result, engine.last_error
     answer = result.response_text if result is not None else ""
     ran_out = bool(result is not None and result.ran_out)
     over_budget = result is not None and result.stop_reason == "budget"
@@ -137,8 +135,8 @@ def run(prompt: str, *, model: str | None = None, mode: str = "hold", output_for
         payload: dict[str, Any] = {
             "result": answer, "is_error": failed,
             "error": error or ("ran out of tool rounds" if ran_out else f"token budget reached ({max_tokens})" if over_budget else None),
-            "model": model_ref(repl.provider, repl.model), "num_turns": result.num_turns if result else 0,
-            "usage": (result.usage if result else None) or {}, "denied": denied, "session_id": repl.session.session_id,
+            "model": model_ref(engine.provider, engine.model), "num_turns": result.num_turns if result else 0,
+            "usage": (result.usage if result else None) or {}, "denied": denied, "session_id": engine.session.session_id,
         }
         if output_format == "stream-json":
             stream_messages()

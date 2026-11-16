@@ -23,7 +23,7 @@ class TestAcp(unittest.TestCase):
         self.provider = FakeProvider(reply(tool_calls=[("Bash", {"command": "echo hi > hello.txt"}, "call_1")]),
                                      reply("Made hello.txt."), name="glm", models=("glm-4.5", "glm-4.6"))
         for p in (patch.object(Path, "home", return_value=self.home),
-                  patch("src.repl.core.build_registry", return_value={"glm": self.provider}),
+                  patch("src.agent.engine.build_registry", return_value={"glm": self.provider}),
                   patch("src.repl.core.keys.load_into_env"),
                   patch.dict(os.environ, {"CLYDE_TRACE": "off"})):
             p.start()
@@ -95,7 +95,7 @@ class TestAcp(unittest.TestCase):
         self.assertEqual(self.call(2, "authenticate", {"methodId": "login"})["result"], {})
 
     def test_a_session_with_no_provider_connected_asks_for_auth_not_a_crash(self):
-        with patch("src.repl.core.build_registry", return_value={}):
+        with patch("src.agent.engine.build_registry", return_value={}):
             error = self.call(2, "session/new", {"cwd": str(self.ws), "mcpServers": []})["error"]
         self.assertEqual(error["code"], -32000)
         self.assertIn("clyde login", error["message"])
@@ -104,7 +104,7 @@ class TestAcp(unittest.TestCase):
     def test_switching_to_a_model_whose_provider_has_no_key_asks_for_auth(self):
         nokey = FakeProvider(name="gem", models=("g1",))
         nokey.is_available = lambda: False
-        with patch("src.repl.core.build_registry", return_value={"glm": self.provider, "gem": nokey}):
+        with patch("src.agent.engine.build_registry", return_value={"glm": self.provider, "gem": nokey}):
             sid = self.call(2, "session/new", {"cwd": str(self.ws), "mcpServers": []})["result"]["sessionId"]
             error = self.call(3, "session/set_config_option", {"sessionId": sid, "configId": "model", "value": "gem:g1"})["error"]
             unknown = self.call(4, "session/set_config_option", {"sessionId": sid, "configId": "model", "value": "nope:x"})["error"]
@@ -169,7 +169,7 @@ class TestAcp(unittest.TestCase):
         self.assertIn("not a session id", escape["message"])
 
     def test_a_handler_that_exits_the_process_still_gets_an_error_reply(self):
-        with patch("src.repl.core.ClydeREPL", side_effect=SystemExit(1)):
+        with patch("src.agent.engine.Engine", side_effect=SystemExit(1)):
             error = self.call(2, "session/new", {"cwd": str(self.ws), "mcpServers": []})["error"]
         self.assertEqual(error["code"], -32603)
 

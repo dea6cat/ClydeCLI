@@ -213,3 +213,16 @@ def message_dict(msg: Message) -> dict:
         "timestamp": msg.timestamp,
         "_is_internal": getattr(msg, "_is_internal", False),
     }
+
+
+def message_text(message: Message) -> str:
+    """The plain text of a stored message; tool calls, tool results and thinking contribute nothing."""
+    if isinstance(message.content, str):
+        return message.content.strip()
+    return " ".join(b.text for b in message.content if isinstance(b, TextContentBlock)).strip()
+
+
+def one_line(text: str, limit: int = 80) -> str:
+    """`text` on one line, cut to `limit` characters with an ellipsis."""
+    text = " ".join(text.split())
+    return text if len(text) <= limit else text[:limit - 1].rstrip() + "…"

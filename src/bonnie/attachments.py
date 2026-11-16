@@ -1,8 +1,8 @@
 """Files attached to a message in Bonnie.
 
 Uploads are held in memory until the message that names them is queued (nothing is written to disk by the upload itself).
-Images go to the model as image blocks through the REPL's existing [Image #N] markers, so the size cap, the shrink step and the
-"this model can't read images" check are the terminal's own. Text and code files are put into the message as labelled blocks,
+Images go to the model as image blocks, marked [Image #N] in the text as the terminal marks them; the engine drops them, and
+says so, when the model can't read images. Text and code files are put into the message as labelled blocks,
 which the page hides from the bubble and shows as chips instead. Anything else is refused with a reason.
 """
 from __future__ import annotations
@@ -17,7 +17,7 @@ from typing import Any
 
 from src.conversation import ImageContentBlock
 from src.bonnie.theme import sniff_image
-from src.repl.images import MAX_IMAGE_BYTES, shrink
+from src.images import MAX_IMAGE_BYTES, shrink
 
 MAX_FILE = 12_000_000      # the most one upload may be
 MAX_TEXT_FILE = 200_000    # the most of a text file that goes into a message
@@ -110,16 +110,14 @@ class Store:
             del self._items[old]
 
 
-def apply_to_turn(repl: Any, text: str, files: list[Attachment]) -> tuple[str, int]:
-    """The message to send and how many images it carries. Images are kept on the REPL under the next [Image #N] numbers
-    (the terminal's mechanism); text files follow the message as labelled blocks."""
-    parts, markers, images = [text.strip()], [], 0
+def apply_to_turn(text: str, files: list[Attachment]) -> tuple[str, list[ImageContentBlock]]:
+    """The message to send and the images that go with it. Each image gets an [Image #N] marker in the text (the terminal's
+    form, which the page hides); text files follow the message as labelled blocks."""
+    parts, markers, images = [text.strip()], [], []
     for item in files:
         if item.kind == "image":
-            number = len(repl._pastes) + 1
-            repl._pastes[number] = ImageContentBlock(media_type=item.media_type, data=base64.b64encode(item.data).decode("ascii"))
-            markers.append(f"[Image #{number}]")
-            images += 1
+            images.append(ImageContentBlock(media_type=item.media_type, data=base64.b64encode(item.data).decode("ascii")))
+            markers.append(f"[Image #{len(images)}]")
     if markers:
         parts[0] = (parts[0] + " " + " ".join(markers)).strip()
     for item in files:

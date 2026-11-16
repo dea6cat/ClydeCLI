@@ -12,7 +12,7 @@ from src.providers.convert import to_canonical
 from src.providers.google import GoogleProvider
 from src.providers.ollama import OllamaProvider
 from src.providers.openai_compat import OpenAICompatProvider
-from src.repl.images import image_path
+from src.images import image_path
 
 
 class TestImagePath(unittest.TestCase):
@@ -86,12 +86,12 @@ class TestImageSupport(unittest.TestCase):
         return repl
 
     def test_the_catalog_and_ollama_say_which_models_read_images(self):
-        self.assertFalse(self._repl("gpt-3.5-turbo")._reads_images())
-        self.assertTrue(self._repl("claude-sonnet-4-6")._reads_images())
-        self.assertIsNone(self._repl("some-unknown-model")._reads_images())            # unknown: don't block
+        self.assertFalse(self._repl("gpt-3.5-turbo").reads_images())
+        self.assertTrue(self._repl("claude-sonnet-4-6").reads_images())
+        self.assertIsNone(self._repl("some-unknown-model").reads_images())            # unknown: don't block
         vision = type("O", (), {"name": "ollama", "reads_images": lambda self, m: m == "llava"})()
-        self.assertTrue(self._repl("llava", vision)._reads_images())
-        self.assertFalse(self._repl("qwen3", vision)._reads_images())
+        self.assertTrue(self._repl("llava", vision).reads_images())
+        self.assertFalse(self._repl("qwen3", vision).reads_images())
 
     def test_pasting_for_a_text_only_model_warns_but_keeps_the_marker(self):
         from unittest.mock import Mock, patch
@@ -119,6 +119,6 @@ class TestImageSupport(unittest.TestCase):
 
     def test_shrink_needs_macos_sips(self):
         from unittest.mock import patch
-        from src.repl.images import shrink
+        from src.images import shrink
         with patch("sys.platform", "linux"):
             self.assertIsNone(shrink(b"anything"))

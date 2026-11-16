@@ -189,9 +189,9 @@ class TestReplLoadsPlugins(PluginHomeCase):
         root = self.installed_sample()
         plugins.set_enabled("sample", True)
         provider = FakeProvider(name="glm", models=("glm-4.5",))
-        with patch("src.repl.core.build_registry", return_value={"glm": provider}), \
+        with patch("src.agent.engine.build_registry", return_value={"glm": provider}), \
                 patch("src.repl.core.keys.load_into_env"), \
-                patch("src.repl.core.connect_servers", return_value=({}, {})) as connect:
+                patch("src.agent.engine.connect_servers", return_value=({}, {})) as connect:
             repl = ClydeREPL(model="glm:glm-4.5")
         self.assertIsNotNone(repl.tool_registry.get("PluginEcho"))
         self.assertEqual(repl.tool_context.hooks["PreToolUse"][0]["hooks"][0]["command"], f"{root}/check.sh")

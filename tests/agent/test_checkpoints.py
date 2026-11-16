@@ -106,7 +106,7 @@ class TestRewindCommand(_Home):
                                    reply("done"),
                                    reply(tool_calls=[("Write", {"file_path": str(self.ws / "extra.py"), "content": "x\n"})]),
                                    reply("added")):
-            repl = ClydeREPL(model="glm:glm-4.5", headless=True)
+            repl = ClydeREPL(model="glm:glm-4.5")
             repl.tool_context.permission_handler = lambda *a: (True, False)
             repl.chat("make app v2")
             repl.chat("add extra.py")

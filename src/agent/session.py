@@ -12,7 +12,7 @@ from datetime import datetime
 from typing import Optional
 from dataclasses import dataclass, field
 
-from src.conversation import Conversation
+from src.conversation import Conversation, message_text
 
 
 @dataclass
@@ -99,7 +99,7 @@ class Session:
             if session.cwd != cwd:
                 continue
             for message in session.conversation.messages:
-                text = _message_text(message)
+                text = message_text(message)
                 at = text.lower().find(needle)
                 if at >= 0:
                     start = max(0, at - 40)
@@ -161,8 +161,3 @@ def _move(session_id: str, source: Path, target: Path) -> bool:
     file.replace(target / file.name)
     return True
 
-
-def _message_text(message) -> str:
-    if isinstance(message.content, str):
-        return message.content
-    return " ".join(getattr(block, "text", "") for block in message.content if isinstance(getattr(block, "text", None), str))

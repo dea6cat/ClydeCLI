@@ -106,7 +106,7 @@ def _test(provider: str, key: str, extra: str | None) -> tuple[list[str], bool]:
         raise
 
 
-def connect(repl: Any, provider: Any, key: Any, extra: Any = None) -> dict:
+def connect(engine: Any, provider: Any, key: Any, extra: Any = None) -> dict:
     """Test a key, then save it as `clyde login` does and refresh the registry the REPL uses. Raises ValueError with a sentence for the page."""
     if not _known(provider):
         raise ValueError("Unknown provider.")
@@ -121,12 +121,12 @@ def connect(repl: Any, provider: Any, key: Any, extra: Any = None) -> dict:
         problem = keys.connect_setting(provider, extra_value)
         if problem:
             raise ValueError(f"The key worked but the account ID couldn't be saved: {problem}")
-    repl.registry = build_registry()
+    engine.registry = build_registry()
     suggested = SUGGESTED_MODELS.get(provider)
     return {"verified": verified, "models": models[:60], "suggested": suggested if suggested in models else (models[0] if models else suggested)}
 
 
-def disconnect(repl: Any, provider: Any) -> dict:
+def disconnect(engine: Any, provider: Any) -> dict:
     """Forget a saved key. `from_shell` is true when the key was exported in the shell instead, which comes back on the next launch."""
     if not _known(provider):
         raise ValueError("Unknown provider.")
@@ -134,11 +134,11 @@ def disconnect(repl: Any, provider: Any) -> dict:
     if not saved and not os.environ.get(_env(provider)):
         raise ValueError("That provider has no key.")
     keys.disconnect(keys.key_name(provider))
-    repl.registry = build_registry()
+    engine.registry = build_registry()
     return {"from_shell": not saved}
 
 
-def add_custom(repl: Any, name: Any, protocol: Any, base_url: Any, key: Any) -> dict:
+def add_custom(engine: Any, name: Any, protocol: Any, base_url: Any, key: Any) -> dict:
     """Add an OpenAI- or Anthropic-compatible service and its key; undone again when the key fails."""
     if not all(isinstance(v, str) for v in (name, protocol, base_url)):
         raise ValueError("Give a name, a protocol and a base URL.")
@@ -149,7 +149,7 @@ def add_custom(repl: Any, name: Any, protocol: Any, base_url: Any, key: Any) -> 
     if problem:
         raise ValueError(problem[0].upper() + problem[1:] + ".")
     try:
-        return connect(repl, name, clean)
+        return connect(engine, name, clean)
     except ValueError:
         keys.remove_custom(name)
         raise

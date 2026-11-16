@@ -68,8 +68,6 @@ import asyncio
 import base64
 import os
 import random
-import copy
-import dataclasses
 import threading
 import time
 from contextlib import contextmanager
@@ -83,79 +81,41 @@ from typing import Any
 
 from src import trace
 from src.agent.session import Session
-from src.agent.checkpoints import Checkpoints
-from src.conversation import ImageContentBlock
-from src.compact_service.service import auto_compact_threshold, compact_conversation, needs_auto_compact
-from src.config import get_default_model, get_output_style, load_config, set_default_model, set_output_style
-from src.output_styles import resolve_output_style
-from src.providers import build_registry, keys, model_ref, pick_default_model, resolve, usable
-from src.providers import catalog
+from src.conversation import ImageContentBlock, message_text, one_line
+from src.compact_service.service import auto_compact_threshold
+from src.config import load_config, set_default_model, set_output_style
+from src.providers import build_registry, keys, model_ref, resolve, usable
 from src.providers.model_eval import hidden_refs
 from src.system.vitals import line, sample
-from src.providers.base import (ProviderError, ProviderResponse, begin_turn, context_window, is_auth_error, retry_elsewhere,
-                                served_by, turn_spend)
-from src.providers.types import Message
+from src.providers.base import ProviderError, is_auth_error, served_by
 from src.providers import laya_client
 from src.providers.card_shuffle import CardShuffle, record_vote
-from src.runtime.run_control import RunControl
-from src.providers.convert import append_response, to_canonical
-from src.tool_system.context import ToolContext
-from src.tool_system.registry import ToolRegistry
-from src.plugins import apply_plugins
-from src.tool_system.hooks import load_hooks
 from src.runtime import activity
 from src.ui.picker import Choice, pick
 from src.tool_system.deferral import advertised
 from src.ui.esc import WATCHER
-from src.repl.images import IMAGE_TYPES, MAX_IMAGE_BYTES, clipboard_image, image_path, shrink
-from src.tool_system.permission_rules import load_rules, save_allow_rule
+from src.images import IMAGE_TYPES, MAX_IMAGE_BYTES, clipboard_image, image_path, shrink
+from src.tool_system.permission_rules import save_allow_rule
 from src.tool_system.tools.code_map import start_background_refresh
-from src.tool_system.mcp_client import connect_servers, load_servers, merge_servers, register_mcp_tools
-from src.agent.subagent import build_tool_registry
 from src.tool_system.protocol import ToolCall
 from src.tool_system.tools.cron import pop_due_jobs
-from src.agent.agent_loop import ToolEvent, run_agent_loop, summarize_tool_result, summarize_tool_use
+from src.agent.agent_loop import ToolEvent
+from src.agent.engine import MODES, Engine, duration
 
 # New command system imports
-from src.command_system import (
-    CommandResult,
-    create_command_context,
-    builtin_registry,
-    run_command,
-)
-from src.agent.cost_tracker import CostTracker
+from src.command_system import CommandResult, builtin_registry, create_command_context, run_command
 from src.tool_system import plan_file as plans
-from src.tool_system.plan_file import plan_file_for
 
 # Pastes longer than this collapse to a [Pasted text #N +X lines] marker in the prompt.
 _PASTE_MAX_LINES = 2
 _PASTE_MAX_CHARS = 800
 _RESUME_SHOWN = 20   # sessions listed by the /resume picker
-_PREVIEW_CHARS = 80
-
-
-def _message_text(message) -> str:
-    """The plain text of a stored message; tool calls and results contribute nothing."""
-    if isinstance(message.content, str):
-        return message.content.strip()
-    return " ".join(b.text for b in message.content if getattr(b, "type", None) == "text").strip()
-
-
-def _preview(text: str) -> str:
-    line = " ".join(text.split())
-    return line if len(line) <= _PREVIEW_CHARS else line[:_PREVIEW_CHARS - 1] + "…"
-
-
-def _one_line(text: str, limit: int) -> str:
-    """`text` on one line, cut to `limit` characters with an ellipsis."""
-    text = " ".join(text.split())
-    return text if len(text) <= limit else text[:limit - 1].rstrip() + "…"
 
 
 def _first_prompt(session) -> str:
     for message in session.conversation.messages:
-        if message.role == "user" and (text := _message_text(message)):
-            return _preview(text)
+        if message.role == "user" and (text := message_text(message)):
+            return one_line(text)
     return "(no prompt)"
 
 
@@ -176,7 +136,6 @@ _ACE_OF_SPADES = (
 
 # Playing-card palette, as exact colours so every terminal theme shows the same card.
 _CARD_FACE, _CARD_INK, _CARD_ACCENT, _CARD_DIM, _CARD_TEXT = "#f5f1e8", "#111111", "#4eba65", "#8a8a8a", "#e8e4dc"
-_COUNCIL_MAX_TURNS = 12   # reading turns a council member gets before it must answer
 
 
 def _ace_of_spades_card() -> Text:
@@ -284,19 +243,6 @@ def _usage_note(usage: dict, ref: str) -> str:
     return " · " + " · ".join(parts)
 
 
-def _duration(seconds: float) -> str:
-    """0.4s, 12s, 2m 45s, 1h 3m."""
-    if seconds < 10:
-        return f"{seconds:.1f}s"
-    seconds = int(round(seconds))
-    if seconds < 60:
-        return f"{seconds}s"
-    minutes, secs = divmod(seconds, 60)
-    if minutes < 60:
-        return f"{minutes}m {secs}s"
-    hours, minutes = divmod(minutes, 60)
-    return f"{hours}h {minutes}m"
-
 
 def _thinking_label(word: str | None = None) -> str:
     import random
@@ -314,7 +260,7 @@ def _spin_text(word: str, started: float, now: float | None = None) -> str:
     elapsed = (time.monotonic() if now is None else now) - started
     parts = [f"{word}…"]
     if elapsed >= 1:
-        parts.append(_duration(elapsed))
+        parts.append(duration(elapsed))
     if waiting := activity.get():
         parts.append(waiting)
     return f"[{_CARD_DIM}]{escape(' · '.join(parts))}[/{_CARD_DIM}]"
@@ -350,14 +296,8 @@ if Completer is not None:
                 yield Completion(name, start_position=-len(text), display=name, display_meta=desc)
 
 
-class ClydeREPL:
-    """Interactive REPL for ClydeCLI."""
-
-    # Listeners for a turn's streamed text and tool events (used by --acp); None in the terminal.
-    on_text_hook = None
-    on_event_hook = None
-    system_extra: str | None = None   # extra system-prompt text for the next turns only (Bonnie's search results); not stored
-    direct_stream = True              # short chat-like prompts may skip the tools for a quicker streamed reply; Bonnie's Computer mode turns this off
+class ClydeREPL(Engine):
+    """The terminal front end: the prompt, the spinner, the rendering and the slash commands, on the session engine."""
 
     # Esc cancels a running turn or command; prompts pause it (see src/repl/esc.py).
     _esc = WATCHER
@@ -368,57 +308,15 @@ class ClydeREPL:
 
     def __init__(self, model: str | None = None, stream: bool = False,
                  resume: str | None = None, continue_last: bool = False, debug: bool = False,
-                 console: Console | None = None, headless: bool = False):
-        # headless: `clyde -p`, one turn and no terminal prompts (see src/repl/headless.py).
-        self.console = console or Console()
-        self.headless = headless
-        self.last_result: Any = None   # the latest turn's AgentLoopResult
-        self.last_error: str | None = None
-        self.control = RunControl()   # queue, steer and stop for a front end that drives turns from another thread
-        self.stream = stream
+                 console: Console | None = None):
+        super().__init__(model, console, interactive=True, stream=stream, debug=debug)
         self._startup_resume = resume   # "" opens the picker, an id loads that session
         self._continue_last = continue_last
-        session_config = load_config().get("session", {})
-        self.auto_save = session_config.get("auto_save", True)
-        self._trace_options = {"enabled": session_config.get("trace", True) is not False, "live": debug}
         self.multiline_mode = False
-        self.reasoning: str | None = None   # /think level; None keeps each model's default
         self._input_queue = queue.Queue()   # user-typed lines collected while a turn runs
         self._input_buffer = ""             # partial line leftover from draining stdin
         self._input_reader: threading.Thread | None = None   # reads stdin while chat/command runs
-
-        self.registry = build_registry()
-        if (omlx := self.registry.get("omlx")) is not None:
-            if not headless:   # -p, an editor (ACP) and Bonnie have no terminal to answer on; there it never installs
-                omlx.confirm_install = self._confirm_install_omlx
-            from src.providers.omlx import migrate_lmstudio_refs
-            for line in migrate_lmstudio_refs():   # LM Studio was replaced by oMLX, which serves the same folders
-                self.console.print(f"[dim]Moved {line} (oMLX now runs LM Studio's models).[/dim]")
-        resolved = self._startup_model(model)
-        if resolved is None:
-            sys.exit(1)
-        self.provider, self.model = resolved
-        self.provider_name = self.provider.name
-
-        # Create session
-        self.session = Session.create(self.provider_name, self.model)
-        self.checkpoints = Checkpoints(self.session.session_id)
-        trace.start(self.session.session_id, **self._trace_options)
-
-        self.tool_registry = build_tool_registry()
-        hooks, servers = load_hooks(), load_servers()
-        servers = merge_servers(servers, self._project_mcp_servers(Path.cwd(), set(servers)))   # yours first: they win a clash
-        self.plugins = apply_plugins(self.tool_registry, hooks, servers)
-        for loaded in self.plugins:
-            for warning in loaded.warnings:
-                self.console.print(warning, style="yellow", markup=False)
-        self.tool_context = ToolContext(workspace_root=Path.cwd(), hooks=hooks, permission_rules=self.project_rules(Path.cwd()),
-                                        output_style_name=get_output_style(), confirm_edits=True)
-        self._mcp_servers, self._mcp_errors = servers, {}
-        self._connect_mcp_servers(servers)
         self.tool_context.ask_user = self._ask_user_questions
-        self.tool_context.plan_file = plan_file_for(self.tool_context.workspace_root, self.session.session_id)
-        self.tool_context.before_edit = lambda path: self.checkpoints.snapshot(path)
         # Session-scoped cron: due jobs are queued here and run only between turns.
         self._cron_checked_at = datetime.now()
         self._cron_queue: list[dict[str, Any]] = []
@@ -476,8 +374,7 @@ class ClydeREPL:
 
         # Pasted images and long pasted texts, numbered together by their [Image #N] / [Pasted text #N ...] markers.
         self._pastes: dict[int, ImageContentBlock | str] = {}
-        if not self.headless:
-            self._setup_prompt()
+        self._setup_prompt()
 
     def _setup_prompt(self) -> None:
         """The interactive prompt: history, completion, key bindings (paste, Shift+Tab) and the frame."""
@@ -562,22 +459,11 @@ class ClydeREPL:
             number = len(self._pastes) + 1
             self._pastes[number] = ImageContentBlock(media_type=media_type, data=base64.b64encode(data).decode("ascii"))
             buffer.insert_text(f"[Image #{number}]")
-            if self._reads_images() is False:
+            if self.reads_images() is False:
                 notes.append(f"{model_ref(self.provider, self.model)} can't read images: it would get the text only. "
                              "Switch with /model before sending to include it.")
         for note in notes:
             run_in_terminal(lambda note=note: self.console.print(Text(note, style=_CARD_DIM)))
-
-    def _reads_images(self) -> bool | None:
-        """Whether the current model takes images: Ollama asks the server, others the catalog; None when unknown."""
-        ask = getattr(self.provider, "reads_images", None)
-        if callable(ask):
-            try:
-                return ask(self.model)
-            except Exception:
-                return None
-        info = catalog.lookup(self.model.rsplit("/", 1)[-1])
-        return info.supports_images if info is not None else None
 
     def _collapse_text(self, text: str) -> str:
         """A long paste as a [Pasted text #N +X lines] marker (kept, expanded on send); short ones as is."""
@@ -595,35 +481,10 @@ class ClydeREPL:
             return pasted if isinstance(pasted, str) else match.group(0)
         return re.sub(r"\[Pasted text #(\d+) \+\d+ lines\]", full, text)
 
-    def _investigate(self, provider: Any, model: str, cancel: threading.Event) -> ProviderResponse:
-        """A council member's answer: it reads the repo on a copy of this conversation in plan mode (read-only tools, nobody to
-        answer a permission prompt, so anything that would ask is denied) and its final text is the answer."""
-        from src.agent.subagent import NO_NESTING
-        context = dataclasses.replace(self.tool_context, plan_mode=True, read_file_fingerprints={}, todos=[],
-                                      permission_handler=lambda *a: (False, False), ask_user=None)
-        tools = ToolRegistry([self.tool_registry.get(s.name) for s in self.tool_registry.list_specs() if s.name.lower() not in NO_NESTING])
-        result = run_agent_loop(copy.deepcopy(self.session.conversation), provider, model, tools, context,
-                                max_turns=_COUNCIL_MAX_TURNS, cancel=cancel, reasoning=self.reasoning, system_extra=self.system_extra)
-        if result.ran_out:
-            raise ProviderError(provider.name, "ran out of reading turns")
-        return ProviderResponse(message=Message.assistant(result.response_text), raw={}, usage=result.usage)
-
-    def _show_deal(self, ref: str, why: str) -> None:
-        """cardShuffle's note on which real model plays this turn, and why."""
-        self.console.print(Text.assemble(("♠ dealt ", _CARD_ACCENT), (ref, _CARD_TEXT), (f"  {why}", _CARD_DIM)), highlight=False)
-
     def _attached_images(self, text: str) -> list[ImageContentBlock]:
         """The pasted images a message refers to, in the order its [Image #N] markers appear."""
         numbers = dict.fromkeys(int(n) for n in re.findall(r"\[Image #(\d+)\]", text))
         return [p for n in numbers if isinstance(p := self._pastes.get(n), ImageContentBlock)]
-
-    def _confirm_install_omlx(self) -> bool:
-        """Ask before downloading and building oMLX, the one download-and-build Clyde would otherwise do unasked."""
-        from src.providers.omlx import REPO, VERSION, home
-        self.console.print(Text("  oMLX, the open-source server Clyde runs MLX models with, isn't installed.", style=_CARD_TEXT))
-        self.console.print(Text(f"  Clyde would install {VERSION} from {REPO.removesuffix('.git')} into {home()} (a few minutes; "
-                                "nothing outside that folder changes).", style=_CARD_DIM))
-        return input("  Install it? [y/N]: ").strip().lower() in ("y", "yes")
 
     def _add_rule_under_input(self) -> None:
         """Draw a line right under the input, hidden while the completion menu is open so the menu
@@ -660,24 +521,14 @@ class ClydeREPL:
             return
 
     # Shift+Tab cycles: hold (asks before risky actions) -> reading the table (plan only) -> all in.
-    _MODES = ("hold", "plan", "all_in")
     _MODE_LABELS = {
         "hold": ("♠ hold", ""),
         "plan": ("♠ reading the table", " · plans only, no edits"),
         "all_in": ("♠♠ all in", " · asks only before major moves"),
     }
 
-    @property
-    def mode(self) -> str:
-        ctx = self.tool_context
-        return "plan" if ctx.plan_mode else "all_in" if ctx.auto_approve else "hold"
-
-    def _set_mode(self, mode: str) -> None:
-        self.tool_context.plan_mode = mode == "plan"
-        self.tool_context.auto_approve = mode == "all_in"
-
     def _cycle_mode(self) -> None:
-        self._set_mode(self._MODES[(self._MODES.index(self.mode) + 1) % len(self._MODES)])
+        self.set_mode(MODES[(MODES.index(self.mode) + 1) % len(MODES)])
 
     def _model_parts(self) -> tuple[str, str]:
         """The model in use for the corner of the status line: (`provider:model`, `→ dealt` when it is
@@ -918,18 +769,8 @@ class ClydeREPL:
         """Initialize the new command system."""
         # Create command registry and register built-ins
         self.command_registry = builtin_registry()
-
-        # Create cost tracker and history
-        self.cost_tracker = CostTracker()
-
-        # Create command context
-        self.command_context = create_command_context(
-            workspace_root=Path.cwd(),
-            conversation=self.session.conversation,
-            cost_tracker=self.cost_tracker,
-            provider=self.provider,
-            model=self.model,
-        )
+        self.command_context = create_command_context(workspace_root=Path.cwd(), conversation=self.session.conversation,
+                                                      cost_tracker=self.cost_tracker, provider=self.provider, model=self.model)
 
         # Merge new commands with built-in list for completion
         self._update_built_in_commands_with_command_system()
@@ -1118,16 +959,6 @@ class ClydeREPL:
                     self.console.print(f"  {name}")
 
         self.console.print()
-
-    def _shorten_path_text(self, text: str) -> str:
-        root = str(self.tool_context.workspace_root)
-        cwd = str(self.tool_context.cwd or self.tool_context.workspace_root)
-        for base in (cwd, root):
-            prefix = base.rstrip("/") + "/"
-            if text.startswith(prefix):
-                return "./" + text[len(prefix):]
-            text = text.replace(prefix, "")
-        return text
 
     def _display_cwd(self) -> str:
         cwd = str(Path.cwd())
@@ -1540,7 +1371,7 @@ class ClydeREPL:
                 for spec in advertised(self.tool_registry.list_specs(), self.tool_context.loaded_tools)   # what a request carries
             ]
             self.command_context.config["system_prompt"] = ""
-            self.command_context.config["auto_compact_threshold"] = auto_compact_threshold(self._context_window())
+            self.command_context.config["auto_compact_threshold"] = auto_compact_threshold(self.context_window())
             self.command_context.config["is_auto_compact_enabled"] = True
             # Try new command system
             result = self._run_command('context', '')
@@ -1683,85 +1514,11 @@ class ClydeREPL:
         if not runnable:
             self.console.print("[dim]No skills found. Create them in ~/.clyde/skills/, ~/.claude/skills/ or .clyde/skills/ in your project.[/dim]")
             return
-        choices = [Choice(s.name, s.name, _one_line(getattr(s, "description", None) or "", 110)) for s in runnable]
+        choices = [Choice(s.name, s.name, one_line(getattr(s, "description", None) or "", 110)) for s in runnable]
         note = f" {len(skills) - len(runnable)} more are for the model only." if len(skills) > len(runnable) else ""
         name = pick(self.console, "Run a skill", choices, description="Enter runs it; type to filter, Esc cancels." + note)
         if name:
             self.handle_command(f"/{name}")
-
-    def _is_recoverable_tool_error(self, tool_name: str, tool_output) -> bool:
-        if not isinstance(tool_name, str):
-            return False
-        if not isinstance(tool_output, dict):
-            return False
-        name = tool_name.strip().lower()
-        err = tool_output.get("error")
-        if not isinstance(err, str):
-            return False
-        e = err.lower()
-        if name == "read" and e.startswith("file not found:"):
-            p = err.split(":", 2)[-1].strip()
-            if "/.clyde/skills/" in p or "\\.clyde\\skills\\" in p or "/.claude/skills/" in p or "\\.claude\\skills\\" in p:
-                return True
-        return False
-
-    def _should_try_direct_stream(self, user_input: str) -> bool:
-        if not self.stream or not self.direct_stream:
-            return False
-        text = user_input.strip().lower()
-        if not text or text.startswith("/"):
-            return False
-        if len(text) > 240:
-            return False
-
-        code_task_markers = (
-            "/", "\\", "src/", "tests/", ".py", ".ts", ".md",
-            "file", "files", "read", "write", "edit", "modify", "change",
-            "search", "grep", "glob", "bash", "shell", "command", "run",
-            "test", "fix", "bug", "refactor", "repo", "repository",
-            "project", "workspace", "folder", "directory", "function",
-            "class", "module", "code", "implementation", "readme",
-            "pyproject", "package.json", "git", "commit", "diff", "tool",
-        )
-        return not any(marker in text for marker in code_task_markers)
-
-    def _stream_direct_response(self, on_text_chunk=None, on_thinking=None) -> str | None:
-        """Stream a tool-free reply for a conversational prompt. Returns None (so the caller falls
-        back to the agent loop) when streaming fails before any text arrives, unless the failure
-        is an auth error, which is raised so the user can fix the key."""
-        style_name = getattr(self.tool_context, "output_style_name", None)
-        style_dir = getattr(self.tool_context, "output_style_dir", None)
-        style_prompt = resolve_output_style(style_name, style_dir).prompt
-        if self.system_extra:
-            style_prompt += "\n\n" + self.system_extra
-        streamed_chunks: list[str] = []
-
-        def emit(chunk: str) -> None:
-            if not chunk:
-                return
-            streamed_chunks.append(chunk)
-            if on_text_chunk is not None:
-                on_text_chunk(chunk)
-
-        try:
-            request = to_canonical(self.session.conversation, style_prompt, flatten_tools=True)
-            response = trace.model_call(self.provider, self.model, request, lambda: self.provider.stream(
-                request,
-                self.model,
-                (),
-                emit,
-                reasoning=self.reasoning,
-                on_thinking=on_thinking,
-            ))
-        except Exception as e:
-            if streamed_chunks or is_auth_error(e):
-                raise
-            return None
-
-        if not streamed_chunks:
-            return None
-        append_response(self.session.conversation, response.message)
-        return response.message.text or "".join(streamed_chunks)
 
     def _get_last_assistant_text(self) -> str | None:
         for message in reversed(self.session.conversation.messages):
@@ -1791,86 +1548,6 @@ class ClydeREPL:
         self.console.print(Markdown(text))
         self.console.print()
         return True
-
-    def project_rules(self, root: Path) -> dict[str, list[str]]:
-        """The user's permission rules plus this project's .clyde/settings.json ones. Its deny and ask rules apply at once;
-        its allow rules come from the repository, so they apply only once you have said yes to that exact list."""
-        from rich.prompt import Confirm
-        from src.tool_system.permission_rules import (merge_project_rules, project_settings_path, project_trust,
-                                                      set_project_trust)
-        rules, path = load_rules(), project_settings_path(root)
-        if not path.is_file():
-            return rules
-        project = load_rules(path)
-        trusted = bool(project["allow"]) and project_trust(root, project["allow"])
-        if project["allow"] and trusted is None and not self.headless:
-            self.console.print(f"\nThis project's {path.relative_to(root)} lets these run without asking:", highlight=False)
-            for rule in project["allow"]:
-                self.console.print(f"  {rule}", markup=False, highlight=False)
-            trusted = Confirm.ask("They come from the repository. Trust them?", default=False, console=self.console)
-            set_project_trust(root, project["allow"], trusted)
-        elif project["allow"] and trusted is None:
-            self.console.print(f"[yellow]Not using the allow rules in this project's {path.relative_to(root)}: "
-                               "start clyde here interactively once to trust them.[/yellow]")
-        return merge_project_rules(rules, project, bool(trusted))
-
-    def _project_mcp_servers(self, root: Path, taken: set[str]) -> dict[str, dict[str, Any]]:
-        """The project's .mcp.json servers you've said yes to, asking about any new or changed entry."""
-        from rich.prompt import Confirm
-        from src.tool_system.mcp_client import (_NAME_RE, _expand_vars, describe_server, is_mixed, project_approval,
-                                                project_servers, set_project_approval)
-
-        approved = {}
-        for name, cfg in project_servers(root).items():
-            if name in taken:
-                continue
-            if _NAME_RE.sub("_", name) in {_NAME_RE.sub("_", t) for t in taken}:
-                self.console.print(f"[yellow]Skipping MCP server '{name}' from this project's .mcp.json:[/yellow] "
-                                   "its name clashes with one of your own servers' tool names.")
-                continue
-            if is_mixed(cfg):
-                self.console.print(f"[yellow]Skipping MCP server '{name}' from this project's .mcp.json:[/yellow] "
-                                   "it names both a command and a url.")
-                continue
-            allowed = project_approval(root, name, cfg)
-            if allowed is None and self.headless:
-                self.console.print(f"[yellow]Skipping MCP server '{name}' from this project's .mcp.json:[/yellow] "
-                                   "it hasn't been approved; start clyde here interactively once to answer.")
-                continue
-            if allowed is None:
-                self.console.print(f"\nThis project's .mcp.json wants to start MCP server [bold]{name}[/bold]:",
-                                   highlight=False)
-                self.console.print(f"  {describe_server(cfg)}", markup=False, highlight=False)
-                allowed = Confirm.ask("It comes from the repository and runs on this machine. Start it?",
-                                      default=False, console=self.console)
-                set_project_approval(root, name, cfg, allowed)
-                if not allowed:
-                    self.console.print("[dim]Remembered; you won't be asked again unless that entry changes.[/dim]")
-            if allowed:
-                approved[name] = _expand_vars(cfg)
-        return approved
-
-    def _connect_mcp_servers(self, servers: dict[str, dict[str, Any]]) -> None:
-        """Start the MCP servers from settings and plugins, registering their tools as mcp__<server>__<tool>."""
-        if not servers:
-            return
-        clients, errors = connect_servers(servers, Path.cwd())
-        self._mcp_errors = {**{k: v for k, v in getattr(self, "_mcp_errors", {}).items() if k not in servers}, **errors}
-        from src.security import skill_scan
-        for name in list(clients):
-            verdict = skill_scan.check_mcp(name, clients[name].tools)
-            if verdict.blocked:
-                clients.pop(name)
-                self.console.print(f"[red]MCP server '{name}' held back: the security scan says {verdict.recommendation} "
-                                   f"(risk {verdict.score}).[/red] /skills scan shows why; /skills allow mcp:{name} lets it in.")
-            elif verdict.recommendation == skill_scan.CAUTION:
-                self.console.print(f"[yellow]MCP server '{name}': the security scan says CAUTION (risk {verdict.score}); /skills scan shows why.[/yellow]")
-        self.tool_context.mcp_clients = {**(self.tool_context.mcp_clients or {}), **clients}
-        for warning in register_mcp_tools(self.tool_registry, clients):
-            self.console.print(f"[yellow]{warning}[/yellow]", markup=True, highlight=False)
-        for name, error in errors.items():
-            trace.record("mcp_error", server=name, error=error)
-            self.console.print(f"[yellow]MCP server '{name}' not connected: {error}[/yellow]", markup=True)
 
     def _rewind(self) -> None:
         """Pick a checkpoint and put files and/or the conversation back to before that message."""
@@ -1912,7 +1589,7 @@ class ClydeREPL:
             self._prefill = first_text
             self.console.print("  Conversation rewound; your message is back in the prompt to edit or resend.")
         self.console.print(Text("Changes made by shell commands (rm, mv, scripts) aren't covered by /rewind.", style=_CARD_DIM))
-        self._autosave_session()
+        self.autosave()
 
     def _show_council(self, arg: str) -> None:
         """The last council turn's answers with Laya's scores, or `up N` / `down N` to vote on one."""
@@ -2030,10 +1707,6 @@ class ClydeREPL:
             for warning in loaded.warnings:
                 self.console.print(f"    {warning}", style="yellow", markup=False)
 
-    def _context_window(self) -> int:
-        """The model's input window: the provider's own sizing, then the catalog, then a name heuristic."""
-        return context_window(self.provider, self.model)
-
     @contextmanager
     def _ticking(self, status, word: str, started: float, active=lambda: True):  # type: ignore[no-untyped-def]
         """Rewrite the spinner's text every second while `active()` (the status is stopped while text streams), so the
@@ -2056,54 +1729,32 @@ class ClydeREPL:
         finally:
             stop.set()
 
-    def _maybe_auto_compact(self) -> None:
-        """Compact the conversation before a turn when it nears the context window."""
-        if not needs_auto_compact(self.session.conversation, self._context_window()):
-            return
+    def _before_compaction(self) -> None:
         self._refine_before_compaction()
-        self.console.print("[dim]Context is nearly full; compacting the conversation...[/dim]")
+
+    @contextmanager
+    def _compacting(self):  # type: ignore[no-untyped-def]
         started = time.monotonic()
-        activity.set("compacting the conversation")
-        try:
-            status = self.console.status(_spin_text("Compacting", started), spinner="dots", spinner_style=_CARD_ACCENT)
-            with status, self._ticking(status, "Compacting", started):
-                result = compact_conversation(self.session.conversation, self.provider, self.model, trigger="auto")
-        except Exception as e:
-            self.console.print(f"[yellow]Auto-compact failed: {e}[/yellow]")
-            return
-        self.console.print(f"[green]{result.user_display_message}[/green]")
+        status = self.console.status(_spin_text("Compacting", started), spinner="dots", spinner_style=_CARD_ACCENT)
+        with status, self._ticking(status, "Compacting", started):
+            yield
 
     def chat(self, user_input: str, max_turns: int | None = None, _auth_retry: bool = False, *, max_tokens: int | None = None):
-        """Send message to LLM and display response.
+        """Send a message, show the reply as it comes and close it with the footer.
 
         Args:
             user_input: The user message to send.
             max_turns: Maximum number of tool call turns (default from /settings → Tool turns,
                 20; higher for complex commands like /init).
-            max_tokens: Optional input plus output token budget for this turn (clyde -p --max-tokens).
+            max_tokens: Optional input plus output token budget for this turn.
         """
         if max_turns is None:
             max_turns = load_config().get("session", {}).get("max_tool_turns", 20)
-        self.last_result, self.last_error = None, None
-        activity.clear()
-        trace.record("turn", provider=self.provider_name, model=self.model, prompt_chars=len(user_input))
-        self._maybe_auto_compact()
-        # Add user message
-        self.checkpoints.begin(user_input, len(self.session.conversation.messages))
-        images = self._attached_images(user_input)
-        if images and self._reads_images() is False:
-            self.console.print(Text(f"Sent without the image{'s' if len(images) > 1 else ''}: "
-                                    f"{model_ref(self.provider, self.model)} can't read images.", style=_CARD_DIM))
-            images = []
-        self.session.conversation.add_user_message(user_input, images)
-        begin_turn(self.provider, mode=self.mode, on_deal=self._show_deal, investigate=self._investigate)
-
+        self.start_turn(user_input, self._attached_images(user_input))
         turn_started = time.monotonic()
         word, past = random.choice(_THINKING_WORDS)
-        tool_started: dict[str, float] = {}
         try:
             self.console.print()
-
             stream_started = False
 
             def _stop_status_once() -> None:
@@ -2115,56 +1766,16 @@ class ClydeREPL:
                         pass
                 stream_started = True
 
-            def _resume_status() -> None:
+            def on_event(ev: ToolEvent) -> None:
                 # Streamed text stopped the spinner; bring it back while a tool and the next model call run.
                 nonlocal stream_started
-                if stream_started and self._current_status is not None:
+                if ev.kind == "tool_use" and stream_started and self._current_status is not None:
                     self.console.print()
                     try:
                         self._current_status.start()
                     except Exception:
                         pass
                     stream_started = False
-
-            def on_event(ev: ToolEvent) -> None:
-                if self.on_event_hook is not None:
-                    self.on_event_hook(ev)
-                if ev.kind == "tool_use":
-                    _resume_status()
-                    tool_started[ev.tool_use_id or ev.tool_name] = time.monotonic()
-                    summary = summarize_tool_use(ev.tool_name, ev.tool_input or {})
-                    if isinstance(summary, str) and summary:
-                        summary = self._shorten_path_text(summary)
-                    suffix = f" [dim]({summary})[/dim]" if summary else ""
-                    self.console.print(f"[dim]•[/dim] [{_CARD_ACCENT}]{ev.tool_name}[/{_CARD_ACCENT}]{suffix} [dim]running...[/dim]")
-                    return
-                if ev.kind == "tool_result":
-                    began = tool_started.pop(ev.tool_use_id or ev.tool_name, None)
-                    took = f" · {_duration(time.monotonic() - began)}" if began is not None else ""
-                    if ev.is_error:
-                        if self._is_recoverable_tool_error(ev.tool_name, ev.tool_output):
-                            return
-                        msg = ""
-                        if isinstance(ev.tool_output, dict) and isinstance(ev.tool_output.get("error"), str):
-                            msg = ev.tool_output["error"]
-                        if not msg:   # e.g. a command that exited non-zero: show its exit code and last line
-                            msg = str(summarize_tool_result(ev.tool_name, ev.tool_output) or "").removeprefix(f"{ev.tool_name} · ")
-                        self.console.print(Text(f"  ↳ {msg or 'Error'}{took}", style="#d0202f"))
-                        return
-                    msg = summarize_tool_result(ev.tool_name, ev.tool_output)
-                    if isinstance(msg, str):
-                        prefix = f"{ev.tool_name} · "
-                        if msg.startswith(prefix):
-                            msg = msg[len(prefix):]
-                        msg = self._shorten_path_text(msg)
-                    self.console.print(Text(f"  ↳ {msg}{took}", style=_CARD_DIM))
-                    problems = ev.tool_output.get("newProblems") if isinstance(ev.tool_output, dict) else None
-                    if isinstance(problems, str):
-                        self.console.print("  ↳ " + problems.replace("\n", "\n    "), style="yellow", markup=False)
-                    return
-                if ev.kind == "tool_error":
-                    msg = ev.error or "Error"
-                    self.console.print(f"[red]  ↳ {msg}[/red]")
 
             thinking_open = False
 
@@ -2180,89 +1791,40 @@ class ClydeREPL:
                 nonlocal thinking_open
                 if not chunk:
                     return
-                if self.on_text_hook is not None:
-                    self.on_text_hook(chunk)
                 _stop_status_once()
                 if thinking_open:
                     self.console.print("\n")
                     thinking_open = False
                 self.console.print(chunk, end="", markup=False, highlight=False, soft_wrap=True)
 
-            if self._should_try_direct_stream(user_input):
-                self._current_status = self.console.status(_spin_text(word, turn_started), spinner="dots", spinner_style=_CARD_ACCENT)
-                with self._current_status, self._ticking(self._current_status, word, turn_started, lambda: not stream_started):
-                    activity.set(f"waiting for {model_ref(self.provider, self.model)}")
-                    direct_response = self._stream_direct_response(on_text_chunk=on_text_chunk,
-                                                                   on_thinking=on_thinking)
-                self._current_status = None
-                if direct_response is not None:
-                    self.console.print()
-                    self.console.print()
-                    self._turn_footer(past, turn_started)
-                    return
-
-            # Use agent loop with tools for any provider that supports it
-            def play():  # type: ignore[no-untyped-def]
-                return run_agent_loop(
-                    conversation=self.session.conversation,
-                    provider=self.provider,
-                    model=self.model,
-                    tool_registry=self.tool_registry,
-                    tool_context=self.tool_context,
-                    max_turns=max_turns,
-                    stream=self.stream,
-                    verbose=False,
-                    on_event=on_event,
-                    on_text_chunk=on_text_chunk if self.stream else None,
-                    reasoning=self.reasoning,
-                    on_thinking=on_thinking,
-                    steer=self.control.take_steer,
-                    system_extra=self.system_extra,
-                    max_tokens=max_tokens,
-                )
-
             self._current_status = self.console.status(_spin_text(word, turn_started), spinner="dots", spinner_style=_CARD_ACCENT)
             with self._current_status, self._ticking(self._current_status, word, turn_started, lambda: not stream_started):
-                result = play()
-                # cardShuffle: a model stuck in its tool loop hands the turn to the next card.
-                while result.ran_out and retry_elsewhere(self.provider, f"{served_by(self.provider)} hit max tool turns"):
-                    result = play()
+                result = self.answer(max_turns=max_turns, max_tokens=max_tokens, on_text=on_text_chunk,
+                                     on_thinking=on_thinking, on_event=on_event)
             self._current_status = None
-            self.last_result = result
-            trace.record("turn_end", ran_out=result.ran_out, rounds=result.num_turns,
-                         model=served_by(self.provider) or model_ref(self.provider, self.model))
-
-            # Spend per real model that served the turn (a router reports each one it dealt).
-            for ref, usage in turn_spend(self.provider, model_ref(self.provider, self.model), result.usage):
-                provider_name, _, model = ref.partition(":")
-                if usage.get("input_tokens", 0) or usage.get("output_tokens", 0):
-                    self.cost_tracker.record_usage(provider_name, model, usage, label=f"turn_{result.num_turns}_tokens")
-
-            if self.headless:
-                pass   # `clyde -p` prints the answer itself, on stdout
+            if result is None:   # a short chat-like prompt, answered by a direct streamed reply
+                self.console.print()
+                self.console.print()
+                self._turn_footer(past, turn_started)
+                return
+            if result.ran_out:
+                self.console.print(f"[dim]Hit the {max_turns}-tool-turn limit mid-task. Say 'continue' to pick up where it left"
+                                   f" off, or raise the limit under /settings → Tool turns.[/dim]", markup=False)
+            if self.stream and stream_started:
+                self.console.print()
+                self.console.print()
+            elif not result.response_text.strip():
+                self._print_no_answer(result)
             else:
-                if result.ran_out:
-                    self.console.print(f"[dim]Hit the {max_turns}-tool-turn limit mid-task. Say 'continue' to pick up where it left"
-                                       f" off, or raise the limit under /settings → Tool turns.[/dim]", markup=False)
-                if self.stream and stream_started:
-                    self.console.print()
-                    self.console.print()
-                elif not result.response_text.strip():
-                    self._print_no_answer(result)
-                else:
-                    self.console.print(Markdown(result.response_text))
-                    self.console.print()
-            dealt = served_by(self.provider)
-            self._turn_footer(past, turn_started, result.usage, dealt or model_ref(self.provider, self.model))
+                self.console.print(Markdown(result.response_text))
+                self.console.print()
+            self._turn_footer(past, turn_started, result.usage, served_by(self.provider) or model_ref(self.provider, self.model))
             self._refine_after_turn()
 
         except Exception as e:
             self._current_status = None
             self.last_error = str(e) or type(e).__name__
-            if self.headless:
-                hint = " (fix the key with clyde login)" if is_auth_error(e) and "clyde login" not in str(e) else ""
-                self.console.print(f"[red]❌ {e}[/red]{hint}")
-            elif is_auth_error(e):
+            if is_auth_error(e):
                 self.console.print(f"\n[red]❌ {e}[/red]")
                 if self._recover_auth() and not _auth_retry:
                     self._retry_last(user_input, max_turns)
@@ -2273,90 +1835,16 @@ class ClydeREPL:
                 import traceback
                 traceback.print_exc()
         finally:
-            self._autosave_session()
-
-    def _autosave_session(self) -> None:
-        """Persist the session after each turn so /resume and --continue have something to load."""
-        if not self.auto_save or not self.session.conversation.messages:
-            return
-        try:
-            self.session.save()
-        except OSError as e:
-            self.console.print(f"[yellow]Couldn't auto-save the session: {e}[/yellow]")
-
-    def _startup_model(self, requested: str | None):
-        """(provider, model) to start with. An explicit --model must resolve. Otherwise the saved
-        default is used when it works, and if it doesn't (or none is saved) a model is picked
-        from whatever is connected, so an exported API key is enough; no login required."""
-        if requested:
-            return self._resolve_model(requested)
-        saved = get_default_model()
-        if saved:
-            resolved = resolve(self.registry, saved)
-            if resolved is not None:
-                return resolved
-            self.console.print(f"[yellow]Saved model '{saved}' isn't available right now.[/yellow]")
-        with self.console.status("[dim]Looking for a connected provider...[/dim]", spinner="dots"):
-            auto = pick_default_model(self.registry)
-        resolved = resolve(self.registry, auto) if auto else None
-        if resolved is None:
-            self.console.print("[red]No provider available.[/red] Export an API key (e.g. OPENAI_API_KEY), "
-                               "start Ollama, or run [bold]clyde login[/bold].")
-            return None
-        self.console.print(f"[dim]Using {auto}. Change it with /model provider:model.[/dim]")
-        return resolved
-
-    def _resolve_model(self, requested: str):
-        """(provider, model) for a model string, or None after explaining why it didn't resolve."""
-        resolved = resolve(self.registry, requested)
-        if resolved is None and requested.startswith("ollama:"):
-            from src.tuning import tune
-            if tune.start_saved_server(self.console):
-                resolved = resolve(self.registry, requested)
-        if resolved is not None:
-            return resolved
-        prefix = requested.split(":", 1)[0] if ":" in requested else ""
-        provider = self.registry.get(prefix)
-        if provider is not None:
-            if provider.name == "ollama":
-                self.console.print(f"[red]Ollama isn't reachable at {getattr(provider, 'host', '')}.[/red]")
-            else:
-                self.console.print(f"[red]No API key for {provider.name}.[/red] "
-                                   f"Run [bold]clyde login[/bold] or set {keys.PROVIDER_KEY_ENV.get(provider.name, '')}.")
-        else:
-            self.console.print(f"[red]Can't resolve model '{requested}'.[/red] "
-                               "Use provider:model (e.g. openai:gpt-5.4); /models lists what's available.")
-        return None
-
-    def _switch_model(self, requested: str) -> bool:
-        """Use `requested` for this session only (an editor or Bonnie picking a model leaves other sessions alone)."""
-        resolved = self._resolve_model(requested)
-        if resolved is None:
-            return False
-        self.provider, self.model = resolved
-        self.provider_name = self.provider.name
-        self.session.provider, self.session.model = self.provider_name, self.model
-        self._warn_if_unlisted()
-        return True
+            self.autosave()
 
     def _choose_model(self, requested: str) -> bool:
         """The terminal's /model: switch, and keep it as the default for the next `clyde`."""
-        if not self._switch_model(requested):
+        if not self.switch_model(requested):
             return False
         ref = model_ref(self.provider, self.model)
         set_default_model(ref)
         self.console.print(f"[green]Model: {ref}[/green] [dim](saved as default)[/dim]")
         return True
-
-    def _warn_if_unlisted(self) -> None:
-        """A model the provider's own list doesn't contain usually fails on the first request: say so now."""
-        try:
-            models = self.provider.list_models()
-        except Exception:
-            return
-        if models and self.model not in models:
-            self.console.print(f"[yellow]{self.model} isn't in {self.provider_name}'s model list; if the next request "
-                               "fails, pick another with /model.[/yellow]")
 
     def _print_no_answer(self, result) -> None:  # type: ignore[no-untyped-def]
         """A turn that ended with no answer text (a reasoning model can spend all of it thinking): say so, with what is
@@ -2371,7 +1859,7 @@ class ClydeREPL:
     def _turn_footer(self, past: str, started: float, usage: dict | None = None, ref: str = "") -> None:
         """Close a reply with how long it took, the machine time and, when known, what the turn used,
         e.g. ♠ Shuffled for 2m 45s · 5:47 PM · 4.1k in, 388 out · $0.012 · 812 requests left."""
-        line = f"{past} for {_duration(time.monotonic() - started)} · {_clock()}" + (_usage_note(usage, ref) if usage else "")
+        line = f"{past} for {duration(time.monotonic() - started)} · {_clock()}" + (_usage_note(usage, ref) if usage else "")
         self.console.print(Text.assemble(("♠ ", _CARD_ACCENT), (line, _CARD_DIM)))
         self.console.print()
         self._check_goal_met()
@@ -2589,7 +2077,7 @@ class ClydeREPL:
         """Count finished turns for an "every N turns" Auto-refine, and run it when the count comes round."""
         from src import refine
         every = refine.every_turns(refine.mode())
-        if not every or getattr(self, "headless", False):
+        if not every:
             return
         self._refine_turns = getattr(self, "_refine_turns", 0) + 1
         if self._refine_turns >= every:
@@ -2837,7 +2325,7 @@ class ClydeREPL:
         if loaded_session is None:
             self.console.print(f"[red]Session not found: {session_id}[/red]")
             return
-        self._switch_session(loaded_session)
+        self._resume(loaded_session)
 
     def resume_session(self, session_id: str = "", latest: bool = False) -> None:
         """Load a session by id, continue the latest one (`latest`), or pick from this workspace's recent sessions."""
@@ -2850,7 +2338,7 @@ class ClydeREPL:
             self.console.print("[yellow]No saved sessions for this workspace.[/yellow]")
             return
         if latest:
-            self._switch_session(sessions[0])
+            self._resume(sessions[0])
             return
 
         shown = sessions[:_RESUME_SHOWN]
@@ -2858,18 +2346,15 @@ class ClydeREPL:
                       [Choice(str(i), f"{s.updated_at[:16].replace('T', ' ')}  {len(s.conversation.messages):>3} msgs",
                               _first_prompt(s)) for i, s in enumerate(shown)])
         if chosen is not None:
-            self._switch_session(shown[int(chosen)])
+            self._resume(shown[int(chosen)])
 
-    def _switch_session(self, loaded_session) -> None:
+    def switch_session(self, session: Session) -> None:
+        super().switch_session(session)
+        self.command_context.conversation = session.conversation   # /clear, /compact act on it
+
+    def _resume(self, loaded_session: Session) -> None:
         saved_model = f"{loaded_session.provider}:{loaded_session.model}"
-        self.session = loaded_session
-        self.tool_context.plan_file = plan_file_for(self.tool_context.workspace_root, loaded_session.session_id)
-        self.tool_context.goal, self.tool_context.goal_from_plan = None, False   # a goal belongs to the session that set it
-        self.checkpoints = Checkpoints(loaded_session.session_id)   # its checkpoints, for /rewind
-        trace.start(loaded_session.session_id, **self._trace_options)
-        self.command_context.conversation = loaded_session.conversation   # /clear, /compact act on it
-        # Keep the model in use: the saved one may not be connected any more.
-        loaded_session.provider, loaded_session.model = self.provider_name, self.model
+        self.switch_session(loaded_session)
         self._print_resume_recap(saved_model)
 
     def _print_resume_recap(self, saved_model: str) -> None:
@@ -2879,8 +2364,8 @@ class ClydeREPL:
         self.console.print(f"[green]Resumed session {self.session.session_id}[/green] "
                            f"[dim]· {len(messages)} messages · {tool_calls} tool calls · was {saved_model}[/dim]")
         exchanges = [(m.role, text) for m in messages
-                     if m.role in ("user", "assistant") and (text := _message_text(m))]
+                     if m.role in ("user", "assistant") and (text := message_text(m))]
         for role, text in exchanges[-4:]:
             label = "You" if role == "user" else "Clyde"
-            self.console.print(f"  {label}: {_preview(text)}", style="dim", markup=False, highlight=False)
+            self.console.print(f"  {label}: {one_line(text)}", style="dim", markup=False, highlight=False)
         self.console.print()
