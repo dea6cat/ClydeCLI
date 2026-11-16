@@ -222,9 +222,17 @@ def _register_tools(registry: Any, plugin: Plugin, loaded: Loaded) -> None:
 def apply_plugins(registry: Any, hooks: dict[str, list[dict[str, Any]]], servers: dict[str, dict[str, Any]]) -> list[Loaded]:
     """Add enabled plugins' tools to `registry` and their hooks / MCP servers to `hooks` / `servers`.
     Built-in tools and servers from settings.json keep their names; clashes become warnings.
-    Skills reach get_all_skills through skill_dirs()."""
+    Skills reach get_all_skills through skill_dirs(). A plugin the security scan blocks, and the user has not allowed,
+    loads nothing (its content may have changed since it was enabled)."""
+    from src.security import skill_scan
+
     result = []
     for plugin in enabled_plugins():
+        verdict = skill_scan.check("plugin", plugin.name, plugin.root)
+        if verdict.blocked:
+            result.append(Loaded(plugin, warnings=[f"plugin '{plugin.name}' not loaded: the security scan says {verdict.recommendation}. "
+                                                   f"Run `clyde plugin enable {plugin.name}` to see why and allow it."]))
+            continue
         loaded = Loaded(plugin, skills=skill_names(plugin))
         _register_tools(registry, plugin, loaded)
         try:

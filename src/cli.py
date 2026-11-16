@@ -670,6 +670,16 @@ def handle_hooks_import(console: Console, quiet: bool = False) -> int:
     return 0
 
 
+def _enable_scanned(name: str, verdict) -> None:  # type: ignore[no-untyped-def]
+    """Enable a plugin the user said yes to after seeing its scan; a blocked verdict is recorded as their approval, so it loads."""
+    from src import plugins
+    from src.security import skill_scan
+
+    plugins.set_enabled(name, True)
+    if verdict.blocked:
+        skill_scan.approve("plugin", name)
+
+
 def _scan_plugin(console: Console, plugin):  # type: ignore[no-untyped-def]
     """SkillSpector's verdict on a plugin before the user decides to enable it: the static scan, plus
     the LLM review with the default model when SkillSpector can use it (Ctrl+C skips the review)."""
@@ -858,10 +868,7 @@ def handle_plugin(console: Console, action: str, target: str | None, assume_yes:
             verdict = _scan_plugin(console, plugin)
             if not assume_yes and Confirm.ask(
                     "Plugins run code: their tools, hooks and MCP servers run on this machine. Enable it?", default=False):
-                plugins.set_enabled(plugin.name, True)
-                if verdict.blocked:
-                    from src.security import skill_scan
-                    skill_scan.approve("plugin", plugin.name)
+                _enable_scanned(plugin.name, verdict)
                 console.print(f"[green]✓ Enabled {plugin.name}[/green]; it loads the next time ClydeCLI starts.")
             else:
                 console.print(f"Left disabled. Enable it with [bold]clyde plugin enable {plugin.name}[/bold].")
@@ -870,9 +877,17 @@ def handle_plugin(console: Console, action: str, target: str | None, assume_yes:
             plugins.remove(target or "")
             console.print(f"Removed {target}.")
             return 0
-        if target not in {p.name for p in plugins.installed()[0]}:
+        plugin = next((p for p in plugins.installed()[0] if p.name == target), None)
+        if plugin is None:
             raise ValueError(f"no plugin named '{target}' is installed")
-        plugins.set_enabled(target, action == 'enable')
+        if action == 'enable':
+            verdict = _scan_plugin(console, plugin)
+            if verdict.blocked and (assume_yes or not Confirm.ask("Enable it anyway?", default=False)):
+                console.print(f"Left {target} disabled.")
+                return 0
+            _enable_scanned(target, verdict)
+        else:
+            plugins.set_enabled(target, False)
         console.print(f"{'Enabled' if action == 'enable' else 'Disabled'} {target}; this applies the next time ClydeCLI starts.")
         return 0
     except (OSError, ValueError) as e:
@@ -910,7 +925,7 @@ def handle_plugin_import(console: Console, assume_yes: bool = False, quiet: bool
         if Confirm.ask("It will run on this machine (tools, hooks, MCP servers). Import and enable it?",
                        default=f.enabled_there and verdict.recommendation == "SAFE"):   # a failed scan is not a yes
             try:
-                plugins.set_enabled(plugins.install(str(f.source)).name, True)
+                _enable_scanned(plugins.install(str(f.source)).name, verdict)
             except (OSError, ValueError) as e:
                 console.print(f"  [red]{e}[/red]")
                 continue

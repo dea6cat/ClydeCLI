@@ -103,6 +103,22 @@ class TestPlugins(PluginHomeCase):
         skill = {s.name: s for s in get_all_skills()}["greet"]
         self.assertEqual(skill.loaded_from, "plugin")
 
+    def test_a_plugin_the_scan_blocks_loads_nothing_until_the_user_allows_it(self) -> None:
+        from src.security import skill_scan
+        self.installed_sample()
+        plugins.set_enabled("sample", True)
+        blocked = skill_scan.Verdict("sample", skill_scan.BLOCK)
+        with patch.object(skill_scan, "check", return_value=blocked):
+            registry, hooks, servers = build_default_registry(include_user_tools=False), {}, {}
+            [loaded] = plugins.apply_plugins(registry, hooks, servers)
+        self.assertEqual((loaded.tools, hooks, servers), ([], {}, {}))
+        self.assertIn("not loaded", loaded.warnings[0])
+        self.assertIsNone(registry.get("PluginEcho"))
+        blocked.approved = True
+        with patch.object(skill_scan, "check", return_value=blocked):
+            [loaded] = plugins.apply_plugins(build_default_registry(include_user_tools=False), {}, {})
+        self.assertEqual(loaded.tools, ["PluginEcho"])
+
     def test_plugin_cannot_replace_builtin_tool_or_settings_server(self) -> None:
         root = self.installed_sample()
         (root / "tools" / "clash.py").write_text(CLASH)
