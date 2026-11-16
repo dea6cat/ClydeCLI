@@ -685,13 +685,13 @@ def _scan_plugin(console: Console, plugin):  # type: ignore[no-untyped-def]
     the LLM review with the default model when SkillSpector can use it (Ctrl+C skips the review)."""
     from src.security import skill_scan
 
-    env = skill_scan.default_llm_env()
+    reviewer = skill_scan.default_llm_env()
     try:
-        verdict = skill_scan.check("plugin", plugin.name, plugin.root, env=env)
+        verdict = skill_scan.check("plugin", plugin.name, plugin.root, reviewer=reviewer)
     except KeyboardInterrupt:
         console.print("[dim]LLM review skipped; static scan only.[/dim]")
         verdict = skill_scan.check("plugin", plugin.name, plugin.root)
-    if verdict.recommendation == "ERROR" and env:
+    if verdict.recommendation == "ERROR" and reviewer:
         console.print("[dim]LLM review failed or timed out; static scan only.[/dim]")
         verdict = skill_scan.check("plugin", plugin.name, plugin.root)
     color = {"SAFE": "green", "CAUTION": "yellow", "DO_NOT_INSTALL": "red"}.get(verdict.recommendation, "dim")

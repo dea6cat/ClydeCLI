@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- When the LLM review of a flagged skill or plugin fails (the model is down, or gives no answer), the verdict stays a static one and the review is tried again on the next check; it was recorded as reviewed and never retried. The scan also no longer copies the reviewing provider's key into the process environment.
 - A plugin the security scan blocks loads nothing until you allow it. `clyde plugin enable` used to turn one on without a scan, and a plugin whose files changed after it was enabled loaded its tools, hooks and MCP servers unscanned. Each enabled plugin is now checked at startup (a cached verdict when its content is unchanged); `clyde plugin enable` shows the scan and asks before allowing a blocked one, and so does `clyde plugin import`.
 - A yes to read or look around a folder outside the project is no longer a yes to change files there. In "all in" mode, `cd` into an outside folder was let through as a read and then let any later Write or Edit in that folder through without asking; reading an outside file also covered editing it. Changes outside the project now ask on their own, and a yes to change a file covers later changes to it.
 - The cloud check of a weak local reply sends only your request and that reply, as its question says. It used to send Clyde's whole system prompt with it (your CLAUDE.md or CLYDE.md files, memory notes, plan and goal) and to run your prompt and stop hooks on it.

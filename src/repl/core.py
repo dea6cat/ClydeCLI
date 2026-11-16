@@ -1746,9 +1746,9 @@ class ClydeREPL:
             if ok and kind == "skill":
                 get_all_skills(project_root=self.tool_context.cwd or self.tool_context.workspace_root)
             return
-        env = skill_scan.llm_env(self.provider, self.model)
+        reviewer = skill_scan.llm_env(self.provider, self.model)
         self.console.print("LLM review: " + (f"on, with {model_ref(self.provider, self.model)} (this can take minutes; Ctrl+C stops it)"
-                                             if env else "off (no connected model the scan can use), static scan only"))
+                                             if reviewer else "off (no connected model the scan can use), static scan only"))
         from src.plugins import skill_dirs
 
         root = Path(self.tool_context.cwd or self.tool_context.workspace_root)
@@ -1757,7 +1757,7 @@ class ClydeREPL:
             for folder in folders:
                 for s in load_skills_from_dir(folder, loaded_from="user"):
                     if s.skill_root:
-                        skill_scan.check("skill", s.name, Path(s.skill_root), env=env, rescan=True)
+                        skill_scan.check("skill", s.name, Path(s.skill_root), reviewer=reviewer, rescan=True)
         except KeyboardInterrupt:
             self.console.print("Stopped; the static verdicts already cached stay in force.")
         rows = sorted(skill_scan.cached_verdicts().items())
