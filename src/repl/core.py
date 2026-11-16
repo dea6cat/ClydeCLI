@@ -390,7 +390,8 @@ class ClydeREPL:
 
         self.registry = build_registry()
         if (omlx := self.registry.get("omlx")) is not None:
-            omlx.confirm_install = self._confirm_install_omlx
+            if not headless:   # -p, an editor (ACP) and Bonnie have no terminal to answer on; there it never installs
+                omlx.confirm_install = self._confirm_install_omlx
             from src.providers.omlx import migrate_lmstudio_refs
             for line in migrate_lmstudio_refs():   # LM Studio was replaced by oMLX, which serves the same folders
                 self.console.print(f"[dim]Moved {line} (oMLX now runs LM Studio's models).[/dim]")
@@ -412,7 +413,7 @@ class ClydeREPL:
         for loaded in self.plugins:
             for warning in loaded.warnings:
                 self.console.print(warning, style="yellow", markup=False)
-        self.tool_context = ToolContext(workspace_root=Path.cwd(), hooks=hooks, permission_rules=self._project_rules(Path.cwd()),
+        self.tool_context = ToolContext(workspace_root=Path.cwd(), hooks=hooks, permission_rules=self.project_rules(Path.cwd()),
                                         output_style_name=get_output_style(), confirm_edits=True)
         self._mcp_servers, self._mcp_errors = servers, {}
         self._connect_mcp_servers(servers)
@@ -1794,7 +1795,7 @@ class ClydeREPL:
         self.console.print()
         return True
 
-    def _project_rules(self, root: Path) -> dict[str, list[str]]:
+    def project_rules(self, root: Path) -> dict[str, list[str]]:
         """The user's permission rules plus this project's .clyde/settings.json ones. Its deny and ask rules apply at once;
         its allow rules come from the repository, so they apply only once you have said yes to that exact list."""
         from rich.prompt import Confirm

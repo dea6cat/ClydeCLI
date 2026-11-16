@@ -730,3 +730,27 @@ class TestDownloadHeaders(BonnieCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestProjectSwitch(BonnieCase):
+    def test_the_new_projects_rules_apply_and_the_old_ones_go(self):
+        import json
+        import os
+        import tempfile
+        from pathlib import Path
+        old_rules = self.repl.tool_context.permission_rules
+        old_rules["deny"].append("Bash(old-only:*)")
+        with tempfile.TemporaryDirectory() as new:
+            new = Path(new).resolve()
+            (new / ".clyde").mkdir()
+            (new / ".clyde" / "settings.json").write_text(json.dumps({"permissions": {"deny": ["Bash(new-only:*)"]}}))
+            cwd = Path.cwd()
+            try:
+                self.bonnie.set_project(new)
+            finally:
+                os.chdir(cwd)
+        rules = self.repl.tool_context.permission_rules
+        self.assertIs(rules, old_rules)                      # updated in place: sub-agents hold the same dict
+        self.assertIn("Bash(new-only:*)", rules["deny"])
+        self.assertNotIn("Bash(old-only:*)", rules["deny"])
+        self.assertEqual(self.repl.command_context.workspace_root, new)

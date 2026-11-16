@@ -378,6 +378,11 @@ class Bonnie:
         context = self.repl.tool_context
         context.workspace_root = context.cwd = path
         context.permission_context.workspace_root = path
+        rules = self.repl.project_rules(path)   # the new project's own deny/ask rules, not the old one's
+        context.permission_rules.clear()
+        context.permission_rules.update(rules)   # in place: sub-agents share this dict
+        commands = self.repl.command_context
+        commands.workspace_root = commands.cwd = path
         projects.remember(path)
         self.new_session()
 
