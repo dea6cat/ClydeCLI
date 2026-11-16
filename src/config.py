@@ -8,6 +8,7 @@ src/providers/keys.py); a key exported in the shell always wins over a saved one
 from __future__ import annotations
 
 import os
+import time
 from pathlib import Path
 from typing import Any, Optional
 
@@ -54,8 +55,15 @@ def load_config() -> dict[str, Any]:
 
     try:
         config = read_json_safely(config_path)   # a cut-off file falls back to the last good copy
-    except Exception as e:
-        print(f"Error loading config: {e}")
+    except (OSError, ValueError) as e:
+        # Neither the file nor its last good copy reads: keep it for the user to look at, so the next save of a
+        # setting starts a fresh file instead of writing the defaults over theirs.
+        kept = config_path.with_name(f"config.json.unreadable-{int(time.time())}")
+        try:
+            config_path.replace(kept)
+        except OSError:
+            kept = None
+        print(f"Error loading config: {e}" + (f" (kept it as {kept})" if kept else ""))
         return get_default_config()
 
     return config

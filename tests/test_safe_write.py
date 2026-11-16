@@ -93,5 +93,16 @@ class ConfigSurvivesATornWrite(unittest.TestCase):
                 self.assertEqual(config.load_config().get("default_model"), "a:one")
 
 
+    def test_an_unreadable_config_is_kept_aside_not_overwritten_by_the_next_save(self):
+        from src import config
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "config.json"
+            path.write_text("{not json")                 # and no last good copy to fall back to
+            with patch.object(config, "get_config_path", return_value=path):
+                config.load_config()
+                config.set_default_model("a:new")
+            kept = list(Path(tmp).glob("config.json.unreadable-*"))
+            self.assertEqual([k.read_text() for k in kept], ["{not json"])
+
 if __name__ == "__main__":
     unittest.main()
