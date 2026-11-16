@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `/compact` can no longer throw the conversation away. When its model call could not be started it replaced the history with a one-line note and kept only the last 10 messages, silently; compaction now runs directly, and a failed summary call falls back to a short summary of the real messages (it read only a message shape the conversation never has, so it came out nearly empty).
 - Compaction clears old tool results before summarizing, as it was meant to: the step looked for the model's turns under the wrong key and never cleared anything, so `/compact` sent every old file dump to the summarizer.
 - The "Max history" setting applies: a conversation keeps that many messages (100 unless you change it in /settings), and the first one, your original request or a compaction's summary, always stays. Every conversation used to drop its oldest message past 100, the first one included, whatever the setting said.
 - `/context` shows the window the model really has: the one Ollama or oMLX pinned, else the catalog's. It read a short, out-of-date table of names and reported 200,000 tokens for most local models.

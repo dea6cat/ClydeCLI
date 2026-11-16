@@ -6,7 +6,6 @@ Implements core commands like /help, /clear, /exit, /skills, etc.
 
 from __future__ import annotations
 
-import asyncio
 import sys
 from src.providers.base import context_window
 from dataclasses import dataclass
@@ -18,7 +17,6 @@ from ..context_system.context_analyzer import (
     analyze_context,
     format_context_as_markdown,
 )
-from ..context_system.microcompact import microcompact_messages, strip_images_from_messages
 from src import trace
 from ..agent import cache_stats
 from ..agent.cost_tracker import estimate_usd
@@ -362,7 +360,7 @@ def context_command_call(args: str, context: CommandContext) -> LocalCommandResu
         return LocalCommandResult(type="text", value=f"Context analysis failed: {e}")
 
 
-async def _compact_async(args: str, context: CommandContext) -> LocalCommandResult:
+def _compact(args: str, context: CommandContext) -> LocalCommandResult:
     """
     Async implementation of compact command.
     """
@@ -396,7 +394,7 @@ async def _compact_async(args: str, context: CommandContext) -> LocalCommandResu
         # Import here to avoid circular imports
         from ..compact_service.service import compact_conversation
 
-        result = await compact_conversation(
+        result = compact_conversation(
             conversation=context.conversation,
             provider=provider,
             model=model,
@@ -426,130 +424,8 @@ async def _compact_async(args: str, context: CommandContext) -> LocalCommandResu
 
 
 def compact_command_call(args: str, context: CommandContext) -> LocalCommandResult:
-    """
-    Handle /compact command - compact conversation context.
-
-    Args:
-        args: Command arguments
-        context: Command context
-
-    Returns:
-        LocalCommandResult
-    """
-    # Run the async version in a new event loop
-    try:
-        loop = asyncio.get_running_loop()
-        # If we're already in an async context, we can't use asyncio.run
-        # Fall back to sync path
-        return _sync_compact_fallback(context)
-    except RuntimeError:
-        # No running event loop — safe to use asyncio.run
-        try:
-            return asyncio.run(_compact_async(args, context))
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
-            return _sync_compact_fallback(context)
-
-
-def _sync_compact_fallback(context: CommandContext) -> LocalCommandResult:
-    """Synchronous fallback when async provider is not available."""
-    if not hasattr(context.conversation, "messages"):
-        return LocalCommandResult(type="text", value="No conversation to compact.")
-
-    messages = context.conversation.messages
-    if len(messages) < 2:
-        return LocalCommandResult(
-            type="text",
-            value=f"Nothing to compact: only {len(messages)} messages.",
-        )
-
-    # Get messages after last boundary
-    try:
-        from ..compact_service.messages import (
-            create_compact_boundary_message,
-            create_compact_summary_message,
-            get_messages_after_boundary,
-            is_compact_boundary_message,
-        )
-        from ..context_system.token_estimation import count_messages_tokens
-
-        after_boundary = get_messages_after_boundary(messages)
-        if len(after_boundary) < 2:
-            return LocalCommandResult(
-                type="text",
-                value=f"Nothing to compact: only {len(after_boundary)} messages after boundary.",
-            )
-
-        # Count tokens
-        api_messages = context.conversation.get_messages()
-        pre_tokens = count_messages_tokens(api_messages)
-
-        # Strip images and microcompact
-        stripped = strip_images_from_messages(api_messages)
-        compacted, saved = microcompact_messages(stripped)
-
-        # Find boundary position
-        boundary_indices = [
-            i for i, m in enumerate(messages)
-            if is_compact_boundary_message(m)
-        ]
-
-        if boundary_indices:
-            insert_pos = max(boundary_indices) + 1
-        else:
-            insert_pos = 0
-
-        # Create simple text summary
-        summary_parts = [f"Conversation had {len(after_boundary)} messages ({pre_tokens:,} tokens)."]
-        summary_text = "\n".join(summary_parts)
-
-        boundary = create_compact_boundary_message(
-            trigger="manual",
-            pre_compact_token_count=pre_tokens,
-        )
-        summary = create_compact_summary_message(summary_text)
-
-        # Rebuild conversation
-        if insert_pos == 0:
-            context.conversation.messages.clear()
-            context.conversation.messages.append(boundary)
-            context.conversation.messages.append(summary)
-        else:
-            context.conversation.messages = list(messages[:insert_pos])
-            context.conversation.messages.append(boundary)
-            context.conversation.messages.append(summary)
-
-        return LocalCommandResult(
-            type="compact",
-            value=f"Compacted: removed {len(after_boundary) - 2} messages ({pre_tokens:,} tokens → ~{saved} saved).",
-            compaction_result=CompactionResult(
-                pre_compact_count=len(messages),
-                post_compact_count=len(context.conversation.messages),
-                tokens_saved=saved,
-                trigger="manual",
-                summary_preview=summary_text[:200],
-            ),
-        )
-    except Exception as e:
-        # Last resort: just clear old messages
-        original_count = len(messages)
-        if original_count > 10:
-            context.conversation.messages = list(messages[-10:])
-            return LocalCommandResult(
-                type="compact",
-                value=f"Compacted: removed {original_count - 10} messages (fallback mode).",
-                compaction_result=CompactionResult(
-                    pre_compact_count=original_count,
-                    post_compact_count=10,
-                    tokens_saved=0,
-                    trigger="manual",
-                ),
-            )
-        return LocalCommandResult(
-            type="text",
-            value="Nothing to compact.",
-        )
+    """/compact: summarise the conversation so far."""
+    return _compact(args, context)
 
 
 def _requires_python() -> str | None:

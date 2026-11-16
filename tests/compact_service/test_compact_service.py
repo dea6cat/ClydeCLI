@@ -4,13 +4,10 @@ Tests for the compact service.
 
 from __future__ import annotations
 
-import asyncio
 import io
 import tempfile
 import unittest
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional, Union
 from unittest.mock import patch
 
 from src.conversation import (
@@ -127,7 +124,7 @@ class TestCompactConversation(unittest.TestCase):
         provider = FakeProvider(reply("Summary"))
 
         with self.assertRaises(ValueError) as ctx:
-            asyncio.run(compact_conversation(conv, provider, "fake-model"))
+            compact_conversation(conv, provider, "fake-model")
         self.assertIn("Not enough messages", str(ctx.exception))
 
     def test_text_fallback_on_llm_failure(self):
@@ -141,7 +138,7 @@ class TestCompactConversation(unittest.TestCase):
 
         provider = FakeProvider(ProviderError("fake", "LLM failed"))
 
-        result = asyncio.run(compact_conversation(conv, provider, "fake-model"))
+        result = compact_conversation(conv, provider, "fake-model")
         self.assertEqual(result.trigger, "manual")
         self.assertIn("Conversation had", result.summary_text)
 
@@ -165,7 +162,7 @@ class TestCompactConversation(unittest.TestCase):
             use("t5", "Read", root / "secret.env"), done("t5", error=True),   # the user said no
             Message(role="assistant", content=[TextContentBlock(text="Done.")]),
         ])
-        result = asyncio.run(compact_conversation(conv, FakeProvider(reply("We fixed the app.")), "fake-model"))
+        result = compact_conversation(conv, FakeProvider(reply("We fixed the app.")), "fake-model")
         self.assertIn("We fixed the app.", result.summary_text)
         self.assertIn("print('v2')", result.summary_text)
         self.assertIn("# Notes", result.summary_text)
@@ -185,7 +182,7 @@ class TestCompactConversation(unittest.TestCase):
         conv = self._make_conversation(older + newer)
         provider = FakeProvider(reply("Updated summary."))
 
-        asyncio.run(compact_conversation(conv, provider, "fake-model"))
+        compact_conversation(conv, provider, "fake-model")
 
         self.assertIn("Postgres 16", str(provider.requests[0]))   # the summarizer sees the old summary to update it
         self.assertIn("step 0", str(provider.requests[0]))        # and the requests older than the recent messages
@@ -198,15 +195,15 @@ class TestCompactConversation(unittest.TestCase):
             Message(role="user", content=[ToolResultContentBlock(tool_use_id="t1", content="SECRET TOOL OUTPUT")]),
             Message(role="user", content=[TextContentBlock(text="Now add the login page.")]),
         ])
-        result = asyncio.run(compact_conversation(conv, FakeProvider(reply("A short summary that dropped every constraint.")), "fake-model"))
+        result = compact_conversation(conv, FakeProvider(reply("A short summary that dropped every constraint.")), "fake-model")
         text = result.summary_text
         self.assertIn("Your own messages, word for word", text)
         self.assertIn("Use Postgres 16 and never add an ORM, and do not touch migrations/.", text)
         self.assertIn("Now add the login page.", text)
         self.assertNotIn("SECRET TOOL OUTPUT", text)   # a tool result is not something you said
         self.assertLess(text.index("Postgres 16"), text.index("login page"))   # oldest first
-        again = asyncio.run(compact_conversation(self._make_conversation([Message(role="user", content="x"), Message(role="assistant", content="y")]),
-                                                 FakeProvider(ProviderError("fake", "down")), "fake-model"))
+        again = compact_conversation(self._make_conversation([Message(role="user", content="x"), Message(role="assistant", content="y")]),
+                                                 FakeProvider(ProviderError("fake", "down")), "fake-model")
         self.assertIn("--- you said ---\nx", again.summary_text)   # the fallback summary keeps them too
 
     def test_the_pinned_words_fit_a_budget_newest_first_and_a_long_message_loses_its_middle(self):
@@ -227,10 +224,10 @@ class TestCompactConversation(unittest.TestCase):
         conv = self._make_conversation([
             Message(role="user", content="(first) never use an ORM"), Message(role="assistant", content="ok"),
         ])
-        asyncio.run(compact_conversation(conv, FakeProvider(reply("Summary one.")), "fake-model"))
+        compact_conversation(conv, FakeProvider(reply("Summary one.")), "fake-model")
         conv.messages += [Message(role="user", content="second: add the login page"), Message(role="assistant", content="ok")]
         provider = FakeProvider(reply("Summary two."))
-        result = asyncio.run(compact_conversation(conv, provider, "fake-model"))
+        result = compact_conversation(conv, provider, "fake-model")
         self.assertEqual(result.summary_text.count("(first) never use an ORM"), 1)   # carried on, a leading bracket does not lose it
         self.assertEqual(result.summary_text.count("second: add the login page"), 1)
         self.assertEqual(result.summary_text.count("Your own messages, word for word"), 1)
@@ -249,7 +246,7 @@ class TestCompactConversation(unittest.TestCase):
 
         provider = FakeProvider(reply("User worked on Python code. Assistant helped with implementation."))
 
-        result = asyncio.run(compact_conversation(conv, provider, "fake-model"))
+        result = compact_conversation(conv, provider, "fake-model")
 
         # Boundary and summary are added (2 new messages)
         self.assertEqual(len(conv.messages), result.post_compact_count)
@@ -272,10 +269,10 @@ class TestCompactConversation(unittest.TestCase):
 
         provider = FakeProvider(reply("Summary"))
 
-        asyncio.run(compact_conversation(
+        compact_conversation(
             conv, provider, "fake-model",
             custom_instructions="Focus on the Python code"
-        ))
+        )
 
         request = provider.requests[0]
         self.assertIn("Focus on the Python code", request["conversation"].messages[-1].text)
@@ -296,7 +293,7 @@ class TestCompactConversation(unittest.TestCase):
         conv = self._make_conversation(messages)
         provider = FakeProvider(reply("Summary"))
 
-        asyncio.run(compact_conversation(conv, provider, "fake-model"))
+        compact_conversation(conv, provider, "fake-model")
 
         first = provider.requests[0]["conversation"].messages[0]
         self.assertFalse(first.tool_results)

@@ -151,7 +151,7 @@ class TestTraceDispatchAndCompact(TraceTestCase):
         conversation = Conversation()
         conversation.add_user_message("hello")
         conversation.add_assistant_message("hi")
-        asyncio.run(compact_conversation(conversation, FakeProvider(reply("summary")), "fake-model"))
+        compact_conversation(conversation, FakeProvider(reply("summary")), "fake-model")
 
         kinds = [e["event"] for e in self.events()]
         self.assertEqual(kinds, ["model_request", "compact"])

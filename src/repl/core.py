@@ -2158,7 +2158,7 @@ class ClydeREPL:
         try:
             status = self.console.status(_spin_text("Compacting", started), spinner="dots", spinner_style=_CARD_ACCENT)
             with status, self._ticking(status, "Compacting", started):
-                result = asyncio.run(compact_conversation(self.session.conversation, self.provider, self.model, trigger="auto"))
+                result = compact_conversation(self.session.conversation, self.provider, self.model, trigger="auto")
         except Exception as e:
             self.console.print(f"[yellow]Auto-compact failed: {e}[/yellow]")
             return
