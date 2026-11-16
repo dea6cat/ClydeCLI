@@ -15,9 +15,9 @@ from src.system import machine
 from typing import Callable
 
 from .base import ProviderError, ProviderResponse, get_json, post_json, post_stream
-from .toolcall_repair import recover_toolcalls
+from .stream import StreamReply
 from .toolspec import ToolSpec, to_openai
-from .types import Conversation, Message, Role, ToolCall
+from .types import Conversation, Role
 
 LOCAL_DEFAULT = "http://localhost:11434"
 CLOUD_HOST = "https://ollama.com"
@@ -39,17 +39,6 @@ KV_USE_FRACTION = 0.75             # of the RAM left after weights+reserve, give
 MODEL_RAM_FRACTION = 0.35
 
 _THINK_STRING_MODELS = ("gpt-oss",)   # accept think:"low|medium|high"; other thinking models are boolean
-
-
-def _parse_args(args):
-    """Tool-call arguments as a dict. A small local model sometimes emits them as a
-    (occasionally malformed) JSON string; a broken string becomes {} instead of raising."""
-    if isinstance(args, str):
-        try:
-            args = _json.loads(args)
-        except (ValueError, TypeError):
-            return {}
-    return args if isinstance(args, dict) else {}
 
 
 def _mi_int(model_info: dict, suffix: str):
@@ -88,6 +77,8 @@ def _usage(obj: dict) -> dict | None:
 
 
 class OllamaProvider:
+    repairs_text_calls = True   # small local models often write a tool call as JSON text
+
     def __init__(self, name: str = "ollama", host: str | None = None, api_key: str | None = None):
         self.name = name
         self.host = (host or os.environ.get("OLLAMA_API_BASE")
@@ -293,8 +284,7 @@ class OllamaProvider:
         think = self._think_value(model, reasoning)
         if think is not None:
             payload["think"] = think
-        content, thinking, calls = [], [], []
-        done_reason = prompt_tokens = usage = None
+        reply = StreamReply(self.name, on_text, on_thinking)
         for line in post_stream(f"{self.host}/api/chat", payload, headers=self._headers(),
                                 provider=self.name, cancel=cancel):
             line = line.strip()
@@ -307,32 +297,17 @@ class OllamaProvider:
             if obj.get("error"):
                 raise ProviderError(self.name, f"stream error: {obj['error']}")
             m = obj.get("message", {})
-            if m.get("content"):
-                content.append(m["content"])
-                on_text(m["content"])
-            if m.get("thinking"):
-                thinking.append(m["thinking"])
-                if on_thinking:
-                    on_thinking(m["thinking"])
+            reply.text(m.get("content"))
+            reply.thinking(m.get("thinking"))
             for c in m.get("tool_calls") or []:
-                fn = c["function"]
-                calls.append(ToolCall.new(name=fn["name"], arguments=_parse_args(fn["arguments"])))
+                reply.tool_call(c["function"]["name"], c["function"]["arguments"])
             if obj.get("done"):
-                done_reason = obj.get("done_reason")
-                prompt_tokens = obj.get("prompt_eval_count")
-                usage = _usage(obj)
+                reply.prompt_tokens = obj.get("prompt_eval_count")
+                reply.usage = _usage(obj)
+                reply.stop(obj.get("done_reason"))
                 break
-        text = "".join(content).strip()
-        if not calls and text:
-            calls = [ToolCall.new(name=n, arguments=a) for n, a in recover_toolcalls(text, [t.name for t in tools])]
-        think_text = "".join(thinking).strip()
-        return ProviderResponse(
-            message=Message.assistant(text=text or None, thinking=think_text or None, tool_calls=calls),
-            raw={},
-            done_reason=done_reason,
-            prompt_tokens=prompt_tokens,
-            usage=usage,
-        )
+        return reply.response(tools, repair_text_calls=self.repairs_text_calls)
+
 
 def local() -> OllamaProvider:
     return OllamaProvider(name="ollama")

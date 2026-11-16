@@ -285,6 +285,8 @@ def install(log: Callable[[str], None] = print) -> str | None:
 
 
 class OMLXProvider(OpenAICompatProvider):
+    repairs_text_calls = True   # small local models, like Ollama's, often write a tool call as JSON text
+
     def __init__(self) -> None:
         super().__init__("omlx", os.environ.get("OMLX_BASE_URL", DEFAULT_URL), "OMLX_API_KEY",
                          dynamic_models=True, stream_usage=True)

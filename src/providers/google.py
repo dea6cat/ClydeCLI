@@ -14,7 +14,8 @@ from typing import Callable
 from . import keys
 from .base import ProviderResponse, cached_model_list, get_json, post_stream
 from .toolspec import ToolSpec, to_gemini
-from .types import Conversation, Message, Role, ToolCall
+from .stream import StreamReply
+from .types import Conversation, Role
 
 BASE = "https://generativelanguage.googleapis.com/v1beta"
 _NON_CHAT = ("tts", "image", "transcribe", "computer-use", "robotics")   # listed, but not coding chat models
@@ -130,25 +131,15 @@ class GoogleProvider:
         return {"x-goog-api-key": self.api_key}
 
     @staticmethod
-    def _read_parts(cand: dict, text_parts: list, calls: list, thought_parts: list | None = None) -> str:
-        """Pull text + functionCall parts out of one candidate. Parts marked `thought: true` are
-        reasoning summaries: they go to thought_parts and NEVER into the answer text."""
-        chunk_text = []
+    def _read_parts(cand: dict, reply: StreamReply) -> None:
+        """Hand one candidate's parts to the reply. Parts marked `thought: true` are reasoning summaries: they go to its
+        thinking and NEVER into the answer text."""
         for p in cand.get("content", {}).get("parts", []) or []:
             if "text" in p:
-                if p.get("thought"):
-                    if thought_parts is not None:
-                        thought_parts.append(p["text"])
-                else:
-                    chunk_text.append(p["text"])
+                (reply.thinking if p.get("thought") else reply.text)(p["text"])
             elif "functionCall" in p:
                 fc = p["functionCall"]
-                calls.append(ToolCall.new(name=fc.get("name", ""), arguments=fc.get("args", {}),
-                                          signature=p.get("thoughtSignature")))
-        joined = "".join(chunk_text)
-        if joined:
-            text_parts.append(joined)
-        return joined
+                reply.tool_call(fc.get("name", ""), fc.get("args", {}), signature=p.get("thoughtSignature"))
 
     def stream(self, conversation: Conversation, model: str, tools: tuple[ToolSpec, ...],
                on_text: Callable[[str], None], *, cancel=None, reasoning=None, on_thinking=None) -> ProviderResponse:
@@ -160,12 +151,8 @@ class GoogleProvider:
         payload = self._payload(conversation, tools, thinking_budget=budget, include_thoughts=include_thoughts,
                                 thinking_level=level)
         url = f"{BASE}/models/{model}:streamGenerateContent?alt=sse"
-        text_parts: list = []
-        thought_parts: list = []
-        calls: list = []
+        reply = StreamReply(self.name, on_text, on_thinking)
         last: dict = {}
-        usage = None
-        done_reason = None
         for line in post_stream(url, payload, headers=self._headers(), provider=self.name, cancel=cancel):
             line = line.strip()
             if not line.startswith("data:"):
@@ -177,19 +164,9 @@ class GoogleProvider:
                 last = json.loads(body)
             except ValueError:
                 continue
-            usage = _usage(last.get("usageMetadata")) or usage
+            reply.usage = _usage(last.get("usageMetadata")) or reply.usage
             cand = (last.get("candidates") or [{}])[0]
-            done_reason = cand.get("finishReason") or done_reason
-            before = len(thought_parts)
-            delta = self._read_parts(cand, text_parts, calls, thought_parts)
-            if on_thinking:
-                for tp in thought_parts[before:]:
-                    on_thinking(tp)
-            if delta:
-                on_text(delta)
-        text = "".join(text_parts).strip()
-        think = "".join(thought_parts).strip()
-        return ProviderResponse(message=Message.assistant(text=text or None, thinking=think or None, tool_calls=calls),
-                                raw=last, done_reason=done_reason,
-                                prompt_tokens=usage and usage["input_tokens"] + usage.get("cache_read_input_tokens", 0),
-                                usage=usage)
+            self._read_parts(cand, reply)
+            if cand.get("finishReason"):   # only the last chunk carries it: a stream cut before it is not a whole answer
+                reply.stop(cand["finishReason"])
+        return reply.response(tools, raw=last)

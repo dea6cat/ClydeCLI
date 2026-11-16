@@ -14,8 +14,9 @@ from typing import Callable
 
 from . import catalog
 from .base import ProviderError, ProviderResponse, cached_model_list, get_json, post_stream
+from .stream import StreamReply
 from .toolspec import ToolSpec, to_anthropic
-from .types import Conversation, Message, Role, ToolCall
+from .types import Conversation, Role
 
 ANTHROPIC_BASE = "https://api.anthropic.com"
 _DEFAULT_MAX_TOKENS = 64000   # streaming output cap when the catalog doesn't know the model
@@ -138,11 +139,7 @@ class AnthropicProvider:
         # Real SSE: emit text deltas as they arrive and assemble tool_use blocks from
         # input_json_delta fragments.
         payload = {**self._payload(conversation, model, tools, reasoning), "stream": True}
-        text_parts: list[str] = []
-        thinking_parts: list[str] = []
-        blocks: dict[int, dict] = {}   # index -> {"type", "name", "id", "json"}
-        stop_reason = None
-        finished = False
+        reply = StreamReply(self.name, on_text, on_thinking)
         usage: dict = {}
         for line in post_stream(f"{self.base_url}/v1/messages", payload, headers=self._headers(),
                                 provider=self.name, cancel=cancel):
@@ -164,57 +161,29 @@ class AnthropicProvider:
             if etype == "message_start":
                 usage.update(_usage((evt.get("message") or {}).get("usage") or {}))
             elif etype == "content_block_start":
-                idx = evt.get("index", 0)
                 cb = evt.get("content_block") or {}
-                blocks[idx] = {"type": cb.get("type"), "name": cb.get("name", ""),
-                               "id": cb.get("id"), "json": ""}
+                if cb.get("type") == "tool_use":
+                    reply.tool_call_part(evt.get("index", 0), id=cb.get("id"), name=cb.get("name", ""))
             elif etype == "content_block_delta":
-                idx = evt.get("index", 0)
                 delta = evt.get("delta") or {}
                 dtype = delta.get("type")
                 if dtype == "text_delta":
-                    chunk = delta.get("text", "")
-                    if chunk:
-                        text_parts.append(chunk)
-                        on_text(chunk)
+                    reply.text(delta.get("text", ""))
                 elif dtype == "thinking_delta":
-                    chunk = delta.get("thinking", "")
-                    if chunk:
-                        thinking_parts.append(chunk)
-                        if on_thinking:
-                            on_thinking(chunk)
+                    reply.thinking(delta.get("thinking", ""))
                 elif dtype == "input_json_delta":
-                    slot = blocks.setdefault(idx, {"type": "tool_use", "name": "", "id": None, "json": ""})
-                    slot["json"] += delta.get("partial_json", "")
+                    reply.tool_call_part(evt.get("index", 0), arguments=delta.get("partial_json", ""))
             elif etype == "message_delta":
-                stop_reason = (evt.get("delta") or {}).get("stop_reason", stop_reason)
+                reply.note_stop((evt.get("delta") or {}).get("stop_reason"))
                 out_tokens = (evt.get("usage") or {}).get("output_tokens")
                 if out_tokens is not None:
                     usage["output_tokens"] = out_tokens
             elif etype == "message_stop":
-                finished = True
+                reply.stop()
                 break
-        if not finished:
-            raise ProviderError(self.name, "stream ended before the response finished", retryable=True)
-        calls = []
-        for idx in sorted(blocks):
-            b = blocks[idx]
-            if b.get("type") != "tool_use":
-                continue
-            try:
-                args = json.loads(b["json"]) if b["json"] else {}
-            except ValueError:
-                args = {}
-            calls.append(ToolCall.new(name=b["name"], arguments=args, id=b["id"]))
-        text = "".join(text_parts).strip()
-        thinking = "".join(thinking_parts).strip()
-        return ProviderResponse(
-            message=Message.assistant(text=text or None, thinking=thinking or None, tool_calls=calls),
-            raw={},
-            done_reason=stop_reason,
-            prompt_tokens=usage.get("input_tokens"),
-            usage=usage or None,
-        )
+        reply.usage = usage or None
+        reply.prompt_tokens = usage.get("input_tokens")   # Anthropic's input_tokens already leaves the cached share out
+        return reply.response(tools)
 
 
 def _usage(raw: dict) -> dict:

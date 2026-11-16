@@ -21,7 +21,7 @@ class GoogleKeyHeader(unittest.TestCase):
         def fake_post_stream(url, payload, headers=None, provider="http", **kw):
             self.captured["url"] = url
             self.captured["headers"] = headers or {}
-            return iter(['data: {"candidates": [{"content": {"parts": [{"text": "ok"}]}}]}\n'])
+            return iter(['data: {"candidates": [{"content": {"parts": [{"text": "ok"}]}, "finishReason": "STOP"}]}\n'])
 
         g.post_stream = fake_post_stream
         os.environ["GEMINI_API_KEY"] = "AIza-super-secret"
