@@ -107,6 +107,16 @@ class TestFilesAndFoldersOutside(unittest.TestCase):
         self.call("Write", file_path=str(self.other / "new.txt"), content="x")
         self.assertEqual(len(self.asked), 1)                                        # a change there still asks
 
+    def test_all_in_after_moving_outside_a_shell_command_that_changes_files_asks(self):
+        from src.tool_system.tools import bash
+        self.ctx.auto_approve = True
+        with patch.object(bash, "_TEMP_ROOTS", ()), patch.object(bash.tempfile, "gettempdir", return_value="/nonexistent"):
+            self.call("Bash", command=f"cd {self.other}")
+            self.call("Bash", command="ls")
+            self.assertEqual(self.asked, [])                          # looking around there still doesn't ask
+            self.call("Bash", command="echo x > rel.txt")
+        self.assertEqual(len(self.asked), 1)                          # a relative write there does
+
     def test_a_no_leaves_it_alone_and_asks_again_next_time(self):
         self.answer = False
         target = self.other / "new.txt"

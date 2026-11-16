@@ -140,11 +140,14 @@ _TEMP_ROOTS = ("/tmp", "/private/tmp", "/var/folders", "/private/var/folders", "
 
 def reaches_outside_project(command: str, context: ToolContext, cwd: Any = None) -> bool:
     """Whether a shell command, or the folder it is asked to run in, is outside the project and its extra folders and not yet
-    approved. The command counts when it names an absolute path, `~`, `$HOME` or `..`, or git's config or hooks; temp folders
-    and /dev do not count."""
+    approved. The command counts when it runs in a folder outside, or names an absolute path, `~`, `$HOME` or `..`, or git's
+    config or hooks; temp folders and /dev do not count."""
     if isinstance(cwd, str) and cwd and context.outside_path(cwd) is not None:
         return True
     roots = [*context.permission_context.allowed_roots(), *map(Path, _TEMP_ROOTS), Path(tempfile.gettempdir()).resolve()]
+    here = Path(context.cwd or context.workspace_root).resolve()
+    if not any(here.is_relative_to(root) for root in roots):
+        return True   # moved outside with `cd`: every relative path in the command lands there
     lexer = shlex.shlex(command.replace("\n", ";"), posix=True, punctuation_chars=True)
     lexer.whitespace_split = True
     try:
