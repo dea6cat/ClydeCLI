@@ -10,13 +10,8 @@ from src.tool_system.context import ToolContext
 from src.tool_system.errors import ToolInputError
 from src.tool_system.tools.data import DataTool
 
-try:
-    import duckdb  # noqa: F401
-except ImportError:  # pragma: no cover
-    duckdb = None
 
 
-@unittest.skipIf(duckdb is None, "duckdb is not installed")
 class TestDataSecrets(unittest.TestCase):
     def setUp(self):
         self.root = Path(tempfile.mkdtemp()).resolve()
