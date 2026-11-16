@@ -47,6 +47,7 @@ class TestInjectionTaint(unittest.TestCase):
         self.assertTrue(self.search().is_error)   # asked, and the answer was no
         (_, message, suggestion), = self.asked
         self.assertIn(SOURCE, message)
+        self.assertIn("Search the web", message)   # the tool's own question, though the allow rule waives it
         self.assertIsNone(suggestion)   # no "don't ask again" from a poisoned session
 
     def test_all_in_asks_for_a_network_command_but_not_a_read_only_one(self) -> None:

@@ -188,8 +188,9 @@ def _concerns(spec: ToolSpec, tool_input: dict[str, Any], context: ToolContext, 
     return found
 
 
-def _taint_message(spec: ToolSpec, tool_input: dict[str, Any], context: ToolContext, left: list[_Concern]) -> str:
-    what = next((c.message for c in left if c.message), f"{spec.name} {_clip_input(tool_input)}")
+def _taint_message(spec: ToolSpec, tool_input: dict[str, Any], context: ToolContext, concerns: list[_Concern]) -> str:
+    """The call's own question (even one a rule would have waived: it says best what the call does) and why it asks."""
+    what = next((c.message for c in concerns if c.message), f"{spec.name} {_clip_input(tool_input)}")
     return (f"{what}\n(Asking because {context.injection_sources[-1]} returned text addressed to the model this session. "
             "Check this sends nothing of yours.)")
 
@@ -293,7 +294,7 @@ class ToolRegistry:
                     trace.record("permission_auto", tool=spec.name, message=concerns[0].message)
                 permission_result = PermissionResult.allow(own.updated_input)
             else:
-                message = left[0].message if not tainted else _taint_message(spec, call.input, context, left)
+                message = left[0].message if not tainted else _taint_message(spec, call.input, context, concerns)
                 permission_result = PermissionResult.ask(message)
         if permission_result.behavior.value == "deny":
             return ToolResult(
