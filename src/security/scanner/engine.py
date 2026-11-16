@@ -13,16 +13,13 @@ from pathlib import Path
 
 from src.security.scanner.rules import (
     DANGEROUS_BUILTINS,
-    DEFAULT_EXPLANATIONS,
     HORIZONTAL_RUN_CHARS,
-    INSECURE_DESERIALIZERS,
     OS_EXEC_CALLS,
-    RULE_ID_TO_CATEGORY,
-    RULE_ID_TO_SEVERITY,
+    RULE_PATTERNS,
+    RULES,
     SUBPROCESS_CALLS,
     VERTICAL_BLANK_LINES,
     get_compiled_patterns,
-    is_padding_char,
 )
 
 
@@ -104,8 +101,8 @@ def check_whitespace_padding(content: str, file_path: str) -> list[Finding]:
             if blank_streak >= VERTICAL_BLANK_LINES:
                 findings.append(Finding(
                     rule_id="P9",
-                    severity=RULE_ID_TO_SEVERITY.get("P9", "MEDIUM").value,
-                    category=RULE_ID_TO_CATEGORY.get("P9", "Prompt Injection"),
+                    severity=RULES["P9"].severity,
+                    category=RULES["P9"].category,
                     message=f"Found {blank_streak} consecutive blank lines (threshold: {VERTICAL_BLANK_LINES})",
                     file_path=file_path,
                     line_number=i - blank_streak + 1,
@@ -123,8 +120,8 @@ def check_whitespace_padding(content: str, file_path: str) -> list[Finding]:
             if trailing_spaces >= HORIZONTAL_RUN_CHARS:
                 findings.append(Finding(
                     rule_id="P9",
-                    severity=RULE_ID_TO_SEVERITY.get("P9", "MEDIUM").value,
-                    category=RULE_ID_TO_CATEGORY.get("P9", "Prompt Injection"),
+                    severity=RULES["P9"].severity,
+                    category=RULES["P9"].category,
                     message=f"Found {trailing_spaces} trailing spaces (threshold: {HORIZONTAL_RUN_CHARS})",
                     file_path=file_path,
                     line_number=i,
@@ -137,19 +134,16 @@ def check_whitespace_padding(content: str, file_path: str) -> list[Finding]:
 def check_text_patterns_all(content: str, file_path: str) -> list[Finding]:
     """Check content against all text-based regex patterns for all rules."""
     findings = []
-    from src.security.scanner.rules import RULE_PATTERNS
-
-    for rule_id, patterns in RULE_PATTERNS.items():
-        compiled = get_compiled_patterns(rule_id)
-        for pattern, confidence in compiled:
+    for rule_id in RULE_PATTERNS:
+        for pattern, confidence in get_compiled_patterns(rule_id):
             for match in pattern.finditer(content):
                 # Get line number
                 line_number = content[:match.start()].count('\n') + 1
                 findings.append(Finding(
                     rule_id=rule_id,
-                    severity=RULE_ID_TO_SEVERITY.get(rule_id, "MEDIUM").value,
-                    category=RULE_ID_TO_CATEGORY.get(rule_id, "Unknown"),
-                    message=f"{DEFAULT_EXPLANATIONS.get(rule_id, 'Pattern matched')}",
+                    severity=RULES[rule_id].severity,
+                    category=RULES[rule_id].category,
+                    message=RULES[rule_id].explanation,
                     file_path=file_path,
                     line_number=line_number,
                     confidence=confidence,
@@ -171,9 +165,9 @@ def check_ast_python(content: str, file_path: str) -> list[Finding]:
         # AST1/AST2: exec(), eval() and friends, wherever the call sits (`x = eval(input())` too)
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in DANGEROUS_BUILTINS:
             findings.append(Finding(
-                rule_id="AST1" if node.func.id == "exec" else "AST2",
-                severity="CRITICAL",
-                category="Tool Misuse",
+                rule_id=(rule := "AST1" if node.func.id == "exec" else "AST2"),
+                severity=RULES[rule].severity,
+                category=RULES[rule].category,
                 message=f"Found dangerous call to {node.func.id}()",
                 file_path=file_path,
                 line_number=node.lineno,
@@ -187,8 +181,8 @@ def check_ast_python(content: str, file_path: str) -> list[Finding]:
                     if node.func.value.id == "subprocess":
                         findings.append(Finding(
                             rule_id="AST4",
-                            severity="HIGH",
-                            category="Tool Misuse",
+                            severity=RULES["AST4"].severity,
+                            category=RULES["AST4"].category,
                             message=f"Found subprocess.{node.func.attr}() call",
                             file_path=file_path,
                             line_number=node.lineno,
@@ -202,8 +196,8 @@ def check_ast_python(content: str, file_path: str) -> list[Finding]:
                     if node.func.value.id == "os":
                         findings.append(Finding(
                             rule_id="AST5",
-                            severity="HIGH",
-                            category="Tool Misuse",
+                            severity=RULES["AST5"].severity,
+                            category=RULES["AST5"].category,
                             message=f"Found os.{node.func.attr}() call",
                             file_path=file_path,
                             line_number=node.lineno,

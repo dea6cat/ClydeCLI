@@ -13,7 +13,7 @@ import os
 import re
 from typing import Any
 
-from src.security.scanner.rules import DEFAULT_EXPLANATIONS, get_compiled_patterns
+from src.security.scanner import rules as scanner_rules
 
 # The scanner's rules about overriding the model's instructions (P1), sending the conversation away (P3) and getting its system prompt out
 # (P6, P8). Its hidden-text rule (P2) fires on ordinary web pages, so only its text direction overrides are used, below.
@@ -44,8 +44,8 @@ def findings(output: Any) -> list[str]:
     text = "\n".join(parts)
     found = []
     for rule in RULES:
-        if any(confidence >= MIN_CONFIDENCE and pattern.search(text) for pattern, confidence in get_compiled_patterns(rule)):
-            found.append(DEFAULT_EXPLANATIONS[rule])
+        if any(confidence >= MIN_CONFIDENCE and pattern.search(text) for pattern, confidence in scanner_rules.get_compiled_patterns(rule)):
+            found.append(scanner_rules.RULES[rule].explanation)
     if _BIDI.search(text):
         found.append("Text direction overrides hide what a person reads from what the model reads.")
     return found
