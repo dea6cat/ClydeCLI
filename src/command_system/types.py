@@ -108,13 +108,10 @@ class PromptCommand(CommandBase):
     def command_type(self) -> CommandType:
         return CommandType.PROMPT
 
-    def prompt_for(self, args: str) -> str:
+    def prompt_for(self, args: str, context: CommandContext) -> str:
         """The prompt this command sends to the model, with its arguments filled in."""
         from src.skills.argument_substitution import substitute_arguments
         return substitute_arguments(self.markdown_content, args, argument_names=self.arg_names)
-
-    async def get_prompt_for_command(self, args: str, context: CommandContext) -> list[dict[str, Any]]:
-        return [{"type": "text", "text": self.prompt_for(args)}]
 
 
 @dataclass(frozen=True)

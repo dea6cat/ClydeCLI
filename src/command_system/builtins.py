@@ -829,9 +829,9 @@ INIT_COMMAND = PromptCommand(
 class ReviewCommand(PromptCommand):
     """/review [commit SHA | base BRANCH]: the prompt is built from the git diff when the command runs."""
 
-    async def get_prompt_for_command(self, args: str, context: CommandContext) -> list[dict[str, Any]]:
+    def prompt_for(self, args: str, context: CommandContext) -> str:
         from ..review import build_review_prompt
-        return [{"type": "text", "text": build_review_prompt(args, context.workspace_root)}]
+        return build_review_prompt(args, context.workspace_root)
 
 
 REVIEW_COMMAND = ReviewCommand(
@@ -850,7 +850,7 @@ def run_command(registry: CommandRegistry, cmd_name: str, args: str, context: Co
     if cmd is None:
         return CommandResult.failed(cmd_name, f"Unknown command: {cmd_name}")
     if isinstance(cmd, PromptCommand):
-        return CommandResult.success_prompt(cmd.name, [{"type": "text", "text": cmd.prompt_for(args)}])
+        return CommandResult.success_prompt(cmd.name, [{"type": "text", "text": cmd.prompt_for(args, context)}])
     result = cmd.run(args, context)
     return CommandResult.skip(cmd.name) if result.type == "skip" else CommandResult.success_text(cmd.name, result.value)
 

@@ -90,10 +90,9 @@ if __name__ == "__main__":
     unittest.main()
 
 
-class TestReviewCommand(unittest.IsolatedAsyncioTestCase):
-    async def test_the_command_builds_its_prompt_from_the_diff(self):
-        from types import SimpleNamespace
-        from src.command_system.builtins import REVIEW_COMMAND
+class TestReviewCommand(unittest.TestCase):
+    def test_the_command_builds_its_prompt_from_the_diff(self):
+        from src.command_system import builtin_registry, create_command_context, run_command
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
             _git(repo, "init", "-q", "-b", "main")
@@ -101,8 +100,8 @@ class TestReviewCommand(unittest.IsolatedAsyncioTestCase):
             _git(repo, "add", ".")
             _git(repo, "commit", "-qm", "first")
             (repo / "a.py").write_text("x = 2\n")
-            blocks = await REVIEW_COMMAND.get_prompt_for_command("", SimpleNamespace(workspace_root=repo))
-        self.assertIn("+x = 2", blocks[0]["text"])
+            result = run_command(builtin_registry(), "review", "", create_command_context(workspace_root=repo))
+        self.assertIn("+x = 2", result.prompt_content[0]["text"])   # the REPL's own path
 
 
 class TestReviewCli(unittest.TestCase):
