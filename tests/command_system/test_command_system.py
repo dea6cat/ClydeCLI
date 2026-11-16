@@ -36,8 +36,8 @@ from src.command_system import (
     LocalCommandResult,
     PromptCommand,
     create_command_context,
-    execute_command_async,
-    execute_command_sync,
+    builtin_registry,
+    run_command,
     find_commands,
     get_command,
     get_command_name,
@@ -271,7 +271,8 @@ class TestBuiltinCommands(unittest.TestCase):
         )
 
         # Execute /skills command
-        success, result, error = execute_command_sync("skills", "", context)
+        outcome = run_command(builtin_registry(), "skills", "", context)
+        success, result, error = outcome.success, outcome.text, outcome.error
 
         self.assertTrue(success)
         self.assertIsNone(error)
@@ -441,37 +442,9 @@ class TestInitCommand(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(len(result.prompt_content) > 0)
         self.assertEqual(result.prompt_content[0]["type"], "text")
 
-    async def test_execute_init_command_async(self):
-        """Test executing /init via execute_command_async."""
-        # Register commands to global registry for this test
-        from src.command_system import get_command_registry
-        registry = get_command_registry()
-        register_builtin_commands(registry)
-
-        result = await execute_command_async("init", "", self.context)
-
+    def test_init_returns_its_prompt_for_the_model(self):
+        result = run_command(builtin_registry(), "init", "", self.context)
         self.assertTrue(result.success)
-        self.assertEqual(result.command_name, "init")
-        self.assertEqual(result.result_type, "prompt")
-        self.assertTrue(len(result.prompt_content) > 0)
+        self.assertEqual((result.command_name, result.result_type), ("init", "prompt"))
+        self.assertTrue(result.prompt_content[0]["text"])
 
-    def test_sync_execute_does_not_handle_init(self):
-        """Test that sync execution returns error for /init (it's a PromptCommand)."""
-        # Register commands to global registry for this test
-        from src.command_system import get_command_registry
-        registry = get_command_registry()
-        register_builtin_commands(registry)
-
-        success, result, error = execute_command_sync("init", "", self.context)
-        # Sync execution doesn't handle PromptCommand
-        # It will either return False or an error
-        if not success:
-            # Expected: sync can't handle PromptCommand
-            pass
-        else:
-            # If sync succeeds, it means LocalCommand handled it (shouldn't happen for /init)
-            self.fail("/init should not be a LocalCommand")
-
-
-if __name__ == "__main__":
-    unittest.main()

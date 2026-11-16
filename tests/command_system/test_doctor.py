@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from src.command_system import create_command_context, execute_command_sync
+from src.command_system import builtin_registry, create_command_context, run_command
 from src.providers import keys
 from src.tool_system.permissions import ToolPermissionContext
 
@@ -33,7 +33,7 @@ class TestDoctorCommand(unittest.TestCase):
         self._tmp.cleanup()
 
     def run_doctor(self) -> str:
-        success, text, error = execute_command_sync("doctor", "", self.context)
+        success, text, error = (lambda r: (r.success, r.text, r.error))(run_command(builtin_registry(), "doctor", "", self.context))
         self.assertTrue(success, error)
         return text
 

@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 from src.agent.agent_loop import run_agent_loop
 from src.conversation import Conversation
-from src.command_system import create_command_context, execute_command_sync
+from src.command_system import builtin_registry, create_command_context, run_command
 from src.tool_system import checks, trust
 from src.tool_system.checks import Problem, detect, new_problems, parse_mypy, parse_ruff
 from src.tool_system.context import ToolContext
@@ -202,7 +202,7 @@ class TestAgentLoopFeedback(ChecksTestCase):
 
 class TestCheckCommand(ChecksTestCase):
     def test_summarizes_ruff_mypy_and_pytest(self) -> None:
-        ok, text, error = execute_command_sync("check", "", create_command_context(workspace_root=self.root))
+        ok, text, error = (lambda r: (r.success, r.text, r.error))(run_command(builtin_registry(), "check", "", create_command_context(workspace_root=self.root)))
         self.assertTrue(ok, error)
         self.assertEqual(text, "\n".join([
             "Checks (via PATH):",

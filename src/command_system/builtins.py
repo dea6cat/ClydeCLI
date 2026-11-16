@@ -843,62 +843,16 @@ REVIEW_COMMAND = ReviewCommand(
 
 
 # Synchronous versions for REPL integration
-def execute_command_sync(cmd_name: str, args: str, context: CommandContext) -> tuple[bool, str | None, str | None]:
-    """
-    Execute a command synchronously.
-
-    Returns:
-        Tuple of (success: bool, result_text: str | None, error: str | None)
-    """
-    cmd = None
-    for builtin_cmd in get_builtin_commands():
-        if builtin_cmd.name.lower() == cmd_name.lower() or cmd_name.lower() in [a.lower() for a in builtin_cmd.aliases]:
-            cmd = builtin_cmd
-            break
-
+def run_command(registry: CommandRegistry, cmd_name: str, args: str, context: CommandContext) -> CommandResult:
+    """Run a registered slash command: a local command's text, or a prompt command's prompt for the model. A command's
+    own error propagates, so the caller shows it rather than taking it for an unknown command."""
+    cmd = registry.get(cmd_name)
     if cmd is None:
-        return False, None, f"Unknown command: {cmd_name}"
-
-    try:
-        # This is a synchronous wrapper - we directly call the underlying function
-        # instead of going through the async call() method
-        if cmd is HELP_COMMAND:
-            result = help_command_call(args, context)
-        elif cmd is CLEAR_COMMAND:
-            result = clear_command_call(args, context)
-        elif cmd is EXIT_COMMAND:
-            result = exit_command_call(args, context)
-        elif cmd is SKILLS_COMMAND:
-            result = skills_command_call(args, context)
-        elif cmd is COST_COMMAND:
-            result = cost_command_call(args, context)
-        elif cmd is CONTEXT_COMMAND:
-            result = context_command_call(args, context)
-        elif cmd is COMPACT_COMMAND:
-            result = compact_command_call(args, context)
-        elif cmd is DOCTOR_COMMAND:
-            result = doctor_command_call(args, context)
-        elif cmd is PROXY_COMMAND:
-            result = proxy_command_call(args, context)
-        elif cmd is CHECK_COMMAND:
-            result = check_command_call(args, context)
-        elif cmd is MAP_COMMAND:
-            result = map_command_call(args, context)
-        elif cmd is BRIEF_COMMAND:
-            result = brief_command_call(args, context)
-        elif cmd is HARNESS_COMMAND:
-            result = harness_command_call(args, context)
-        elif cmd is ORCHESTRATE_COMMAND:
-            result = orchestrate_command_call(args, context)
-        elif cmd is TODO_COMMAND:
-            result = todo_command_call(args, context)
-        else:
-            return False, None, f"Command not implemented for sync execution: {cmd_name}"
-
-        return True, result.value, None
-    except Exception as e:
-        return False, None, str(e)
-
+        return CommandResult.failed(cmd_name, f"Unknown command: {cmd_name}")
+    if isinstance(cmd, PromptCommand):
+        return CommandResult.success_prompt(cmd.name, [{"type": "text", "text": cmd.prompt_for(args)}])
+    result = cmd.run(args, context)
+    return CommandResult.skip(cmd.name) if result.type == "skip" else CommandResult.success_text(cmd.name, result.value)
 
 # Set the call implementations
 HELP_COMMAND.set_call(help_command_call)
@@ -941,6 +895,13 @@ def get_builtin_commands() -> list[Command]:
     ]
 
 
+def builtin_registry() -> CommandRegistry:
+    """A registry holding every built-in command."""
+    registry = CommandRegistry()
+    register_builtin_commands(registry)
+    return registry
+
+
 def register_builtin_commands(registry: CommandRegistry | None = None) -> None:
     """
     Register all built-in commands.
@@ -952,46 +913,3 @@ def register_builtin_commands(registry: CommandRegistry | None = None) -> None:
     for cmd in get_builtin_commands():
         reg.register(cmd)
 
-
-async def execute_command_async(
-    cmd_name: str,
-    args: str,
-    context: CommandContext,
-) -> CommandResult:
-    """
-    Execute a command asynchronously.
-
-    This function handles both LocalCommand and PromptCommand types.
-    For PromptCommand, it returns the prompt content that should be sent to the LLM.
-
-    Args:
-        cmd_name: Name of the command to execute
-        args: Arguments for the command
-        context: Command context
-
-    Returns:
-        CommandResult with the execution result
-    """
-    from .engine import CommandEngine
-
-    registry = get_command_registry()
-    cmd = registry.get(cmd_name)
-
-    if cmd is None:
-        return CommandResult.error(cmd_name, f"Unknown command: {cmd_name}")
-
-    if not cmd.is_enabled():
-        return CommandResult.error(cmd_name, f"Command {cmd_name} is disabled")
-
-    engine = CommandEngine(
-        registry=registry,
-        workspace_root=context.workspace_root,
-        context=context,
-    )
-
-    # Create a fake command input string for the engine
-    command_input = f"/{cmd_name}"
-    if args:
-        command_input += f" {args}"
-
-    return await engine.execute(command_input)

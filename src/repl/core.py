@@ -120,8 +120,8 @@ from src.command_system import (
     CommandRegistry,
     CommandResult,
     create_command_context,
-    execute_command_async,
-    execute_command_sync,
+    builtin_registry,
+    run_command,
     register_builtin_commands,
 )
 from src.agent.cost_tracker import CostTracker
@@ -918,12 +918,8 @@ class ClydeREPL:
 
     def _init_command_system(self):
         """Initialize the new command system."""
-        # Also register to global registry so execute_command_async can find commands
-        register_builtin_commands(None)  # None = use global registry
-
         # Create command registry and register built-ins
-        self.command_registry = CommandRegistry()
-        register_builtin_commands(self.command_registry)
+        self.command_registry = builtin_registry()
 
         # Create cost tracker and history
         self.cost_tracker = CostTracker()
@@ -959,33 +955,12 @@ class ClydeREPL:
         except Exception:
             pass
 
-    def _try_execute_new_command(self, command: str, args: str) -> tuple[bool, str | None]:
-        """Try to execute a command using the new command system (sync path for LocalCommand only).
-
-        Returns:
-            Tuple of (handled: bool, result_text: str | None)
-        """
+    def _run_command(self, name: str, args: str) -> CommandResult:
+        """A registered command's result; a command that fails comes back as an error result with its own message."""
         try:
-            success, result_text, error = execute_command_sync(
-                command, args, self.command_context
-            )
-            if success:
-                return True, result_text
-            else:
-                return False, error
-        except Exception as e:
-            return False, str(e)
-
-    async def _try_execute_command_async(self, command: str, args: str) -> CommandResult:
-        """Execute a command asynchronously, supporting both LocalCommand and PromptCommand.
-
-        Returns:
-            CommandResult with the execution result
-        """
-        try:
-            return await execute_command_async(command, args, self.command_context)
-        except Exception as e:
-            return CommandResult.error(command, str(e))
+            return run_command(self.command_registry, name, args, self.command_context)
+        except Exception as e:  # pylint: disable=broad-exception-caught  # any command's failure is reported, never swallowed
+            return CommandResult.failed(name, f"/{name} failed: {e}")
 
     def _handle_command_result(self, result: CommandResult) -> bool:
         """Handle the result of a command execution.
@@ -1012,10 +987,7 @@ class ClydeREPL:
                     break
 
             if prompt_text:
-                # Send the prompt to the LLM for interactive execution
-                # Use higher max_turns for complex commands like /init
-                self.console.print("[dim]Initializing workspace setup...[/dim]")
-                self.chat(prompt_text, max_turns=100)
+                self.chat(prompt_text, max_turns=100)   # a prompt command (/init, /review) is a long task
             return True
 
         elif result.result_type == "skip":
@@ -1367,61 +1339,13 @@ class ClydeREPL:
                 ''
             }
 
-            # Handle /init through the new command system (PromptCommand path)
-            if cmd_name == 'init':
-                # Use async path for PromptCommand
-                try:
-                    # Run async command execution in a new event loop
-                    import concurrent.futures
-                    with concurrent.futures.ThreadPoolExecutor() as executor:
-                        future = executor.submit(
-                            asyncio.run,
-                            self._try_execute_command_async(cmd_name, args)
-                        )
-                        result = future.result()
-
-                    if result.success:
-                        self._handle_command_result(result)
-                    elif result.error:
-                        self.console.print(f"[red]{result.error}[/red]")
-                except Exception as e:
-                    self.console.print(f"[red]Error executing /init: {e}[/red]")
-                return
-
             if cmd_name == 'doctor':
                 self.command_context.config.update(provider=self.provider, model=self.model,
                                                    permission_context=self.tool_context.permission_context)
 
-            if cmd_name not in special_commands:
-                # Try to execute via new command system
-                # First try sync path for LocalCommand (faster)
-                try:
-                    handled, result_text = self._try_execute_new_command(cmd_name, args)
-                    if handled:
-                        if result_text:
-                            self.console.print("\n" + result_text)
-                        self.console.print()
-                        return
-                except Exception as e:
-                    # Fall through to async path
-                    pass
-
-                # Use async path for PromptCommand
-                # Run in a new event loop since we're in a sync context
-                try:
-                    import concurrent.futures
-                    with concurrent.futures.ThreadPoolExecutor() as executor:
-                        future = executor.submit(
-                            asyncio.run,
-                            self._try_execute_command_async(cmd_name, args)
-                        )
-                        result = future.result()
-
-                    if result.success:
-                        if self._handle_command_result(result):
-                            return
-                except Exception:
-                    pass
+            if cmd_name not in special_commands and self.command_registry.has(cmd_name):
+                self._handle_command_result(self._run_command(cmd_name, args))
+                return
 
         # Fall back to original command handling
         cmd = raw.lower()
@@ -1464,17 +1388,13 @@ class ClydeREPL:
             self.console.print()
 
         elif cmd in ('/clear', '/reset', '/new'):
-            # Try new command system first, fall back to original
-            try:
-                handled, result_text = self._try_execute_new_command('clear', '')
-            except Exception:
-                handled, result_text = False, None
-            if not handled:
+            result = self._run_command('clear', '')
+            if not result.success:
                 self.session.conversation.clear()
             # Clear the screen as well, then redraw the banner
             self.console.clear()
             self._print_startup_header()
-            self.console.print(Text(result_text or "Conversation cleared.", style=_CARD_DIM))
+            self.console.print(Text(result.text if result.success and result.text else "Conversation cleared.", style=_CARD_DIM))
 
         elif cmd == '/save':
             self.save_session()
@@ -1625,14 +1545,11 @@ class ClydeREPL:
             self.command_context.config["auto_compact_threshold"] = auto_compact_threshold(self._context_window())
             self.command_context.config["is_auto_compact_enabled"] = True
             # Try new command system
-            try:
-                handled, result_text = self._try_execute_new_command('context', '')
-                if handled and result_text:
-                    self.console.print(Markdown(result_text))
-                    return
-            except Exception:
-                pass
-            self.console.print("[yellow]/context analysis unavailable in this context.[/yellow]")
+            result = self._run_command('context', '')
+            if result.success and result.text:
+                self.console.print(Markdown(result.text))
+            else:
+                self.console.print(f"[yellow]/context analysis unavailable: {result.error or 'no data'}[/yellow]")
 
         elif cmd == '/compact':
             # Populate command context config for compact
@@ -1640,17 +1557,11 @@ class ClydeREPL:
             self.command_context.config["model"] = self.model
             self.command_context.config["system_prompt"] = ""
             self._refine_before_compaction()
-            # Try new command system
-            try:
-                handled, result_text = self._try_execute_new_command('compact', '')
-                if handled and result_text:
-                    self.console.print("\n[green]" + result_text + "[/green]")
-                    return
-            except Exception:
-                pass
-            # Simple fallback: just clear conversation
-            self.session.conversation.clear()
-            self.console.print("[green]Conversation cleared.[/green]")
+            result = self._run_command('compact', '')
+            if result.success:
+                self.console.print("\n[green]" + result.text + "[/green]")
+            else:   # the conversation stays as it was
+                self.console.print(f"[red]{result.error}[/red]")
 
         else:
             if raw.startswith("/"):

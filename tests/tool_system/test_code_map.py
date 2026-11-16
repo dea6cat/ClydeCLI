@@ -111,11 +111,11 @@ class TestMapCommand(unittest.TestCase):
     """/map turns its words into one Map tool call, and reports a missing graphify as text."""
 
     def _call(self, args: str):
-        from src.command_system import create_command_context, execute_command_sync
+        from src.command_system import builtin_registry, create_command_context, run_command
         from src.tool_system.protocol import ToolResult
         seen: list[dict] = []
         with patch.object(MapTool, "run", lambda self, tool_input, ctx: seen.append(tool_input) or ToolResult(name="Map", output="ok")):
-            ok, text, error = execute_command_sync("map", args, create_command_context(workspace_root=Path(".")))
+            ok, text, error = (lambda r: (r.success, r.text, r.error))(run_command(builtin_registry(), "map", args, create_command_context(workspace_root=Path("."))))
         self.assertTrue(ok, error)
         self.assertEqual(text, "ok")
         return seen[0]
@@ -130,8 +130,8 @@ class TestMapCommand(unittest.TestCase):
         self.assertEqual(self._call("query login"), {"action": "query", "question": "login"})
 
     def test_a_missing_graphify_is_reported_not_raised(self):
-        from src.command_system import create_command_context, execute_command_sync
+        from src.command_system import builtin_registry, create_command_context, run_command
         with patch("src.tool_system.tools.code_map.shutil.which", return_value=None):
-            ok, text, _ = execute_command_sync("map", "", create_command_context(workspace_root=Path(".")))
+            ok, text, _ = (lambda r: (r.success, r.text, r.error))(run_command(builtin_registry(), "map", "", create_command_context(workspace_root=Path("."))))
         self.assertTrue(ok)
         self.assertIn("graphify", text)

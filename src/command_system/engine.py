@@ -65,7 +65,7 @@ class CommandResult:
         )
 
     @classmethod
-    def error(cls, command_name: str, error: str) -> "CommandResult":
+    def failed(cls, command_name: str, error: str) -> "CommandResult":
         """Create an error result."""
         return cls(
             success=False,
@@ -113,7 +113,7 @@ class CommandEngine:
         """
         # Parse command and args
         if not command_input.startswith("/"):
-            return CommandResult.error(
+            return CommandResult.failed(
                 "",
                 "Commands must start with '/'",
             )
@@ -125,14 +125,14 @@ class CommandEngine:
         # Get command
         command = self.registry.get(command_name)
         if command is None:
-            return CommandResult.error(
+            return CommandResult.failed(
                 command_name,
                 f"Unknown command: {command_name}",
             )
 
         # Check if command is enabled
         if not command.is_enabled():
-            return CommandResult.error(
+            return CommandResult.failed(
                 command_name,
                 f"Command {command_name} is disabled",
             )
@@ -144,7 +144,7 @@ class CommandEngine:
         elif command.command_type == CommandType.PROMPT:
             result = await self._execute_prompt(command, args)
         else:
-            result = CommandResult.error(
+            result = CommandResult.failed(
                 command_name,
                 f"Unknown command type: {command.command_type}",
             )
@@ -177,7 +177,7 @@ class CommandEngine:
                 display_text,
             )
         except Exception as e:
-            return CommandResult.error(
+            return CommandResult.failed(
                 command.name,
                 str(e),
             )
@@ -196,7 +196,7 @@ class CommandEngine:
                 should_query=True,
             )
         except Exception as e:
-            return CommandResult.error(
+            return CommandResult.failed(
                 command.name,
                 str(e),
             )

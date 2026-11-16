@@ -220,6 +220,8 @@ class TestReplLogin(unittest.TestCase):
 
         repl = ClydeREPL.__new__(ClydeREPL)
         repl._built_in_commands = ["/login"]
+        from src.command_system import builtin_registry
+        repl.command_registry = builtin_registry()
         for line, expected in (("/login nvidia", "nvidia"), ("/login", None)):
             with patch.object(ClydeREPL, "_handle_relogin") as relogin:
                 repl.handle_command(line)

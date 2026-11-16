@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A slash command that fails says why. It was run a second time through another path with its error thrown away, and then reported as "Unknown command". A failed `/compact` no longer clears the conversation: it said so and kept nothing.
 - `/harness list` shows your MCP servers. It read `~/.clyde/mcp_servers.json`, a file Clyde never writes, instead of `mcpServers` in your settings.
 - `git branch -D` (force-deleting a branch) asks even in "all in" mode, as it was meant to; the check lowercased the command first, so only a separate patch caught it. `git branch -d` still doesn't ask.
 - One slow answer from Ollama about a model no longer leaves its window, image support and reasoning control unknown for the rest of the session: only an answer is remembered, and a failed lookup is tried again.

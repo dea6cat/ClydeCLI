@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import unittest
+
+from src.command_system.engine import CommandResult
 from unittest.mock import Mock, patch
 from pathlib import Path
 import tempfile
@@ -641,7 +643,7 @@ class TestREPL(unittest.TestCase):
                     skill = SimpleNamespace(name="hello", description="Greets.", user_invocable=True)
                     with patch.object(repl, "_show_slash_palette") as palette, \
                             patch('src.skills.loader.get_all_skills', return_value=[skill]), \
-                            patch.object(repl, "_try_execute_new_command", return_value=(True, "ran")):
+                            patch.object(repl, "_run_command", return_value=CommandResult.success_text("cost", "ran")):
                         repl.handle_command("/cost")          # a registry command that is not one of the built-in names
                         repl.handle_command("/hello")         # a skill
                         palette.assert_not_called()
@@ -1077,7 +1079,7 @@ class TestTimesAndClear(unittest.TestCase):
         repl.console = Console(file=io.StringIO(), width=100)
         repl.console.clear = MagicMock()
         repl._print_startup_header = MagicMock()
-        repl._try_execute_new_command = MagicMock(return_value=(False, None))
+        repl._run_command = MagicMock(return_value=CommandResult.failed("clear", "not run"))
         repl._built_in_commands = ["/clear"]
         repl.session = MagicMock()
         repl.handle_command("/clear")
