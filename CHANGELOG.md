@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- The migration from the config layout used before keys.json (per-provider `api_key` entries in config.json). That layout predates the first release, v0.2.3.
+
 ### Security
 
 - After a web or MCP result tries to instruct the model, Clyde asks before anything else leaves the machine for the rest of the session. The injection check already put a notice in front of such a result, but the next call still ran without asking when an allow rule (a saved `WebSearch` rule, a `WebFetch(domain:...)` rule) or "all in" let it through, and that next call is how an injected page gets the conversation out. Now WebFetch, WebSearch, MCP tools and every Bash command that is not read-only (curl, git push, ssh, dig) ask; the question names the result that tripped it and offers no "don't ask again". Deny rules still deny. Sub-agents and workers share the flag, and in `clyde -p`, which cannot ask, those calls are refused.

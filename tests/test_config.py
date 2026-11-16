@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import base64
 import json
 import os
 import tempfile
@@ -71,73 +70,6 @@ class TestConfigFile(_TempHome):
         self.assertEqual(get_default_model(), "anthropic:claude-sonnet-4-6")
         set_default_model(None)
         self.assertIsNone(get_default_model())
-
-
-class TestLegacyMigration(_TempHome):
-    def _legacy(self, **overrides):
-        data = {
-            "default_provider": "openai",
-            "providers": {
-                "openai": {"api_key": base64.b64encode(b"sk-openai").decode(), "default_model": "gpt-5.4",
-                           "base_url": "https://api.openai.com/v1"},
-                "glm": {"api_key": base64.b64encode(b"glm-key").decode(), "default_model": "zai/glm-5"},
-                "anthropic": {"api_key": "", "default_model": "claude-sonnet-4-6"},
-            },
-            "session": {"auto_save": True, "max_history": 50},
-        }
-        data.update(overrides)
-        return data
-
-    def test_keys_move_to_keys_file_decoded(self):
-        self.write_config(self._legacy())
-        load_config()
-        saved = json.loads(keys.keys_file().read_text())
-        self.assertEqual(saved, {"openai": "sk-openai", "glm": "glm-key"})
-        if os.name != "nt":
-            self.assertEqual(keys.keys_file().stat().st_mode & 0o777, 0o600)
-
-    def test_default_model_and_layout_migrated(self):
-        self.write_config(self._legacy())
-        config = load_config()
-        self.assertEqual(config["model"], "openai:gpt-5.4")
-        self.assertNotIn("providers", config)
-        self.assertNotIn("default_provider", config)
-        self.assertEqual(config["session"]["max_history"], 50)
-        self.assertNotIn("providers", json.loads(get_config_path().read_text()))
-
-    def test_litellm_prefix_stripped(self):
-        self.write_config(self._legacy(default_provider="glm"))
-        self.assertEqual(load_config()["model"], "glm:glm-5")
-
-    def test_existing_saved_key_is_not_overwritten(self):
-        keys.connect("openai", "sk-newer")
-        self.write_config(self._legacy())
-        load_config()
-        self.assertEqual(json.loads(keys.keys_file().read_text())["openai"], "sk-newer")
-
-    def test_plain_text_legacy_key_kept(self):
-        self.write_config(self._legacy(providers={"openai": {"api_key": "sk-plain!", "default_model": "gpt-5.4"}}))
-        load_config()
-        self.assertEqual(json.loads(keys.keys_file().read_text())["openai"], "sk-plain!")
-
-
-class TestMigrationSafety(TestLegacyMigration):
-    def test_original_config_is_backed_up(self):
-        self.write_config(self._legacy())
-        original = get_config_path().read_text()
-        load_config()
-        backup = get_config_path().with_name("config.json.bak")
-        self.assertEqual(backup.read_text(), original)
-        if os.name != "nt":
-            self.assertEqual(backup.stat().st_mode & 0o777, 0o600)
-
-    def test_corrupt_keys_file_blocks_migration_without_loss(self):
-        keys.keys_file().parent.mkdir(parents=True, exist_ok=True)
-        keys.keys_file().write_text("{not json")
-        self.write_config(self._legacy())
-        config = load_config()
-        self.assertIn("providers", config)                       # left untouched
-        self.assertEqual(keys.keys_file().read_text(), "{not json")
 
 
 class TestKeyStore(_TempHome):
