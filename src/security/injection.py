@@ -21,7 +21,7 @@ RULES = ("P1", "P3", "P6", "P8")
 MIN_CONFIDENCE = 0.8   # the weaker patterns ("your new rules are") would flag ordinary writing
 _BIDI = re.compile("[‪-‮⁦-⁩]")   # text direction overrides: they reorder what a person reads from what the model reads
 MAX_CHARS = 200_000    # of one result looked at
-EXTERNAL = ("webfetch", "websearch")
+EXTERNAL = ("webfetch", "websearch", "mcp", "readmcpresourcetool", "listmcpresourcestool")   # the last three: MCP by server and tool name
 
 
 def is_external(tool_name: str) -> bool:

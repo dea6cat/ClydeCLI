@@ -54,6 +54,10 @@ class ToolContext:
     # Files and folders outside the project that the user approved this session (a folder covers what is under it).
     # Shared with sub-agents like the rules above, so one yes covers the whole session.
     granted_paths: set[Path] = field(default_factory=set)
+    # Outside results this session that addressed the model (src/security/injection.py), newest last. While it is not empty,
+    # every call that can send something out asks, whatever the allow rules or "all in" say. Shared with sub-agents and
+    # workers like the sets above: a page one of them read can steer the others.
+    injection_sources: list[str] = field(default_factory=list)
 
     # Permission handler callback: called when a tool needs user consent.
     # Signature: (tool_name: str, message: str, suggestion: str | None)

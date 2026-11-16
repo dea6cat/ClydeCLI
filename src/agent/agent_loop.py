@@ -493,6 +493,8 @@ def run_agent_loop(
                 result_output, flagged = injection.guard(tool_name, result.output)   # an outside tool's answer that addresses the model gets a notice
                 if flagged:
                     trace.record("injection_flag", tool=tool_name, findings=flagged)
+                    summary = summarize_tool_use(tool_name, tool_input)
+                    tool_context.injection_sources.append(f"{tool_name} ({summary})" if summary else tool_name)
                 # New lint/type problems ride on the edit's own result (like hook feedback), so the
                 # model sees them on its next turn without breaking tool_use/tool_result pairing.
                 problems = edit_check.report() if edit_check and not result.is_error else None
