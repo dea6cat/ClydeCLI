@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -47,18 +46,6 @@ class ExitPlanModeTool:
                 "type": "object",
                 "additionalProperties": True,
                 "properties": {
-                    "allowedPrompts": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "additionalProperties": False,
-                            "properties": {
-                                "tool": {"type": "string", "enum": ["Bash"]},
-                                "prompt": {"type": "string"},
-                            },
-                            "required": ["tool", "prompt"],
-                        },
-                    },
                     "plan": {"type": "string"},
                     "planFilePath": {"type": "string"},
                 },
@@ -97,13 +84,5 @@ class ExitPlanModeTool:
                 keep_plans_out_of_git(context.workspace_root)
 
         context.plan_mode = False
-        out: dict[str, Any] = {
-            "plan": plan if plan is not None else None,
-            "isAgent": False,
-            "filePath": file_path_out,
-            "hasTaskTool": True,
-            "planWasEdited": False,
-            "requestId": datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S"),
-        }
-        return ToolResult(name="ExitPlanMode", output=out)
+        return ToolResult(name="ExitPlanMode", output={"plan": plan, "filePath": file_path_out})
 
