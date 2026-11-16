@@ -8,15 +8,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .hooks import _read, settings_paths
+from src import settings
 
 
 def trusted(root: Path) -> bool:
     """Whether `root`, or a folder above it, is listed under trustedFolders in the user's settings."""
     resolved = Path(root).resolve()
-    for path in settings_paths():
+    for path in settings.paths():
         try:
-            data = _read(path)
+            data = settings.read_file(path)
         except (OSError, ValueError):
             continue
         listed = data.get("trustedFolders") if isinstance(data, dict) else None

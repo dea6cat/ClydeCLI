@@ -10,12 +10,9 @@ take a path glob relative to the workspace; a bare tool name matches every use. 
 
 from __future__ import annotations
 
-from src.config import clyde_home
-from src.safe_write import write_json_safely
+from src import settings
 
 import fnmatch
-import hashlib
-import json
 import re
 import shlex
 import urllib.parse
@@ -27,16 +24,9 @@ _RULE_RE = re.compile(r"^([^()]+?)\s*(?:\((.*)\))?$", re.DOTALL)
 _PATH_TOOLS = ("Edit", "Write", "Read", "Grep")
 
 
-def settings_path() -> Path:
-    return clyde_home() / "settings.json"
-
-
 def load_rules(path: Path | None = None) -> dict[str, list[str]]:
     """`permissions.allow` / `.ask` / `.deny` from a settings file; empty lists when missing or unreadable."""
-    try:
-        perms = json.loads((path or settings_path()).read_text(encoding="utf-8")).get("permissions", {})
-    except (OSError, ValueError, AttributeError):
-        perms = {}
+    perms = settings.read_json(path).get("permissions", {})
     if not isinstance(perms, dict):
         perms = {}
     return {key: [r for r in perms.get(key) or [] if isinstance(r, str)] for key in ("allow", "ask", "deny")}
@@ -46,33 +36,16 @@ def project_settings_path(root: Path) -> Path:
     return Path(root) / ".clyde" / "settings.json"
 
 
-def _approvals_path() -> Path:
-    return clyde_home() / "project_rule_approvals.json"
-
-
-def _approval_key(root: Path, allow: list[str]) -> str:
-    return f"{Path(root).resolve()}::{hashlib.sha256(json.dumps(sorted(allow)).encode()).hexdigest()[:16]}"
+_TRUST = settings.Approvals("project_rule_approvals.json")
 
 
 def project_trust(root: Path, allow: list[str]) -> bool | None:
     """True or False when this project's exact allow list was answered before; None when it is new or changed."""
-    try:
-        answers = json.loads(_approvals_path().read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
-    value = answers.get(_approval_key(root, allow)) if isinstance(answers, dict) else None
-    return value if isinstance(value, bool) else None
+    return _TRUST.get(_TRUST.key(root, sorted(allow)))
 
 
 def set_project_trust(root: Path, allow: list[str], trusted: bool) -> None:
-    path = _approvals_path()
-    try:
-        answers = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        answers = {}
-    answers = answers if isinstance(answers, dict) else {}
-    answers[_approval_key(root, allow)] = trusted
-    write_json_safely(path, answers, indent=1, sort_keys=True)
+    _TRUST.set(_TRUST.key(root, sorted(allow)), trusted)
 
 
 def merge_project_rules(rules: dict[str, list[str]], project: dict[str, list[str]], trusted: bool) -> dict[str, list[str]]:
@@ -90,17 +63,14 @@ def bare_denied(tool: str, rules: dict[str, list[str]]) -> bool:
 
 def save_allow_rule(rule: str, path: Path | None = None) -> None:
     """Append an allow rule to the settings file, keeping every other key."""
-    path = path or settings_path()
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        data = {}
-    if not isinstance(data, dict):
-        raise ValueError(f"{path} is not a JSON object")
-    allow = data.setdefault("permissions", {}).setdefault("allow", [])
-    if rule not in allow:
+    def add(data: dict) -> bool:
+        allow = data.setdefault("permissions", {}).setdefault("allow", [])
+        if rule in allow:
+            return False
         allow.append(rule)
-    write_json_safely(path, data, private=True)  # settings may hold MCP tokens
+        return True
+
+    settings.update(add, path)
 
 
 def _words(text: str) -> list[str]:

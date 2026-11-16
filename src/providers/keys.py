@@ -6,8 +6,9 @@ setting the right env var and, to make it stick, writing it to ~/.clyde/keys.jso
 """
 from __future__ import annotations
 
+from src import settings
 from src.config import clyde_home
-from src.safe_write import write_json_safely, write_safely
+from src.safe_write import write_safely
 
 import json
 import os
@@ -46,18 +47,11 @@ _PROTOCOL: dict[str, str] = {}   # custom provider -> the API it speaks, filled 
 _NAME = re.compile(r"^[a-z][a-z0-9-]{1,30}$")
 
 
-def _settings_file() -> Path:
-    return clyde_home() / "settings.json"
-
-
 def custom_providers() -> dict[str, str]:
     """Services the user added (OpenAI- or Anthropic-compatible): name -> base URL, from "providers" in
     ~/.clyde/settings.json. Each one's key env var is registered in PROVIDER_KEY_ENV, so saving,
     loading, logout and trace redaction treat it like a built-in provider."""
-    try:
-        raw = json.loads(_settings_file().read_text(encoding="utf-8")).get("providers", {})
-    except (OSError, ValueError, AttributeError):
-        return {}
+    raw = settings.read_json().get("providers", {})
     found = {name: cfg["base_url"] for name, cfg in (raw.items() if isinstance(raw, dict) else [])
              if name not in _BUILT_IN and _NAME.match(str(name)) and isinstance(cfg, dict)
              and str(cfg.get("base_url", "")).startswith(("http://", "https://"))}
@@ -103,22 +97,19 @@ def _edit_providers(change) -> str | None:
 
 def _edit_object(name: str, change) -> str | None:
     """Apply `change` to the `name` object in settings.json (dropped again when left empty)."""
-    path = _settings_file()
+    def apply(data: dict) -> bool:
+        section = data.setdefault(name, {})
+        if not isinstance(section, dict):
+            raise ValueError(f'"{name}" in {settings.json_path()} is not a JSON object')
+        change(section)
+        if not section:
+            del data[name]
+        return True
+
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        data = {}
+        settings.update(apply)
     except (OSError, ValueError) as e:
-        return f"can't read {path}: {e}"
-    if not isinstance(data, dict):
-        return f"{path} is not a JSON object"
-    section = data.setdefault(name, {})
-    if not isinstance(section, dict):
-        return f'"{name}" in {path} is not a JSON object'
-    change(section)
-    if not section:
-        del data[name]
-    write_json_safely(path, data, private=True)  # settings may hold MCP tokens
+        return f"can't update {settings.json_path()}: {e}"
     return None
 
 
@@ -171,10 +162,7 @@ def load_into_env() -> None:
 
 
 def _provider_settings() -> dict[str, dict]:
-    try:
-        raw = json.loads(_settings_file().read_text(encoding="utf-8")).get("providerSettings", {})
-    except (OSError, ValueError, AttributeError):
-        return {}
+    raw = settings.read_json().get("providerSettings", {})
     return {p: v for p, v in raw.items() if isinstance(v, dict)} if isinstance(raw, dict) else {}
 
 

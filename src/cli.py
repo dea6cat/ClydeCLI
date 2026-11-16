@@ -645,7 +645,8 @@ def handle_mcp_auth(console: Console, action: str, name: str) -> int:
 def handle_hooks_import(console: Console, quiet: bool = False) -> int:
     """Offer each other agent's hooks for import; nothing is copied without a yes."""
     from rich.prompt import Confirm
-    from src.tool_system.hooks import find_foreign_hooks, import_hooks, settings_paths
+    from src import settings
+    from src.tool_system.hooks import find_foreign_hooks, import_hooks
 
     found = find_foreign_hooks()
     if not found:
@@ -665,7 +666,7 @@ def handle_hooks_import(console: Console, quiet: bool = False) -> int:
             except ValueError as e:
                 console.print(f"[red]{e}[/red]")
                 return 1
-    console.print(f"Imported {total} hook(s) into {settings_paths()[0]}." if total else "No hooks imported.")
+    console.print(f"Imported {total} hook(s) into {settings.json_path()}." if total else "No hooks imported.")
     return 0
 
 

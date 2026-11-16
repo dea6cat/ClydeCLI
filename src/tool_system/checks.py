@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import NamedTuple
 
-from .hooks import _read, settings_paths
+from src import settings
 from .trust import trusted
 
 EDIT_TIMEOUT = 15      # per checker, per edit: bounds the stall a user would feel
@@ -57,9 +57,9 @@ class Tooling:
 def checks_enabled() -> bool:
     if os.environ.get("CLYDE_CHECKS", "").lower() in {"off", "0", "false", "no"}:
         return False
-    for path in settings_paths():
+    for path in settings.paths():
         try:
-            data = _read(path)
+            data = settings.read_file(path)
         except (OSError, ValueError):
             continue
         section = data.get("checks") if isinstance(data, dict) else None
