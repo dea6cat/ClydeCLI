@@ -68,6 +68,12 @@ def _set_session(key: str) -> Callable[[Any], None]:
     return write
 
 
+def _set_omlx_memory_guard(choice: str) -> None:
+    """Save the guard and stop the oMLX server Clyde started, so the next request starts it with the new one."""
+    config_mod.set_omlx_memory_guard(choice)
+    omlx.stop_server()
+
+
 def settings() -> list[Setting]:
     """The options ClydeCLI keeps in ~/.clyde/config.json that a toggle can change; each applies from the next start."""
     session = lambda c: c.get("session", {})   # noqa: E731
@@ -91,7 +97,7 @@ def settings() -> list[Setting]:
                 lambda v: network.set_ca(None if v == "off" else v), applies="the next time Clyde starts; add one with /proxy ca <file>"),
         Setting("Update channel", config_mod.UPDATE_CHANNELS, lambda c: c.get("update_channel", "latest"), config_mod.set_update_channel),
         *([Setting("oMLX memory guard", omlx.memory_guard_choices(), lambda c: config_mod.get_omlx_memory_guard() or omlx.GUARD,
-                   config_mod.set_omlx_memory_guard, applies="your next oMLX request (Clyde restarts its oMLX server with it)")]
+                   _set_omlx_memory_guard, applies="your next oMLX request (Clyde restarts its oMLX server with it)")]
           if omlx.supported() else []),
     ]
 

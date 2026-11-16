@@ -21,6 +21,7 @@ from typing import Callable, Protocol
 
 from .. import __version__, trace
 from ..runtime import activity
+from ..runtime import connections
 from .toolspec import ToolSpec
 from .types import Conversation, Message
 
@@ -53,41 +54,11 @@ class ProviderError(RuntimeError):
         self.retry_after = retry_after   # seconds the provider asked us to wait, when it said
 
 
-# --- Abortable connections -------------------------------------------------
-# A flag can't wake a thread blocked in a C-level socket read; the socket has to be
-# closed. Every live response registers here so abort_all_connections() can close them
-# all at once. A close mid-read raises OSError/ValueError in the blocked thread, which the
-# helpers translate to _Cancelled when the caller's cancel Event is set.
-_active_conns: set = set()
-_conns_lock = threading.Lock()
-
-
 class _Cancelled(Exception):
     """Raised by the HTTP helpers when their cancel Event is set, either before connecting or
-    because abort_all_connections() closed the socket mid-read. Not a ProviderError, so
+    because connections.abort_all_connections() closed the socket mid-read. Not a ProviderError, so
     stream_with_retry re-raises it immediately (never retries)."""
 
-
-def _register(resp) -> None:
-    with _conns_lock:
-        _active_conns.add(resp)
-
-
-def _unregister(resp) -> None:
-    with _conns_lock:
-        _active_conns.discard(resp)
-
-
-def abort_all_connections() -> None:
-    """Close every live HTTP response so any thread blocked reading one raises at once."""
-    with _conns_lock:
-        conns = list(_active_conns)
-        _active_conns.clear()
-    for resp in conns:
-        try:
-            resp.close()
-        except Exception:
-            pass
 
 
 class Provider(Protocol):
@@ -280,7 +251,7 @@ def post_json(url: str, payload: dict, headers: dict | None = None, timeout: int
         raise _Cancelled()
     resp = _open(_request(url, payload, headers, method), timeout, provider, cancel)
     _note_limits(resp, provider)
-    _register(resp)
+    connections.register(resp)
     try:
         with resp:
             return json.loads(resp.read())
@@ -289,7 +260,7 @@ def post_json(url: str, payload: dict, headers: dict | None = None, timeout: int
             raise _Cancelled() from e
         raise ProviderError(provider, f"read failed: {e}", retryable=True) from e
     finally:
-        _unregister(resp)
+        connections.unregister(resp)
 
 
 def post_stream(url: str, payload: dict, headers: dict | None = None, timeout: int | None = None,
@@ -302,7 +273,7 @@ def post_stream(url: str, payload: dict, headers: dict | None = None, timeout: i
     timeout = timeout or _stall_timeout(url)
     resp = _open(_request(url, payload, headers), timeout, provider, cancel)
     _note_limits(resp, provider)
-    _register(resp)
+    connections.register(resp)
     try:
         with resp:
             for raw in resp:
@@ -316,7 +287,7 @@ def post_stream(url: str, payload: dict, headers: dict | None = None, timeout: i
             raise _stalled(provider, timeout) from e
         raise ProviderError(provider, f"stream read failed: {e}", retryable=True) from e
     finally:
-        _unregister(resp)
+        connections.unregister(resp)
 
 
 MAX_RETRY_AFTER_WAIT_S = 30.0   # longer asks bench the card instead of stalling the turn

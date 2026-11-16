@@ -170,12 +170,10 @@ def get_omlx_memory_guard() -> str | None:
 
 
 def set_omlx_memory_guard(choice: str) -> None:
-    """Persist oMLX's memory guard and stop the server Clyde started, so the next request starts it with the new one."""
-    from src.providers import omlx
+    """Persist oMLX's memory guard. It takes effect when Clyde next starts its oMLX server."""
     config = load_config()
     config["omlx_memory_guard"] = choice
     save_config(config)
-    omlx.stop_server()
 
 
 UPDATE_CHANNELS = ("latest", "stable")
