@@ -468,7 +468,7 @@ class TestMCPTool(ToolSystemTests):
 
 class TestSkillTool(ToolSystemTests):
     def test_skill_runs_markdown_skill(self) -> None:
-        from src.skills.create import create_skill
+        from tests.skills.skill_files import create_skill
 
         skills_dir = self.root / "skills"
         create_skill(

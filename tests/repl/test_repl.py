@@ -153,20 +153,18 @@ class TestREPL(unittest.TestCase):
                     with self.assertRaises(SystemExit):
                         repl.handle_command("/exit")
 
-    def test_handle_command_clear(self):
-        """Test /clear command."""
-        with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
-            with patch('src.repl.core.Session.create') as mock_session:
-                mock_session_instance = Mock()
-                mock_session_instance.conversation = Mock()
-                mock_session.return_value = mock_session_instance
-
-                with _fake_provider_env() as mock_provider:
-
-                    repl = ClydeREPL(model="glm:glm-4.5")
-                    repl.handle_command("/clear")
-
-                    mock_session_instance.conversation.clear.assert_called_once()
+    def test_handle_command_clear_wipes_the_conversation_and_the_screen(self):
+        import io
+        from rich.console import Console
+        with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"), _fake_provider_env():
+            out = io.StringIO()
+            repl = ClydeREPL(model="glm:glm-4.5", console=Console(file=out, width=100))
+            repl.session.conversation.add_user_message("an earlier request")
+            with patch.object(repl.console, "clear") as clear_screen:
+                repl.handle_command("/clear")
+            self.assertEqual(repl.session.conversation.messages, [])
+            clear_screen.assert_called_once()
+            self.assertIn("Conversation cleared.", out.getvalue())
 
     def test_handle_command_multiline_toggle(self):
         """Test /multiline command."""
@@ -1068,22 +1066,3 @@ class TestTimesAndClear(unittest.TestCase):
         self.assertEqual(_clock(datetime(2026, 1, 1, 17, 47)), "5:47 PM")
         self.assertEqual(_clock(datetime(2026, 1, 1, 0, 5)), "12:05 AM")
         self.assertEqual([_duration(x) for x in (0.42, 12, 165, 3725)], ["0.4s", "12s", "2m 45s", "1h 2m"])
-
-    def test_clear_wipes_the_conversation_and_the_screen(self):
-        import io
-        from unittest.mock import MagicMock
-        from rich.console import Console
-        from src.repl.core import ClydeREPL
-
-        repl = ClydeREPL.__new__(ClydeREPL)
-        repl.console = Console(file=io.StringIO(), width=100)
-        repl.console.clear = MagicMock()
-        repl._print_startup_header = MagicMock()
-        repl._run_command = MagicMock(return_value=CommandResult.failed("clear", "not run"))
-        repl._built_in_commands = ["/clear"]
-        repl.session = MagicMock()
-        repl.handle_command("/clear")
-        repl.session.conversation.clear.assert_called_once()
-        repl.console.clear.assert_called_once()
-        repl._print_startup_header.assert_called_once()
-        self.assertIn("Conversation cleared.", repl.console.file.getvalue())

@@ -384,7 +384,7 @@ class TestDownloadOptions(unittest.TestCase):
         header, (choice,) = local_models._table([row], "Apple M3 Pro", 200)
         self.assertEqual(choice.label, "IFM/K2-7B")
         self.assertEqual(choice.hint.index("lmstudio-community"), header[1].index("VIA"))   # the publisher sits in the VIA column
-        (plain,) = local_models._choices([self.row], "Apple M3 Pro")
+        (plain,) = local_models._table([self.row], "Apple M3 Pro", 10_000)[1]
         self.assertEqual(plain.label, "u/m")
         self.assertNotIn("lmstudio-community", plain.hint)
 
@@ -426,7 +426,7 @@ class TestDownloadOptions(unittest.TestCase):
         self.assertEqual(pick.call_args_list[0].kwargs["header"][0], "MODEL")
 
     def test_the_model_row_says_how_many_options_it_has(self):
-        (row,) = local_models._choices([self.row], "Apple M3 Pro")
+        (row,) = local_models._table([self.row], "Apple M3 Pro", 10_000)[1]
         self.assertEqual(row.hint.split()[-1], "4")      # the OPTIONS cell; this row has no "via" after it
 
     def test_the_chosen_option_is_what_gets_confirmed_and_downloaded(self):
@@ -702,7 +702,7 @@ class TestQuantHint(unittest.TestCase):
         self.assertEqual(local_models._quant("instruct"), "instruct")
 
     def test_the_picker_row_shows_it(self):
-        self.assertIn("Q4_K_M (good balance)", local_models._choices([GGUF], "")[0].hint)
+        self.assertIn("Q4_K_M (good balance)", local_models._table([GGUF], "", 10_000)[1][0].hint)
 
 
 class TestOfferDetails(unittest.TestCase):

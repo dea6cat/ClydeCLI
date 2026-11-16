@@ -157,7 +157,7 @@ class TestBuiltinCommands(unittest.TestCase):
 
     def test_skills_command_with_project_root(self):
         """Test that /skills command can find project skills."""
-        from src.skills.create import create_skill
+        from tests.skills.skill_files import create_skill
 
         # Create a skill in the temp directory
         project_skills_dir = Path(self.tmpdir.name) / ".clyde" / "skills"

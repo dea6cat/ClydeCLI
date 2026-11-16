@@ -135,11 +135,6 @@ def _table(offers: list[fit.Offer], chip: str, width: int) -> tuple[tuple[str, s
     return ("MODEL", titles_line), [Choice(str(i), label, line) for i, (label, line) in enumerate(zip(labels, lines))]
 
 
-def _choices(offers: list[fit.Offer], chip: str) -> list[Choice]:
-    """The search rows at any width (every column)."""
-    return _table(offers, chip, 10_000)[1]
-
-
 _FORMAT = {"hf": "GGUF", "mlx": "MLX", "ollama": "Ollama"}
 
 
