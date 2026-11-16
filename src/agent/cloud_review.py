@@ -58,8 +58,7 @@ def review_reply(request: str, reply: str, context: Any, *, registry: dict | Non
     if not why:
         return None
     try:
-        from ..providers import build_registry, keys, pick_default_model, resolve
-        keys.load_into_env()
+        from ..providers import build_registry, pick_default_model, resolve
         reg = registry if registry is not None else build_registry()
         ref = pick_default_model({name: p for name, p in reg.items() if name not in _NOT_CLOUD})
         resolved = resolve(reg, ref) if ref else None

@@ -482,7 +482,6 @@ def handle_login(provider: str | None = None):
 
     console = Console()
     console.print("\n[bold #4eba65]ClydeCLI - Connect a provider[/bold #4eba65]\n")
-    keys.load_into_env()
     registry = build_registry()
     if provider and provider not in _login_choices(registry):
         console.print(f"[yellow]No provider called {provider!r}; pick one below.[/yellow]")
@@ -507,7 +506,6 @@ def handle_setup(console: Console, assume_yes: bool = False) -> int:
     console.print("\n[bold #4eba65]ClydeCLI setup[/bold #4eba65]")
 
     # 1) provider and default model
-    keys.load_into_env()
     registry = build_registry()
     connected = usable(registry)
     if connected and get_default_model():
@@ -1013,7 +1011,6 @@ def list_models() -> int:
     from src.providers import build_registry, keys, usable
 
     console = Console()
-    keys.load_into_env()
     live = usable(build_registry())
     if not live:
         console.print("[yellow]No providers connected.[/yellow] Run [bold]clyde login[/bold], or start Ollama.")

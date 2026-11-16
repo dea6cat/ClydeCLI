@@ -137,9 +137,8 @@ def default_llm_env() -> dict[str, str] | None:
     """llm_env for the saved default model, for scans run outside the REPL (plugin installs)."""
     try:
         from src.config import get_default_model
-        from src.providers import build_registry, keys, resolve
+        from src.providers import build_registry, resolve
 
-        keys.load_into_env()
         model = get_default_model()
         resolved = resolve(build_registry(), model) if model else None
         return llm_env(*resolved) if resolved else None

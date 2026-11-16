@@ -118,9 +118,8 @@ def discover_providers() -> list[Harness]:
     """Connected providers with the models each one really offers (Ollama: what is installed)."""
     found: list[Harness] = []
     try:
-        from src.providers import build_registry, keys, usable
+        from src.providers import build_registry, usable
         from src.providers.card_shuffle import CardShuffle
-        keys.load_into_env()
         for name, provider in usable(build_registry()).items():
             if name == CardShuffle.name:   # a dealer over the others, not a model source
                 continue

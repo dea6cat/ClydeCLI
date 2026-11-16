@@ -397,7 +397,6 @@ class ClydeREPL:
         self._input_buffer = ""             # partial line leftover from draining stdin
         self._input_reader: threading.Thread | None = None   # reads stdin while chat/command runs
 
-        keys.load_into_env()
         self.registry = build_registry()
         if (omlx := self.registry.get("omlx")) is not None:
             omlx.confirm_install = self._confirm_install_omlx

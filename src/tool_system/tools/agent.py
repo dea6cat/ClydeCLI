@@ -44,8 +44,7 @@ def offered_tools(registry: ToolRegistry, agent: Any, rules: dict[str, list[str]
 def _model_for(agent: Any, context: ToolContext) -> tuple[Any, str, str]:
     """(provider, model, note): the agent's own model when it names one that's usable, else the caller's."""
     if agent.model:
-        from ...providers import build_registry, keys, resolve
-        keys.load_into_env()
+        from ...providers import build_registry, resolve
         resolved = resolve(build_registry(), agent.model)
         if resolved is not None:
             return resolved[0], resolved[1], ""
