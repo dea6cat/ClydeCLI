@@ -15,9 +15,9 @@ import subprocess
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from .ollama import _total_ram_bytes
+from src.system import machine
+from src.system.machine import GB
 
-GB = 1024 ** 3
 OVERHEAD = int(1.5 * GB)   # ponytail: flat KV + runtime allowance; size it from the model's layers if ratings drift
 RATINGS = (("relax", 0.5), ("balance", 0.8), ("hard", 1.0))   # share of the budget a model may use
 TOO_LARGE = "too large"   # the rating of a download that fits no part of the budget: listed as an option, never offered
@@ -90,27 +90,6 @@ def group(offers: list[Offer], prefer: tuple[str, ...] = ()) -> list[Offer]:
     return merged
 
 
-def _sysctl(name: str) -> str:
-    try:
-        return subprocess.run(["sysctl", "-n", name], capture_output=True, text=True, timeout=2).stdout.strip()
-    except (OSError, subprocess.SubprocessError):
-        return ""
-
-
-def free_now_bytes() -> int | None:
-    """Memory available right now (free + reclaimable pages), or None when it can't be read."""
-    try:
-        if platform.system() == "Darwin":
-            out = subprocess.run(["vm_stat"], capture_output=True, text=True, timeout=2).stdout
-            page = int(re.search(r"page size of (\d+)", out).group(1))
-            pages = {k.strip(): int(v.strip(" .")) for k, v in re.findall(r"^Pages ([^:]+):\s+(\d+)\.", out, re.M)}
-            return page * sum(pages.get(k, 0) for k in ("free", "inactive", "speculative", "purgeable"))
-        meminfo = Path("/proc/meminfo").read_text()
-        return int(re.search(r"MemAvailable:\s+(\d+) kB", meminfo).group(1)) * 1024
-    except (OSError, subprocess.SubprocessError, AttributeError, ValueError):
-        return None
-
-
 def models_dir() -> Path:
     """Where Ollama stores pulled models."""
     return Path(os.environ.get("OLLAMA_MODELS") or Path.home() / ".ollama" / "models")
@@ -129,17 +108,17 @@ def disk_free_bytes() -> int | None:
 
 def chip() -> str:
     """The CPU brand string ("Apple M3 Pro"), or "" when unknown."""
-    return _sysctl("machdep.cpu.brand_string") if platform.system() == "Darwin" else ""
+    return machine.sysctl("machdep.cpu.brand_string") if platform.system() == "Darwin" else ""
 
 
 def budget_bytes(ram: int | None = None, apple: bool | None = None, wired_limit_mb: int | None = None) -> int:
     """Memory a local model may use on this machine."""
-    ram = _total_ram_bytes() if ram is None else ram
+    ram = machine.total_ram_bytes() if ram is None else ram
     apple = chip().startswith("Apple") if apple is None else apple
     if not apple:
         return int(ram * 0.75)
     if wired_limit_mb is None:
-        limit = _sysctl("iogpu.wired_limit_mb")
+        limit = machine.sysctl("iogpu.wired_limit_mb")
         wired_limit_mb = int(limit) if limit.isdigit() else 0
     if wired_limit_mb > 0:
         return wired_limit_mb * 1024 ** 2

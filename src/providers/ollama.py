@@ -9,10 +9,9 @@ from __future__ import annotations
 import json as _json
 import os
 import re
-import subprocess
-import sys
 import urllib.error
 import urllib.request
+from src.system import machine
 from typing import Callable
 
 from .base import ProviderError, ProviderResponse, get_json, post_json, post_stream
@@ -56,28 +55,6 @@ def _parse_args(args):
         except (ValueError, TypeError):
             return {}
     return args if isinstance(args, dict) else {}
-
-
-def _available_ram_bytes() -> int:
-    """Memory that can be handed out right now: free, inactive, speculative and purgeable pages (macOS, from vm_stat) or
-    MemAvailable (Linux). 0 when it can't be read."""
-    try:
-        if sys.platform == "darwin":
-            out = subprocess.run(["vm_stat"], capture_output=True, text=True, timeout=5).stdout
-            page = int(re.search(r"page size of (\d+) bytes", out).group(1))
-            return page * sum(int(m.group(1)) for kind in ("free", "inactive", "speculative", "purgeable")
-                              if (m := re.search(rf"Pages {kind}:\s+(\d+)", out)))
-        with open("/proc/meminfo", encoding="utf-8") as f:
-            return next((int(line.split()[1]) * 1024 for line in f if line.startswith("MemAvailable:")), 0)
-    except (OSError, ValueError, AttributeError, subprocess.SubprocessError):
-        return 0
-
-
-def _total_ram_bytes() -> int:
-    try:
-        return os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")   # macOS + Linux
-    except (ValueError, OSError, AttributeError):
-        return 0
 
 
 def _mi_int(model_info: dict, suffix: str):
@@ -184,14 +161,14 @@ class OllamaProvider:
         mi = self._show(model).get("model_info") or {}
         trained = _mi_int(mi, ".context_length") or 0
         per_tok = _kv_bytes_per_token(mi)
-        ram = _total_ram_bytes()
+        ram = machine.total_ram_bytes()
         weights = self._weight_bytes(model)
-        if free := _available_ram_bytes():
+        if free := (machine.free_ram_bytes() or 0):
             ram = min(ram, free + self._loaded_bytes(model))   # what is free now, plus what this model already holds
         if not (trained and per_tok and ram and weights):
             return min(trained, CTX_FALLBACK) if trained else CTX_FALLBACK
         avail = min(max(0.0, ram - weights - KV_RESERVE_BYTES) * KV_USE_FRACTION,
-                    max(0.0, _total_ram_bytes() * MODEL_RAM_FRACTION - weights))
+                    max(0.0, machine.total_ram_bytes() * MODEL_RAM_FRACTION - weights))
         eff = min(trained, int(avail / per_tok))
         eff = max(CTX_FLOOR, (eff // CTX_ROUND) * CTX_ROUND)
         return min(eff, trained)

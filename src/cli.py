@@ -313,9 +313,9 @@ def _key_name(provider: str) -> str:
 
 def _suggest_local_models(console: Console) -> None:
     from src.providers import discover
-    from src.providers.ollama import _total_ram_bytes
+    from src.system import machine
 
-    ram_gb = _total_ram_bytes() // 1024 ** 3
+    ram_gb = machine.total_ram_bytes() // machine.GB
     with console.status("[dim]Looking up models that fit this machine...[/dim]", spinner="dots"):
         rows = discover.discover(ram_gb) if ram_gb else []
     if not rows:

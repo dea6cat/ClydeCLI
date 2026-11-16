@@ -10,11 +10,11 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from src.providers import fit
+from src.system import machine
 
 _TTL = 3.0           # the prompt redraws on every key; sampling spawns vm_stat, so reuse a reading for a few seconds
-LOW_FREE = 2 * fit.GB
-SWAP_WARN = 1 * fit.GB
+LOW_FREE = 2 * machine.GB
+SWAP_WARN = 1 * machine.GB
 LOAD_WARN = 0.9      # 1-minute load per core
 GPU_WARN = 0.9       # read at an idle prompt, so a busy GPU means something else is using it
 
@@ -74,14 +74,14 @@ def sample() -> Vitals:
     """A reading at most `_TTL` seconds old."""
     global _cache
     if _cache is None or time.monotonic() - _cache[0] > _TTL:
-        _cache = (time.monotonic(), Vitals(fit.free_now_bytes(), _swap_used(), _load(), _gpu()))
+        _cache = (time.monotonic(), Vitals(machine.free_ram_bytes(), _swap_used(), _load(), _gpu()))
     return _cache[1]
 
 
 def line(v: Vitals) -> str:
     """`3.2G free · swap 1.4G · cpu 41% · gpu 12%`, leaving out what couldn't be read."""
-    parts = [f"{v.free / fit.GB:.1f}G free" if v.free is not None else "",
-             f"swap {v.swap_used / fit.GB:.1f}G" if v.swap_used else "",
+    parts = [f"{v.free / machine.GB:.1f}G free" if v.free is not None else "",
+             f"swap {v.swap_used / machine.GB:.1f}G" if v.swap_used else "",
              f"cpu {v.load:.0%}" if v.load is not None else "",
              f"gpu {v.gpu:.0%}" if v.gpu is not None else ""]
     return " · ".join(p for p in parts if p)

@@ -17,6 +17,7 @@ import signal
 import socket
 import subprocess
 import time
+from src.system import machine
 from contextlib import contextmanager
 from dataclasses import dataclass
 from urllib.parse import urlparse
@@ -29,7 +30,7 @@ from rich.table import Table
 from src.tuning import tune_profile
 from src.providers import model_eval
 from src.providers.base import ProviderError, get_json, post_json
-from src.providers.ollama import OllamaProvider, _ctx_env_key, _total_ram_bytes, local
+from src.providers.ollama import OllamaProvider, _ctx_env_key, local
 from src.tuning.tune_profile import Profile
 
 FLASH = {"OLLAMA_FLASH_ATTENTION": "1"}
@@ -452,7 +453,7 @@ def run(console: Console, model: str | None = None, ctx: int | None = None, reas
     except (EOFError, KeyboardInterrupt):
         console.print("[red]clyde tune asks what you use the model for; run it in a terminal.[/red]")
         return 1
-    provider, ram = local(), _total_ram_bytes()
+    provider, ram = local(), machine.total_ram_bytes()
     rows: list[Row] = []
     name, plan = model, []
     try:

@@ -8,6 +8,7 @@ the chip's bandwidth. Every entry point returns [] on any failure, like the othe
 from __future__ import annotations
 
 import threading
+from src.system import machine
 from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 
@@ -24,7 +25,7 @@ CREDIT = "ranked by whichllm"
 def _machine(budget: int, chip: str):  # type: ignore[no-untyped-def]
     from src.vendor.whichllm.hardware.types import GPUInfo, HardwareInfo
 
-    ram = fit._total_ram_bytes() or budget
+    ram = machine.total_ram_bytes() or budget
     gpu = GPUInfo(chip or "GPU", "apple" if chip.startswith("Apple") else "nvidia", budget, usable_vram_bytes=budget,
                   memory_bandwidth_gbps=float(fit.bandwidth_gbps(chip) or 0) or None, shared_memory=chip.startswith("Apple"))
     return HardwareInfo(gpus=[gpu], cpu_name=chip or "CPU", ram_bytes=ram, os="darwin" if chip.startswith("Apple") else "linux")

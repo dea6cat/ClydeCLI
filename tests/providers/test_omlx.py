@@ -108,7 +108,7 @@ class TestOMLX(unittest.TestCase):
         self.assertEqual(settings.read_text(), "{not json")
 
     def test_each_memory_guard_choice_becomes_serve_arguments(self):
-        with patch("src.providers.ollama._total_ram_bytes", return_value=18 * GB):
+        with patch("src.system.machine.total_ram_bytes", return_value=18 * GB):
             choices = omlx.memory_guard_choices()
         self.assertEqual(choices, ("balanced", "aggressive", "custom 7 GB", "custom 9 GB", "custom 10 GB", "off"))
         self.assertEqual(omlx.memory_guard_args("custom 9 GB"), ["--memory-guard-gb", "9"])

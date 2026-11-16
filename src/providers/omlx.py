@@ -22,6 +22,7 @@ import subprocess
 import sys
 import time
 import urllib.parse
+from src.system import machine
 from collections.abc import Callable
 from pathlib import Path
 
@@ -105,8 +106,7 @@ _CUSTOM_SHARES = (0.4, 0.5, 0.6)   # of RAM: a fixed ceiling, picked from a list
 
 def memory_guard_choices() -> tuple[str, ...]:
     """What /settings offers for oMLX's memory guard: balanced (the default), aggressive, a few fixed ceilings, off."""
-    from .ollama import _total_ram_bytes
-    ram_gb = _total_ram_bytes() / 1024 ** 3
+    ram_gb = machine.total_ram_bytes() / machine.GB
     return (GUARD, "aggressive", *dict.fromkeys(f"custom {int(ram_gb * share)} GB" for share in _CUSTOM_SHARES), "off")
 
 

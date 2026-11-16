@@ -82,7 +82,7 @@ class TestBestFit(unittest.TestCase):
         self.assertFalse(best_fit.pending())
 
     def test_the_machine_handed_to_whichllm_carries_our_budget_and_bandwidth(self):
-        with patch.object(fit, "_total_ram_bytes", return_value=18 * GB):
+        with patch.object(fit.machine, "total_ram_bytes", return_value=18 * GB):
             hardware = best_fit._machine(12 * GB, "Apple M3 Pro")
         gpu = hardware.gpus[0]
         self.assertEqual((gpu.usable_vram_bytes, gpu.memory_bandwidth_gbps, gpu.shared_memory), (12 * GB, 150.0, True))
