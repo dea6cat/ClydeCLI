@@ -17,6 +17,7 @@ from src.config import (
     save_config,
     set_default_model,
 )
+from src import config
 from src.providers import keys
 
 _KEY_VARS = {env: "" for env in keys.PROVIDER_KEY_ENV.values()}
@@ -70,6 +71,16 @@ class TestConfigFile(_TempHome):
         self.assertEqual(get_default_model(), "anthropic:claude-sonnet-4-6")
         set_default_model(None)
         self.assertIsNone(get_default_model())
+
+
+class TestWindow(_TempHome):
+    def test_window_override_order(self):
+        config.set_context_tokens(16384)
+        self.assertEqual(config.fixed_window("qwen3:8b"), 16384)
+        with patch.dict(os.environ, {"CLYDE_MODEL_CONTEXT_QWEN3_8B": "8192"}):
+            self.assertEqual(config.fixed_window("qwen3:8b"), 8192)
+            with patch.dict(os.environ, {"CLYDE_CONTEXT_TOKENS": "4096"}):
+                self.assertEqual(config.fixed_window("qwen3:8b"), 4096)
 
 
 class TestKeyStore(_TempHome):

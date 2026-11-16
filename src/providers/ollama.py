@@ -41,11 +41,6 @@ MODEL_RAM_FRACTION = 0.35
 _THINK_STRING_MODELS = ("gpt-oss",)   # accept think:"low|medium|high"; other thinking models are boolean
 
 
-def _ctx_env_key(model: str) -> str:
-    """Normalize a model name into an env-var-safe key for CLYDE_MODEL_CONTEXT_*."""
-    return "".join(c if c.isalnum() else "_" for c in model.upper())
-
-
 def _parse_args(args):
     """Tool-call arguments as a dict. A small local model sometimes emits them as a
     (occasionally malformed) JSON string; a broken string becomes {} instead of raising."""
@@ -194,16 +189,11 @@ class OllamaProvider:
         """The window pinned via num_ctx and budgeted for. CLYDE_CONTEXT_TOKENS overrides globally,
         CLYDE_MODEL_CONTEXT_<MODEL> per model; cloud isn't pinned; otherwise computed per
         machine + model. Cached."""
-        env = os.environ.get("CLYDE_CONTEXT_TOKENS")
-        if env and env.isdigit():
-            return int(env)
-        pm = os.environ.get(f"CLYDE_MODEL_CONTEXT_{_ctx_env_key(model)}")
-        if pm and pm.isdigit():
-            self._ctx_cache[model] = int(pm)
-            return self._ctx_cache[model]
+        from src import config
+        if (override := config.window_override(model)) is not None:
+            return override
         if self.api_key is not None:
             return CLOUD_CTX
-        from src import config
         if (saved := config.get_context_tokens()) is not None:
             return saved
         if model not in self._ctx_cache:

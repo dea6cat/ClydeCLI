@@ -103,6 +103,25 @@ def get_context_tokens() -> Optional[int]:
     return value if isinstance(value, int) and not isinstance(value, bool) and value >= MIN_CONTEXT_TOKENS else None
 
 
+def context_env_var(model: str) -> str:
+    """The environment variable that fixes one model's window: CLYDE_MODEL_CONTEXT_<MODEL>."""
+    return "CLYDE_MODEL_CONTEXT_" + "".join(c if c.isalnum() else "_" for c in model.upper())
+
+
+def window_override(model: str) -> Optional[int]:
+    """A window set in the environment: CLYDE_CONTEXT_TOKENS for every model, else this model's own variable."""
+    for name in ("CLYDE_CONTEXT_TOKENS", context_env_var(model)):
+        if os.environ.get(name, "").isdigit():
+            return int(os.environ[name])
+    return None
+
+
+def fixed_window(model: str) -> Optional[int]:
+    """The window the user fixed for a local model: an environment override, else the one saved by /settings."""
+    override = window_override(model)
+    return override if override is not None else get_context_tokens()
+
+
 def set_context_tokens(tokens: Optional[int]) -> None:
     """Persist the context window for local models; None goes back to automatic. ValueError below the minimum."""
     if tokens is not None and tokens < MIN_CONTEXT_TOKENS:

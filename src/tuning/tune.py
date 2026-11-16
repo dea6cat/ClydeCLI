@@ -30,7 +30,9 @@ from rich.table import Table
 from src.tuning import tune_profile
 from src.providers import model_eval
 from src.providers.base import ProviderError, get_json, post_json
-from src.providers.ollama import OllamaProvider, _ctx_env_key, local
+from src import config
+from src.providers import fit
+from src.providers.ollama import OllamaProvider, local
 from src.tuning.tune_profile import Profile
 
 FLASH = {"OLLAMA_FLASH_ATTENTION": "1"}
@@ -38,7 +40,6 @@ FLASH = {"OLLAMA_FLASH_ATTENTION": "1"}
 _KV_SHRINK = {"q8_0": 8.5 / 16, "q4_0": 4.5 / 16}
 SPEED_NOISE = 0.08        # the same setting measured 33 to 41 tok/s on one Mac: a speed gate tighter than this decides on luck
 MEMORY_SLACK = 0.02       # a candidate may not use more than this much extra memory: the point is no more resources
-RAM_FRACTION = 0.75       # the share of RAM a model may take (macOS wires about this much for the GPU)
 WORTH_MEMORY = 0.05       # worth a restart if it frees this share of memory,
 WORTH_CONTEXT = 0.10      # or opens this much more window,
 WORTH_SPEED = 0.05        # or runs this much faster
@@ -221,7 +222,7 @@ def perf_gate(base: Result, perf: Result, profile: Profile, ram: int) -> str:
         return "no reading"
     if perf.memory_bytes > base.memory_bytes * (1 + MEMORY_SLACK):
         return "uses more memory"
-    if ram and perf.memory_bytes + profile.headroom_gb * 2 ** 30 > ram * RAM_FRACTION:
+    if ram and perf.memory_bytes + profile.headroom_gb * 2 ** 30 > fit.budget_bytes(ram):
         return f"leaves less than {profile.headroom_gb} GB free"
     if perf.gen_tps < base.gen_tps * (1 - max(profile.max_slowdown, SPEED_NOISE)):
         return f"{1 - perf.gen_tps / base.gen_tps:.0%} slower"
@@ -270,7 +271,7 @@ OLLAMA_APP = "/Applications/Ollama.app"
 
 
 def ctx_hint(model: str, ctx: int, base_ctx: int) -> list[str]:
-    return [f"For the longer window, also set export CLYDE_MODEL_CONTEXT_{_ctx_env_key(model)}={ctx} in your shell profile."] if ctx != base_ctx else []
+    return [f"For the longer window, also set export {config.context_env_var(model)}={ctx} in your shell profile."] if ctx != base_ctx else []
 
 
 def can_apply() -> bool:

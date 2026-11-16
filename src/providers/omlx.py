@@ -26,6 +26,7 @@ from src.system import machine
 from collections.abc import Callable
 from pathlib import Path
 
+from src import config
 from src.config import clyde_home
 
 from . import fit
@@ -88,16 +89,6 @@ def kv_bytes_per_token(folder: Path | None) -> int | None:
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
         return None
     return 2 * layers * kv_heads * head_dim * 2
-
-
-def fixed_window(model: str) -> int | None:
-    """The window the user fixed: an environment override, else the one saved by /settings."""
-    from src import config
-    from .ollama import _ctx_env_key
-    for key in ("CLYDE_CONTEXT_TOKENS", f"CLYDE_MODEL_CONTEXT_{_ctx_env_key(model)}"):
-        if os.environ.get(key, "").isdigit():
-            return int(os.environ[key])
-    return config.get_context_tokens()
 
 
 GUARD = "balanced"
@@ -202,7 +193,6 @@ def lmstudio_ref(ref: str) -> str | None:
 def migrate_lmstudio_refs() -> list[str]:
     """Move what Clyde saved under LM Studio's refs to oMLX's: the default model, and the /eval results that cardShuffle
     deals from. A ref with no single matching folder is left as it was. One "old -> new" line per ref moved."""
-    from src import config
     from . import model_eval
     moved: list[str] = []
     saved = config.get_default_model()
@@ -357,7 +347,7 @@ class OMLXProvider(OpenAICompatProvider):
     def planned_window(self, model: str) -> int:
         """The window Clyde serves the model with: what fits the memory budget after the weights, KV cache included
         (CLYDE_CONTEXT_TOKENS or CLYDE_MODEL_CONTEXT_<MODEL> override)."""
-        if (fixed := fixed_window(model)) is not None:
+        if (fixed := config.fixed_window(model)) is not None:
             return fixed
         entry = self._entry(model)
         trained = int(entry.get("model_context_length") or MAX_WINDOW)
@@ -464,7 +454,6 @@ class OMLXProvider(OpenAICompatProvider):
         port = urllib.parse.urlparse(self.base_url).port or 8000
         log = home() / "server.log"
         log.parent.mkdir(parents=True, exist_ok=True)
-        from src import config
         with open(log, "ab") as out:   # the key goes in the environment: a command line shows in every user's `ps`
             server = subprocess.Popen([exe, "serve", "--port", str(port), *memory_guard_args(config.get_omlx_memory_guard())],
                                       # laya_client sets HF_HUB_OFFLINE=1 in Clyde's process; oMLX's downloader must reach Hugging Face
