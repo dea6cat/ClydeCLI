@@ -72,13 +72,12 @@ class SafeWrite(unittest.TestCase):
             read_json_safely(self.dir / "e.json")
 
     def test_the_writers_that_matter_use_it(self):
-        from src import config, plugins
+        from src import config, settings
         from src.agent import runs, session
         from src.bonnie import automations, pins
         from src.providers import keys
-        from src.tool_system import hooks, permission_rules
         ours = (safe_write.write_safely, safe_write.write_json_safely)
-        for module in (config, runs, session, automations, pins, hooks, permission_rules, plugins, keys):
+        for module in (config, runs, session, automations, pins, settings, keys):   # hooks, rules, MCP and plugins write through settings
             self.assertTrue(any(getattr(module, name, None) in ours for name in dir(module)), module.__name__)
 
 
