@@ -384,7 +384,7 @@ class TestREPL(unittest.TestCase):
                 repl = ClydeREPL(model="glm:glm-4.5")
                 repl.console.print = Mock()
                 with patch('src.repl.core.pick', return_value="k") as ask, \
-                        patch('src.cli.prompt_secret', return_value="new-key"), \
+                        patch('src.login.prompt_secret', return_value="new-key"), \
                         patch('src.repl.core.keys.connect') as connect, \
                         patch('src.repl.core.build_registry', return_value={"glm": provider}):
                     repl.chat("hi there")
@@ -403,7 +403,7 @@ class TestREPL(unittest.TestCase):
             with ctx as provider:
                 repl = ClydeREPL(model="glm:glm-4.5")
                 repl.console.print = Mock()
-                with patch('src.repl.core.pick', return_value="n"), patch('src.cli.prompt_secret') as secret:
+                with patch('src.repl.core.pick', return_value="n"), patch('src.login.prompt_secret') as secret:
                     repl.chat("hi there")
                 secret.assert_not_called()
                 self.assertEqual(len(provider.requests), 1)
@@ -418,7 +418,7 @@ class TestREPL(unittest.TestCase):
                 repl = ClydeREPL(model="glm:glm-4.5")
                 repl.console.print = Mock()
                 with patch('src.repl.core.pick', return_value="k") as ask, \
-                        patch('src.cli.prompt_secret', return_value="new-key"), patch('src.repl.core.keys.connect'), \
+                        patch('src.login.prompt_secret', return_value="new-key"), patch('src.repl.core.keys.connect'), \
                         patch('src.repl.core.build_registry', return_value={"glm": provider}):
                     repl.chat("hi there")
                 self.assertEqual(len(provider.requests), 2)    # one retry only

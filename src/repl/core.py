@@ -2841,7 +2841,7 @@ class ClydeREPL:
     def _recover_auth(self) -> bool:
         """After a rejected key: re-enter just this provider's key (k), switch provider or model (s), or
         leave it (n). True when a new key or model is in place."""
-        key_name = "ollama" if self.provider_name == "ollama-cloud" else self.provider_name
+        key_name = keys.key_name(self.provider_name)
         can_rekey = key_name in keys.PROVIDER_KEY_ENV
         options = ([Choice("k", f"New {self.provider_name} key", "enter a replacement key")] if can_rekey else []) + [
             Choice("s", "Switch provider or model", "pick another one"), Choice("n", "Not now", "fix it later with clyde login or /model")]
@@ -2858,7 +2858,7 @@ class ClydeREPL:
 
     def _rekey(self, key_name: str) -> bool:
         """Ask for the current provider's key only, save it, and keep the same model."""
-        from src.cli import prompt_secret
+        from src.login import prompt_secret
 
         env = keys.PROVIDER_KEY_ENV[key_name]
         try:
@@ -2887,7 +2887,7 @@ class ClydeREPL:
 
     def _handle_logout(self, provider: str | None = None) -> None:
         """Remove a provider's saved API key (and its settings entry if custom), then rebuild the registry."""
-        from src.cli import _key_name, handle_logout
+        from src.login import handle_logout
 
         if not provider:
             self.console.print("[red]Usage: /logout <provider>[/red]")
@@ -2895,7 +2895,7 @@ class ClydeREPL:
         if handle_logout(provider, self.console) != 0:
             return
         self.registry = build_registry()
-        if _key_name(provider) == _key_name(self.provider_name):
+        if keys.key_name(provider) == keys.key_name(self.provider_name):
             self.console.print("[dim]The current model keeps its client until you switch: use /model.[/dim]")
 
     def _retry_last(self, user_input: str, max_turns: int) -> None:
@@ -2913,7 +2913,7 @@ class ClydeREPL:
 
     def _handle_relogin(self, provider: str | None = None, title: str = "Reconfigure API key"):
         """Connect a provider (or re-enter a failed key) and switch to the model picked."""
-        from src.cli import run_login_flow
+        from src.login import run_login_flow
 
         self.console.print(Text.assemble(("\n♠ ", _CARD_ACCENT), (title, f"bold {_CARD_TEXT}"), "\n"))
         with self._esc.paused():   # the flow reads the keyboard: pickers, key entry, questions

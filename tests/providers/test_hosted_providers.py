@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 from rich.console import Console
 
-from src.cli import run_login_flow
+from src.login import run_login_flow
 from src.providers import cloudflare, keys, pollinations
 from src.providers.cloudflare import CloudflareProvider
 from src.providers.pollinations import PollinationsProvider
@@ -172,9 +172,9 @@ class TestLogin(_Home):
     def test_cloudflare_login_asks_for_the_account_id_after_the_token(self):
         provider = FakeProvider(name="cloudflare", models=("@cf/moonshotai/kimi-k2.6",))
         answers = iter(["acct-9"])
-        with patch("src.cli.pick", side_effect=["cloudflare", "@cf/moonshotai/kimi-k2.6"]), \
-                patch("src.cli.prompt_secret", return_value=TOKEN), \
-                patch("src.cli.Prompt.ask", side_effect=lambda *a, **k: next(answers)), \
+        with patch("src.login.pick", side_effect=["cloudflare", "@cf/moonshotai/kimi-k2.6"]), \
+                patch("src.login.prompt_secret", return_value=TOKEN), \
+                patch("src.login.Prompt.ask", side_effect=lambda *a, **k: next(answers)), \
                 patch("src.providers.build_registry", return_value={"cloudflare": provider}):
             ref = run_login_flow(Console(file=io.StringIO()), {"cloudflare": provider})
         self.assertEqual(ref, "cloudflare:@cf/moonshotai/kimi-k2.6")
@@ -182,15 +182,15 @@ class TestLogin(_Home):
         self.assertIn("cloudflare", keys.saved_providers())
 
     def test_an_empty_account_id_stops_the_login(self):
-        with patch("src.cli.pick", return_value="cloudflare"), patch("src.cli.prompt_secret", return_value=TOKEN), \
-                patch("src.cli.Prompt.ask", return_value="  "):
+        with patch("src.login.pick", return_value="cloudflare"), patch("src.login.prompt_secret", return_value=TOKEN), \
+                patch("src.login.Prompt.ask", return_value="  "):
             self.assertIsNone(run_login_flow(Console(file=io.StringIO()), {"cloudflare": FakeProvider(name="cloudflare")}))
 
     def test_pollinations_login_needs_only_the_key(self):
         provider = FakeProvider(name="pollinations", models=("openai/gpt-5.4-nano",))
-        with patch("src.cli.pick", side_effect=["pollinations", "openai/gpt-5.4-nano"]), \
-                patch("src.cli.prompt_secret", return_value="sk_abc"), \
-                patch("src.cli.Prompt.ask") as ask, \
+        with patch("src.login.pick", side_effect=["pollinations", "openai/gpt-5.4-nano"]), \
+                patch("src.login.prompt_secret", return_value="sk_abc"), \
+                patch("src.login.Prompt.ask") as ask, \
                 patch("src.providers.build_registry", return_value={"pollinations": provider}):
             ref = run_login_flow(Console(file=io.StringIO()), {"pollinations": provider})
         self.assertEqual(ref, "pollinations:openai/gpt-5.4-nano")

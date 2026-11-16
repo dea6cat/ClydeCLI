@@ -38,12 +38,8 @@ MAX_KEY = 512
 _KEY = re.compile(r"^[\x21-\x7e]{8,%d}$" % MAX_KEY)   # printable ASCII, no spaces
 
 
-def _key_name(provider: str) -> str:
-    return "ollama" if provider == "ollama-cloud" else provider
-
-
 def _env(provider: str) -> str:
-    return keys.PROVIDER_KEY_ENV[_key_name(provider)]
+    return keys.PROVIDER_KEY_ENV[keys.key_name(provider)]
 
 
 def _known(provider: Any) -> bool:
@@ -63,7 +59,7 @@ def listing(registry: dict) -> dict:
     for pid, guide in GUIDE.items():
         value = os.environ.get(_env(pid), "")
         rows.append({"id": pid, **guide, "kind": "key", "env": _env(pid), "connected": bool(value), "extra": _extra(pid),
-                     "source": ("saved" if _key_name(pid) in saved else "shell") if value else None, "masked": keys.mask(value) if value else ""})
+                     "source": ("saved" if keys.key_name(pid) in saved else "shell") if value else None, "masked": keys.mask(value) if value else ""})
     for pid, (label, url, how) in LOCAL.items():
         provider = registry.get(pid)
         rows.append({"id": pid, "label": label, "url": url, "kind": "local", "how": how, "connected": bool(provider and provider.is_available())})
@@ -120,7 +116,7 @@ def connect(repl: Any, provider: Any, key: Any, extra: Any = None) -> dict:
     if need and not (extra_value or os.environ.get(need[0])):
         raise ValueError(f"{need[1]} is needed too.")
     models, verified = _test(provider, clean, extra_value or None)
-    keys.connect(_key_name(provider), clean)
+    keys.connect(keys.key_name(provider), clean)
     if need and extra_value:
         problem = keys.connect_setting(provider, extra_value)
         if problem:
@@ -134,10 +130,10 @@ def disconnect(repl: Any, provider: Any) -> dict:
     """Forget a saved key. `from_shell` is true when the key was exported in the shell instead, which comes back on the next launch."""
     if not _known(provider):
         raise ValueError("Unknown provider.")
-    saved = _key_name(provider) in keys.saved_providers()
+    saved = keys.key_name(provider) in keys.saved_providers()
     if not saved and not os.environ.get(_env(provider)):
         raise ValueError("That provider has no key.")
-    keys.disconnect(_key_name(provider))
+    keys.disconnect(keys.key_name(provider))
     repl.registry = build_registry()
     return {"from_shell": not saved}
 

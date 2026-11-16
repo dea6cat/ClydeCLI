@@ -64,6 +64,12 @@ def custom_providers() -> dict[str, str]:
     return found
 
 
+
+def key_name(provider: str) -> str:
+    """The keys.json / env-var name a provider's key is saved under: Ollama Cloud uses the ollama key."""
+    return "ollama" if provider == "ollama-cloud" else provider
+
+
 def protocol(name: str) -> str:
     """The API a custom provider speaks: openai (default) or anthropic."""
     return _PROTOCOL.get(name, "openai")
