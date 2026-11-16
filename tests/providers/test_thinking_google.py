@@ -12,7 +12,7 @@ from src.providers import google as g  # noqa: E402
 _SSE = [
     'data: {"candidates":[{"content":{"parts":[{"text":"planning: guard null","thought":true}]}}]}\n',
     'data: {"candidates":[{"content":{"parts":[{"text":"Here is"}]}}]}\n',
-    'data: {"candidates":[{"content":{"parts":[{"text":" the fix"}]}}]}\n',
+    'data: {"candidates":[{"content":{"parts":[{"text":" the fix"}]},"finishReason":"STOP"}]}\n',
 ]
 
 
@@ -44,12 +44,13 @@ class GoogleThinking(unittest.TestCase):
         self.assertTrue(self._captured["payload"]["generationConfig"]["thinkingConfig"]["includeThoughts"])
 
     def test_send_does_not_merge_thoughts_into_reply(self):
-        prov = g.GoogleProvider()
-        # _read_parts without a thought sink must drop thought parts from the answer text.
-        text_parts, calls = [], []
+        from src.providers.stream import StreamReply
+        # Thought parts go to the reply's thinking, never into the answer text, even with no thinking listener.
+        reply, shown = StreamReply("google", lambda c: shown.append(c)), []
         cand = {"content": {"parts": [{"text": "THINK", "thought": True}, {"text": "ANSWER"}]}}
-        prov._read_parts(cand, text_parts, calls)
-        self.assertEqual("".join(text_parts), "ANSWER")
+        g.GoogleProvider._read_parts(cand, reply)
+        reply.stop("STOP")
+        self.assertEqual(("".join(shown), reply.response().message.text), ("ANSWER", "ANSWER"))
 
     def test_think_off_does_not_request_thoughts_even_on_pro(self):
         # `/think off` must not surface thoughts, even on 2.5 Pro (whose budget floors at 128) —

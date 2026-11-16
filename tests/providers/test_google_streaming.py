@@ -17,7 +17,7 @@ _SSE_LINES = [
     'data: {"candidates":[{"content":{"parts":[{"text":"lo"}]}}]}\n',
     "data: {bad json here\n",   # malformed event must be skipped, not crash
     'data: {"candidates":[{"content":{"parts":[{"functionCall":{"name":"read_file","args":{"path":"a.py"}},'
-    '"thoughtSignature":"SIG-a"}]}}]}\n',
+    '"thoughtSignature":"SIG-a"}]},"finishReason":"STOP"}]}\n',
 ]
 
 

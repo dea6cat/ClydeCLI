@@ -145,7 +145,9 @@ _STALLED_REPLY = "The tool calls keep failing (different arguments each time). S
 # here the partial reply stays and the model continues it, so no tokens are thrown away.
 # ponytail: one shared cap for both cases; split it if a model needs more continuations than retries.
 _MAX_RECOVERIES = 3
-_CUT_OFF = ("length", "max_tokens", "interrupted")   # interrupted: the stream dropped mid-answer (base.py)
+# length: stopped at the output limit, however the service spells it (providers/stream.py); interrupted: the stream
+# dropped mid-answer (base.py)
+_CUT_OFF = ("length", "interrupted")
 _CONTINUE_NUDGE = ("Your reply was cut off before it finished. Continue exactly where it stopped, without repeating "
                    "it. Keep reasoning brief, and split long file contents or edits into several smaller tool calls.")
 _ANSWER_NUDGE = "Your last reply had no answer text. Answer now in plain text; keep any reasoning brief."

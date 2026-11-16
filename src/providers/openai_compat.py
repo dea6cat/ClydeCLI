@@ -14,8 +14,9 @@ import time
 from typing import Callable
 
 from .base import ProviderError, ProviderResponse, cached_model_list, get_json, post_stream
+from .stream import StreamReply
 from .toolspec import ToolSpec, to_openai
-from .types import Conversation, Message, Role, ToolCall
+from .types import Conversation, Role
 
 # Substrings that mark a model as NOT a chat/tool-calling model, filtered out of listings.
 _NON_CHAT = (
@@ -83,6 +84,8 @@ def _nine_character_id(call_id: str) -> str:
 
 
 class OpenAICompatProvider:
+    repairs_text_calls = False   # recover tool calls a model wrote as JSON text (the local servers' small models do)
+
     def __init__(self, name: str, base_url: str, key_env: str,
                  models: list[str] | None = None, dynamic_models: bool = False,
                  extra_headers: dict | None = None, reasoning_style: str | None = None,
@@ -229,12 +232,7 @@ class OpenAICompatProvider:
             payload["max_tokens"] = self._max_tokens
         if self._stream_usage:
             payload["stream_options"] = {"include_usage": True}
-        content: list[str] = []
-        thinking: list[str] = []
-        by_index: dict[int, dict] = {}   # assemble tool_calls from streamed fragments
-        done_reason = None
-        finished = False
-        usage = None
+        reply = StreamReply(self.name, on_text, on_thinking)
         for line in post_stream(f"{self.base_url}/chat/completions", payload,
                                 headers=self._headers(), provider=self.name, cancel=cancel):
             line = line.strip()
@@ -242,7 +240,7 @@ class OpenAICompatProvider:
                 continue
             data = line[5:].strip()
             if data == "[DONE]":
-                finished = True
+                reply.stop()
                 break
             try:
                 obj = json.loads(data)
@@ -253,59 +251,25 @@ class OpenAICompatProvider:
                 msg = err.get("message", err) if isinstance(err, dict) else err
                 raise ProviderError(self.name, f"stream error: {msg}", retryable=True)
             if obj.get("usage"):
-                usage = _usage(obj["usage"])
+                reply.usage = _usage(obj["usage"])
             choices = obj.get("choices") or [{}]
-            done_reason = choices[0].get("finish_reason") or done_reason
+            if choices[0].get("finish_reason"):   # a service that ends without [DONE] has said it is done here
+                reply.stop(choices[0]["finish_reason"])
             delta = choices[0].get("delta", {})
             # Reasoning text: DeepSeek/GLM use reasoning_content; OpenRouter and Cerebras `reasoning`.
-            chunk = delta.get("reasoning_content") or delta.get("reasoning")
-            if isinstance(chunk, str) and chunk:
-                thinking.append(chunk)
-                if on_thinking:
-                    on_thinking(chunk)
+            reply.thinking(delta.get("reasoning_content") or delta.get("reasoning"))
             piece = delta.get("content")
-            if piece:
-                # Some providers send content as a list of fragments ([{"type": "text", "text": "..."}])
-                # rather than a plain string; flatten to the text. Mistral sends reasoning the same way, as
-                # {"type": "thinking", "thinking": [{"type": "text", ...}]}: that is thinking, not answer.
-                if isinstance(piece, list):
-                    frags = [f for f in piece if isinstance(f, dict)]
-                    for f in frags:
-                        if f.get("type") == "thinking":
-                            said = "".join(x.get("text", "") for x in f.get("thinking") or [] if isinstance(x, dict))
-                            if said:
-                                thinking.append(said)
-                                if on_thinking:
-                                    on_thinking(said)
-                    piece = "".join(f.get("text", "") for f in frags if f.get("type", "text") == "text")
-                if isinstance(piece, str) and piece:
-                    content.append(piece)
-                    on_text(piece)
+            # Some providers send content as a list of fragments ([{"type": "text", "text": "..."}])
+            # rather than a plain string; flatten to the text. Mistral sends reasoning the same way, as
+            # {"type": "thinking", "thinking": [{"type": "text", ...}]}: that is thinking, not answer.
+            if isinstance(piece, list):
+                frags = [f for f in piece if isinstance(f, dict)]
+                for f in frags:
+                    if f.get("type") == "thinking":
+                        reply.thinking("".join(x.get("text", "") for x in f.get("thinking") or [] if isinstance(x, dict)))
+                piece = "".join(f.get("text", "") for f in frags if f.get("type", "text") == "text")
+            reply.text(piece)
             for frag in delta.get("tool_calls") or []:
-                idx = frag.get("index", 0)
-                slot = by_index.setdefault(idx, {"id": None, "name": "", "args": ""})
-                if frag.get("id"):
-                    slot["id"] = frag["id"]
                 fn = frag.get("function", {})
-                if fn.get("name"):
-                    slot["name"] = fn["name"]
-                if fn.get("arguments"):
-                    slot["args"] += fn["arguments"]
-        if not finished and done_reason is None:
-            raise ProviderError(self.name, "stream ended before the response finished", retryable=True)
-        calls = []
-        for _, slot in sorted(by_index.items()):
-            try:
-                args = json.loads(slot["args"]) if slot["args"] else {}
-            except json.JSONDecodeError:
-                args = {}
-            calls.append(ToolCall.new(name=slot["name"], arguments=args, id=slot["id"]))
-        text = "".join(content).strip()
-        think = "".join(thinking).strip()
-        return ProviderResponse(
-            message=Message.assistant(text=text or None, thinking=think or None, tool_calls=calls),
-            raw={},
-            done_reason=done_reason,
-            prompt_tokens=usage and usage["input_tokens"] + usage.get("cache_read_input_tokens", 0),
-            usage=usage,
-        )
+                reply.tool_call_part(frag.get("index", 0), id=frag.get("id"), name=fn.get("name"), arguments=fn.get("arguments") or "")
+        return reply.response(tools, repair_text_calls=self.repairs_text_calls)
