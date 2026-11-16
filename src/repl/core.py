@@ -1523,7 +1523,7 @@ class ClydeREPL:
             if len(parts) == 1:
                 self._pick_model()
             else:
-                self._switch_model(parts[1].strip())
+                self._choose_model(parts[1].strip())
 
         elif cmd == '/brief' or cmd.startswith('/brief '):
             from src.repl import orchestrate as orchestrate_ui
@@ -2446,16 +2446,23 @@ class ClydeREPL:
         return None
 
     def _switch_model(self, requested: str) -> bool:
+        """Use `requested` for this session only (an editor or Bonnie picking a model leaves other sessions alone)."""
         resolved = self._resolve_model(requested)
         if resolved is None:
             return False
         self.provider, self.model = resolved
         self.provider_name = self.provider.name
         self.session.provider, self.session.model = self.provider_name, self.model
+        self._warn_if_unlisted()
+        return True
+
+    def _choose_model(self, requested: str) -> bool:
+        """The terminal's /model: switch, and keep it as the default for the next `clyde`."""
+        if not self._switch_model(requested):
+            return False
         ref = model_ref(self.provider, self.model)
         set_default_model(ref)
         self.console.print(f"[green]Model: {ref}[/green] [dim](saved as default)[/dim]")
-        self._warn_if_unlisted()
         return True
 
     def _warn_if_unlisted(self) -> None:
@@ -2811,7 +2818,7 @@ class ClydeREPL:
             if len(shown) < len(refs) else "")
         chosen = pick(self.console, "Select model", [Choice(ref, ref) for ref in shown], current=current, description=description)
         if chosen and chosen != current:
-            self._switch_model(chosen)
+            self._choose_model(chosen)
 
     def _show_models(self, arg: str = "") -> None:
         """/models [all|refresh]: the model picker; `/models local ...` finds downloadable local models
@@ -2925,7 +2932,7 @@ class ClydeREPL:
         if ref is None:
             return
         self.registry = build_registry()   # a new key can add providers (e.g. Ollama Cloud)
-        if self._switch_model(ref):
+        if self._choose_model(ref):
             self.console.print("[green]✓ You can continue chatting![/green]\n")
 
     def save_session(self):
