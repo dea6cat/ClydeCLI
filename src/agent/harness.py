@@ -6,7 +6,6 @@ opened in multiple roles with different models.
 """
 from __future__ import annotations
 
-import json
 import shutil
 from src.providers.base import LOCAL_PROVIDERS
 from dataclasses import dataclass, field
@@ -65,27 +64,14 @@ def discover_cli_harnesses(provider_models: dict[str, list[str]] | None = None) 
 
 
 def discover_mcp_servers() -> list[Harness]:
-    """Discover configured MCP servers from clyde config."""
-    found: list[Harness] = []
-    config_dir = clyde_home()
-    mcp_config = config_dir / "mcp_servers.json"
-    if mcp_config.exists():
-        try:
-            data = json.loads(mcp_config.read_text(encoding="utf-8"))
-            servers = data.get("servers", {}) if isinstance(data, dict) else {}
-            for name, cfg in servers.items():
-                cmd = cfg.get("command", "")
-                found.append(Harness(
-                    name=f"mcp:{name}",
-                    kind="mcp",
-                    binary=cmd if isinstance(cmd, str) else None,
-                    config_path=str(mcp_config),
-                    models=[HarnessModel(model_id="default", local=False)],
-                    description=f"MCP server: {name}",
-                ))
-        except Exception:
-            pass
-    return found
+    """The MCP servers in the user's settings (`mcpServers`), the ones Clyde itself connects to."""
+    from src import settings
+    from src.tool_system.mcp_client import load_servers
+
+    return [Harness(name=f"mcp:{name}", kind="mcp", binary=cfg.get("command") if isinstance(cfg.get("command"), str) else None,
+                    config_path=str(settings.json_path()), models=[HarnessModel(model_id="default", local=False)],
+                    description=f"MCP server: {name}")
+            for name, cfg in load_servers().items()]
 
 
 def discover_clyde_skills() -> list[Harness]:
