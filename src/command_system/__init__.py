@@ -4,7 +4,6 @@ Command system for ClydeCLI.
 A complete reimplementation of Claude Code's command system.
 """
 
-from .argument_substitution import parse_argument_names, substitute_arguments
 from .builtins import (
     CLEAR_COMMAND,
     COMPACT_COMMAND,
@@ -21,7 +20,6 @@ from .builtins import (
 )
 from .engine import (
     CommandContext,
-    CommandEngine,
     CommandResult,
     create_command_context,
 )
@@ -36,7 +34,6 @@ from .registry import (
 )
 from .types import (
     Command,
-    CommandAvailability,
     CommandBase,
     CommandType,
     LocalCommand,
@@ -44,24 +41,19 @@ from .types import (
     PromptCommand,
     get_command_name,
     is_command_enabled,
-    meets_availability_requirement,
 )
 
 __all__ = [
     # Types
     "Command",
     "CommandType",
-    "CommandAvailability",
     "CommandBase",
     "PromptCommand",
     "LocalCommand",
     "LocalCommandResult",
     "get_command_name",
     "is_command_enabled",
-    "meets_availability_requirement",
     # Argument substitution
-    "substitute_arguments",
-    "parse_argument_names",
     # Registry
     "CommandRegistry",
     "get_command_registry",
@@ -71,7 +63,6 @@ __all__ = [
     "list_commands",
     "find_commands",
     # Engine
-    "CommandEngine",
     "CommandContext",
     "CommandResult",
     "create_command_context",

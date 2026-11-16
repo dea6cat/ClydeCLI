@@ -20,12 +20,6 @@ class CommandType(Enum):
     LOCAL = "local"
 
 
-class CommandAvailability(Enum):
-    """Availability environments where a command is available."""
-    CLAUDE_AI = "claude-ai"
-    CONSOLE = "console"
-
-
 @dataclass(frozen=True)
 class CompactionResult:
     """Result data from a compaction operation."""
@@ -68,7 +62,6 @@ class CommandBase:
     name: str
     description: str
     aliases: list[str] = field(default_factory=list)
-    availability: list[CommandAvailability] = field(default_factory=list)
     is_enabled: Callable[[], bool] = field(default=lambda: True)
     is_hidden: bool = False
     has_user_specified_description: bool = False
@@ -161,19 +154,3 @@ def is_command_enabled(cmd: CommandBase) -> bool:
     """Check if a command is enabled."""
     return cmd.is_enabled()
 
-
-def meets_availability_requirement(
-    cmd: CommandBase,
-    is_claude_ai_subscriber: bool = False,
-    is_console_user: bool = False,
-) -> bool:
-    """Check if a command meets the availability requirement."""
-    if not cmd.availability:
-        return True
-
-    for availability in cmd.availability:
-        if availability == CommandAvailability.CLAUDE_AI and is_claude_ai_subscriber:
-            return True
-        if availability == CommandAvailability.CONSOLE and is_console_user:
-            return True
-    return False

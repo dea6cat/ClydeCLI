@@ -26,9 +26,7 @@ from src.command_system import (
     HELP_COMMAND,
     INIT_COMMAND,
     SKILLS_COMMAND,
-    CommandAvailability,
     CommandContext,
-    CommandEngine,
     CommandRegistry,
     CommandResult,
     CommandType,
@@ -45,11 +43,8 @@ from src.command_system import (
     has_command,
     is_command_enabled,
     list_commands,
-    meets_availability_requirement,
-    parse_argument_names,
     register_builtin_commands,
     register_command,
-    substitute_arguments,
 )
 from src.agent.cost_tracker import CostTracker
 
@@ -67,41 +62,6 @@ class MockConversation:
     def clear(self):
         self.messages.clear()
 
-
-class TestArgumentSubstitution(unittest.TestCase):
-    """Tests for argument substitution."""
-
-    def test_simple_positional_args(self):
-        """Test simple positional argument substitution."""
-        content = "Hello $0 and $1!"
-        result = substitute_arguments(content, "Alice Bob")
-        self.assertEqual(result, "Hello Alice and Bob!")
-
-    def test_named_args(self):
-        """Test named argument substitution."""
-        content = "Hello $name, you are $age years old"
-        result = substitute_arguments(content, "Alice 30", ["name", "age"])
-        self.assertEqual(result, "Hello Alice, you are 30 years old")
-
-    def test_all_args_placeholder(self):
-        """Test $ARGUMENTS placeholder."""
-        content = "Args: $ARGUMENTS"
-        result = substitute_arguments(content, 'foo bar "baz qux"')
-        self.assertEqual(result, 'Args: foo bar "baz qux"')
-
-    def test_parse_argument_names_string(self):
-        """Test parsing argument names from string."""
-        self.assertEqual(
-            parse_argument_names("name, age, location"),
-            ["name", "age", "location"],
-        )
-
-    def test_parse_argument_names_list(self):
-        """Test parsing argument names from list."""
-        self.assertEqual(
-            parse_argument_names(["name", "age"]),
-            ["name", "age"],
-        )
 
 
 class TestCommandTypes(unittest.TestCase):
@@ -279,65 +239,6 @@ class TestBuiltinCommands(unittest.TestCase):
         self.assertIn("test-project-skill", result)
 
 
-class TestCommandEngine(unittest.IsolatedAsyncioTestCase):
-    """Tests for the command engine."""
-
-    def setUp(self):
-        """Set up test fixtures."""
-        self.tmpdir = tempfile.TemporaryDirectory()
-        self.workspace_root = Path(self.tmpdir.name).resolve()
-        self.registry = CommandRegistry()
-        register_builtin_commands(self.registry)
-
-        self.conversation = MockConversation()
-        self.cost_tracker = CostTracker()
-        self.history = None
-
-        self.context = create_command_context(
-            workspace_root=self.workspace_root,
-            conversation=self.conversation,
-            cost_tracker=self.cost_tracker,
-            history=self.history,
-        )
-
-        self.engine = CommandEngine(
-            registry=self.registry,
-            workspace_root=self.workspace_root,
-            context=self.context,
-        )
-
-    def tearDown(self):
-        """Clean up test fixtures."""
-        self.tmpdir.cleanup()
-
-    async def test_execute_help_command(self):
-        """Test executing /help command."""
-        result = await self.engine.execute("/help")
-
-        self.assertTrue(result.success)
-        self.assertEqual(result.command_name, "help")
-
-    async def test_execute_unknown_command(self):
-        """Test executing unknown command."""
-        result = await self.engine.execute("/unknown-command")
-
-        self.assertFalse(result.success)
-        self.assertIn("Unknown command", result.error or "")
-
-
-class TestSkillsIntegration(unittest.TestCase):
-    """Tests for skills system integration."""
-
-    def setUp(self):
-        """Set up test fixtures."""
-        self.tmpdir = tempfile.TemporaryDirectory()
-        self.skills_dir = Path(self.tmpdir.name) / "skills"
-        self.skills_dir.mkdir()
-
-    def tearDown(self):
-        """Clean up test fixtures."""
-        self.tmpdir.cleanup()
-
 
 
 class TestInitCommand(unittest.IsolatedAsyncioTestCase):
@@ -361,11 +262,6 @@ class TestInitCommand(unittest.IsolatedAsyncioTestCase):
             history=self.history,
         )
 
-        self.engine = CommandEngine(
-            registry=self.registry,
-            workspace_root=self.workspace_root,
-            context=self.context,
-        )
 
     def tearDown(self):
         """Clean up test fixtures."""
@@ -429,18 +325,6 @@ class TestInitCommand(unittest.IsolatedAsyncioTestCase):
         # Verify it includes AskUserQuestion references
         self.assertIn("AskUserQuestion", content)
 
-    async def test_execute_init_command_via_engine(self):
-        """Test executing /init via the async engine."""
-        result = await self.engine.execute("/init")
-
-        self.assertTrue(result.success)
-        self.assertEqual(result.command_name, "init")
-        self.assertEqual(result.result_type, "prompt")
-        self.assertTrue(result.should_query)
-        self.assertEqual(result.display, "user")
-        # Verify prompt content was returned
-        self.assertTrue(len(result.prompt_content) > 0)
-        self.assertEqual(result.prompt_content[0]["type"], "text")
 
     def test_init_returns_its_prompt_for_the_model(self):
         result = run_command(builtin_registry(), "init", "", self.context)
