@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `/context` shows the window the model really has: the one Ollama or oMLX pinned, else the catalog's. It read a short, out-of-date table of names and reported 200,000 tokens for most local models.
 - oMLX models count as free in the spend line, as Ollama's do, and `/eval` runs them one at a time like Ollama's instead of four at once on the same memory.
 
 ### Removed

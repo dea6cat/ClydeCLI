@@ -94,14 +94,13 @@ from src.agent.session import Session
 from src.agent.checkpoints import Checkpoints
 from src.conversation import ImageContentBlock
 from src.compact_service.service import auto_compact_threshold, compact_conversation, needs_auto_compact
-from src.context_system.context_analyzer import get_context_window_for_model
 from src.config import get_default_model, get_output_style, load_config, set_default_model, set_output_style
 from src.output_styles import resolve_output_style
 from src.providers import build_registry, keys, model_ref, pick_default_model, resolve, usable
 from src.providers import catalog
 from src.providers.model_eval import hidden_refs
 from src.system.vitals import line, sample
-from src.providers.base import ProviderError, ProviderResponse, is_auth_error
+from src.providers.base import ProviderError, ProviderResponse, context_window, is_auth_error
 from src.providers.types import Message
 from src.providers import laya_client
 from src.providers.card_shuffle import CardShuffle, record_vote
@@ -2136,10 +2135,7 @@ class ClydeREPL:
 
     def _context_window(self) -> int:
         """The model's input window: the provider's own sizing, then the catalog, then a name heuristic."""
-        provider_window = getattr(self.provider, "context_window", None)
-        if callable(provider_window):
-            return provider_window(self.model)
-        return catalog.context_window(self.model) or get_context_window_for_model(self.model)
+        return context_window(self.provider, self.model)
 
     @contextmanager
     def _ticking(self, status, word: str, started: float, active=lambda: True):  # type: ignore[no-untyped-def]

@@ -12,6 +12,8 @@ never crashes startup.
 """
 from __future__ import annotations
 
+import re
+
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -74,6 +76,47 @@ def lookup(model: str) -> ModelInfo | None:
 def context_window(model: str) -> int | None:
     info = lookup(model)
     return info.context_window if info else None
+
+
+# Windows by name, for models the catalog doesn't list
+_NAME_WINDOWS: dict[str, int] = {
+    "claude-sonnet-4-7": 200_000,
+    "claude-sonnet-4-6": 200_000,
+    "claude-opus-4-6": 200_000,
+    "claude-3-5-sonnet": 200_000,
+    "claude-3-5-haiku": 200_000,
+    "claude-3-opus": 200_000,
+    "claude-3-sonnet": 200_000,
+    "claude-3-haiku": 200_000,
+    # OpenAI
+    "gpt-4o": 128_000,
+    "gpt-4o-mini": 128_000,
+    "gpt-4-turbo": 128_000,
+    "gpt-4": 128_000,
+    # GLM / Minimax defaults
+    "glm-4": 128_000,
+    "glm-4-flash": 128_000,
+    "minimax": 128_000,
+    "abab": 128_000,
+}
+
+DEFAULT_CONTEXT_WINDOW = 200_000
+
+
+def window_from_name(model: str) -> int:
+    """A guess from the model's name: a known family, a \"32k\"-style suffix, else DEFAULT_CONTEXT_WINDOW."""
+    model_lower = model.lower()
+    for name, window in _NAME_WINDOWS.items():
+        if name in model_lower:
+            return window
+    # Try to extract a numeric window from model name (e.g., "gpt-4-32k")
+    match = re.search(r'(\d+)k', model_lower)
+    if match:
+        return int(match.group(1)) * 1_000
+    # Check for 1m suffix
+    if '1m' in model_lower or 'million' in model_lower:
+        return 1_000_000
+    return DEFAULT_CONTEXT_WINDOW
 
 
 def max_tokens(model: str, default: int) -> int:

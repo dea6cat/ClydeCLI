@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
+from src.providers.base import context_window
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
@@ -16,7 +17,6 @@ from ..context_system.builder import build_context_prompt, section_report
 from ..context_system.context_analyzer import (
     analyze_context,
     format_context_as_markdown,
-    get_context_window_for_model,
 )
 from ..context_system.microcompact import microcompact_messages, strip_images_from_messages
 from src import trace
@@ -368,6 +368,7 @@ def context_command_call(args: str, context: CommandContext) -> LocalCommandResu
         data = analyze_context(
             conversation_api_messages=conversation_api,
             model=model,
+            window=context_window(context.config.get("provider"), model),
             system_prompt=system_prompt,
             tool_schemas=tool_schemas,
             claude_md_content=claude_md_content,

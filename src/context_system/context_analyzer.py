@@ -7,36 +7,12 @@ a structured ContextData object that can be formatted as Markdown.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, Optional
 
 from .token_estimation import count_tokens, count_messages_tokens
 
-# Model context window sizes
-MODEL_CONTEXT_WINDOWS: dict[str, int] = {
-    "claude-sonnet-4-7": 200_000,
-    "claude-sonnet-4-6": 200_000,
-    "claude-opus-4-6": 200_000,
-    "claude-3-5-sonnet": 200_000,
-    "claude-3-5-haiku": 200_000,
-    "claude-3-opus": 200_000,
-    "claude-3-sonnet": 200_000,
-    "claude-3-haiku": 200_000,
-    # OpenAI
-    "gpt-4o": 128_000,
-    "gpt-4o-mini": 128_000,
-    "gpt-4-turbo": 128_000,
-    "gpt-4": 128_000,
-    # GLM / Minimax defaults
-    "glm-4": 128_000,
-    "glm-4-flash": 128_000,
-    "minimax": 128_000,
-    "abab": 128_000,
-}
 
-DEFAULT_CONTEXT_WINDOW = 200_000
 
 
 @dataclass
@@ -50,7 +26,7 @@ class ContextCategory:
 class ContextData:
     categories: list[ContextCategory] = field(default_factory=list)
     total_tokens: int = 0
-    max_tokens: int = DEFAULT_CONTEXT_WINDOW
+    max_tokens: int = 0
     percentage: float = 0.0
     model: str = ""
     memory_files: list[dict[str, Any]] = field(default_factory=list)
@@ -62,22 +38,6 @@ class ContextData:
     auto_compact_threshold: Optional[int] = None
     is_auto_compact_enabled: bool = False
     sections: list[dict[str, Any]] = field(default_factory=list)   # builder.section_report(): the context prompt's parts
-
-
-def get_context_window_for_model(model: str) -> int:
-    """Get the context window size for a model."""
-    model_lower = model.lower()
-    for name, window in MODEL_CONTEXT_WINDOWS.items():
-        if name in model_lower:
-            return window
-    # Try to extract a numeric window from model name (e.g., "gpt-4-32k")
-    match = re.search(r'(\d+)k', model_lower)
-    if match:
-        return int(match.group(1)) * 1_000
-    # Check for 1m suffix
-    if '1m' in model_lower or 'million' in model_lower:
-        return 1_000_000
-    return DEFAULT_CONTEXT_WINDOW
 
 
 def count_tool_definition_tokens(tool_schemas: list[dict[str, Any]]) -> int:
@@ -158,6 +118,7 @@ def count_message_breakdown_tokens(
 def analyze_context(
     conversation_api_messages: list[dict[str, Any]],
     model: str,
+    window: int,
     system_prompt: str,
     tool_schemas: list[dict[str, Any]],
     claude_md_content: str,
@@ -189,7 +150,7 @@ def analyze_context(
     Returns:
         ContextData with per-category token breakdowns
     """
-    max_tokens = get_context_window_for_model(model)
+    max_tokens = window
 
     categories: list[ContextCategory] = []
 

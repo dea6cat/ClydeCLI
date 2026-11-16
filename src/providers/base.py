@@ -11,7 +11,6 @@ import http.client
 import codecs
 import json
 import ssl
-import threading
 import time as _time
 import urllib.error
 import urllib.parse
@@ -33,6 +32,16 @@ _USER_AGENT = f"clyde-cli/{__version__}"
 
 # Providers that serve models on this machine: no cost, bounded by its memory, and usually small models.
 LOCAL_PROVIDERS = frozenset({"ollama", "omlx"})
+
+
+
+def context_window(provider: object, model: str) -> int:
+    """The model's input window: the provider's own sizing (a local runtime knows what it pinned), else the catalog,
+    else a guess from the name."""
+    from . import catalog
+
+    own = getattr(provider, "context_window", None)
+    return own(model) if callable(own) else (catalog.context_window(model) or catalog.window_from_name(model))
 
 
 @dataclass(slots=True)

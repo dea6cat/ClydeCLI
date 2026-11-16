@@ -7,7 +7,7 @@ import os
 import re
 import threading
 import time
-from src.providers.base import LOCAL_PROVIDERS
+from src.providers.base import LOCAL_PROVIDERS, context_window
 from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import Any, Callable
@@ -415,7 +415,7 @@ def run_agent_loop(
         if _turn and steer is not None and (steering := steer()):
             conversation.add_user_message(f"{_STEERING}{steering}")
         if only is not None:   # a local window fills with old file dumps long before auto-compact
-            trim_old_tool_results(conversation, getattr(provider, "context_window", lambda _m: 0)(model))
+            trim_old_tool_results(conversation, context_window(provider, model))
         specs = from_specs(advertised(all_specs, tool_context.loaded_tools, only))   # again each turn: ToolSearch may have loaded more
         activity.set(f"waiting for {getattr(provider, 'name', '')}:{model}")
         request = to_canonical(conversation, system_prompt)
