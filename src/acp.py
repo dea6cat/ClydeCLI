@@ -151,33 +151,30 @@ class Server:
     def on_authenticate(self, params: dict) -> dict:
         return {}   # login happens in the terminal the editor opened; the next session/new sees the saved key
 
-    def _new_repl(self, params: dict) -> Any:
+    def _new_engine(self, params: dict) -> Any:
         from rich.console import Console
         from src.providers import usable
-        from src.repl.core import ClydeREPL, build_registry
+        from src.agent.engine import Engine, build_registry
 
-        # before the REPL: with nothing connected it can't resolve a model and exits, which would leave the editor waiting
+        # before the engine: with nothing connected it can't resolve a model and exits, which would leave the editor waiting
         if not usable(build_registry()):
             raise AuthRequired(f"{AUTH_REQUIRED_PREFIX}: no provider is connected. Run `clyde login`, or start Ollama or oMLX.")
 
         # ponytail: one working directory per process; editors start one agent process per project
         if params.get("cwd"):
             os.chdir(params["cwd"])
-        repl = ClydeREPL(model=self.model, console=Console(stderr=True, soft_wrap=True), headless=True)
-        repl.stream = True
-        repl.tool_context.ask_user = None
-        return repl
+        return Engine(model=self.model, console=Console(stderr=True, soft_wrap=True), stream=True)
 
-    def _register(self, repl: Any) -> str:
+    def _register(self, engine: Any) -> str:
         """Hand the session to the editor under Clyde's own session id, so the id still names it after a restart."""
-        sid = repl.session.session_id
-        repl.tool_context.permission_handler = lambda tool, message, rule: self._ask(sid, tool, message)
-        self.sessions[sid] = repl
+        sid = engine.session.session_id
+        engine.tool_context.permission_handler = lambda tool, message, rule: self._ask(sid, tool, message)
+        self.sessions[sid] = engine
         return sid
 
     def on_session_new(self, params: dict) -> dict:
-        repl = self._new_repl(params)
-        return {"sessionId": self._register(repl), "configOptions": _config_options(repl)}
+        engine = self._new_engine(params)
+        return {"sessionId": self._register(engine), "configOptions": _config_options(engine)}
 
     def _saved(self, params: dict) -> Any:
         """The session the editor named: the one open in this process, else the one saved on disk."""
@@ -197,44 +194,44 @@ class Server:
         from src.agent.session import Session
 
         source = self._saved(params)
-        repl = self._new_repl(params)
+        engine = self._new_engine(params)
         copy = Session.create(source.provider, source.model)
         while copy.session_id in self.sessions or copy.session_id == source.session_id:   # unsaved sessions don't claim their id
             copy.session_id = f"{copy.session_id}_{uuid.uuid4().hex[:4]}"
         copy.conversation = Conversation.from_dict(source.conversation.to_dict())
         copy.cwd = source.cwd
-        repl._switch_session(copy)
-        if repl.auto_save:
+        engine.switch_session(copy)
+        if engine.auto_save:
             copy.save()
-        return {"sessionId": self._register(repl), "configOptions": _config_options(repl)}
+        return {"sessionId": self._register(engine), "configOptions": _config_options(engine)}
 
     def on_session_load(self, params: dict) -> dict:
         """Reopen a saved session and replay its messages, so the editor and the model both have the history."""
         from src.conversation import message_text
 
         saved = self._saved(params)
-        repl = self._new_repl(params)
-        repl._switch_session(saved)
-        sid = self._register(repl)
+        engine = self._new_engine(params)
+        engine.switch_session(saved)
+        sid = self._register(engine)
         for message in saved.conversation.messages:
             text = message_text(message)
             kind = {"user": "user_message_chunk", "assistant": "agent_message_chunk"}.get(message.role)
             if text and kind:
                 self.notify("session/update", {"sessionId": sid, "update": {"sessionUpdate": kind, "content": {"type": "text", "text": text}}})
-        return {"configOptions": _config_options(repl)}
+        return {"configOptions": _config_options(engine)}
 
     def on_session_set_config_option(self, params: dict) -> dict:
         from src.providers import usable
         from src.ui.settings_screen import settings
 
-        repl, config_id, value = self.sessions[params["sessionId"]], params.get("configId"), str(params.get("value"))
+        engine, config_id, value = self.sessions[params["sessionId"]], params.get("configId"), str(params.get("value"))
         if config_id == "model":
-            if not repl._switch_model(value):
+            if not engine.switch_model(value):
                 name = value.partition(":")[0]
-                if name in repl.registry and name not in usable(repl.registry):   # a known provider with no key
+                if name in engine.registry and name not in usable(engine.registry):   # a known provider with no key
                     raise AuthRequired(f"{AUTH_REQUIRED_PREFIX}: Clyde has no key for {name}. Run `clyde login` to add one.")
                 raise ValueError(f"can't switch to {value}")
-            return {"configOptions": _config_options(repl)}
+            return {"configOptions": _config_options(engine)}
         setting = next((s for s in settings() if _setting_id(s) == config_id), None)
         if setting is None:
             raise ValueError(f"unknown option: {config_id}")
@@ -243,30 +240,29 @@ class Server:
         if choice is missing:
             raise ValueError(f"{setting.label} can't be {value}")
         setting.write(choice)
-        return {"configOptions": _config_options(repl)}
+        return {"configOptions": _config_options(engine)}
 
     def on_session_prompt(self, params: dict) -> dict:
         sid = params["sessionId"]
-        repl = self.sessions[sid]
+        engine = self.sessions[sid]
         text = _prompt_text(params.get("prompt", []))
 
         def update(u: dict) -> None:
             self.notify("session/update", {"sessionId": sid, "update": u})
 
-        repl.on_text_hook = lambda chunk: update({"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": chunk}})
-        repl.on_event_hook = lambda ev: update(_tool_update(ev))
         self.cancelled.clear()
         self.busy = True
         try:
-            repl.chat(text)
+            engine.send(text, on_text=lambda chunk: update({"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": chunk}}),
+                      on_event=lambda ev: update(_tool_update(ev)))
         except KeyboardInterrupt:
             return {"stopReason": "cancelled"}
         finally:
             self.busy = False
         if self.cancelled.is_set():
             return {"stopReason": "cancelled"}
-        if repl.last_error:
-            update({"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": f"\n\nError: {repl.last_error}"}})
+        if engine.last_error:
+            update({"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": f"\n\nError: {engine.last_error}"}})
         return {"stopReason": "end_turn"}
 
     def _ask(self, sid: str, tool: str, message: str) -> tuple[bool, bool]:
@@ -280,14 +276,14 @@ class Server:
         return outcome.get("outcome") == "selected" and outcome.get("optionId") == "allow-once", False
 
 
-def _model_option(repl: Any) -> dict:
+def _model_option(engine: Any) -> dict:
     """The model picker an editor shows (a `select` option in the `model` category): the models of every connected
     provider that /eval hasn't shown to fail, plus the current one."""
     from src.providers import model_ref, usable
     from src.providers.model_eval import hidden_refs
 
-    current, hidden, refs = model_ref(repl.provider, repl.model), hidden_refs(), []
-    for name, provider in usable(repl.registry).items():
+    current, hidden, refs = model_ref(engine.provider, engine.model), hidden_refs(), []
+    for name, provider in usable(engine.registry).items():
         try:
             refs += [f"{name}:{m}" for m in provider.list_models()]
         except Exception:   # one provider that can't list its models must not take the picker away
@@ -310,11 +306,11 @@ def _setting_option(setting: Any) -> dict:
             "currentValue": str(current), "options": [{"value": str(c), "name": name(c)} for c in choices]}
 
 
-def _config_options(repl: Any) -> list[dict]:
+def _config_options(engine: Any) -> list[dict]:
     """Everything the editor can change in a session: the model, then each setting from `/settings` > Config."""
     from src.ui.settings_screen import settings
 
-    return [_model_option(repl), *(_setting_option(s) for s in settings())]
+    return [_model_option(engine), *(_setting_option(s) for s in settings())]
 
 
 def _tool_update(ev: Any) -> dict:

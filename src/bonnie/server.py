@@ -1,6 +1,6 @@
 """clyde luv bonnie: Clyde as a local web app.
 
-One ClydeREPL runs turns on the main thread, fed from a RunControl queue, exactly as the ACP server does. A
+One session engine (src/agent/engine.py) runs turns on the main thread, fed from a RunControl queue, exactly as the ACP server does. A
 threaded HTTP server on 127.0.0.1 only takes requests from the browser and answers from that state: queue,
 steer and stop a run, list and open sessions, read the event feed, answer permission cards and vote on council
 answers. The browser polls /api/events (long poll), so no websocket or extra dependency is needed.
@@ -20,7 +20,6 @@ import hashlib
 import hmac
 import http.cookies
 import json
-import os
 import re
 import secrets
 import sys
@@ -127,9 +126,9 @@ class EventLog:
 class Bonnie:
     """What the web front end drives: the REPL, its run control, the event feed and pending permission cards."""
 
-    def __init__(self, repl: Any) -> None:
-        self.repl = repl
-        self.control: RunControl = repl.control
+    def __init__(self, engine: Any) -> None:
+        self.engine = engine
+        self.control: RunControl = engine.control
         self.events = EventLog()
         self.stopped_at = float("-inf")
         self._stop_requested = False
@@ -137,10 +136,9 @@ class Bonnie:
         self._writes: dict[str, tuple[str, str]] = {}   # tool call id -> (tool, path) for file writes still in flight
         self._waiters: dict[str, list] = {}          # permission id -> [Event, allowed]
         self._lock = threading.Lock()
-        repl.stream = True                            # text chunks reach on_text_hook as they arrive
-        repl.tool_context.output_style_name = "bonnie"
-        repl.tool_context.permission_handler = self.ask_permission
-        repl.tool_context.ask_user = None             # ponytail: no question cards yet; the agent decides without asking
+        engine.stream = True                            # text chunks reach the page as they arrive
+        engine.tool_context.output_style_name = "bonnie"
+        engine.tool_context.permission_handler = self.ask_permission   # ponytail: no question cards yet; ask_user stays unset
 
     # -- permission cards --------------------------------------------------------------------------
     def ask_permission(self, tool: str, message: str, rule: str | None) -> tuple[bool, bool]:
@@ -172,7 +170,7 @@ class Bonnie:
             pid = next(reversed(self._waiters), None)
         if pid is None:
             return None
-        yes, _ = plain_answer.is_plain_yes(*plain_answer.judge(self.repl), text)
+        yes, _ = plain_answer.is_plain_yes(*plain_answer.judge(self.engine), text)
         if not yes:
             self.control.steer(text)
         if self.answer_permission(pid, yes):
@@ -203,41 +201,39 @@ class Bonnie:
             self._turn(item if isinstance(item, Prompt) else Prompt(item, False, None))
 
     def _turn(self, prompt: Prompt) -> None:
-        repl, text = self.repl, prompt.text
+        engine, text = self.engine, prompt.text
         if prompt.auto:
             self.new_session()                         # every automation run is a session of its own
-        message, images = attachments.apply_to_turn(repl, text, list(prompt.files))
-        repl.direct_stream = prompt.search   # Computer mode always has its tools; only Search takes the quick tool-free path
+        message, images = attachments.apply_to_turn(text, list(prompt.files))
+        engine.direct_stream = prompt.search   # Computer mode always has its tools; only Search takes the quick tool-free path
         if prompt.mode:
-            repl._set_mode(prompt.mode)
+            engine.set_mode(prompt.mode)
         self._stop_requested = False
         self.control.busy = True
         self.events.emit("turn_start", text=text, files=[{"name": f.name, "kind": f.kind} for f in prompt.files])
-        if images and repl._reads_images() is False:
-            self.events.emit("notice", message=f"{model_ref(repl.provider, repl.model)} can't read images, so it gets your words but not the picture. Switch the model to include it.")
-        chunks: list[str] = []   # in stream mode chat() leaves last_result unset, so the answer is what streamed
+        if images and engine.reads_images() is False:
+            self.events.emit("notice", message=f"{model_ref(engine.provider, engine.model)} can't read images, so it gets your words but not the picture. Switch the model to include it.")
+        chunks: list[str] = []   # a direct streamed reply leaves last_result unset, so the answer is what streamed
 
         def on_text(chunk: str) -> None:
             chunks.append(chunk)
             self.events.emit("text", text=chunk)
 
-        repl.on_text_hook = on_text
         self._writes.clear()
-        repl.on_event_hook = self._on_tool
         try:
-            repl.system_extra = self._search(text or "attached files") if prompt.search else None
-            repl.chat(message)
+            engine.system_extra = self._search(text or "attached files") if prompt.search else None
+            engine.send(message, images=images, on_text=on_text, on_event=self._on_tool)
         except KeyboardInterrupt:
             self._stop_requested = True
         finally:
-            repl.system_extra = None
+            engine.system_extra = None
             self.control.busy = False
         if self._stop_requested:
             self.events.emit("turn_end", stopped=True)
             return
-        if repl.last_error:
-            self.events.emit("error", message=str(repl.last_error))
-        self.events.emit("turn_end", stopped=False, ok=repl.last_error is None, answer="".join(chunks), council=self.council())
+        if engine.last_error:
+            self.events.emit("error", message=str(engine.last_error))
+        self.events.emit("turn_end", stopped=False, ok=engine.last_error is None, answer="".join(chunks), council=self.council())
 
     def _on_tool(self, ev: Any) -> None:
         """Tell the page about each tool call, and about every file a write or edit actually changed."""
@@ -250,11 +246,11 @@ class Bonnie:
         elif not ev.is_error and ev.tool_use_id in self._writes:
             tool, raw = self._writes.pop(ev.tool_use_id)
             path = Path(raw).expanduser()
-            path = path if path.is_absolute() else Path(self.repl.tool_context.workspace_root) / path
+            path = path if path.is_absolute() else Path(self.engine.tool_context.workspace_root) / path
             self.events.emit("artifact", path=str(path), name=path.name, tool=tool, **dict(zip(("filetype", "group"), artifacts.classify(path))))   # not "kind": the event's own kind is "artifact"
 
     def artifact_rows(self) -> list[dict]:
-        return artifacts.collect(Session.list_recent(str(self.repl.tool_context.workspace_root)), session_title)
+        return artifacts.collect(Session.list_recent(str(self.engine.tool_context.workspace_root)), session_title)
 
     def find_artifact(self, path: str) -> dict | None:
         return artifacts.find(path, self.artifact_rows())
@@ -269,7 +265,7 @@ class Bonnie:
         results: list[dict] = []
         error = None
         try:
-            results = WebSearchTool().run({"query": query, "num": 6}, self.repl.tool_context).output["results"]
+            results = WebSearchTool().run({"query": query, "num": 6}, self.engine.tool_context).output["results"]
         except Exception as e:   # blocked, offline, timed out: the turn still runs, unsourced, and says why
             error = str(e) or type(e).__name__
         self.events.emit("tool", phase="end", call=call, tool="WebSearch", error=error is not None,
@@ -279,7 +275,7 @@ class Bonnie:
     # -- automations ---------------------------------------------------------------------------------
     @property
     def project(self) -> str:
-        return str(self.repl.tool_context.workspace_root)
+        return str(self.engine.tool_context.workspace_root)
 
     def fire(self, row: dict) -> None:
         """Queue an automation's prompt. Read-only (plan mode) unless it was made with edits allowed: nobody is there to answer a card."""
@@ -302,33 +298,33 @@ class Bonnie:
         threading.Thread(target=loop, name="bonnie-automations", daemon=True).start()
 
     def council(self) -> dict | None:
-        return getattr(self.repl.provider, "last_council", None)
+        return getattr(self.engine.provider, "last_council", None)
 
     def state(self) -> dict:
-        repl = self.repl
-        return {"busy": self.control.busy, "queued": self.control.prompts.qsize(), "model": model_ref(repl.provider, repl.model),
-                "mode": repl.mode, "session": repl.session.session_id, "cwd": str(repl.tool_context.workspace_root),
+        engine = self.engine
+        return {"busy": self.control.busy, "queued": self.control.prompts.qsize(), "model": model_ref(engine.provider, engine.model),
+                "mode": engine.mode, "session": engine.session.session_id, "cwd": str(engine.tool_context.workspace_root),
                 "council": self.council(), "event": self.events.last(), "activity": activity.get()}
 
     def models(self) -> list[str]:
         """What the model picker offers: cardShuffle's tiers (and their council forms), then every model that passed /eval."""
         from src.providers.model_eval import load_results
 
-        card = self.repl.registry.get("cardShuffle")
+        card = self.engine.registry.get("cardShuffle")
         tiers = [f"cardShuffle:{m}" for m in card.list_models()] if card is not None else []
         graded = sorted(ref for ref, r in load_results().items() if r.get("passed") and not ref.startswith("cardShuffle:"))
         return tiers + graded
 
     # -- sessions ------------------------------------------------------------------------------------
     def sessions(self) -> list[dict]:
-        found = Session.list_recent(str(self.repl.tool_context.workspace_root))
+        found = Session.list_recent(str(self.engine.tool_context.workspace_root))
         pinned = pins.load()
         rows = [{"id": s.session_id, "title": session_title(s), "updated": s.updated_at, "messages": len(s.conversation.messages),
                  "pinned": s.session_id in pinned} for s in found]
         return sorted(rows, key=lambda r: pinned.index(r["id"]) if r["pinned"] else len(pinned))   # stable: pinned first, newest pin first, the rest as before
 
     def messages(self, session_id: str) -> list[dict] | None:
-        session = self.repl.session if session_id == self.repl.session.session_id else Session.load(session_id)
+        session = self.engine.session if session_id == self.engine.session.session_id else Session.load(session_id)
         if session is None:
             return None
         out = []
@@ -344,7 +340,7 @@ class Bonnie:
 
     def session_image(self, session_id: str, index: int, n: int) -> tuple[bytes, str] | None:
         """The n-th picture attached to message `index` of a session, for the thumbnails in the thread."""
-        session = self.repl.session if session_id == self.repl.session.session_id else Session.load(session_id)
+        session = self.engine.session if session_id == self.engine.session.session_id else Session.load(session_id)
         try:
             blocks = [b for b in session.conversation.messages[index].content if getattr(b, "type", None) == "image"] if session else []
             block = blocks[n]
@@ -357,7 +353,7 @@ class Bonnie:
         session = Session.load(session_id)
         if session is None:
             return False
-        self.repl._switch_session(session)
+        self.engine.switch_session(session)
         self.events.emit("session", session=session_id)
         return True
 
@@ -366,29 +362,20 @@ class Bonnie:
         open session opens a fresh one. False when there is no such saved session."""
         if not Session.archive(session_id):
             return False
-        if session_id == self.repl.session.session_id:
+        if session_id == self.engine.session.session_id:
             self.new_session()
         return True
 
     def set_project(self, path: Path) -> None:
         """Work in another folder: tools, permissions and new sessions follow it, and a fresh session opens there. The caller has
         checked that nothing is running."""
-        # ponytail: MCP servers and hooks were loaded for the folder Bonnie started in; restart Bonnie to pick up a new project's own
-        os.chdir(path)
-        context = self.repl.tool_context
-        context.workspace_root = context.cwd = path
-        context.permission_context.workspace_root = path
-        rules = self.repl.project_rules(path)   # the new project's own deny/ask rules, not the old one's
-        context.permission_rules.clear()
-        context.permission_rules.update(rules)   # in place: sub-agents share this dict
-        commands = self.repl.command_context
-        commands.workspace_root = commands.cwd = path
+        self.engine.set_workspace(path)
         projects.remember(path)
         self.new_session()
 
     def new_session(self) -> None:
-        self.repl._switch_session(Session.create(self.repl.provider_name, self.repl.model))
-        self.events.emit("session", session=self.repl.session.session_id)
+        self.engine.new_session()
+        self.events.emit("session", session=self.engine.session.session_id)
 
 
 def session_title(session: Session) -> str:
@@ -559,7 +546,7 @@ def make_server(bonnie: Bonnie, host: str = "127.0.0.1", port: int = 0) -> Threa
                 else:
                     self._json(200, {"history": automations.history(bonnie.project, automation_id, 20)})
             elif url.path == "/api/providers":
-                self._json(200, providers.listing(bonnie.repl.registry))
+                self._json(200, providers.listing(bonnie.engine.registry))
             elif url.path == "/api/dirs":
                 try:
                     self._json(200, projects.browse(query.get("path", [bonnie.project])[0]))
@@ -808,7 +795,7 @@ def make_server(bonnie: Bonnie, host: str = "127.0.0.1", port: int = 0) -> Threa
                 self._json(404, {"error": "no such session"})
                 return
             if path == "/api/session/delete":
-                if bonnie.control.busy and session_id == bonnie.repl.session.session_id:
+                if bonnie.control.busy and session_id == bonnie.engine.session.session_id:
                     self._json(409, {"error": "Bonnie is working in this session. Stop her first."})
                     return
                 ok = bonnie.delete_session(session_id)
@@ -847,11 +834,11 @@ def make_server(bonnie: Bonnie, host: str = "127.0.0.1", port: int = 0) -> Threa
                 return
             try:
                 if action == "connect":
-                    result = providers.connect(bonnie.repl, data.get("provider"), data.get("key"), data.get("extra"))
+                    result = providers.connect(bonnie.engine, data.get("provider"), data.get("key"), data.get("extra"))
                 elif action == "custom":
-                    result = providers.add_custom(bonnie.repl, data.get("name"), data.get("protocol"), data.get("base_url"), data.get("key"))
+                    result = providers.add_custom(bonnie.engine, data.get("name"), data.get("protocol"), data.get("base_url"), data.get("key"))
                 else:
-                    result = providers.disconnect(bonnie.repl, data.get("provider"))
+                    result = providers.disconnect(bonnie.engine, data.get("provider"))
             except ValueError as e:
                 self._json(400, {"error": str(e)})
             except (OSError, keys.KeysFileError) as e:
@@ -899,8 +886,8 @@ def make_server(bonnie: Bonnie, host: str = "127.0.0.1", port: int = 0) -> Threa
                 if data.get("mode") not in ("hold", "plan", "all_in"):
                     self._json(400, {"error": "mode is hold, plan or all_in"})
                     return
-                bonnie.repl._set_mode(data["mode"])
-            elif not isinstance(data.get("model"), str) or not bonnie.repl._switch_model(data["model"]):
+                bonnie.engine.set_mode(data["mode"])
+            elif not isinstance(data.get("model"), str) or not bonnie.engine.switch_model(data["model"]):
                 self._json(400, {"error": "that model can't be used right now"})
                 return
             state = bonnie.state()
@@ -929,10 +916,10 @@ def open_server(bonnie: Bonnie, port: int | None) -> ThreadingHTTPServer:
 def main(model: str | None = None, port: int | None = None, open_browser: bool = True) -> int:
     from rich.console import Console
 
-    from src.repl.core import ClydeREPL
+    from src.agent.engine import Engine
 
-    repl = ClydeREPL(model=model, console=Console(stderr=True, soft_wrap=True), headless=True)
-    bonnie = Bonnie(repl)
+    engine = Engine(model=model, console=Console(stderr=True, soft_wrap=True))
+    bonnie = Bonnie(engine)
     try:
         server = open_server(bonnie, port)
     except OSError as e:

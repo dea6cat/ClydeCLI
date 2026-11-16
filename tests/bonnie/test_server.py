@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 from src.bonnie import server
 from src.bonnie.server import Bonnie, EventLog, make_server
-from src.repl import ClydeREPL
+from src.agent.engine import Engine
 from tests.fakes import reply
 from tests.repl.test_repl import _fake_provider_env
 
@@ -22,7 +22,7 @@ class BonnieCase(unittest.TestCase):
         self.addCleanup(env.__exit__, None, None, None)
         from rich.console import Console
         import io
-        self.repl = ClydeREPL(model="glm:glm-4.5", console=Console(file=io.StringIO()), headless=True)
+        self.repl = Engine(model="glm:glm-4.5", console=Console(file=io.StringIO()))
         self.bonnie = Bonnie(self.repl)
         self.httpd = make_server(self.bonnie)
         self.port = self.httpd.server_address[1]
@@ -671,7 +671,7 @@ class TestAttachments(BonnieCase):
 
     def test_a_model_that_cannot_read_images_is_named_and_the_turn_still_runs(self):
         image = self.post_file("shot.png", self.PNG)[1]
-        with patch.object(self.repl, "_reads_images", return_value=False):
+        with patch.object(self.repl, "reads_images", return_value=False):
             self.call("POST", "/api/prompt", {"text": "look", "attachments": [image["id"]]})
             events = self.wait_for("turn_end")
         notice = next(e for e in events if e["kind"] == "notice")
@@ -755,4 +755,4 @@ class TestProjectSwitch(BonnieCase):
         self.assertIs(rules, old_rules)                      # updated in place: sub-agents hold the same dict
         self.assertIn("Bash(new-only:*)", rules["deny"])
         self.assertNotIn("Bash(old-only:*)", rules["deny"])
-        self.assertEqual(self.repl.command_context.workspace_root, new)
+        self.assertEqual(self.repl.tool_context.workspace_root, new)

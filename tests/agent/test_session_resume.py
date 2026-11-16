@@ -47,7 +47,7 @@ class _TempHomeAndWorkspace(unittest.TestCase):
 
     def _repl(self, *responses, **kwargs) -> tuple[ClydeREPL, FakeProvider]:
         provider = FakeProvider(*responses, name="glm", models=("glm-4.5",))
-        with patch("src.repl.core.build_registry", return_value={"glm": provider}), \
+        with patch("src.agent.engine.build_registry", return_value={"glm": provider}), \
                 patch("src.repl.core.keys.load_into_env"):
             repl = ClydeREPL(model="glm:glm-4.5", **kwargs)
         repl.console.print = Mock()

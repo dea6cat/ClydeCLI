@@ -24,7 +24,7 @@ def _fake_provider_env(*responses, chunk_size: int = 0):
     """Patch the REPL's provider registry with a scripted `glm` provider (no network, and no
     saved keys from the real home directory)."""
     provider = FakeProvider(*responses, name="glm", models=("glm-4.5",), chunk_size=chunk_size)
-    with patch("src.repl.core.build_registry", return_value={"glm": provider}), \
+    with patch("src.agent.engine.build_registry", return_value={"glm": provider}), \
             patch("src.repl.core.keys.load_into_env"):
         yield provider
 
@@ -254,7 +254,7 @@ class TestREPL(unittest.TestCase):
                     repl = ClydeREPL(model="glm:glm-4.5", stream=True)
                     repl.console.print = Mock()
 
-                    with patch('src.repl.core.run_agent_loop') as mock_agent_loop:
+                    with patch('src.agent.engine.run_agent_loop') as mock_agent_loop:
                         repl.chat("who are you")
 
                     self.assertEqual(len(mock_provider.requests), 1)
@@ -281,7 +281,7 @@ class TestREPL(unittest.TestCase):
                     repl = ClydeREPL(model="glm:glm-4.5")
                     repl.console.print = Mock()
 
-                    with patch('src.repl.core.run_agent_loop') as mock_agent_loop:
+                    with patch('src.agent.engine.run_agent_loop') as mock_agent_loop:
                         mock_agent_loop.return_value = Mock(response_text="done", usage=None, num_turns=1)
                         repl.chat("do the task")
 
@@ -299,7 +299,7 @@ class TestREPL(unittest.TestCase):
                     repl = ClydeREPL(model="glm:glm-4.5")
                     repl.console.print = Mock()
 
-                    with patch('src.repl.core.run_agent_loop') as mock_agent_loop:
+                    with patch('src.agent.engine.run_agent_loop') as mock_agent_loop:
                         mock_agent_loop.return_value = Mock(response_text=MAX_TURNS_REPLY, usage=None, num_turns=20, ran_out=True)
                         repl.chat("do the task")
 
@@ -324,7 +324,7 @@ class TestREPL(unittest.TestCase):
                         kwargs["on_text_chunk"]("**done**")
                         return Mock(response_text="**done**", usage=None, num_turns=1)
 
-                    with patch('src.repl.core.run_agent_loop') as mock_agent_loop:
+                    with patch('src.agent.engine.run_agent_loop') as mock_agent_loop:
                         mock_agent_loop.side_effect = run_agent_loop_side_effect
                         repl.chat("Please read README.md and summarize it")
 
@@ -349,7 +349,7 @@ class TestREPL(unittest.TestCase):
                     repl = ClydeREPL(model="glm:glm-4.5", stream=True)
                     repl.console.print = Mock()
 
-                    with patch('src.repl.core.run_agent_loop') as mock_agent_loop:
+                    with patch('src.agent.engine.run_agent_loop') as mock_agent_loop:
                         mock_agent_loop.return_value = Mock(response_text="fallback", usage=None, num_turns=1)
                         repl.chat("hi there")
 
@@ -366,7 +366,7 @@ class TestREPL(unittest.TestCase):
                 with _fake_provider_env(auth):
                     repl = ClydeREPL(model="glm:glm-4.5", stream=True)
                     repl.console.print = Mock()
-                    with patch('src.repl.core.run_agent_loop') as mock_agent_loop, \
+                    with patch('src.agent.engine.run_agent_loop') as mock_agent_loop, \
                             patch('rich.prompt.Prompt.ask', return_value="n"):
                         repl.chat("hi there")
                     mock_agent_loop.assert_not_called()
@@ -434,7 +434,7 @@ class TestREPL(unittest.TestCase):
                 with _fake_provider_env():
                     repl = ClydeREPL(model="glm:glm-4.5")
                     repl.console.print = Mock()
-                    with patch('src.repl.core.run_agent_loop',
+                    with patch('src.agent.engine.run_agent_loop',
                                side_effect=ProviderError("glm", "HTTP 429 — rate limited: slow down")), \
                             patch('traceback.print_exc') as print_exc:
                         repl.chat("Please fix the bug in src/app.py")
@@ -765,14 +765,14 @@ class TestREPL(unittest.TestCase):
     def test_no_saved_model_picks_a_connected_provider(self):
         with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
             with patch('src.repl.core.Session.create'):
-                with _fake_provider_env(), patch('src.repl.core.get_default_model', return_value=None):
+                with _fake_provider_env(), patch('src.agent.engine.get_default_model', return_value=None):
                     repl = ClydeREPL()
                     self.assertEqual((repl.provider_name, repl.model), ("glm", "glm-4.5"))
 
     def test_unavailable_saved_model_falls_back_instead_of_exiting(self):
         with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
             with patch('src.repl.core.Session.create'):
-                with _fake_provider_env(), patch('src.repl.core.get_default_model', return_value="openai:gpt-5.4"):
+                with _fake_provider_env(), patch('src.agent.engine.get_default_model', return_value="openai:gpt-5.4"):
                     repl = ClydeREPL()
                     self.assertEqual(repl.provider_name, "glm")
 
@@ -785,9 +785,9 @@ class TestREPL(unittest.TestCase):
 
     def test_unconfigured_model_exits_with_hint(self):
         with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
-            with patch('src.repl.core.build_registry', return_value={}), \
+            with patch('src.agent.engine.build_registry', return_value={}), \
                     patch('src.repl.core.keys.load_into_env'), \
-                    patch('src.repl.core.get_default_model', return_value=None):
+                    patch('src.agent.engine.get_default_model', return_value=None):
                 with self.assertRaises(SystemExit):
                     ClydeREPL()
 
@@ -1063,7 +1063,8 @@ class TestSlashCompleter(unittest.TestCase):
 class TestTimesAndClear(unittest.TestCase):
     def test_clock_and_duration_formats(self):
         from datetime import datetime
-        from src.repl.core import _clock, _duration
+        from src.repl.core import _clock
+        from src.agent.engine import duration as _duration
 
         self.assertEqual(_clock(datetime(2026, 1, 1, 17, 47)), "5:47 PM")
         self.assertEqual(_clock(datetime(2026, 1, 1, 0, 5)), "12:05 AM")

@@ -25,10 +25,10 @@ class TestToolErrorLine(unittest.TestCase):
         provider = FakeProvider(reply(tool_calls=[("Bash", {"command": "echo 'FAILED (failures=1)' >&2; exit 3"})]),
                                 reply("done"), name="glm", models=("glm-4.5",))
         out = io.StringIO()
-        with patch.object(Path, "home", return_value=home), patch("src.repl.core.build_registry", return_value={"glm": provider}), \
+        with patch.object(Path, "home", return_value=home), patch("src.agent.engine.build_registry", return_value={"glm": provider}), \
                 patch("src.repl.core.keys.load_into_env"), patch.dict(os.environ, {"CLYDE_TRACE": "off"}):
             repl = ClydeREPL(model="glm:glm-4.5", console=Console(file=out, width=120))
-            repl._set_mode("all_in")
+            repl.set_mode("all_in")
             repl.chat("run the test command")
         self.assertIn("exit=3 · FAILED (failures=1)", out.getvalue())
 

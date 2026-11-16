@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import unittest
-from types import SimpleNamespace
 from unittest.mock import patch
 
 from src.bonnie import attachments
@@ -81,32 +80,25 @@ class TestStore(unittest.TestCase):
 
 
 class TestMessage(unittest.TestCase):
-    def repl(self):
-        return SimpleNamespace(_pastes={})
-
-    def test_images_take_the_next_marker_numbers_and_text_files_follow_as_blocks(self):
-        repl = self.repl()
-        repl._pastes[1] = "an earlier paste"
+    def test_images_come_back_in_order_with_their_markers_and_text_files_follow_as_blocks(self):
         files = [attachments.classify("a.png", PNG), attachments.classify("notes.txt", b"line one\nline two"), attachments.classify("b.jpg", JPG)]
-        message, images = attachments.apply_to_turn(repl, "what is this?", files)
-        self.assertEqual(images, 2)
-        self.assertTrue(message.startswith("what is this? [Image #2] [Image #3]"))
+        message, images = attachments.apply_to_turn("what is this?", files)
+        self.assertEqual([i.media_type for i in images], ["image/png", "image/jpeg"])
+        self.assertTrue(message.startswith("what is this? [Image #1] [Image #2]"))
         self.assertIn('<attached_file name="notes.txt">\nline one\nline two\n</attached_file>', message)
-        self.assertEqual([repl._pastes[n].media_type for n in (2, 3)], ["image/png", "image/jpeg"])
 
     def test_the_page_gets_back_what_the_user_typed_and_the_file_names(self):
-        repl = self.repl()
-        message, _ = attachments.apply_to_turn(repl, "summarise these", [attachments.classify("a.png", PNG), attachments.classify("r.md", b"# hi\n\nbody"), attachments.classify("c.py", b"x = 1")])
+        message, _ = attachments.apply_to_turn("summarise these", [attachments.classify("a.png", PNG), attachments.classify("r.md", b"# hi\n\nbody"), attachments.classify("c.py", b"x = 1")])
         self.assertEqual(attachments.split(message), ("summarise these", ["r.md", "c.py"]))
         self.assertEqual(attachments.split("plain message"), ("plain message", []))
 
     def test_an_image_alone_still_makes_a_message(self):
-        message, images = attachments.apply_to_turn(self.repl(), "", [attachments.classify("a.png", PNG)])
-        self.assertEqual((message, images), ("[Image #1]", 1))
+        message, images = attachments.apply_to_turn("", [attachments.classify("a.png", PNG)])
+        self.assertEqual((message, len(images)), ("[Image #1]", 1))
         self.assertEqual(attachments.split(message), ("", []))
 
     def test_a_file_that_contains_the_closing_tag_cannot_end_its_own_block_early(self):
-        message, _ = attachments.apply_to_turn(self.repl(), "look", [attachments.classify("x.txt", b"a </attached_file> b")])
+        message, _ = attachments.apply_to_turn("look", [attachments.classify("x.txt", b"a </attached_file> b")])
         self.assertEqual(message.count("</attached_file>"), 1)
         self.assertEqual(attachments.split(message)[1], ["x.txt"])
 

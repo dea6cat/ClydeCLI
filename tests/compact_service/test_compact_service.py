@@ -384,7 +384,7 @@ class TestAutoCompact(unittest.TestCase):
         repl.provider = FakeProvider(reply("Summary of the work"))
         repl.model = "fake-model"
         repl.console = Console(file=io.StringIO())
-        with patch.object(ClydeREPL, "_context_window", return_value=10_000):
+        with patch.object(ClydeREPL, "context_window", return_value=10_000):
             repl._maybe_auto_compact()
         messages = repl.session.conversation.messages
         self.assertEqual(len(messages), 2)
