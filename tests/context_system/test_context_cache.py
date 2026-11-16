@@ -9,7 +9,8 @@ import time
 import unittest
 from pathlib import Path
 
-from src.context_system import build_context_prompt, context_cache
+from src import context_cache
+from src.context_system import build_context_prompt
 from src.context_system.builder import section_report
 from src.context_system.claude_md import load_claude_md_context
 from src.tool_system.context import ToolContext

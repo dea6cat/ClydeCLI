@@ -11,7 +11,7 @@ import re
 import time
 from pathlib import Path
 
-from ..config import clyde_home
+from src.config import clyde_home
 
 TTL_SECONDS = 7 * 86_400
 _REF = re.compile(r"ctx:([0-9a-f]{16})")

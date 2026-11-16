@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ...context_system import context_cache
+from src import context_cache
 from ..context import ToolContext
 from ..errors import ToolInputError
 from ..protocol import ToolResult

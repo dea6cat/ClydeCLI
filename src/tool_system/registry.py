@@ -19,7 +19,7 @@ def _clip_result(result: ToolResult, limit: int) -> ToolResult:
     """Hold a tool's text output to its declared max_result_size_chars: the head and tail stay, the whole output goes to
     the context cache for RetrieveContext. Before this nothing enforced the limit, and Bash kept only its first 20,000
     characters, so a failing test run lost the error at its end."""
-    from ..context_system.context_cache import clip
+    from src.context_cache import clip
 
     out = result.output
     if isinstance(out, str):
