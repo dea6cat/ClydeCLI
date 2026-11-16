@@ -55,9 +55,9 @@ class TestConfigFile(_TempHome):
         self.assertTrue(config["session"]["auto_save"])
         self.assertNotIn("providers", config)
 
-    def test_load_creates_default(self):
+    def test_load_without_a_file_gives_the_defaults_and_writes_nothing(self):
         self.assertEqual(load_config(), get_default_config())
-        self.assertTrue(get_config_path().exists())
+        self.assertFalse(get_config_path().exists())
 
     def test_save_load_roundtrip_and_permissions(self):
         save_config({"model": "openai:gpt-5.4", "session": {"auto_save": False}})

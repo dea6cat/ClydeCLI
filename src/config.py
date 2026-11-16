@@ -45,13 +45,12 @@ def get_default_config() -> dict[str, Any]:
 
 
 def load_config() -> dict[str, Any]:
-    """Load configuration from file, creating it when missing."""
+    """The saved configuration, or the defaults when nothing is saved yet. Reading never writes: the file appears with the
+    first setting saved, so a look (a cancelled `clyde login`, `clyde doctor`) leaves no trace."""
     config_path = get_config_path()
 
     if not config_path.exists():
-        config = get_default_config()
-        save_config(config)
-        return config
+        return get_default_config()
 
     try:
         config = read_json_safely(config_path)   # a cut-off file falls back to the last good copy

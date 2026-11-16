@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A Google or Ollama stream that drops before the reply is finished is retried (or, once text has shown, continued) instead of being taken as a complete answer.
 - oMLX models get the same repair as Ollama's when they write a tool call as JSON text instead of calling the tool: the call runs instead of the JSON being shown as the answer.
 - `/brief` keeps one briefing per session. Every session read and wrote the same one, so a second window could continue, or clear, a briefing started in the first. A briefing in progress before this update isn't picked up again: start it anew.
+- Looking leaves no trace: reading the settings created `~/.clyde/config.json` full of defaults when there was none, so even a cancelled `clyde login` left one behind. The file now appears with the first setting you save.
 - A team worker that gave up (repeating a failing call, stalling, or out of budget) is reported as not finished; the station showed it as done.
 - A slash command that fails says why. It was run a second time through another path with its error thrown away, and then reported as "Unknown command". A failed `/compact` no longer clears the conversation: it said so and kept nothing.
 - `/harness list` shows your MCP servers. It read `~/.clyde/mcp_servers.json`, a file Clyde never writes, instead of `mcpServers` in your settings.
