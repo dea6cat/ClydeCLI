@@ -24,6 +24,7 @@ import sys
 import threading
 import time
 import webbrowser
+from src.local_http import send_response
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -69,18 +70,8 @@ def make_server(host: str = "127.0.0.1", port: int = 0) -> ThreadingHTTPServer:
             return {f"127.0.0.1:{number}", f"localhost:{number}"}
 
         def _send(self, status: int, body: bytes, ctype: str, extra: dict[str, str] | None = None) -> None:
-            self.send_response(status)
-            self.send_header("Content-Type", ctype)
-            self.send_header("Content-Length", str(len(body)))
-            if "Cache-Control" not in (extra or {}):
-                self.send_header("Cache-Control", "no-store")
-            self.send_header("Content-Security-Policy", _CSP)
-            self.send_header("X-Content-Type-Options", "nosniff")
-            self.send_header("Referrer-Policy", "no-referrer")
-            for key, value in (extra or {}).items():
-                self.send_header(key, value)
-            self.end_headers()
-            self.wfile.write(body)
+            extra = dict(extra or {})
+            send_response(self, status, body, ctype, _CSP, cache=extra.pop("Cache-Control", "no-store"), extra=extra)
 
         def _json(self, status: int, payload: Any) -> None:
             self._send(status, json.dumps(payload, ensure_ascii=False).encode(), "application/json; charset=utf-8")

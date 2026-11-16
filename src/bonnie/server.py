@@ -28,6 +28,7 @@ import threading
 import time
 import uuid
 import webbrowser
+from src.local_http import send_response
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -462,22 +463,13 @@ def make_server(bonnie: Bonnie, host: str = "127.0.0.1", port: int = 0) -> Threa
             return {f"127.0.0.1:{port_}", f"localhost:{port_}"}
 
         def _send(self, status: int, body: bytes, ctype: str, cache: str = "no-store", csp: str = _CSP, extra: dict | None = None) -> None:
-            self.send_response(status)
-            self.send_header("Content-Type", ctype)
-            self.send_header("Content-Length", str(len(body)))
-            self.send_header("Cache-Control", cache)
-            self.send_header("X-Content-Type-Options", "nosniff")
-            self.send_header("Content-Security-Policy", csp)
-            for name, value in (extra or {}).items():
-                self.send_header(name, value.replace("\r", " ").replace("\n", " "))   # one stray newline would end the headers and start a body
-            self.end_headers()
-            self.wfile.write(body)
+            send_response(self, status, body, ctype, csp, cache=cache, extra=extra)
 
         def _json(self, status: int, payload: Any) -> None:
             self._send(status, json.dumps(payload, ensure_ascii=False).encode(), "application/json; charset=utf-8")
 
         def _guard(self, api: bool) -> bool:
-            """Host and Origin must be this server; API calls also need the token."""
+            """Host and Origin must be this server; an API call also needs the session cookie and the token."""
             if self.headers.get("Host", "") not in self._allowed_hosts():
                 self._json(403, {"error": "bad host"})
                 return False
@@ -485,7 +477,7 @@ def make_server(bonnie: Bonnie, host: str = "127.0.0.1", port: int = 0) -> Threa
             if origin is not None and origin.removeprefix("http://") not in self._allowed_hosts():
                 self._json(403, {"error": "bad origin"})
                 return False
-            if api and not hmac.compare_digest(self.headers.get("X-Bonnie-Token", ""), token):
+            if api and not (self._has_session() and hmac.compare_digest(self.headers.get("X-Bonnie-Token", ""), token)):
                 self._json(403, {"error": "bad token"})
                 return False
             return True

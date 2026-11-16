@@ -33,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- Bonnie's API wants the session cookie as well as the token, as the station's does; the token alone, which is in the page, was enough. Both local servers now send the same safety headers (Bonnie had no `Referrer-Policy`, and the station did not clean newlines out of header values).
 - Switching Bonnie to another project applies that project's permission rules and drops the old project's; it kept the old ones. `clyde -p`, an editor over ACP and Bonnie never ask to install oMLX: the question read from the terminal, which under ACP is the editor's message channel.
 - When the LLM review of a flagged skill or plugin fails (the model is down, or gives no answer), the verdict stays a static one and the review is tried again on the next check; it was recorded as reviewed and never retried. The scan also no longer copies the reviewing provider's key into the process environment.
 - A plugin the security scan blocks loads nothing until you allow it. `clyde plugin enable` used to turn one on without a scan, and a plugin whose files changed after it was enabled loaded its tools, hooks and MCP servers unscanned. Each enabled plugin is now checked at startup (a cached verdict when its content is unchanged); `clyde plugin enable` shows the scan and asks before allowing a blocked one, and so does `clyde plugin import`.
