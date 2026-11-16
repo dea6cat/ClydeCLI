@@ -32,9 +32,12 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 from src import trace
+
+if TYPE_CHECKING:
+    from src.security.scanner.engine import ScanResult
 
 SAFE, CAUTION, BLOCK, ERROR = "SAFE", "CAUTION", "DO_NOT_INSTALL", "ERROR"
 _TIMEOUT_STATIC, _TIMEOUT_LLM = 120, 300   # a review that takes longer is skipped, not waited for
