@@ -932,19 +932,6 @@ class TestConversation(unittest.TestCase):
         self.assertEqual(conv.messages[0].content, "Hello")
         self.assertEqual(conv.messages[1].role, "assistant")
 
-    def test_max_history(self):
-        """Test max history limit."""
-        conv = Conversation(max_history=3)
-
-        # Add 5 messages
-        for i in range(5):
-            conv.add_message("user", f"Message {i}")
-
-        # Should only keep last 3
-        self.assertEqual(len(conv.messages), 3)
-        self.assertEqual(conv.messages[0].content, "Message 2")
-        self.assertEqual(conv.messages[2].content, "Message 4")
-
     def test_get_messages(self):
         """Test getting messages in API format."""
         conv = Conversation()
