@@ -117,6 +117,14 @@ class TestFilesAndFoldersOutside(unittest.TestCase):
             self.call("Bash", command="echo x > rel.txt")
         self.assertEqual(len(self.asked), 1)                          # a relative write there does
 
+    def test_every_tool_that_reads_a_path_asks_before_reading_a_secret_file(self):
+        (self.root / ".env").write_text("KEY=1\n")
+        self.answer = False   # only whether it asks matters here
+        for name in ("Read", "Glob", "Grep"):
+            self.asked.clear()
+            self.call(name, **({"file_path": str(self.root / ".env")} if name == "Read" else {"pattern": "*", "path": str(self.root / ".env")}))
+            self.assertTrue(self.asked and "secret" in self.asked[0], name)
+
     def test_a_no_leaves_it_alone_and_asks_again_next_time(self):
         self.answer = False
         target = self.other / "new.txt"

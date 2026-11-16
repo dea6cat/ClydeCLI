@@ -196,6 +196,7 @@ class BashTool:
     def spec(self) -> ToolSpec:
         return ToolSpec(
             name="Bash",
+            path_field="cwd",
             description=("Execute a shell command. Anything that is not read-only, and anything that names a folder "
                          "outside the project, asks the user first."),
             input_schema={

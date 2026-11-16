@@ -103,6 +103,7 @@ class AgentTool:
         listed = "; ".join(f"{a.name}: {a.description}" for a in types.values()) or "general-purpose"
         return ToolSpec(
             name="Agent",
+            plan_mode_ok=True,
             description=(
                 "Launch a sub-agent with a fresh conversation to handle a self-contained task; it returns only "
                 "its final answer. Set run_in_background to get a task id at once and keep working; read the "

@@ -16,6 +16,7 @@ class NotebookEditTool:
     def spec(self) -> ToolSpec:
         return ToolSpec(
             name="NotebookEdit",
+            path_field="notebook_path", writes_files=True,
             description="Replace, insert, or delete a cell in a Jupyter notebook (.ipynb).",
             input_schema={
                 "type": "object",

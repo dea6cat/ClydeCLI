@@ -534,6 +534,7 @@ class McpServerTool:
             input_schema=schema,
             is_read_only=bool(annotations.get("readOnlyHint")),
             is_destructive=not annotations.get("readOnlyHint"),
+            reaches_network=True,
             max_result_size_chars=100_000,
         )
 

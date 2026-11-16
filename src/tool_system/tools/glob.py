@@ -14,6 +14,7 @@ class GlobTool:
     def spec(self) -> ToolSpec:
         return ToolSpec(
             name="Glob",
+            path_field="path",
             description=(
                 "- Fast file pattern matching tool that works with any codebase size\n"
                 '- Supports glob patterns like "**/*.js" or "src/**/*.ts"\n'

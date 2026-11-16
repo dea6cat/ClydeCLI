@@ -490,7 +490,8 @@ def run_agent_loop(
                 edit_check = edit_check_for(tool_name, tool_input, tool_context.workspace_root)
                 result = tool_registry.dispatch(ToolCall(name=tool_name, input=tool_input, tool_use_id=tool_id),
                                                 tool_context)
-                result_output, flagged = injection.guard(tool_name, result.output)   # an outside tool's answer that addresses the model gets a notice
+                tool = tool_registry.get(tool_name)
+                result_output, flagged = injection.guard(tool_name, result.output, tool is not None and tool.spec().reaches_network)   # an outside tool's answer that addresses the model gets a notice
                 if flagged:
                     trace.record("injection_flag", tool=tool_name, findings=flagged)
                     summary = summarize_tool_use(tool_name, tool_input)

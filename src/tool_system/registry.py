@@ -43,6 +43,10 @@ class ToolSpec:
     is_destructive: bool = False
     strict: bool = False
     max_result_size_chars: int = 20_000
+    path_field: str = ""            # the input that names the file or folder it works on
+    writes_files: bool = False       # it changes the file at path_field
+    reaches_network: bool = False    # what it sends can leave the machine, and what comes back is from outside
+    plan_mode_ok: bool = False       # allowed in plan mode although it is destructive (delegating, presenting the plan)
 
 
 class Tool(Protocol):
@@ -55,16 +59,9 @@ class Tool(Protocol):
     def run(self, tool_input: dict[str, Any], context: ToolContext) -> ToolResult: ...
 
 
-# The file-changing tools and the input field naming their file, for edit checkpoints.
-_EDIT_PATHS = {"Write": "file_path", "Edit": "file_path", "NotebookEdit": "notebook_path"}
-
-# Plan mode still lets the model look around, delegate research and present its plan.
-_PLAN_MODE_ALLOWED = {"exitplanmode", "agent", "task"}
-
-
 def _changes_things(spec: ToolSpec, tool_input: dict[str, Any]) -> bool:
     """Whether a call would modify something, for plan mode ("reading the table")."""
-    if spec.name.lower() in _PLAN_MODE_ALLOWED:
+    if spec.plan_mode_ok:
         return False
     if spec.name.lower() == "bash":
         from .tools.bash import is_read_only_command
@@ -72,25 +69,28 @@ def _changes_things(spec: ToolSpec, tool_input: dict[str, Any]) -> bool:
     return spec.is_destructive
 
 
-def _read_target(tool_input: dict[str, Any]) -> str:
-    return str(tool_input.get("file_path") or tool_input.get("path") or "")
+def _read_target(spec: ToolSpec, tool_input: dict[str, Any]) -> str:
+    """The path a tool that reads one names (Read, Grep, Glob), or "" for any other call."""
+    if spec.writes_files or not spec.path_field or spec.name.lower() == "bash":
+        return ""
+    return str(tool_input.get(spec.path_field) or "")
 
 
 def _reads_secret(spec: ToolSpec, tool_input: dict[str, Any]) -> bool:
-    """A Read or Grep of a key, .env, .ssh, cloud-credential or Clyde key-store file, or a Bash command that names one,
-    expands a secret-looking variable, or searches the whole home folder."""
+    """A read of a key, .env, .ssh, cloud-credential or Clyde key-store file by any tool that reads a path, or a Bash
+    command that names one, expands a secret-looking variable, or searches the whole home folder."""
     from .secret_paths import command_reads_secret, is_secret_path
     name = spec.name.lower()
     if name == "bash":
         return command_reads_secret(str(tool_input.get("command", "")))
-    return name in ("read", "grep") and bool(_read_target(tool_input)) and is_secret_path(_read_target(tool_input))
+    target = _read_target(spec, tool_input)
+    return bool(target) and is_secret_path(target)
 
 
 def _edit_target(spec: ToolSpec, tool_input: dict[str, Any], context: ToolContext):
     """The file a Write, Edit or NotebookEdit call would change, when it is inside the allowed folders (anything
     else is refused by the tool itself, so there is nothing to ask about)."""
-    field = _EDIT_PATHS.get(spec.name)
-    raw = tool_input.get(field) if field else None
+    raw = tool_input.get(spec.path_field) if spec.writes_files else None
     if not isinstance(raw, str):
         return None
     try:
@@ -99,16 +99,10 @@ def _edit_target(spec: ToolSpec, tool_input: dict[str, Any], context: ToolContex
         return None
 
 
-# Tools that name a file or folder, and the input field that holds it. Outside the project they ask, then remember the answer.
-_PATH_FIELDS = {"read": "file_path", "write": "file_path", "edit": "file_path", "notebookedit": "notebook_path",
-                "glob": "path", "grep": "path", "bash": "cwd"}
-_CHANGES_FILES = {"write", "edit", "notebookedit"}
-
-
 def _outside_target(spec: ToolSpec, tool_input: dict[str, Any], context: ToolContext):
     """The file or folder this call names when it is outside the project and the user has not approved it yet."""
-    raw = tool_input.get(_PATH_FIELDS.get(spec.name.lower(), ""))
-    return context.outside_path(raw, write=spec.name.lower() in _CHANGES_FILES) if isinstance(raw, str) and raw else None
+    raw = tool_input.get(spec.path_field) if spec.path_field else None
+    return context.outside_path(raw, write=spec.writes_files) if isinstance(raw, str) and raw else None
 
 
 def _shown(path, context: ToolContext) -> str:
@@ -128,12 +122,12 @@ def _is_major(spec: ToolSpec, tool_input: dict[str, Any], context: ToolContext) 
         command = str(tool_input.get("command", ""))
         outside = reaches_outside_project(command, context, tool_input.get("cwd")) and not is_read_only_command(command)
         return is_major_command(command) or outside or _reads_secret(spec, tool_input)
-    path = tool_input.get("file_path") or tool_input.get("notebook_path") or (tool_input.get("path") if name in ("grep", "glob") else None)
+    path = tool_input.get(spec.path_field) if spec.path_field else None
     if isinstance(path, str) and path:
         from pathlib import Path
         target = Path(path).expanduser().resolve()
         from .secret_paths import is_secret_path
-        if context.outside_path(path, write=name in _CHANGES_FILES) is not None:
+        if context.outside_path(path, write=spec.writes_files) is not None:
             return True
         try:
             inside = target.relative_to(context.workspace_root)
@@ -149,12 +143,10 @@ def _is_major(spec: ToolSpec, tool_input: dict[str, Any], context: ToolContext) 
 def _sends_out(spec: ToolSpec, tool_input: dict[str, Any]) -> bool:
     """Whether this call can carry data off the machine: the web and MCP tools, and any Bash command that is not read-only
     (curl, git push, ssh and dig all count as not read-only)."""
-    from ..security.injection import is_external
-
     if spec.name.lower() == "bash":
         from .tools.bash import is_read_only_command
         return not is_read_only_command(str(tool_input.get("command", "")))
-    return is_external(spec.name)
+    return spec.reaches_network
 
 
 def _clip_input(tool_input: dict[str, Any], limit: int = 300) -> str:
@@ -251,10 +243,10 @@ class ToolRegistry:
         permission_result = check(call.input, context) if check is not None else PermissionResult.allow()
         if ruling != "allow" and permission_result.behavior.value == "allow" and _reads_secret(spec, call.input):
             # Keys and .env files reach the model only with a yes (or an allow rule); _is_major keeps all-in asking too.
-            permission_result = PermissionResult.ask(f"{spec.name} wants to read a secret file: {_read_target(call.input)}")
+            permission_result = PermissionResult.ask(f"{spec.name} wants to read a secret file: {_read_target(spec, call.input)}")
         outside = _outside_target(spec, call.input, context)
         if outside is not None and permission_result.behavior.value == "allow":
-            what = "change a file" if spec.name.lower() in _CHANGES_FILES else "use a folder" if spec.name.lower() == "bash" else "read"
+            what = "change a file" if spec.writes_files else "use a folder" if spec.name.lower() == "bash" else "read"
             permission_result = PermissionResult.ask(f"{spec.name} wants to {what} outside the project: {outside}")
         target = _edit_target(spec, call.input, context) if context.confirm_edits else None
         if target is not None and permission_result.behavior.value == "allow":
@@ -313,8 +305,8 @@ class ToolRegistry:
                 )
 
         if outside is not None:
-            context.grant_path(outside, write=spec.name.lower() in _CHANGES_FILES)   # asked and answered yes (or a saved allow rule): the tool's own path check lets it through
-        raw_path = call.input.get(_EDIT_PATHS.get(spec.name, ""))
+            context.grant_path(outside, write=spec.writes_files)   # asked and answered yes (or a saved allow rule): the tool's own path check lets it through
+        raw_path = call.input.get(spec.path_field) if spec.writes_files else None
         if context.before_edit is not None and isinstance(raw_path, str):
             try:
                 context.before_edit(context.ensure_allowed_path(raw_path, write=True))

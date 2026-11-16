@@ -25,6 +25,7 @@ class MCPTool:
     def spec(self) -> ToolSpec:
         return ToolSpec(
             name="MCP",
+            reaches_network=True,
             description="Call a tool exposed by a connected MCP server.",
             input_schema={
                 "type": "object",

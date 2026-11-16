@@ -16,6 +16,7 @@ class FileWriteTool:
     def spec(self) -> ToolSpec:
         return ToolSpec(
             name="Write",
+            path_field="file_path", writes_files=True,
             description="Write a file to the local filesystem.",
             input_schema={
                 "type": "object",

@@ -186,6 +186,7 @@ class FileEditTool:
     def spec(self) -> ToolSpec:
         return ToolSpec(
             name="Edit",
+            path_field="file_path", writes_files=True,
             description=(
                 "Performs string replacements in files. old_string should match the file exactly; "
                 "a unique match that differs only in trailing whitespace or indentation is also accepted. "

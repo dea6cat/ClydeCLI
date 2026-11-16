@@ -63,6 +63,11 @@ class TestInjectionTaint(unittest.TestCase):
         self.assertIn("deny rule", self.search().output["error"])
         self.assertEqual(self.asked, [])
 
+    def test_the_tools_that_reach_outside_say_so(self):
+        from src.agent.subagent import build_tool_registry
+        outside = {s.name for s in build_tool_registry(include_user_tools=False).list_specs() if s.reaches_network}
+        self.assertEqual(outside, {"WebFetch", "WebSearch", "MCP", "ReadMcpResourceTool", "ListMcpResourcesTool"})
+
 
 if __name__ == "__main__":
     unittest.main()
