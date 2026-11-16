@@ -23,7 +23,6 @@ class ToolContext:
     auto_approve: bool = False  # "all in": permission asks are approved without prompting (deny rules still apply)
     confirm_edits: bool = False  # "hold": Write, Edit and NotebookEdit ask before every change (the REPL turns this on)
     worktree_root: Path | None = None
-    outbox: list[dict[str, Any]] = field(default_factory=list)
     ask_user: Callable[[list[dict[str, Any]]], dict[str, str]] | None = None
     # Called with a file's path right before Write, Edit or NotebookEdit changes it (edit checkpoints).
     before_edit: Callable[[Path], None] | None = None

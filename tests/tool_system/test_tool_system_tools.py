@@ -22,7 +22,6 @@ from src.tool_system.registry import ToolRegistry
 from src.tool_system.tools import (
     AskUserQuestionTool,
     BashTool,
-    BriefTool,
     ConfigTool,
     CronCreateTool,
     CronDeleteTool,
@@ -593,10 +592,6 @@ class TestRegistryAndHelloWorldTool(ToolSystemTests):
 
 
 class TestBriefAndAgentTools(ToolSystemTests):
-    def test_brief_tool(self) -> None:
-        out = BriefTool().run({"text": "abc", "max_chars": 2}, self.ctx).output
-        self.assertEqual(out["preview"], "ab…")
-
     def test_agent_tool_runs_a_sub_agent(self) -> None:
         reg = build_default_registry(include_user_tools=False)
         p = self.root / "x.txt"

@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- The SendMessage, PowerShell and BriefPreview tools, which the model was offered but which did nothing: SendMessage queued a message nobody read, PowerShell always refused to run, and BriefPreview only cut the model's own text short.
 - The migration from the config layout used before keys.json (per-provider `api_key` entries in config.json). That layout predates the first release, v0.2.3.
 
 ### Security

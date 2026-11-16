@@ -462,7 +462,7 @@ function number(name) { const m = /(\d+)$/.exec(name); return m ? m[1] : ""; }
 function family(tool) {   // the same grouping as station_layout.py
   if (["Read", "Glob", "Grep", "Map", "LSP", "Data", "RetrieveContext"].includes(tool)) return "read";
   if (["Edit", "Write", "NotebookEdit"].includes(tool)) return "write";
-  if (["Bash", "PowerShell"].includes(tool)) return "shell";
+  if (tool === "Bash") return "shell";
   if (["WebFetch", "WebSearch"].includes(tool)) return "web";
   if (["MCP", "ListMcpResourcesTool", "ReadMcpResourceTool"].includes(tool) || tool.startsWith("mcp__")) return "mcp";
   return "other";

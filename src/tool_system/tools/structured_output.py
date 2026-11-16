@@ -18,7 +18,6 @@ class StructuredOutputTool:
         )
 
     def run(self, tool_input: dict[str, Any], context: ToolContext) -> ToolResult:
-        context.outbox.append({"tool": "StructuredOutput", "structured_output": tool_input})
         return ToolResult(
             name="StructuredOutput",
             output={
