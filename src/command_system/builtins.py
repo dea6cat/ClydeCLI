@@ -506,6 +506,10 @@ def doctor_command_call(args: str, context: CommandContext) -> LocalCommandResul
 
     config_path = get_config_path()
     saved_model = None
+    kept = sorted(config_path.parent.glob("config.json.unreadable-*"))
+    if kept:   # load_config set an unreadable file aside rather than save the defaults over it
+        lines.append(_check(False, f"Config was unreadable and was kept as {kept[-1]}",
+                            "fix it and move it back to config.json, or delete it"))
     if not config_path.exists():
         lines.append(_check(True, f"Config {config_path} not created yet (defaults in use)"))
     else:
