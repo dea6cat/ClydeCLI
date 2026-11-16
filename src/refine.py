@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from src import memory
-from src.agent import trace
+from src import trace
 from src.agent.conversation import Conversation, Message
 from src.config import clyde_home
 from src.providers.base import stream_with_retry

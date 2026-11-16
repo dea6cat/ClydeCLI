@@ -313,7 +313,7 @@ class TestScanFailures(unittest.TestCase):
         if not folder.exists():
             _skill(self.home, name, "sort imports")
         err = io.StringIO()
-        with patch.dict(os.environ, {"CLYDE_SKILL_SCAN": mode}), patch("src.agent.trace.record") as record, contextlib.redirect_stderr(err):
+        with patch.dict(os.environ, {"CLYDE_SKILL_SCAN": mode}), patch("src.trace.record") as record, contextlib.redirect_stderr(err):
             verdict = skill_scan.check("skill", name, folder)
             again = skill_scan.check("skill", name, folder)
             blocked = (verdict.blocked, again.blocked)   # read while the mode is set: `blocked` looks at the environment when asked
@@ -352,7 +352,7 @@ class TestScanFailures(unittest.TestCase):
         import io
         tools = [{"name": "t", "description": "d", "inputSchema": {"type": "object", "properties": {}}}]
         err = io.StringIO()
-        with patch.dict(os.environ, {"CLYDE_SKILL_SCAN": "closed"}), patch("src.agent.trace.record"), contextlib.redirect_stderr(err):
+        with patch.dict(os.environ, {"CLYDE_SKILL_SCAN": "closed"}), patch("src.trace.record"), contextlib.redirect_stderr(err):
             failed = skill_scan.check_mcp("srv", tools)
             failed_blocked = failed.blocked
         self.assertEqual((failed.recommendation, failed_blocked), (ERROR, True))

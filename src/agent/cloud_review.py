@@ -19,7 +19,7 @@ from typing import Any
 
 from ..providers.card_shuffle import _LEAKED_MIN, _LEAKED_TOKENS, CardShuffle
 from ..tool_system.registry import ToolRegistry
-from . import trace
+from src import trace
 
 _LOCAL = {"ollama", "omlx", CardShuffle.name}
 _PRETEND_CALL = re.compile(r"\[TOOL_[A-Z_]+\]|<tool_call>|<function=")

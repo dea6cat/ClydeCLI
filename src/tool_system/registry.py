@@ -5,7 +5,7 @@ from pathlib import Path
 from dataclasses import dataclass
 from typing import Any, Iterable, Mapping, Protocol
 
-from ..agent import trace
+from src import trace
 from .context import ToolContext
 from .hooks import run_hooks
 from .permission_handler import PermissionResult

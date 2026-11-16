@@ -13,7 +13,7 @@ from typing import Any, Callable
 
 from ..runtime import activity
 from ..tool_system.checks import edit_check_for
-from . import trace
+from src import trace
 from ..security import injection
 from ..tool_system.registry import ToolRegistry
 from ..tool_system.context import ToolContext

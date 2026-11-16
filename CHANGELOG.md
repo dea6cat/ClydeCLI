@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 - After a web or MCP result tries to instruct the model, Clyde asks before anything else leaves the machine for the rest of the session. The injection check already put a notice in front of such a result, but the next call still ran without asking when an allow rule (a saved `WebSearch` rule, a `WebFetch(domain:...)` rule) or "all in" let it through, and that next call is how an injected page gets the conversation out. Now WebFetch, WebSearch, MCP tools and every Bash command that is not read-only (curl, git push, ssh, dig) ask; the question names the result that tripped it and offers no "don't ask again". Deny rules still deny. Sub-agents and workers share the flag, and in `clyde -p`, which cannot ask, those calls are refused.
+- Traces redact the value of every environment variable named like a secret. They used to redact only the key variables of the built-in providers, so a key in `GOOGLE_API_KEY` or `CLOUDFLARE_API_TOKEN` could reach a trace file.
 - The injection check also reads MCP results that come through the generic `MCP`, `ReadMcpResourceTool` and `ListMcpResourcesTool` tools; before, only `mcp__<server>__<tool>` results were checked.
 
 ## [0.9.0] - 2026-11-04

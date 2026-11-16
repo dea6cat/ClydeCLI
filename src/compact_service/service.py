@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Optional
 
-from ..agent import trace
+from src import trace
 from ..agent.conversation import Conversation, Message
 from ..context_system.microcompact import microcompact_messages, strip_images_from_messages
 from ..providers.base import Provider, stream_with_retry

@@ -309,7 +309,7 @@ def _announce_failure(kind: str, name: str, verdict: Verdict) -> None:
         return
     _announced.add(f"{kind}:{name}")
     reason = "; ".join(verdict.findings)[:160] or "no reason given"
-    from src.agent import trace
+    from src import trace
     trace.record("scan_failed", kind=kind, name=name, reason=reason, closed=closed())
     outcome = ("held back, because CLYDE_SKILL_SCAN=closed (set it to off to load it anyway)" if closed()
                else "loaded WITHOUT a scan (CLYDE_SKILL_SCAN=closed holds such items back)")

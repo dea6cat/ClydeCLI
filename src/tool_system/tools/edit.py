@@ -3,7 +3,7 @@ from __future__ import annotations
 import difflib
 from typing import Any
 
-from ...agent import trace
+from src import trace
 from ..context import ToolContext
 from ..errors import ToolInputError, ToolPermissionError
 from ..permission_handler import PermissionResult

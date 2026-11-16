@@ -19,7 +19,7 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Callable, Protocol
 
-from .. import __version__
+from .. import __version__, trace
 from ..runtime import activity
 from .toolspec import ToolSpec
 from .types import Conversation, Message
@@ -350,7 +350,6 @@ def stream_with_retry(provider, conversation, model, tools, on_text, *, retries=
                 # Part of the answer already printed: a retry would print it again from the top (Kilo never
                 # retries past output). Hand back what arrived as an interrupted reply; the agent loop asks the
                 # model to continue it, as it does for a reply cut off at the output limit.
-                from ..agent import trace   # lazy: the agent package imports this module
                 trace.record("stream_interrupted", provider=e.provider, chars=len("".join(shown)), error=str(e)[:200])
                 return ProviderResponse(message=Message.assistant(text="".join(shown)), raw={}, done_reason="interrupted")
             if e.retry_after and e.retry_after > MAX_RETRY_AFTER_WAIT_S:

@@ -89,7 +89,8 @@ import json
 from datetime import datetime
 from typing import Any
 
-from src.agent import Session, trace
+from src import trace
+from src.agent import Session
 from src.agent.checkpoints import Checkpoints
 from src.agent.conversation import ImageContentBlock
 from src.compact_service.service import auto_compact_threshold, compact_conversation, needs_auto_compact
