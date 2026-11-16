@@ -38,6 +38,7 @@ from src.runtime import activity
 from src.config import clyde_home
 from src.providers import keys
 from src.agent.session import Session
+from src.conversation import message_text, one_line
 from src.bonnie import artifacts, attachments, automations, pins, projects, providers, theme
 from src.bonnie.page import PAGE
 from src.providers import model_ref
@@ -327,14 +328,12 @@ class Bonnie:
         return sorted(rows, key=lambda r: pinned.index(r["id"]) if r["pinned"] else len(pinned))   # stable: pinned first, newest pin first, the rest as before
 
     def messages(self, session_id: str) -> list[dict] | None:
-        from src.repl.core import _message_text
-
         session = self.repl.session if session_id == self.repl.session.session_id else Session.load(session_id)
         if session is None:
             return None
         out = []
         for i, m in enumerate(session.conversation.messages):
-            if m.role not in ("user", "assistant") or not (text := _message_text(m)):
+            if m.role not in ("user", "assistant") or not (text := message_text(m)):
                 continue
             row: dict = {"i": i, "role": m.role, "text": text}
             if m.role == "user":
@@ -394,12 +393,10 @@ class Bonnie:
 
 def session_title(session: Session) -> str:
     """What the sidebar calls a session: the first thing the user typed, without attachment markers, or the file's name."""
-    from src.repl.core import _message_text, _preview
-
     for message in session.conversation.messages:
-        if message.role == "user" and (text := _message_text(message)):
+        if message.role == "user" and (text := message_text(message)):
             visible, files = attachments.split(text)
-            return _preview(visible or (files[0] if files else "Picture"))
+            return one_line(visible or (files[0] if files else "Picture"))
     return "(no prompt)"
 
 

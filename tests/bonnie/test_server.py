@@ -176,9 +176,10 @@ class TestSearchAndStatus(BonnieCase):
         self.call("POST", "/api/prompt", {"text": "make me a bakery page", "mode": "hold"})          # no "file" or "code" word in it
         self.wait_for("turn_end")
         self.assertTrue(self.provider.requests[0]["tools"])
+        first_turn = self.bonnie.events.last()   # taken before the post: the second turn may not have emitted anything yet
         with patch.object(server.WebSearchTool, "run", side_effect=RuntimeError("offline")):
             self.call("POST", "/api/prompt", {"text": "hello there", "search": True, "mode": "plan"})
-            self.wait_for("turn_end", after=self.bonnie.events.last() - 1)
+            self.wait_for("turn_end", after=first_turn)
         self.assertEqual(self.provider.requests[1]["tools"], ())
 
     def test_a_failed_search_still_answers_and_says_it_is_unsourced(self):

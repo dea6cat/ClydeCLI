@@ -84,7 +84,7 @@ from typing import Any
 from src import trace
 from src.agent.session import Session
 from src.agent.checkpoints import Checkpoints
-from src.conversation import ImageContentBlock
+from src.conversation import ImageContentBlock, message_text, one_line
 from src.compact_service.service import auto_compact_threshold, compact_conversation, needs_auto_compact
 from src.config import get_default_model, get_output_style, load_config, set_default_model, set_output_style
 from src.output_styles import resolve_output_style
@@ -131,31 +131,12 @@ from src.tool_system.plan_file import plan_file_for
 _PASTE_MAX_LINES = 2
 _PASTE_MAX_CHARS = 800
 _RESUME_SHOWN = 20   # sessions listed by the /resume picker
-_PREVIEW_CHARS = 80
-
-
-def _message_text(message) -> str:
-    """The plain text of a stored message; tool calls and results contribute nothing."""
-    if isinstance(message.content, str):
-        return message.content.strip()
-    return " ".join(b.text for b in message.content if getattr(b, "type", None) == "text").strip()
-
-
-def _preview(text: str) -> str:
-    line = " ".join(text.split())
-    return line if len(line) <= _PREVIEW_CHARS else line[:_PREVIEW_CHARS - 1] + "…"
-
-
-def _one_line(text: str, limit: int) -> str:
-    """`text` on one line, cut to `limit` characters with an ellipsis."""
-    text = " ".join(text.split())
-    return text if len(text) <= limit else text[:limit - 1].rstrip() + "…"
 
 
 def _first_prompt(session) -> str:
     for message in session.conversation.messages:
-        if message.role == "user" and (text := _message_text(message)):
-            return _preview(text)
+        if message.role == "user" and (text := message_text(message)):
+            return one_line(text)
     return "(no prompt)"
 
 
@@ -1683,7 +1664,7 @@ class ClydeREPL:
         if not runnable:
             self.console.print("[dim]No skills found. Create them in ~/.clyde/skills/, ~/.claude/skills/ or .clyde/skills/ in your project.[/dim]")
             return
-        choices = [Choice(s.name, s.name, _one_line(getattr(s, "description", None) or "", 110)) for s in runnable]
+        choices = [Choice(s.name, s.name, one_line(getattr(s, "description", None) or "", 110)) for s in runnable]
         note = f" {len(skills) - len(runnable)} more are for the model only." if len(skills) > len(runnable) else ""
         name = pick(self.console, "Run a skill", choices, description="Enter runs it; type to filter, Esc cancels." + note)
         if name:
@@ -2879,8 +2860,8 @@ class ClydeREPL:
         self.console.print(f"[green]Resumed session {self.session.session_id}[/green] "
                            f"[dim]· {len(messages)} messages · {tool_calls} tool calls · was {saved_model}[/dim]")
         exchanges = [(m.role, text) for m in messages
-                     if m.role in ("user", "assistant") and (text := _message_text(m))]
+                     if m.role in ("user", "assistant") and (text := message_text(m))]
         for role, text in exchanges[-4:]:
             label = "You" if role == "user" else "Clyde"
-            self.console.print(f"  {label}: {_preview(text)}", style="dim", markup=False, highlight=False)
+            self.console.print(f"  {label}: {one_line(text)}", style="dim", markup=False, highlight=False)
         self.console.print()

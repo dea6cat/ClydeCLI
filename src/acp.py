@@ -210,14 +210,14 @@ class Server:
 
     def on_session_load(self, params: dict) -> dict:
         """Reopen a saved session and replay its messages, so the editor and the model both have the history."""
-        from src.repl.core import _message_text
+        from src.conversation import message_text
 
         saved = self._saved(params)
         repl = self._new_repl(params)
         repl._switch_session(saved)
         sid = self._register(repl)
         for message in saved.conversation.messages:
-            text = _message_text(message)
+            text = message_text(message)
             kind = {"user": "user_message_chunk", "assistant": "agent_message_chunk"}.get(message.role)
             if text and kind:
                 self.notify("session/update", {"sessionId": sid, "update": {"sessionUpdate": kind, "content": {"type": "text", "text": text}}})
