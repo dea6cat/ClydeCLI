@@ -121,6 +121,13 @@ class TestKeyStore(_TempHome):
         self.assertNotIn("CEREBRAS_API_KEY", os.environ)
         self.assertFalse(keys.disconnect("cerebras"))
 
+    def test_disconnecting_google_unsets_both_of_its_variables(self):
+        keys.connect("google", "g-key")
+        with patch.dict(os.environ, {"GOOGLE_API_KEY": "other-g-key"}):
+            keys.disconnect("google")
+            self.assertNotIn("GEMINI_API_KEY", os.environ)
+            self.assertNotIn("GOOGLE_API_KEY", os.environ)
+
     def test_mask(self):
         self.assertEqual(keys.mask("sk-1234567890"), "sk-1…7890")
         self.assertEqual(keys.mask("short"), "•••••")

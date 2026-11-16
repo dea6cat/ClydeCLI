@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from src.providers import keys
+from src.secret_names import is_secret_name
 
 _TIMEOUT_S = 900   # one worker; a CLI that runs longer is killed
 _CLAUDE_TOOLS = "Read,Edit,Write,Glob,Grep"
@@ -172,8 +173,8 @@ def run_aider(binary: str, model: str, prompt: str, worktree: Path, folder: Path
     got = _aider_key(model)
     if isinstance(got, str):
         return CliResult(False, got)
-    # Only this one provider's key, so a worker can't spend or leak another; the rest of the environment is kept.
-    env = {k: v for k, v in os.environ.items() if k not in set(keys.PROVIDER_KEY_ENV.values())}
+    # Only this one provider's key, so a worker can't spend or leak another (or any other secret); the rest of the environment is kept.
+    env = {k: v for k, v in os.environ.items() if not is_secret_name(k)}
     env[got[0]] = got[1]
     (folder / "prompt.txt").write_text(prompt, encoding="utf-8")
     argv = [binary, "--model", model, "--message-file", str(folder / "prompt.txt"), "--yes-always", "--no-auto-commits",

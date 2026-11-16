@@ -36,6 +36,9 @@ PROVIDER_KEY_ENV = {
 
 # Settings a provider needs besides its key: provider -> (env var, what to ask for). Not secret, so they
 # live in settings.json under "providerSettings" rather than in keys.json.
+# Other variables a provider's adapter also reads its key from: unset with the main one on logout.
+PROVIDER_KEY_ALIASES = {"google": ("GOOGLE_API_KEY",)}
+
 PROVIDER_EXTRA_ENV = {
     "cloudflare": ("CLOUDFLARE_ACCOUNT_ID", "Cloudflare account ID (`wrangler whoami` shows it)"),
 }
@@ -206,9 +209,9 @@ def disconnect(provider: str) -> bool:
     if existed:
         del data[provider]
         _write(data)
-    env = PROVIDER_KEY_ENV.get(provider)
-    if env:
-        os.environ.pop(env, None)
+    for env in (PROVIDER_KEY_ENV.get(provider), *PROVIDER_KEY_ALIASES.get(provider, ())):
+        if env:
+            os.environ.pop(env, None)
     return existed
 
 
