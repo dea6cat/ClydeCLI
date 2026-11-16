@@ -13,11 +13,11 @@ import queue
 import signal
 import threading
 
+from .connections import abort_all_connections
+
 
 def interrupt_turn() -> None:
     """Cancel the turn running on the main thread, exactly as Esc does."""
-    from src.providers.base import abort_all_connections
-
     abort_all_connections()
     os.kill(os.getpid(), signal.SIGINT)
 

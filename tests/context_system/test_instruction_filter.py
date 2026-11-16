@@ -17,9 +17,9 @@ def _label(section: str) -> str:
     return LABELS[section.splitlines()[0]]
 
 
-class _Reply:
-    def __init__(self, text):
-        self.message = type("M", (), {"text": text})()
+def _Reply(text):
+    from src.providers.base import TextReply
+    return TextReply(text.strip(), None)
 
 
 class SplitTests(unittest.TestCase):
@@ -66,7 +66,7 @@ class LabelerTests(unittest.TestCase):
         self.addCleanup(patcher.stop)
 
     def _label(self, reply):
-        with patch("src.providers.base.stream_with_retry", side_effect=reply if isinstance(reply, list) else [reply]) as call:
+        with patch("src.providers.base.complete_text", side_effect=reply if isinstance(reply, list) else [reply]) as call:
             return f.model_labeler(object(), "m"), call
 
     def test_the_first_word_of_the_answer_is_the_language_and_it_is_remembered(self):

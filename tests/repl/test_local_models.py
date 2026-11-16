@@ -59,8 +59,8 @@ class TestGetOmlx(unittest.TestCase):
 class TestConfirm(unittest.TestCase):
     def setUp(self):
         self.repl = _Repl()
-        for name, value in (("disk_free_bytes", 50 * GB), ("free_now_bytes", 4 * GB)):
-            patcher = patch.object(local_models.fit, name, return_value=value)
+        for target, name, value in ((local_models.fit, "disk_free_bytes", 50 * GB), (local_models.machine, "free_ram_bytes", 4 * GB)):
+            patcher = patch.object(target, name, return_value=value)
             patcher.start()
             self.addCleanup(patcher.stop)
 
@@ -631,7 +631,7 @@ class TestStoppedEval(unittest.TestCase):
     def test_ctrl_c_during_the_offered_eval_unloads_the_model_and_saves_nothing(self):
         repl, provider = _Repl(), self._provider()
         with patch.object(local_models.Confirm, "ask", return_value=True), \
-                patch.object(local_models.fit, "free_now_bytes", return_value=20 * GB), \
+                patch.object(local_models.machine, "free_ram_bytes", return_value=20 * GB), \
                 patch.object(local_models, "evaluate", side_effect=KeyboardInterrupt), \
                 patch.object(local_models, "save_results") as save:
             local_models._offer_eval(repl, provider, "deepseek", RELAX)
@@ -646,7 +646,7 @@ class TestStoppedEval(unittest.TestCase):
 
     def test_a_model_that_does_not_fit_the_free_memory_warns_and_defaults_to_no(self):
         repl = _Repl()
-        with patch.object(local_models.fit, "free_now_bytes", return_value=3 * GB), \
+        with patch.object(local_models.machine, "free_ram_bytes", return_value=3 * GB), \
                 patch.object(local_models.Confirm, "ask", return_value=False) as ask:
             local_models._offer_eval(repl, self._provider(), "deepseek", MLX)
         self.assertIn("Not enough free memory", repl.console.export_text())
@@ -654,7 +654,7 @@ class TestStoppedEval(unittest.TestCase):
 
     def test_a_model_that_fits_does_not_warn(self):
         repl = _Repl()
-        with patch.object(local_models.fit, "free_now_bytes", return_value=20 * GB), \
+        with patch.object(local_models.machine, "free_ram_bytes", return_value=20 * GB), \
                 patch.object(local_models.Confirm, "ask", return_value=False) as ask:
             local_models._offer_eval(repl, self._provider(), "deepseek", RELAX)
         self.assertNotIn("Not enough", repl.console.export_text())
@@ -664,13 +664,13 @@ class TestStoppedEval(unittest.TestCase):
 class TestShortOnMemory(unittest.TestCase):
     def test_it_warns_only_when_the_model_does_not_fit_the_free_memory(self):
         repl = _Repl()
-        with patch.object(local_models.fit, "free_now_bytes", return_value=3 * GB):
+        with patch.object(local_models.machine, "free_ram_bytes", return_value=3 * GB):
             self.assertTrue(local_models.short_on_memory(repl.console, 4 * GB, "/eval"))
             self.assertFalse(local_models.short_on_memory(repl.console, 1 * GB, "/eval"))
         self.assertEqual(repl.console.export_text().count("Not enough free memory"), 1)
 
     def test_an_unreadable_memory_figure_never_warns(self):
-        with patch.object(local_models.fit, "free_now_bytes", return_value=None):
+        with patch.object(local_models.machine, "free_ram_bytes", return_value=None):
             self.assertFalse(local_models.short_on_memory(_Repl().console, 99 * GB, "/eval"))
 
 
@@ -709,7 +709,7 @@ class TestOfferDetails(unittest.TestCase):
     def _summary(self, offer):
         repl = _Repl()
         with patch.object(local_models.fit, "disk_free_bytes", return_value=50 * GB), \
-                patch.object(local_models.fit, "free_now_bytes", return_value=20 * GB), \
+                patch.object(local_models.machine, "free_ram_bytes", return_value=20 * GB), \
                 patch.object(local_models.Confirm, "ask", return_value=False):
             local_models._confirm(repl, offer, 12 * GB, "Apple M3 Pro")
         return repl.console.export_text()

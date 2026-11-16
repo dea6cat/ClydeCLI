@@ -2,74 +2,21 @@ from __future__ import annotations
 
 import json
 import os
-import platform
 import re
 import uuid
 from typing import Any
 
 from ..context import ToolContext
-from ..errors import ToolInputError, ToolPermissionError
+from ..errors import ToolInputError
 from ..protocol import ToolResult
 from ..registry import ToolSpec
-
-
-class SendMessageTool:
-    def spec(self) -> ToolSpec:
-        return ToolSpec(
-            name="SendMessage",
-            description="Send a message to another recipient (best-effort, local only).",
-            input_schema={
-                "type": "object",
-                "additionalProperties": False,
-                "properties": {
-                    "to": {"type": "string"},
-                    "summary": {"type": "string"},
-                    "message": {},
-                },
-                "required": ["to", "message"],
-            },
-            is_read_only=True,
-            max_result_size_chars=100_000,
-        )
-
-    def run(self, tool_input: dict[str, Any], context: ToolContext) -> ToolResult:
-        to = tool_input.get("to")
-        message = tool_input.get("message")
-        summary = tool_input.get("summary")
-        if not isinstance(to, str) or not to.strip():
-            raise ToolInputError("to must be a non-empty string")
-        if summary is not None and not isinstance(summary, str):
-            raise ToolInputError("summary must be a string when provided")
-        context.outbox.append({"tool": "SendMessage", "to": to, "summary": summary, "message": message})
-        return ToolResult(name="SendMessage", output={"success": True, "message": f"Message queued for {to}"})
-
-
-class PowerShellTool:
-    def spec(self) -> ToolSpec:
-        return ToolSpec(
-            name="PowerShell",
-            description="Run a PowerShell command (Windows only).",
-            input_schema={
-                "type": "object",
-                "additionalProperties": False,
-                "properties": {"command": {"type": "string"}},
-                "required": ["command"],
-            },
-            is_destructive=True,
-            max_result_size_chars=200_000,
-            strict=True,
-        )
-
-    def run(self, tool_input: dict[str, Any], context: ToolContext) -> ToolResult:
-        if platform.system().lower() != "windows":
-            return ToolResult(name="PowerShell", output={"error": "PowerShell is only supported on Windows"}, is_error=True)
-        raise ToolPermissionError("PowerShell execution is not enabled in this build")
 
 
 class NotebookEditTool:
     def spec(self) -> ToolSpec:
         return ToolSpec(
             name="NotebookEdit",
+            path_field="notebook_path", writes_files=True,
             description="Replace, insert, or delete a cell in a Jupyter notebook (.ipynb).",
             input_schema={
                 "type": "object",
@@ -110,7 +57,7 @@ class NotebookEditTool:
         if edit_mode != "insert" and cell_id is None:
             raise ToolInputError(f"cell_id is required when edit_mode={edit_mode}")
 
-        path = context.ensure_allowed_path(notebook_path)
+        path = context.ensure_allowed_path(notebook_path, write=True)
         if path.suffix.lower() != ".ipynb":
             raise ToolInputError("notebook_path must be a .ipynb file")
         if not path.exists():

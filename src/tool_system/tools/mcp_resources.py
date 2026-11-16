@@ -19,6 +19,7 @@ class ListMcpResourcesTool:
     def spec(self) -> ToolSpec:
         return ToolSpec(
             name="ListMcpResourcesTool",
+            reaches_network=True,
             description="List resources from connected MCP servers.",
             input_schema={
                 "type": "object",
@@ -83,6 +84,7 @@ class ReadMcpResourceTool:
     def spec(self) -> ToolSpec:
         return ToolSpec(
             name="ReadMcpResourceTool",
+            reaches_network=True,
             description="Read a specific MCP resource by URI.",
             input_schema={
                 "type": "object",

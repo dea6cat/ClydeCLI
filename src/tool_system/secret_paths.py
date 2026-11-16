@@ -10,7 +10,7 @@ import os
 import re
 from pathlib import Path
 
-from .tools.bash import split_command
+from .shell import split_command
 
 # Key files, .env files (but not the committed templates), cloud and package credentials, and Clyde's own key store.
 _SECRET_PATH = re.compile(

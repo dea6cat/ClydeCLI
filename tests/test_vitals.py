@@ -23,7 +23,7 @@ class TestVitals(unittest.TestCase):
         self.assertTrue(vitals.Vitals(8 * GB, 0, 0.2, 0.95).strained)
 
     def test_a_reading_is_reused_inside_the_ttl(self):
-        with patch.object(vitals.fit, "free_now_bytes", return_value=5 * GB) as free, \
+        with patch.object(vitals.machine, "free_ram_bytes", return_value=5 * GB) as free, \
                 patch.object(vitals, "_swap_used", return_value=0), patch.object(vitals, "_load", return_value=0.1):
             vitals.sample()
             vitals.sample()

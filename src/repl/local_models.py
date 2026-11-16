@@ -11,6 +11,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+from src.system import machine
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor
@@ -21,7 +22,8 @@ from rich.prompt import Confirm
 from rich.table import Table
 from rich.text import Text
 
-from src.tuning import tune, tune_profile
+from src import tune_profile
+from src.tuning import tune
 from src.ui.picker import Choice, pick
 from src.providers import best_fit, discover, fit, huggingface, mlx, omlx
 from src.providers.base import ProviderError, post_stream
@@ -40,23 +42,22 @@ _RATING_STYLE = {"relax": "#4eba65", "balance": "#e0b341", "hard": "#d0202f"}
 
 
 def _gb(n: int | None) -> str:
-    return "unknown" if n is None else f"{n / fit.GB:.1f} GB"
+    return "unknown" if n is None else f"{n / machine.GB:.1f} GB"
 
 
 def _machine(budget: int, chip: str) -> Text:
     """What this machine has, read before anything is searched or pulled."""
-    from src.providers.ollama import _total_ram_bytes
 
     return Text.assemble(
-        (f"{chip or 'This machine'}", "bold"), (f" · {_gb(_total_ram_bytes())} RAM", ""),
-        (f" · {_gb(budget)} usable by models", "bold"), (f" · {_gb(fit.free_now_bytes())} free right now", ""),
+        (f"{chip or 'This machine'}", "bold"), (f" · {_gb(machine.total_ram_bytes())} RAM", ""),
+        (f" · {_gb(budget)} usable by models", "bold"), (f" · {_gb(machine.free_ram_bytes())} free right now", ""),
         (f" · {_gb(fit.disk_free_bytes())} disk free\n", ""),
         ("relax ≤50% · balance ≤80% · hard ≤100% of the usable memory; speed is a rough estimate", "dim"))
 
 
 def _confirm(repl: Any, offer: fit.Offer, budget: int, chip: str) -> bool:
     """Lay out what pulling `offer` costs on this machine and ask; hard models default to no."""
-    disk, free = fit.disk_free_bytes(), fit.free_now_bytes()
+    disk, free = fit.disk_free_bytes(), machine.free_ram_bytes()
     if disk is not None and offer.size_bytes > disk:
         repl.console.print(f"[red]Not enough disk:[/red] {offer.pull_tag} is {_gb(offer.size_bytes)}, "
                            f"and only {_gb(disk)} is free in {fit.models_dir()}.")
@@ -121,7 +122,7 @@ def _grid(titles: tuple[str, ...], cells: list[tuple[str, ...]], labels: list[st
 
 def _cells(o: fit.Offer, chip: str) -> tuple[str, ...]:
     speed = fit.tokens_per_s(o.size_bytes, chip, o.name)
-    return (o.rating, _FORMAT.get(o.source, o.source), f"{o.size_bytes / fit.GB:.1f} GB",
+    return (o.rating, _FORMAT.get(o.source, o.source), f"{o.size_bytes / machine.GB:.1f} GB",
             (f"~{speed}" + (" (slow)" if fit.is_slow(o.size_bytes, chip, o.name) else "")) if speed else "?",
             _count(o.popularity), _quant(o.note), str(len(o.options) or 1), o.name.split("/")[0] if o.model else "")
 
@@ -337,7 +338,7 @@ def show(repl: Any, arg: str) -> None:
     if slow := sum(fit.is_slow(o.size_bytes, chip, o.name) for o in offers):
         repl.console.print(f"[dim]{slow} listed last: under ~{fit.min_toks()} tok/s on this machine, too slow for a fluid chat.[/dim]")
     if not offers:
-        repl.console.print(f"Nothing from {' or '.join(names)} fits {budget / fit.GB:.0f} GB" + (f" for '{query}'." if query else ".")
+        repl.console.print(f"Nothing from {' or '.join(names)} fits {budget / machine.GB:.0f} GB" + (f" for '{query}'." if query else ".")
                            + " Try other search words.")
         return
     header, rows = _table(offers, chip, repl.console.width)
@@ -373,7 +374,7 @@ def _pull_ollama(repl: Any, offer: fit.Offer) -> None:
                 if event.get("error"):
                     raise ProviderError("ollama", event["error"])
                 total, done = event.get("total"), event.get("completed")
-                progress = f" {done / total:.0%} of {total / fit.GB:.1f} GB" if total and done else ""
+                progress = f" {done / total:.0%} of {total / machine.GB:.1f} GB" if total and done else ""
                 status.update(f"[dim]Pulling {tag}: {event.get('status', '')}{progress}[/dim]")
     except (ProviderError, ValueError) as e:
         repl.console.print(f"[red]Download failed:[/red] {e}")
@@ -395,7 +396,7 @@ def _get_omlx(repl: Any, offer: fit.Offer) -> None:
     def progress(task: dict) -> None:
         total = task.get("total_size") or 0
         status.update(f"[dim]Downloading {repo} through oMLX: {task.get('progress', 0):.0f}%"
-                      + (f" of {total / fit.GB:.1f} GB" if total else "") + "[/dim]")
+                      + (f" of {total / machine.GB:.1f} GB" if total else "") + "[/dim]")
 
     try:
         with repl._esc.paused():
@@ -431,7 +432,7 @@ def loaded_bytes(provider: Any, model: str, file_bytes: int) -> int:
 
 def short_on_memory(console: Any, needed: int, retry: str) -> bool:
     """Warn and return True when a model needing `needed` bytes loaded would not fit the memory free right now."""
-    free = fit.free_now_bytes()
+    free = machine.free_ram_bytes()
     if free is None or needed <= free:
         return False
     console.print(f"[yellow]Not enough free memory to test it:[/yellow] the largest model needs ~{_gb(needed)} loaded and {_gb(free)} is free right now. "

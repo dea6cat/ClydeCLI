@@ -1,4 +1,4 @@
-"""Bridge between ClydeCLI's stored history (src/agent/conversation.py) and the canonical
+"""Bridge between ClydeCLI's stored history (src/conversation.py) and the canonical
 provider types. The stored history stays the single source of truth; it is re-expressed
 as a canonical Conversation on every request, and each response is appended back.
 
@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from ..agent.conversation import (
+from src.conversation import (
     Conversation as History,
     ImageContentBlock,
     TextContentBlock,

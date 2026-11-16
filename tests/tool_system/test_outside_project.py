@@ -13,7 +13,8 @@ from src.tool_system.context import ToolContext
 from src.tool_system.defaults import build_default_registry
 from src.tool_system.protocol import ToolCall
 from src.tool_system.registry import _is_major
-from src.tool_system.tools.bash import BashTool, reaches_outside_project, removes_running_install
+from src.tool_system.shell import reaches_outside_project, removes_running_install
+from src.tool_system.tools.bash import BashTool
 
 
 class TestOutsideProject(unittest.TestCase):
@@ -88,15 +89,42 @@ class TestFilesAndFoldersOutside(unittest.TestCase):
     def call(self, name, **input):
         return self.registry.dispatch(ToolCall(name=name, input=input), self.ctx)
 
-    def test_a_yes_lets_the_edit_through_and_covers_that_file_afterwards(self):
+    def test_a_yes_to_read_is_not_a_yes_to_change_but_a_yes_to_change_covers_that_file_afterwards(self):
         note = str(self.other / "note.txt")
         self.call("Read", file_path=note)                              # Edit needs a Read first
         self.asked.clear()
         self.assertFalse(self.call("Edit", file_path=note, old_string="hello", new_string="bye").is_error)
         self.assertEqual((self.other / "note.txt").read_text(), "bye\n")
-        self.assertEqual(len(self.asked), 0)                           # the Read's yes already covered this file
+        self.assertEqual(len(self.asked), 1)                           # the Read's yes did not cover a change
+        self.assertFalse(self.call("Edit", file_path=note, old_string="bye", new_string="hi").is_error)
+        self.assertEqual(len(self.asked), 1)                           # the Edit's yes covers later changes to it
         self.assertIn("outside the project", self.call("Write", file_path=str(self.other / "new.txt"), content="x") and self.asked[-1])
         self.assertTrue((self.other / "new.txt").exists())
+
+    def test_all_in_moving_into_a_folder_outside_does_not_let_changes_there_through(self):
+        self.ctx.auto_approve = True
+        self.assertFalse(self.call("Bash", command=f"cd {self.other}").is_error)    # looking around is let through
+        self.assertEqual(self.asked, [])
+        self.call("Write", file_path=str(self.other / "new.txt"), content="x")
+        self.assertEqual(len(self.asked), 1)                                        # a change there still asks
+
+    def test_all_in_after_moving_outside_a_shell_command_that_changes_files_asks(self):
+        from src.tool_system import shell as bash
+        self.ctx.auto_approve = True
+        with patch.object(bash, "_TEMP_ROOTS", ()), patch.object(bash.tempfile, "gettempdir", return_value="/nonexistent"):
+            self.call("Bash", command=f"cd {self.other}")
+            self.call("Bash", command="ls")
+            self.assertEqual(self.asked, [])                          # looking around there still doesn't ask
+            self.call("Bash", command="echo x > rel.txt")
+        self.assertEqual(len(self.asked), 1)                          # a relative write there does
+
+    def test_every_tool_that_reads_a_path_asks_before_reading_a_secret_file(self):
+        (self.root / ".env").write_text("KEY=1\n")
+        self.answer = False   # only whether it asks matters here
+        for name in ("Read", "Glob", "Grep"):
+            self.asked.clear()
+            self.call(name, **({"file_path": str(self.root / ".env")} if name == "Read" else {"pattern": "*", "path": str(self.root / ".env")}))
+            self.assertTrue(self.asked and "secret" in self.asked[0], name)
 
     def test_a_no_leaves_it_alone_and_asks_again_next_time(self):
         self.answer = False

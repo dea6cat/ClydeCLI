@@ -13,8 +13,8 @@ def _window(ram_gb: float, weights_gb: float, kv_kb_per_token: int, trained: int
     """(window, bytes weights + cache would take) for a model on a machine with ram_gb of RAM, free_gb of it free
     (0: unreadable) and loaded_gb already held by this model in Ollama."""
     provider = OllamaProvider()
-    with patch.object(ollama, "_total_ram_bytes", return_value=int(ram_gb * GB)), \
-            patch.object(ollama, "_available_ram_bytes", return_value=int(free_gb * GB)), \
+    with patch.object(ollama.machine, "total_ram_bytes", return_value=int(ram_gb * GB)), \
+            patch.object(ollama.machine, "free_ram_bytes", return_value=int(free_gb * GB)), \
             patch.object(provider, "_loaded_bytes", return_value=int(loaded_gb * GB)), \
             patch.object(ollama, "_kv_bytes_per_token", return_value=kv_kb_per_token * 1024), \
             patch.object(provider, "_weight_bytes", return_value=int(weights_gb * GB)), \

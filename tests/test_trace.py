@@ -7,9 +7,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from src.agent import trace
+from src import trace
 from src.agent.agent_loop import run_agent_loop
-from src.agent.conversation import Conversation
+from src.conversation import Conversation
 from src.providers.base import ProviderError
 from src.tool_system.context import ToolContext
 from src.tool_system.defaults import build_default_registry
@@ -80,6 +80,12 @@ class TestTraceAgentLoop(TraceTestCase):
         self.assertLessEqual(len(tool["input"]), trace.MAX_CHARS + 30)
         self.assertIn("[redacted]", tool["input"])
 
+    def test_any_secret_named_environment_value_is_redacted(self):
+        # GOOGLE_API_KEY and CLOUDFLARE_API_TOKEN were missing from the provider key list this used to read.
+        with patch.dict(os.environ, {"GOOGLE_API_KEY": "plain-value-google-1234", "CLOUDFLARE_API_TOKEN": "plain-value-cf-5678"}):
+            out = trace.redact({"text": "got plain-value-google-1234 and plain-value-cf-5678"})
+        self.assertNotIn("plain-value", out["text"])
+
     def test_model_error_is_recorded_and_propagates(self):
         trace.start("s1")
         with self.assertRaises(ProviderError):
@@ -145,7 +151,7 @@ class TestTraceDispatchAndCompact(TraceTestCase):
         conversation = Conversation()
         conversation.add_user_message("hello")
         conversation.add_assistant_message("hi")
-        asyncio.run(compact_conversation(conversation, FakeProvider(reply("summary")), "fake-model"))
+        compact_conversation(conversation, FakeProvider(reply("summary")), "fake-model")
 
         kinds = [e["event"] for e in self.events()]
         self.assertEqual(kinds, ["model_request", "compact"])

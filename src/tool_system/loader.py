@@ -3,10 +3,10 @@ from __future__ import annotations
 import importlib.util
 import types
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 from .protocol import ToolResult
-from .registry import Tool, ToolRegistry, ToolSpec
+from .registry import Tool, ToolSpec
 
 
 def load_tools_from_dir(directory: str | Path) -> list[Tool]:
@@ -60,8 +60,3 @@ def _load_tool_from_file(file_path: Path) -> Tool | None:
 
     return _FunctionTool()
 
-
-def load_into_registry(registry: ToolRegistry, directories: Iterable[str | Path]) -> None:
-    for directory in directories:
-        for tool in load_tools_from_dir(directory):
-            registry.register(tool)

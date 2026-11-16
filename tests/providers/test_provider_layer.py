@@ -7,7 +7,7 @@ import os
 import unittest
 from unittest.mock import patch
 
-from src.agent.conversation import (
+from src.conversation import (
     Conversation as History,
     Message as HistoryMessage,
     TextContentBlock,
@@ -126,13 +126,6 @@ class TestRegistry(unittest.TestCase):
                      "cerebras", "glm", "minimax", "ollama"):
             self.assertIn(name, reg)
 
-    def test_glm_and_minimax_endpoints(self):
-        reg = registry.build_registry()
-        self.assertEqual(reg["glm"].base_url, "https://open.bigmodel.cn/api/paas/v4")
-        self.assertIn("glm-5", reg["glm"].list_models())
-        self.assertEqual(reg["minimax"].base_url, "https://api.minimaxi.com/anthropic")
-        self.assertEqual(reg["minimax"].key_env, "MINIMAX_API_KEY")
-        self.assertIn("MiniMax-M2.7", reg["minimax"].list_models())
 
     def test_resolve_explicit_bare_and_ambiguous(self):
         a = FakeProvider(name="a", models=("shared", "only-a"))

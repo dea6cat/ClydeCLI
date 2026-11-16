@@ -21,10 +21,9 @@ from pathlib import Path
 from typing import Any
 
 from src import memory
-from src.agent import trace
-from src.agent.conversation import Conversation, Message
+from src.conversation import Conversation, Message
 from src.config import clyde_home
-from src.providers.base import stream_with_retry
+from src.providers.base import complete_text
 from src.providers.convert import to_canonical
 
 MAX_EDITS = 3
@@ -137,8 +136,7 @@ def _notes_text(root: Path) -> str:
 
 
 def parse(text: str) -> list[dict]:
-    """The JSON list in a model's answer, after any reasoning (`</think>`) and code fence; [] when there is none."""
-    text = text.rsplit("</think>", 1)[-1]
+    """The JSON list in a model's answer, inside any code fence; [] when there is none."""
     start, end = text.find("["), text.rfind("]")
     if start < 0 or end < start:
         return []
@@ -180,10 +178,10 @@ def review(provider: Any, model: str, conversation: Conversation, root: Path, fo
     prompt = REVIEW_PROMPT.format(max_edits=MAX_EDITS, max_chars=memory.MAX_ENTRY_CHARS, transcript=session, notes=_notes_text(root),
                                   focus=f"- Focus on this, from the user: {focus}\n" if focus else "")
     request = to_canonical(Conversation.from_dict({"messages": [{"role": "user", "content": prompt}]}), SYSTEM_PROMPT, flatten_tools=True)
-    response = trace.model_call(provider, model, request, lambda: stream_with_retry(provider, request, model, (), lambda _c: None, reasoning="off"))
+    response = complete_text(provider, model, SYSTEM_PROMPT, request)
     edits: list[Edit] = []
     skipped: list[str] = []
-    for raw in parse(response.message.text or "")[:MAX_EDITS]:
+    for raw in parse(response.text)[:MAX_EDITS]:
         result = check(raw, conversation, root, adds_only=adds_only)
         if isinstance(result, str):
             skipped.append(result)

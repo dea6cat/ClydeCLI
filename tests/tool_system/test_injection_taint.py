@@ -47,6 +47,7 @@ class TestInjectionTaint(unittest.TestCase):
         self.assertTrue(self.search().is_error)   # asked, and the answer was no
         (_, message, suggestion), = self.asked
         self.assertIn(SOURCE, message)
+        self.assertIn("Search the web", message)   # the tool's own question, though the allow rule waives it
         self.assertIsNone(suggestion)   # no "don't ask again" from a poisoned session
 
     def test_all_in_asks_for_a_network_command_but_not_a_read_only_one(self) -> None:
@@ -62,6 +63,11 @@ class TestInjectionTaint(unittest.TestCase):
         self.ctx.injection_sources.append(SOURCE)
         self.assertIn("deny rule", self.search().output["error"])
         self.assertEqual(self.asked, [])
+
+    def test_the_tools_that_reach_outside_say_so(self):
+        from src.agent.subagent import build_tool_registry
+        outside = {s.name for s in build_tool_registry(include_user_tools=False).list_specs() if s.reaches_network}
+        self.assertEqual(outside, {"WebFetch", "WebSearch", "MCP", "ReadMcpResourceTool", "ListMcpResourcesTool"})
 
 
 if __name__ == "__main__":

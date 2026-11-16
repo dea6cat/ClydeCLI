@@ -65,6 +65,8 @@ _AUTO_ORDER = ("anthropic", "openai", "google", "openrouter", "deepseek", "mistr
 
 
 def build_registry() -> dict[str, Provider]:
+    """Every provider Clyde knows, with saved keys and settings loaded into the environment first."""
+    keys.load_into_env()
     reg: dict[str, Provider] = {"ollama": ollama.local()}
     if omlx.supported():
         reg["omlx"] = omlx.OMLXProvider()

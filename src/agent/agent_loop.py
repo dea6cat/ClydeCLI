@@ -7,13 +7,14 @@ import os
 import re
 import threading
 import time
+from src.providers.base import LOCAL_PROVIDERS, context_window
 from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import Any, Callable
 
 from ..runtime import activity
 from ..tool_system.checks import edit_check_for
-from . import trace
+from src import trace
 from ..security import injection
 from ..tool_system.registry import ToolRegistry
 from ..tool_system.context import ToolContext
@@ -25,7 +26,7 @@ from ..context_system.microcompact import trim_old_tool_results
 from ..tool_system.deferral import NAMES_ONLY_UP_TO_BILLIONS, VERIFY_PROMPT, advertised, index_prompt, is_deferred, local_tools
 from .cloud_review import review_reply
 from .repeat_guard import RepeatedCall, RepeatGuard
-from .conversation import Conversation
+from src.conversation import Conversation
 from ..context_system import build_context_prompt, instruction_filter
 from ..output_styles import resolve_output_style
 from ..providers import model_size
@@ -122,7 +123,14 @@ class AgentLoopResult:
     response_text: str
     usage: dict[str, Any] | None = None  # {"input_tokens": int, "output_tokens": int}
     num_turns: int = 0
-    ran_out: bool = False   # every tool turn used; response_text is then the model's own wrap-up
+    # Why the loop stopped: "done" (the model answered), "blocked" (a prompt hook refused it), "repeat" (it kept making the
+    # same call), "stalled" (failing calls in a row), "budget" (the token budget ran out) or "ran_out" (every tool turn used;
+    # response_text is then the model's own wrap-up).
+    stop_reason: str = "done"
+
+    @property
+    def ran_out(self) -> bool:
+        return self.stop_reason == "ran_out"
 
 
 # After N consecutive failing tool calls (different calls each time, so the repeat guard
@@ -297,9 +305,8 @@ _STEERING = "The user sent this while you were working; take it into account fro
 
 
 def _small_local(provider: Provider) -> bool:
-    """Ollama on this machine or oMLX: models that do better with a few tools than with all of them."""
-    name = getattr(provider, "name", "")
-    return name == "omlx" or (name == "ollama" and getattr(provider, "api_key", None) is None)
+    """A model served on this machine: models that do better with a few tools than with all of them."""
+    return getattr(provider, "name", "") in LOCAL_PROVIDERS
 
 
 # What Clyde itself adds as user turns; never the user's prompt (local reply review, hooks and tool routing read it).
@@ -407,7 +414,8 @@ def run_agent_loop(
     if hooks.get("UserPromptSubmit"):
         blocked, added = run_lifecycle(hooks, "UserPromptSubmit", {"prompt": _last_prompt(conversation)}, tool_context.cwd)
         if blocked:
-            return AgentLoopResult(response_text=f"Prompt blocked by a UserPromptSubmit hook: {blocked}", usage=None, num_turns=0)
+            return AgentLoopResult(response_text=f"Prompt blocked by a UserPromptSubmit hook: {blocked}", usage=None, num_turns=0,
+                                   stop_reason="blocked")
         if added:
             conversation.add_user_message(_HOOK_CONTEXT + added)
 
@@ -415,7 +423,7 @@ def run_agent_loop(
         if _turn and steer is not None and (steering := steer()):
             conversation.add_user_message(f"{_STEERING}{steering}")
         if only is not None:   # a local window fills with old file dumps long before auto-compact
-            trim_old_tool_results(conversation, getattr(provider, "context_window", lambda _m: 0)(model))
+            trim_old_tool_results(conversation, context_window(provider, model))
         specs = from_specs(advertised(all_specs, tool_context.loaded_tools, only))   # again each turn: ToolSearch may have loaded more
         activity.set(f"waiting for {getattr(provider, 'name', '')}:{model}")
         request = to_canonical(conversation, system_prompt)
@@ -490,7 +498,8 @@ def run_agent_loop(
                 edit_check = edit_check_for(tool_name, tool_input, tool_context.workspace_root)
                 result = tool_registry.dispatch(ToolCall(name=tool_name, input=tool_input, tool_use_id=tool_id),
                                                 tool_context)
-                result_output, flagged = injection.guard(tool_name, result.output)   # an outside tool's answer that addresses the model gets a notice
+                tool = tool_registry.get(tool_name)
+                result_output, flagged = injection.guard(tool_name, result.output, tool is not None and tool.spec().reaches_network)   # an outside tool's answer that addresses the model gets a notice
                 if flagged:
                     trace.record("injection_flag", tool=tool_name, findings=flagged)
                     summary = summarize_tool_use(tool_name, tool_input)
@@ -542,13 +551,13 @@ def run_agent_loop(
                 conversation.add_tool_result_message(tool_id, error_str, is_error=True)
 
         if repeat_guard.stuck:
-            return AgentLoopResult(response_text=repeat_guard.stop_reply(), usage=_usage_or_none(), num_turns=turn_count)
+            return AgentLoopResult(response_text=repeat_guard.stop_reply(), usage=_usage_or_none(), num_turns=turn_count, stop_reason="repeat")
         if consecutive_errors >= _MAX_CONSECUTIVE_TOOL_ERRORS:
-            return AgentLoopResult(response_text=_STALLED_REPLY, usage=_usage_or_none(), num_turns=turn_count)
+            return AgentLoopResult(response_text=_STALLED_REPLY, usage=_usage_or_none(), num_turns=turn_count, stop_reason="stalled")
         # Checked once the turn's tool results are in, so the saved session has no call without its result. A stop the
         # caller asked for, like an interrupt.
         if max_tokens and spent > max_tokens:
-            return AgentLoopResult(response_text=MAX_TOKENS_REPLY, usage=_usage_or_none(), num_turns=turn_count)
+            return AgentLoopResult(response_text=MAX_TOKENS_REPLY, usage=_usage_or_none(), num_turns=turn_count, stop_reason="budget")
 
     # Out of tool turns: one more request, with no tools, for the model to say where the task stands (Kilo does the
     # same); a fixed "[Max tool turns reached]" told the user nothing. It stays as the fallback if this fails.
@@ -567,5 +576,5 @@ def run_agent_loop(
         response_text=wrap_up or MAX_TURNS_REPLY,
         usage=_usage_or_none(),
         num_turns=turn_count,
-        ran_out=True,
+        stop_reason="ran_out",
     )

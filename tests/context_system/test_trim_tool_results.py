@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from src.agent.conversation import Conversation
+from src.conversation import Conversation
 from src.context_system.microcompact import CLEARED_MESSAGE, trim_old_tool_results
 
 

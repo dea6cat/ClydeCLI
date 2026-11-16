@@ -23,11 +23,12 @@ import re
 import statistics
 import threading
 import time
+from .base import LOCAL_PROVIDERS
 from concurrent.futures import ThreadPoolExecutor, wait
 from typing import Callable, Iterable
 
 from ..runtime import activity
-from ..agent import trace
+from src import trace
 from ..config import clyde_home
 from . import laya_client
 from .base import ProviderError, ProviderResponse, _Cancelled
@@ -36,7 +37,6 @@ from .types import Conversation, Role
 
 NAME = "cardShuffle"
 TIERS = ("high-roller", "house", "free", "small")
-LOCAL = ("ollama", "omlx")
 
 # Council: `cardShuffle:<tier> council` asks the tier's top models the same question at once, Laya picks the best answer.
 COUNCIL = "council"
@@ -144,7 +144,7 @@ def deck(tier: str, results: dict[str, dict], mode: str = "hold", difficulty: fl
     if tier == "small":
         return ranked
     if tier == "free":
-        ranked = [r for r in ranked if r.partition(":")[0] in LOCAL]
+        ranked = [r for r in ranked if r.partition(":")[0] in LOCAL_PROVIDERS]
     if tier == "house" and mode != "plan" and ranked:
         # The starting card, then stronger ones, then weaker ones.
         mid = len(ranked) // 2 if difficulty is None else round(difficulty * (len(ranked) - 1))
@@ -276,6 +276,18 @@ class CardShuffle:
         p = float(answers["stuck"]["noul"])
         trace.record("laya", question="stuck", noul=round(p, 2), acted=p >= STUCK_AT, model=self.dealt)
         return p
+
+    def begin_turn(self, mode: str, on_deal: Callable[[str, str], None] | None,
+                   investigate: Callable[[object, str, threading.Event], ProviderResponse] | None) -> None:
+        """What the session hands the dealer before each turn: the permission mode, who to tell about a deal, and how
+        a council member reads the project."""
+        self.mode, self.on_deal, self.investigate = mode, on_deal, investigate
+        laya_client.warm()
+
+    def take_spent(self) -> list[tuple[str, dict]]:
+        """(provider:model, usage) for every real model this turn used, cleared as it is read."""
+        spent, self.spent = self.spent, []
+        return spent
 
     def redeal(self, why: str, bench_s: float = 0.0, whole_provider: bool = False) -> bool:
         """Burn the dealt card and deal the next one; False when the deck is spent.

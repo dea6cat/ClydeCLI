@@ -13,39 +13,39 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-from ..context import ToolContext
-from ..errors import ToolInputError
-from ..protocol import ToolResult
-from ..registry import ToolRegistry, ToolSpec
+from src.tool_system.context import ToolContext
+from src.tool_system.defaults import build_default_registry
+from src.tool_system.errors import ToolInputError
+from src.tool_system.protocol import ToolResult
+from src.tool_system.registry import ToolRegistry, ToolSpec
 
 _SUBAGENT_MAX_TURNS = 30
-_NO_NESTING = {"agent", "teamcreate", "teamdelete"}
+NO_NESTING = {"agent", "teamcreate", "teamdelete"}
 
 
 def agent_types(root: Path) -> dict:
-    from ...agent.agent_types import load
+    from src.agent.agent_types import load
     return load(root)
 
 
 def _tools_for(registry: ToolRegistry, agent: Any) -> ToolRegistry:
     allowed = {t.lower() for t in agent.tools} if agent.tools else None
     names = [s.name for s in registry.list_specs()
-             if s.name.lower() not in _NO_NESTING and (allowed is None or s.name.lower() in allowed)]
+             if s.name.lower() not in NO_NESTING and (allowed is None or s.name.lower() in allowed)]
     return ToolRegistry([registry.get(n) for n in names])
 
 
 def offered_tools(registry: ToolRegistry, agent: Any, rules: dict[str, list[str]]) -> list[str]:
     """The tool names a sub-agent can call: its type's tools, no nesting, and none denied by bare name in `rules` (the
     loop hides those). What an orchestrated worker is recorded as having been given."""
-    from ...tool_system.permission_rules import bare_denied
+    from src.tool_system.permission_rules import bare_denied
     return [s.name for s in _tools_for(registry, agent).list_specs() if not bare_denied(s.name, rules)]
 
 
 def _model_for(agent: Any, context: ToolContext) -> tuple[Any, str, str]:
     """(provider, model, note): the agent's own model when it names one that's usable, else the caller's."""
     if agent.model:
-        from ...providers import build_registry, keys, resolve
-        keys.load_into_env()
+        from src.providers import build_registry, resolve
         resolved = resolve(build_registry(), agent.model)
         if resolved is not None:
             return resolved[0], resolved[1], ""
@@ -57,8 +57,8 @@ def run_agent(registry: ToolRegistry, context: ToolContext, agent: Any, prompt: 
               background: bool = False, cancel: Any = None, conversation: Any = None, on_event: Any = None) -> tuple[Any, str]:
     """Run one sub-agent to the end; (AgentLoopResult, note about its model). The caller may pass the
     Conversation to keep it (orchestrated workers save their transcript) and an on_event tool-event callback."""
-    from ...agent.agent_loop import run_agent_loop
-    from ...agent.conversation import Conversation
+    from src.agent.agent_loop import run_agent_loop
+    from src.conversation import Conversation
 
     provider, model, note = _model_for(agent, context)
     # Own read tracking and todos: the sub-agent must Read a file itself before it may Edit it.
@@ -103,6 +103,7 @@ class AgentTool:
         listed = "; ".join(f"{a.name}: {a.description}" for a in types.values()) or "general-purpose"
         return ToolSpec(
             name="Agent",
+            plan_mode_ok=True,
             description=(
                 "Launch a sub-agent with a fresh conversation to handle a self-contained task; it returns only "
                 "its final answer. Set run_in_background to get a task id at once and keep working; read the "
@@ -142,3 +143,14 @@ class AgentTool:
         if note:
             output["note"] = note
         return ToolResult(name="Agent", output=output)
+
+
+def build_tool_registry(*, include_user_tools: bool = True) -> ToolRegistry:
+    """Every tool a session offers: the default tools plus Agent and the team tools, which run sub-agents over them."""
+    from src.agent.team import TeamCreateTool, TeamDeleteTool
+
+    registry = build_default_registry(include_user_tools=include_user_tools)
+    registry.register(AgentTool(registry))
+    registry.register(TeamCreateTool(registry))
+    registry.register(TeamDeleteTool())
+    return registry

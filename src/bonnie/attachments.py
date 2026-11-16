@@ -15,7 +15,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
-from src.agent.conversation import ImageContentBlock
+from src.conversation import ImageContentBlock
 from src.bonnie.theme import sniff_image
 from src.repl.images import MAX_IMAGE_BYTES, shrink
 

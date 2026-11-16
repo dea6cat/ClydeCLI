@@ -7,8 +7,8 @@ src/providers/keys.py); a key exported in the shell always wins over a saved one
 
 from __future__ import annotations
 
-import base64
 import os
+import time
 from pathlib import Path
 from typing import Any, Optional
 
@@ -44,43 +44,8 @@ def get_default_config() -> dict[str, Any]:
     }
 
 
-def _decode_legacy_key(encoded_key: str) -> str:
-    """Keys in the pre-keys.json config were base64-encoded; fall back to the raw value."""
-    try:
-        return base64.b64decode(encoded_key.encode(), validate=True).decode()
-    except Exception:
-        return encoded_key
-
-
-def _migrate_legacy(config: dict[str, Any]) -> bool:
-    """Move a pre-keys.json config (per-provider api_key/base_url/default_model plus
-    default_provider) to the current layout: keys into keys.json, the default provider's model
-    into `model`. Returns True when something changed."""
-    if "providers" not in config and "default_provider" not in config:
-        return False
-    from src.providers import keys
-
-    try:
-        keys._load()
-    except keys.KeysFileError as e:
-        print(f"Warning: not migrating old provider settings: {e}")
-        return False
-    providers = config.pop("providers", None) or {}
-    default_provider = config.pop("default_provider", None)
-    for name, entry in providers.items():
-        if isinstance(entry, dict) and entry.get("api_key"):
-            keys.save_if_missing(name, _decode_legacy_key(entry["api_key"]))
-    if not config.get("model") and default_provider in providers:
-        model = (providers[default_provider] or {}).get("default_model") or ""
-        model = model.removeprefix("zai/")   # old GLM entries used a LiteLLM-style prefix
-        if model:
-            config["model"] = f"{default_provider}:{model}"
-    config.setdefault("model", None)
-    return True
-
-
 def load_config() -> dict[str, Any]:
-    """Load configuration from file, creating or migrating it as needed."""
+    """Load configuration from file, creating it when missing."""
     config_path = get_config_path()
 
     if not config_path.exists():
@@ -90,28 +55,29 @@ def load_config() -> dict[str, Any]:
 
     try:
         config = read_json_safely(config_path)   # a cut-off file falls back to the last good copy
-    except Exception as e:
-        print(f"Error loading config: {e}")
+    except (OSError, ValueError) as e:
+        # Neither the file nor its last good copy reads: keep it for the user to look at, so the next save of a
+        # setting starts a fresh file instead of writing the defaults over theirs.
+        kept = config_path.with_name(f"config.json.unreadable-{int(time.time())}")
+        try:
+            config_path.replace(kept)
+        except OSError:
+            kept = None
+        print(f"Error loading config: {e}" + (f" (kept it as {kept})" if kept else ""))
         return get_default_config()
 
-    if "providers" in config or "default_provider" in config:
-        # Keep the original (base URLs, anything not carried over) before rewriting it.
-        backup = config_path.with_name("config.json.bak")
-        if not backup.exists():
-            try:
-                fd = os.open(backup, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-                with os.fdopen(fd, "w", encoding="utf-8") as f:
-                    f.write(config_path.read_text(encoding="utf-8"))
-            except OSError:
-                pass
-    if _migrate_legacy(config):
-        save_config(config)
     return config
 
 
 def save_config(config: dict[str, Any]) -> None:
     """Save configuration to file (mode 0600)."""
     write_json_safely(get_config_path(), config, private=True)   # a crash mid-write leaves the old file, and the last good one is kept as config.json.prev
+
+
+def get_max_history() -> int:
+    """How many messages a conversation keeps (`session.max_history`, /settings), never fewer than 2."""
+    value = load_config().get("session", {}).get("max_history")
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 2 else 100
 
 
 def get_default_model() -> Optional[str]:
@@ -151,6 +117,25 @@ def get_context_tokens() -> Optional[int]:
     return value if isinstance(value, int) and not isinstance(value, bool) and value >= MIN_CONTEXT_TOKENS else None
 
 
+def context_env_var(model: str) -> str:
+    """The environment variable that fixes one model's window: CLYDE_MODEL_CONTEXT_<MODEL>."""
+    return "CLYDE_MODEL_CONTEXT_" + "".join(c if c.isalnum() else "_" for c in model.upper())
+
+
+def window_override(model: str) -> Optional[int]:
+    """A window set in the environment: CLYDE_CONTEXT_TOKENS for every model, else this model's own variable."""
+    for name in ("CLYDE_CONTEXT_TOKENS", context_env_var(model)):
+        if os.environ.get(name, "").isdigit():
+            return int(os.environ[name])
+    return None
+
+
+def fixed_window(model: str) -> Optional[int]:
+    """The window the user fixed for a local model: an environment override, else the one saved by /settings."""
+    override = window_override(model)
+    return override if override is not None else get_context_tokens()
+
+
 def set_context_tokens(tokens: Optional[int]) -> None:
     """Persist the context window for local models; None goes back to automatic. ValueError below the minimum."""
     if tokens is not None and tokens < MIN_CONTEXT_TOKENS:
@@ -170,12 +155,10 @@ def get_omlx_memory_guard() -> str | None:
 
 
 def set_omlx_memory_guard(choice: str) -> None:
-    """Persist oMLX's memory guard and stop the server Clyde started, so the next request starts it with the new one."""
-    from src.providers import omlx
+    """Persist oMLX's memory guard. It takes effect when Clyde next starts its oMLX server."""
     config = load_config()
     config["omlx_memory_guard"] = choice
     save_config(config)
-    omlx.stop_server()
 
 
 UPDATE_CHANNELS = ("latest", "stable")

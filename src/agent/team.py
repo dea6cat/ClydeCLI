@@ -8,11 +8,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..context import ToolContext
-from ..errors import ToolInputError
-from ..protocol import ToolResult
-from ..registry import ToolRegistry, ToolSpec
-from .agent import agent_types, start_background
+from src.agent.subagent import agent_types, start_background
+from src.tool_system.context import ToolContext
+from src.tool_system.errors import ToolInputError
+from src.tool_system.protocol import ToolResult
+from src.tool_system.registry import ToolRegistry, ToolSpec
 
 MAX_MEMBERS = 8
 

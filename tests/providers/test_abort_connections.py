@@ -11,6 +11,7 @@ import unittest
 
 
 from src.providers import base  # noqa: E402
+from src.runtime import connections  # noqa: E402
 from src.providers.base import _Cancelled, ProviderError  # noqa: E402
 
 
@@ -45,7 +46,7 @@ class FakeResp:
 
 class AbortLayer(unittest.TestCase):
     def tearDown(self):
-        base.abort_all_connections()  # never leak a registered fake between tests
+        connections.abort_all_connections()  # never leak a registered fake between tests
 
     def test_preset_cancel_short_circuits_post_stream(self):
         cancel = threading.Event()
@@ -62,8 +63,8 @@ class AbortLayer(unittest.TestCase):
 
     def test_abort_closes_registered_response(self):
         resp = FakeResp([b"a\n", b"b\n"])
-        base._register(resp)
-        base.abort_all_connections()
+        connections.register(resp)
+        connections.abort_all_connections()
         self.assertTrue(resp.closed)
 
     def test_close_mid_stream_with_cancel_set_raises_cancelled(self):
@@ -80,7 +81,7 @@ class AbortLayer(unittest.TestCase):
         gen = base.post_stream("http://x", {}, cancel=cancel)
         self.assertEqual(next(gen), "one\n")     # first line arrives normally
         cancel.set()
-        base.abort_all_connections()             # close the socket out from under it
+        connections.abort_all_connections()             # close the socket out from under it
         with self.assertRaises(_Cancelled):
             next(gen)
 

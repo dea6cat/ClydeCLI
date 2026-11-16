@@ -17,27 +17,29 @@ import signal
 import socket
 import subprocess
 import time
+from src.system import machine
 from contextlib import contextmanager
 from dataclasses import dataclass
 from urllib.parse import urlparse
 from typing import Callable, ContextManager, Iterator
 
 from rich.console import Console
-from rich.prompt import Confirm
+from rich.prompt import Confirm, IntPrompt, Prompt
 from rich.table import Table
 
-from src.tuning import tune_profile
+from src import tune_profile
 from src.providers import model_eval
 from src.providers.base import ProviderError, get_json, post_json
-from src.providers.ollama import OllamaProvider, _ctx_env_key, _total_ram_bytes, local
-from src.tuning.tune_profile import Profile
+from src import config
+from src.providers import fit
+from src.providers.ollama import OllamaProvider, local
+from src.tune_profile import Profile
 
 FLASH = {"OLLAMA_FLASH_ATTENTION": "1"}
 # Bytes per cache element against f16, from ggml's block layouts: q8_0 is 8.5 bits, q4_0 4.5 bits.
 _KV_SHRINK = {"q8_0": 8.5 / 16, "q4_0": 4.5 / 16}
 SPEED_NOISE = 0.08        # the same setting measured 33 to 41 tok/s on one Mac: a speed gate tighter than this decides on luck
 MEMORY_SLACK = 0.02       # a candidate may not use more than this much extra memory: the point is no more resources
-RAM_FRACTION = 0.75       # the share of RAM a model may take (macOS wires about this much for the GPU)
 WORTH_MEMORY = 0.05       # worth a restart if it frees this share of memory,
 WORTH_CONTEXT = 0.10      # or opens this much more window,
 WORTH_SPEED = 0.05        # or runs this much faster
@@ -220,7 +222,7 @@ def perf_gate(base: Result, perf: Result, profile: Profile, ram: int) -> str:
         return "no reading"
     if perf.memory_bytes > base.memory_bytes * (1 + MEMORY_SLACK):
         return "uses more memory"
-    if ram and perf.memory_bytes + profile.headroom_gb * 2 ** 30 > ram * RAM_FRACTION:
+    if ram and perf.memory_bytes + profile.headroom_gb * 2 ** 30 > fit.budget_bytes(ram):
         return f"leaves less than {profile.headroom_gb} GB free"
     if perf.gen_tps < base.gen_tps * (1 - max(profile.max_slowdown, SPEED_NOISE)):
         return f"{1 - perf.gen_tps / base.gen_tps:.0%} slower"
@@ -269,7 +271,7 @@ OLLAMA_APP = "/Applications/Ollama.app"
 
 
 def ctx_hint(model: str, ctx: int, base_ctx: int) -> list[str]:
-    return [f"For the longer window, also set export CLYDE_MODEL_CONTEXT_{_ctx_env_key(model)}={ctx} in your shell profile."] if ctx != base_ctx else []
+    return [f"For the longer window, also set export {config.context_env_var(model)}={ctx} in your shell profile."] if ctx != base_ctx else []
 
 
 def can_apply() -> bool:
@@ -448,11 +450,11 @@ def run(console: Console, model: str | None = None, ctx: int | None = None, reas
         console.print("[red]ollama is not installed or not on PATH.[/red]")
         return 1
     try:
-        profile = (None if reask else tune_profile.load()) or tune_profile.ask(console)
+        profile = (None if reask else tune_profile.load()) or ask_profile(console)
     except (EOFError, KeyboardInterrupt):
         console.print("[red]clyde tune asks what you use the model for; run it in a terminal.[/red]")
         return 1
-    provider, ram = local(), _total_ram_bytes()
+    provider, ram = local(), machine.total_ram_bytes()
     rows: list[Row] = []
     name, plan = model, []
     try:
@@ -526,3 +528,24 @@ def offer(console: Console, model: str | None = None, assume_yes: bool = False) 
         run(console, model=model)
     else:
         console.print("• Run [bold]clyde tune[/bold] any time to tune it.")
+
+def _numbers(answer: str, limit: int) -> list[int]:
+    return sorted({int(t) for t in answer.replace(",", " ").split() if t.isdigit() and 1 <= int(t) <= limit})
+
+
+def ask_profile(console: Console) -> tune_profile.Profile:
+    """Ask what the model is for. Several uses can be picked; an empty answer means chat."""
+    console.print("\n[bold]What will you mainly use your local models for?[/bold] (numbers, e.g. 1,3)")
+    keys = list(tune_profile.USES)
+    for i, key in enumerate(keys, 1):
+        console.print(f"  {i}. {tune_profile.USES[key]}")
+    picked = [keys[n - 1] for n in _numbers(Prompt.ask("Uses", default="2"), len(keys))] or ["chat"]
+    console.print("\n[bold]What matters most?[/bold]")
+    order = list(tune_profile.PRIORITIES)
+    for i, key in enumerate(order, 1):
+        console.print(f"  {i}. {tune_profile.PRIORITIES[key]}")
+    priority = order[IntPrompt.ask("Most important", choices=[str(i) for i in range(1, len(order) + 1)], default=1) - 1]
+    headroom = IntPrompt.ask("GB of RAM to keep free for your other apps", default=4)
+    profile = tune_profile.Profile(tuple(picked), priority, max(0, headroom))
+    tune_profile.save(profile)
+    return profile

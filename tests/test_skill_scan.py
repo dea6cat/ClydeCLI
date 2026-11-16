@@ -9,6 +9,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from src.providers.base import ProviderError
 from src.security import skill_scan
 from src.security.skill_scan import BLOCK, CAUTION, ERROR, SAFE, Verdict
 
@@ -25,12 +26,12 @@ class _Scanner:
     def __init__(self):
         self.calls: list[tuple[str, bool]] = []
 
-    def __call__(self, path, *, recursive=False, env=None):
-        self.calls.append((Path(path).name, env is not None))
+    def __call__(self, path, *, recursive=False, reviewer=None):
+        self.calls.append((Path(path).name, reviewer is not None))
         text = "".join(p.read_text() for p in Path(path).rglob("SKILL.md"))
         bad = "id_rsa" in text
         return [Verdict(Path(path).name, BLOCK if bad else SAFE, 90 if bad else 0, findings=["PE3 HIGH: id_rsa"] if bad else [],
-                        llm=env is not None)]
+                        llm=reviewer is not None)]
 
 
 class TestGate(unittest.TestCase):
@@ -76,7 +77,7 @@ class TestGate(unittest.TestCase):
         (plugin / ".mcp.json").write_text("{}")
         seen: list[list[str]] = []
 
-        def scan(path, *, recursive=False, env=None):
+        def scan(path, *, recursive=False, reviewer=None):
             seen.append(sorted(str(p.relative_to(path)) for p in Path(path).rglob("*") if p.is_file()))
             return [Verdict("big", SAFE)]
 
@@ -98,7 +99,7 @@ class TestGate(unittest.TestCase):
     def test_a_flagged_static_verdict_gets_the_llm_review_when_a_model_is_available(self):
         folder = _skill(self.home, "env", "cat ~/.ssh/id_rsa")
         skill_scan.check("skill", "env", folder)
-        reviewed = skill_scan.check("skill", "env", folder, env={"SKILLSPECTOR_PROVIDER": "openai_compatible"})
+        reviewed = skill_scan.check("skill", "env", folder, reviewer=skill_scan.Reviewer(object(), "m"))
         self.assertTrue(reviewed.llm)
         self.assertEqual(self.scanner.calls, [("env", False), ("env", True)])
 
@@ -121,9 +122,9 @@ class TestGate(unittest.TestCase):
         (plugin / ".mcp.json").write_text("{}")
         seen: list[int] = []
 
-        def scan(path, *, recursive=False, env=None):
+        def scan(path, *, recursive=False, reviewer=None):
             seen.append(len(list((Path(path) / "skills").iterdir())))
-            return self.scanner(path, env=env)
+            return self.scanner(path, reviewer=reviewer)
 
         with patch.object(skill_scan, "scan", scan):
             self.assertTrue(skill_scan.check("plugin", "huge", plugin).blocked)
@@ -171,19 +172,27 @@ class TestGate(unittest.TestCase):
         self.assertIn('  - name: "path"\n    description: "file path"', text)
 
 
-class TestLlmEnv(unittest.TestCase):
-    def test_providers_map_to_skillspector_settings(self):
-        class OpenAICompat:
-            name, base_url, api_key = "nvidia", "https://integrate.api.nvidia.com/v1", "nv-key"
+class TestReviewer(unittest.TestCase):
+    def test_the_connected_model_reviews_and_no_model_means_static_only(self):
+        provider = object()
+        self.assertEqual(skill_scan.llm_env(provider, "gemma"), skill_scan.Reviewer(provider, "gemma"))
+        self.assertIsNone(skill_scan.llm_env(None, "x"))
 
-        class Anthropic:
-            name, api_key = "anthropic", "sk-ant"
+    def test_a_review_that_fails_is_not_recorded_as_one_and_writes_no_key_into_the_environment(self):
+        from src.security.scanner.engine import Finding, ScanResult
 
-        env = skill_scan.llm_env(OpenAICompat(), "gemma")
-        self.assertEqual(env, {"SKILLSPECTOR_PROVIDER": "openai_compatible", "SKILLSPECTOR_COMPAT_API_KEY": "nv-key",
-                               "SKILLSPECTOR_COMPAT_BASE_URL": "https://integrate.api.nvidia.com/v1", "SKILLSPECTOR_MODEL": "gemma"})
-        self.assertEqual(skill_scan.llm_env(Anthropic(), "claude-sonnet-4-6")["SKILLSPECTOR_PROVIDER"], "anthropic")
-        self.assertIsNone(skill_scan.llm_env(None, "x"))   # no model: static scan only
+        class Down:
+            name = "down"
+
+            def stream(self, *a, **k):
+                raise ProviderError("down", "unreachable")
+
+        flagged = ScanResult(name="s", recommendation="CAUTION", score=40, severity="MEDIUM",
+                             findings=[Finding(rule_id="P1", severity="HIGH", category="c", message="m", file_path="/nope", line_number=1)])
+        before = dict(os.environ)
+        [verdict] = skill_scan._to_verdicts([flagged], skill_scan.Reviewer(Down(), "m"))
+        self.assertFalse(verdict.llm)
+        self.assertEqual(dict(os.environ), before)
 
 
 class TestCorpusParity(unittest.TestCase):
@@ -300,7 +309,7 @@ class TestScanFailures(unittest.TestCase):
 
     def setUp(self):
         self.home = Path(tempfile.mkdtemp())
-        self.failing = lambda path, *, recursive=False, env=None: [Verdict(Path(path).name, ERROR, findings=["scan failed: TimeoutExpired"])]
+        self.failing = lambda path, *, recursive=False, reviewer=None: [Verdict(Path(path).name, ERROR, findings=["scan failed: TimeoutExpired"])]
         for p in (patch.object(Path, "home", return_value=self.home), patch.object(skill_scan, "scan", self.failing),
                   patch.object(skill_scan, "_announced", set())):
             p.start()
@@ -313,7 +322,7 @@ class TestScanFailures(unittest.TestCase):
         if not folder.exists():
             _skill(self.home, name, "sort imports")
         err = io.StringIO()
-        with patch.dict(os.environ, {"CLYDE_SKILL_SCAN": mode}), patch("src.agent.trace.record") as record, contextlib.redirect_stderr(err):
+        with patch.dict(os.environ, {"CLYDE_SKILL_SCAN": mode}), patch("src.trace.record") as record, contextlib.redirect_stderr(err):
             verdict = skill_scan.check("skill", name, folder)
             again = skill_scan.check("skill", name, folder)
             blocked = (verdict.blocked, again.blocked)   # read while the mode is set: `blocked` looks at the environment when asked
@@ -352,7 +361,7 @@ class TestScanFailures(unittest.TestCase):
         import io
         tools = [{"name": "t", "description": "d", "inputSchema": {"type": "object", "properties": {}}}]
         err = io.StringIO()
-        with patch.dict(os.environ, {"CLYDE_SKILL_SCAN": "closed"}), patch("src.agent.trace.record"), contextlib.redirect_stderr(err):
+        with patch.dict(os.environ, {"CLYDE_SKILL_SCAN": "closed"}), patch("src.trace.record"), contextlib.redirect_stderr(err):
             failed = skill_scan.check_mcp("srv", tools)
             failed_blocked = failed.blocked
         self.assertEqual((failed.recommendation, failed_blocked), (ERROR, True))

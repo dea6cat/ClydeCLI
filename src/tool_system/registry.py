@@ -5,10 +5,10 @@ from pathlib import Path
 from dataclasses import dataclass
 from typing import Any, Iterable, Mapping, Protocol
 
-from ..agent import trace
+from src import trace
 from .context import ToolContext
 from .hooks import run_hooks
-from .permission_handler import PermissionResult
+from .permission_handler import PermissionBehavior, PermissionResult
 from .permission_rules import check_rules, suggest_rule
 from .protocol import ToolCall, ToolResult
 
@@ -19,7 +19,7 @@ def _clip_result(result: ToolResult, limit: int) -> ToolResult:
     """Hold a tool's text output to its declared max_result_size_chars: the head and tail stay, the whole output goes to
     the context cache for RetrieveContext. Before this nothing enforced the limit, and Bash kept only its first 20,000
     characters, so a failing test run lost the error at its end."""
-    from ..context_system.context_cache import clip
+    from src.context_cache import clip
 
     out = result.output
     if isinstance(out, str):
@@ -43,6 +43,10 @@ class ToolSpec:
     is_destructive: bool = False
     strict: bool = False
     max_result_size_chars: int = 20_000
+    path_field: str = ""            # the input that names the file or folder it works on
+    writes_files: bool = False       # it changes the file at path_field
+    reaches_network: bool = False    # what it sends can leave the machine, and what comes back is from outside
+    plan_mode_ok: bool = False       # allowed in plan mode although it is destructive (delegating, presenting the plan)
 
 
 class Tool(Protocol):
@@ -55,42 +59,38 @@ class Tool(Protocol):
     def run(self, tool_input: dict[str, Any], context: ToolContext) -> ToolResult: ...
 
 
-# The file-changing tools and the input field naming their file, for edit checkpoints.
-_EDIT_PATHS = {"Write": "file_path", "Edit": "file_path", "NotebookEdit": "notebook_path"}
-
-# Plan mode still lets the model look around, delegate research and present its plan.
-_PLAN_MODE_ALLOWED = {"exitplanmode", "agent", "task"}
-
-
 def _changes_things(spec: ToolSpec, tool_input: dict[str, Any]) -> bool:
     """Whether a call would modify something, for plan mode ("reading the table")."""
-    if spec.name.lower() in _PLAN_MODE_ALLOWED:
+    if spec.plan_mode_ok:
         return False
     if spec.name.lower() == "bash":
-        from .tools.bash import is_read_only_command
+        from .shell import is_read_only_command
         return not is_read_only_command(str(tool_input.get("command", "")))
     return spec.is_destructive
 
 
-def _read_target(tool_input: dict[str, Any]) -> str:
-    return str(tool_input.get("file_path") or tool_input.get("path") or "")
+def _read_target(spec: ToolSpec, tool_input: dict[str, Any]) -> str:
+    """The path a tool that reads one names (Read, Grep, Glob), or "" for any other call."""
+    if spec.writes_files or not spec.path_field or spec.name.lower() == "bash":
+        return ""
+    return str(tool_input.get(spec.path_field) or "")
 
 
 def _reads_secret(spec: ToolSpec, tool_input: dict[str, Any]) -> bool:
-    """A Read or Grep of a key, .env, .ssh, cloud-credential or Clyde key-store file, or a Bash command that names one,
-    expands a secret-looking variable, or searches the whole home folder."""
+    """A read of a key, .env, .ssh, cloud-credential or Clyde key-store file by any tool that reads a path, or a Bash
+    command that names one, expands a secret-looking variable, or searches the whole home folder."""
     from .secret_paths import command_reads_secret, is_secret_path
     name = spec.name.lower()
     if name == "bash":
         return command_reads_secret(str(tool_input.get("command", "")))
-    return name in ("read", "grep") and bool(_read_target(tool_input)) and is_secret_path(_read_target(tool_input))
+    target = _read_target(spec, tool_input)
+    return bool(target) and is_secret_path(target)
 
 
 def _edit_target(spec: ToolSpec, tool_input: dict[str, Any], context: ToolContext):
     """The file a Write, Edit or NotebookEdit call would change, when it is inside the allowed folders (anything
     else is refused by the tool itself, so there is nothing to ask about)."""
-    field = _EDIT_PATHS.get(spec.name)
-    raw = tool_input.get(field) if field else None
+    raw = tool_input.get(spec.path_field) if spec.writes_files else None
     if not isinstance(raw, str):
         return None
     try:
@@ -99,16 +99,10 @@ def _edit_target(spec: ToolSpec, tool_input: dict[str, Any], context: ToolContex
         return None
 
 
-# Tools that name a file or folder, and the input field that holds it. Outside the project they ask, then remember the answer.
-_PATH_FIELDS = {"read": "file_path", "write": "file_path", "edit": "file_path", "notebookedit": "notebook_path",
-                "glob": "path", "grep": "path", "bash": "cwd"}
-_CHANGES_FILES = {"write", "edit", "notebookedit"}
-
-
 def _outside_target(spec: ToolSpec, tool_input: dict[str, Any], context: ToolContext):
     """The file or folder this call names when it is outside the project and the user has not approved it yet."""
-    raw = tool_input.get(_PATH_FIELDS.get(spec.name.lower(), ""))
-    return context.outside_path(raw) if isinstance(raw, str) and raw else None
+    raw = tool_input.get(spec.path_field) if spec.path_field else None
+    return context.outside_path(raw, write=spec.writes_files) if isinstance(raw, str) and raw else None
 
 
 def _shown(path, context: ToolContext) -> str:
@@ -122,18 +116,18 @@ def _is_major(spec: ToolSpec, tool_input: dict[str, Any], context: ToolContext) 
     """What "all in" mode still asks about: hard to undo, outside the project, or touching secrets."""
     name = spec.name.lower()
     if name == "bash":
-        from .tools.bash import is_major_command, is_read_only_command, reaches_outside_project
+        from .shell import is_major_command, is_read_only_command, reaches_outside_project
         # Changing something outside the project is always worth a yes, even when everything else plays without asking. Only
         # looking (ls, find, cat) is let through: asking for every one made all-in ask a dozen times for a search of the home folder.
         command = str(tool_input.get("command", ""))
         outside = reaches_outside_project(command, context, tool_input.get("cwd")) and not is_read_only_command(command)
         return is_major_command(command) or outside or _reads_secret(spec, tool_input)
-    path = tool_input.get("file_path") or tool_input.get("notebook_path") or (tool_input.get("path") if name in ("grep", "glob") else None)
+    path = tool_input.get(spec.path_field) if spec.path_field else None
     if isinstance(path, str) and path:
         from pathlib import Path
         target = Path(path).expanduser().resolve()
         from .secret_paths import is_secret_path
-        if context.outside_path(path) is not None:
+        if context.outside_path(path, write=spec.writes_files) is not None:
             return True
         try:
             inside = target.relative_to(context.workspace_root)
@@ -149,12 +143,10 @@ def _is_major(spec: ToolSpec, tool_input: dict[str, Any], context: ToolContext) 
 def _sends_out(spec: ToolSpec, tool_input: dict[str, Any]) -> bool:
     """Whether this call can carry data off the machine: the web and MCP tools, and any Bash command that is not read-only
     (curl, git push, ssh and dig all count as not read-only)."""
-    from ..security.injection import is_external
-
     if spec.name.lower() == "bash":
-        from .tools.bash import is_read_only_command
+        from .shell import is_read_only_command
         return not is_read_only_command(str(tool_input.get("command", "")))
-    return is_external(spec.name)
+    return spec.reaches_network
 
 
 def _clip_input(tool_input: dict[str, Any], limit: int = 300) -> str:
@@ -162,6 +154,45 @@ def _clip_input(tool_input: dict[str, Any], limit: int = 300) -> str:
 
     text = json.dumps(tool_input, ensure_ascii=False)
     return text if len(text) <= limit else f"{text[:limit]}… (+{len(text) - limit} more characters)"
+
+
+@dataclass(frozen=True)
+class _Concern:
+    """One reason a call needs the user's yes, and what may answer it instead: a saved allow rule, or "all in" mode
+    (which never answers for a major call: hard to undo, outside the project, or touching secrets)."""
+    message: str
+    by_rule: bool = True
+    by_auto: bool = True
+    offer_rule: bool = True   # whether "don't ask again" may save an allow rule for it
+
+
+def _concerns(spec: ToolSpec, tool_input: dict[str, Any], context: ToolContext, own: PermissionResult, ruling: str | None) -> list[_Concern]:
+    """Everything about this call that wants a yes, the tool's own question first."""
+    found: list[_Concern] = []
+    if own.behavior is PermissionBehavior.ASK:
+        found.append(_Concern(own.message or f"Tool '{spec.name}' requires permission"))
+    if _reads_secret(spec, tool_input):
+        found.append(_Concern(f"{spec.name} wants to read a secret file: {_read_target(spec, tool_input)}"))
+    outside = _outside_target(spec, tool_input, context)
+    if outside is not None:
+        what = "change a file" if spec.writes_files else "use a folder" if spec.name.lower() == "bash" else "read"
+        found.append(_Concern(f"{spec.name} wants to {what} outside the project: {outside}"))
+    target = _edit_target(spec, tool_input, context) if context.confirm_edits else None
+    if target is not None:
+        found.append(_Concern(f"{spec.name} wants to change {_shown(target, context)}"))   # hold mode
+    if ruling == "ask":
+        found.append(_Concern(f"{spec.name}: an ask rule in settings wants your yes", by_rule=False, by_auto=False))
+    if context.injection_sources and _sends_out(spec, tool_input):
+        # An outside result already tried to steer the model: what this sends out could carry the session's data.
+        found.append(_Concern("", by_rule=False, by_auto=False, offer_rule=False))
+    return found
+
+
+def _taint_message(spec: ToolSpec, tool_input: dict[str, Any], context: ToolContext, concerns: list[_Concern]) -> str:
+    """The call's own question (even one a rule would have waived: it says best what the call does) and why it asks."""
+    what = next((c.message for c in concerns if c.message), f"{spec.name} {_clip_input(tool_input)}")
+    return (f"{what}\n(Asking because {context.injection_sources[-1]} returned text addressed to the model this session. "
+            "Check this sends nothing of yours.)")
 
 
 def _mcp_alias(spec: ToolSpec, tool_input: dict[str, Any]) -> str | None:
@@ -248,33 +279,23 @@ class ToolRegistry:
                 tool_use_id=call.tool_use_id,
             )
         check = getattr(tool, "check_permissions", None)   # optional hook (see Tool)
-        permission_result = check(call.input, context) if check is not None else PermissionResult.allow()
-        if ruling != "allow" and permission_result.behavior.value == "allow" and _reads_secret(spec, call.input):
-            # Keys and .env files reach the model only with a yes (or an allow rule); _is_major keeps all-in asking too.
-            permission_result = PermissionResult.ask(f"{spec.name} wants to read a secret file: {_read_target(call.input)}")
-        outside = _outside_target(spec, call.input, context)
-        if outside is not None and permission_result.behavior.value == "allow":
-            what = "change a file" if spec.name.lower() in _CHANGES_FILES else "use a folder" if spec.name.lower() == "bash" else "read"
-            permission_result = PermissionResult.ask(f"{spec.name} wants to {what} outside the project: {outside}")
-        target = _edit_target(spec, call.input, context) if context.confirm_edits else None
-        if target is not None and permission_result.behavior.value == "allow":
-            permission_result = PermissionResult.ask(f"{spec.name} wants to change {_shown(target, context)}")   # hold mode
-        if ruling == "ask" and permission_result.behavior.value == "allow":   # an ask rule: always a prompt
-            permission_result = PermissionResult.ask(f"{spec.name}: an ask rule in settings wants your yes")
-        tainted = bool(context.injection_sources) and _sends_out(spec, call.input)
-        if tainted and permission_result.behavior.value != "deny":
-            # An outside result already tried to steer the model: what it sends out now could carry this session's data,
-            # so allow rules and "all in" do not wave it through, and no "don't ask again" rule is offered.
-            what = permission_result.message if permission_result.behavior.value == "ask" and permission_result.message else (
-                f"{spec.name} {_clip_input(call.input)}")
-            permission_result = PermissionResult.ask(
-                f"{what}\n(Asking because {context.injection_sources[-1]} returned text addressed to the model this session. "
-                "Check this sends nothing of yours.)")
-        auto = context.auto_approve and not _is_major(spec, call.input, context) and ruling != "ask" and not tainted
-        if permission_result.behavior.value == "ask" and not tainted and (ruling == "allow" or auto):
-            if auto and ruling != "allow":
-                trace.record("permission_auto", tool=spec.name, message=permission_result.message)
-            permission_result = PermissionResult.allow(permission_result.updated_input)
+        own = check(call.input, context) if check is not None else PermissionResult.allow()
+        outside = _outside_target(spec, call.input, context)   # granted below once the call goes ahead
+        tainted = False
+        if own.behavior is PermissionBehavior.DENY:
+            permission_result = own
+        else:
+            concerns = _concerns(spec, call.input, context, own, ruling)
+            tainted = any(not c.offer_rule for c in concerns)
+            major = _is_major(spec, call.input, context)
+            left = [c for c in concerns if not (ruling == "allow" and c.by_rule) and not (context.auto_approve and c.by_auto and not major)]
+            if not left:
+                if concerns and ruling != "allow":
+                    trace.record("permission_auto", tool=spec.name, message=concerns[0].message)
+                permission_result = PermissionResult.allow(own.updated_input)
+            else:
+                message = left[0].message if not tainted else _taint_message(spec, call.input, context, concerns)
+                permission_result = PermissionResult.ask(message)
         if permission_result.behavior.value == "deny":
             return ToolResult(
                 name=spec.name,
@@ -313,11 +334,11 @@ class ToolRegistry:
                 )
 
         if outside is not None:
-            context.grant_path(outside)   # asked and answered yes (or a saved allow rule): the tool's own path check lets it through
-        raw_path = call.input.get(_EDIT_PATHS.get(spec.name, ""))
+            context.grant_path(outside, write=spec.writes_files)   # asked and answered yes (or a saved allow rule): the tool's own path check lets it through
+        raw_path = call.input.get(spec.path_field) if spec.writes_files else None
         if context.before_edit is not None and isinstance(raw_path, str):
             try:
-                context.before_edit(context.ensure_allowed_path(raw_path))
+                context.before_edit(context.ensure_allowed_path(raw_path, write=True))
             except Exception:   # a checkpoint must never stop the edit; the tool reports bad paths itself
                 pass
         result = tool.run(call.input, context)

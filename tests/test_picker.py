@@ -14,11 +14,8 @@ from src.ui.picker import Choice, narrow, pick, render, scroll
 CHOICES = [Choice("a", "alpha", "first"), Choice("b", "beta", "second"), Choice("c", "gamma", "third")]
 MANY = [Choice(str(i), f"model-{i}") for i in range(20)]
 
-try:
-    from prompt_toolkit.input import create_pipe_input
-    from prompt_toolkit.output import DummyOutput
-except ImportError:   # the picker falls back to a numbered question without prompt_toolkit
-    create_pipe_input = None
+from prompt_toolkit.input import create_pipe_input
+from prompt_toolkit.output import DummyOutput
 
 DOWN, UP, ENTER, CTRL_C = "\x1b[B", "\x1b[A", "\r", "\x03"
 
@@ -84,7 +81,6 @@ class TestPureParts(unittest.TestCase):
         self.assertIn("Nothing matches.", text)
 
 
-@unittest.skipIf(create_pipe_input is None, "prompt_toolkit not installed")
 class TestKeys(unittest.TestCase):
     def test_enter_picks_the_first_row_by_default(self):
         self.assertEqual(_drive(ENTER), "a")
@@ -115,7 +111,7 @@ class TestKeys(unittest.TestCase):
         self.assertIsNone(_drive(DOWN + CTRL_C))
 
     def test_the_esc_watcher_is_paused_while_it_is_open(self):
-        from src.repl.esc import WATCHER
+        from src.ui.esc import WATCHER
         seen = []
         original = WATCHER.stop
         with patch.object(WATCHER, "stop", side_effect=lambda: (seen.append("stopped"), original())[1]):
@@ -155,7 +151,6 @@ def _answer(keys: str, multi: bool = False):
         return picker.ask("Loop edit", "How should I proceed?", OPTIONS, multi=multi, input=pipe, output=DummyOutput())
 
 
-@unittest.skipIf(create_pipe_input is None, "prompt_toolkit not installed")
 class TestAskQuestion(unittest.TestCase):
     """AskUserQuestion drawn as Claude Code does: header chip, options with descriptions, your own words, chat."""
 

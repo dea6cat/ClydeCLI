@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from src.agent.conversation import Conversation, ImageContentBlock
+from src.conversation import Conversation, ImageContentBlock
 from src.providers.anthropic import AnthropicProvider
 from src.providers.convert import to_canonical
 from src.providers.google import GoogleProvider

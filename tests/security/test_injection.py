@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from src.agent.agent_loop import run_agent_loop
-from src.agent.conversation import Conversation
+from src.conversation import Conversation
 from src.security import injection
 from src.tool_system.context import ToolContext
 from src.tool_system.defaults import build_default_registry
@@ -32,22 +32,20 @@ class Scan(unittest.TestCase):
             self.assertEqual(injection.findings(text), [], text)
 
     def test_only_outside_tools_are_looked_at_and_the_notice_goes_in_front_without_changing_the_text(self):
-        for name in ("WebFetch", "webfetch", "WebSearch", "mcp__github__get_issue"):
-            out, found = injection.guard(name, ATTACK)
-            self.assertTrue(found, name)
-            self.assertTrue(out.startswith("Security notice:") and out.endswith(ATTACK), name)
-        for name in ("Read", "Bash", "Grep", "Write"):
-            self.assertEqual(injection.guard(name, ATTACK), (ATTACK, []), name)   # the user's own files may quote these phrases
-        out, found = injection.guard("WebFetch", {"url": "u", "content": ATTACK, "n": 3})
+        out, found = injection.guard("WebFetch", ATTACK, True)
+        self.assertTrue(found)
+        self.assertTrue(out.startswith("Security notice:") and out.endswith(ATTACK))
+        self.assertEqual(injection.guard("Read", ATTACK, False), (ATTACK, []))   # the user's own files may quote these phrases
+        out, found = injection.guard("WebFetch", {"url": "u", "content": ATTACK, "n": 3}, True)
         self.assertEqual((out["content"], out["url"], out["n"]), (ATTACK, "u", 3))
         self.assertIn("Security notice", out["securityNotice"])
-        nested, found = injection.guard("mcp__x__y", [{"text": ATTACK}])
+        nested, found = injection.guard("mcp__x__y", [{"text": ATTACK}], True)
         self.assertTrue(found and nested == [{"text": ATTACK}])   # no place for a notice in a bare list: still reported
 
     def test_text_direction_overrides_are_found_and_the_scan_can_be_turned_off_and_is_bounded(self):
         self.assertTrue(injection.findings("harmless ‮ txet"))
         with patch.dict(os.environ, {"CLYDE_INJECTION_SCAN": "off"}):
-            self.assertEqual(injection.guard("WebFetch", ATTACK), (ATTACK, []))
+            self.assertEqual(injection.guard("WebFetch", ATTACK, True), (ATTACK, []))
         big = "a" * (injection.MAX_CHARS + 10) + ATTACK
         self.assertEqual(injection.findings(big), [])   # past the limit is not read
 

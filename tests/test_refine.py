@@ -9,7 +9,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
 
 from src import memory, refine
-from src.agent.conversation import Conversation
+from src.conversation import Conversation
 from src.tool_system.context import ToolContext
 from tests.fakes import FakeProvider, reply
 

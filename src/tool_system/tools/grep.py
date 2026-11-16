@@ -54,6 +54,7 @@ class GrepTool:
     def spec(self) -> ToolSpec:
         return ToolSpec(
             name="Grep",
+            path_field="path",
             description="A powerful search tool built on regex search.",
             input_schema={
                 "type": "object",

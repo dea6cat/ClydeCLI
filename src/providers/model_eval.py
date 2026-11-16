@@ -10,6 +10,7 @@ which cardShuffle ranks models by.
 
 from __future__ import annotations
 
+from src.providers.base import LOCAL_PROVIDERS
 from src.config import clyde_home
 
 import json
@@ -247,8 +248,8 @@ def evaluate(provider: Any, model: str, ref: str) -> ModelScore:
 
 
 def evaluate_all(targets: list[tuple[Any, str, str]], on_done: Callable[[ModelScore], None] | None = None) -> list[ModelScore]:
-    """Evaluate (provider, model, ref) targets, WORKERS at a time; local Ollama models run one by one."""
-    local = [t for t in targets if getattr(t[0], "name", "") == "ollama"]
+    """Evaluate (provider, model, ref) targets, WORKERS at a time; local models run one by one (they share this machine's memory)."""
+    local = [t for t in targets if getattr(t[0], "name", "") in LOCAL_PROVIDERS]
     remote = [t for t in targets if t not in local]
 
     def run(target: tuple[Any, str, str]) -> ModelScore:

@@ -59,9 +59,6 @@ class SendUserMessageTool:
                 )
 
         sent_at = datetime.now(timezone.utc).isoformat()
-        context.outbox.append(
-            {"tool": "SendUserMessage", "status": status, "message": message, "attachments": resolved_attachments}
-        )
         return ToolResult(
             name="SendUserMessage",
             output={

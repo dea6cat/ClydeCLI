@@ -16,6 +16,7 @@ class FileReadTool:
     def spec(self) -> ToolSpec:
         return ToolSpec(
             name="Read",
+            path_field="file_path",
             description="Read a file from the local filesystem.",
             input_schema={
                 "type": "object",

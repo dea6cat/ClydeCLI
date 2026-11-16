@@ -11,6 +11,7 @@ import json
 import os
 from typing import Callable
 
+from . import keys
 from .base import ProviderResponse, cached_model_list, get_json, post_stream
 from .toolspec import ToolSpec, to_gemini
 from .types import Conversation, Message, Role, ToolCall
@@ -40,7 +41,7 @@ class GoogleProvider:
 
     @property
     def api_key(self) -> str:
-        return os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or ""
+        return next((v for env in (keys.PROVIDER_KEY_ENV["google"], *keys.PROVIDER_KEY_ALIASES["google"]) if (v := os.environ.get(env))), "")
 
     def is_available(self) -> bool:
         return bool(self.api_key)

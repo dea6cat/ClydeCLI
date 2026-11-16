@@ -88,6 +88,7 @@ class TestGuards(BonnieCase):
         self.assertEqual(self.call("GET", "/api/state", host="evil.example")[0], 403)
         self.assertEqual(self.call("GET", "/api/state", origin="http://evil.example")[0], 403)
         self.assertEqual(self.call("GET", "/api/state", token=False)[0], 403)
+        self.assertEqual(self.call("GET", "/api/state", headers={"Cookie": ""})[0], 403)   # the token alone is not enough
         self.assertEqual(self.call("GET", "/api/state", origin=f"http://127.0.0.1:{self.port}")[0], 200)
 
     def test_posts_need_json_and_stay_inside_the_size_limits(self):
@@ -352,7 +353,7 @@ class TestTheme(BonnieCase):
 
     def raw(self, method, path, body=b"", headers=None, token=True):
         conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
-        h = {"Host": f"127.0.0.1:{self.port}", **(headers or {})}
+        h = {"Host": f"127.0.0.1:{self.port}", "Cookie": self.cookie, **(headers or {})}   # a browser sends it with every same-origin request
         if token:
             h["X-Bonnie-Token"] = self.token
         conn.request(method, path, body=body or None, headers=h)
@@ -582,7 +583,7 @@ class TestAttachments(BonnieCase):
         from urllib.parse import quote
 
         conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
-        h = {"Host": f"127.0.0.1:{self.port}", "X-File-Name": quote(name), **(headers or {})}
+        h = {"Host": f"127.0.0.1:{self.port}", "Cookie": self.cookie, "X-File-Name": quote(name), **(headers or {})}
         if token:
             h["X-Bonnie-Token"] = self.token
         conn.request("POST", "/api/attachments", body=data or None, headers=h)
@@ -730,3 +731,27 @@ class TestDownloadHeaders(BonnieCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestProjectSwitch(BonnieCase):
+    def test_the_new_projects_rules_apply_and_the_old_ones_go(self):
+        import json
+        import os
+        import tempfile
+        from pathlib import Path
+        old_rules = self.repl.tool_context.permission_rules
+        old_rules["deny"].append("Bash(old-only:*)")
+        with tempfile.TemporaryDirectory() as new:
+            new = Path(new).resolve()
+            (new / ".clyde").mkdir()
+            (new / ".clyde" / "settings.json").write_text(json.dumps({"permissions": {"deny": ["Bash(new-only:*)"]}}))
+            cwd = Path.cwd()
+            try:
+                self.bonnie.set_project(new)
+            finally:
+                os.chdir(cwd)
+        rules = self.repl.tool_context.permission_rules
+        self.assertIs(rules, old_rules)                      # updated in place: sub-agents hold the same dict
+        self.assertIn("Bash(new-only:*)", rules["deny"])
+        self.assertNotIn("Bash(old-only:*)", rules["deny"])
+        self.assertEqual(self.repl.command_context.workspace_root, new)

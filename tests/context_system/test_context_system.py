@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from src.agent.conversation import Conversation
+from src.conversation import Conversation
 from src.context_system import build_context_prompt
 from src.context_system.claude_md import load_claude_md_context
 from src.context_system.git_context import collect_git_context

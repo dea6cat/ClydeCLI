@@ -193,7 +193,7 @@ class Server:
 
     def on_session_fork(self, params: dict) -> dict:
         """A new session that starts as a copy of another; the original is left as it is."""
-        from src.agent.conversation import Conversation
+        from src.conversation import Conversation
         from src.agent.session import Session
 
         source = self._saved(params)

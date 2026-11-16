@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 
-from src.tool_system.tools.bash import is_read_only_command
+from src.tool_system.shell import is_read_only_command
 
 
 class TestExpansionIsNotReadOnly(unittest.TestCase):

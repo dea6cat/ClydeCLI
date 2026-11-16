@@ -41,6 +41,7 @@ class ExitPlanModeTool:
     def spec(self) -> ToolSpec:
         return ToolSpec(
             name="ExitPlanMode",
+            plan_mode_ok=True,
             description="Exit plan mode after writing a plan; may persist plan to disk.",
             input_schema={
                 "type": "object",

@@ -11,19 +11,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Optional, Protocol, Sequence
+from typing import Any, Callable, Optional
 
 
 class CommandType(Enum):
     """Types of commands."""
     PROMPT = "prompt"
     LOCAL = "local"
-
-
-class CommandAvailability(Enum):
-    """Availability environments where a command is available."""
-    CLAUDE_AI = "claude-ai"
-    CONSOLE = "console"
 
 
 @dataclass(frozen=True)
@@ -68,7 +62,6 @@ class CommandBase:
     name: str
     description: str
     aliases: list[str] = field(default_factory=list)
-    availability: list[CommandAvailability] = field(default_factory=list)
     is_enabled: Callable[[], bool] = field(default=lambda: True)
     is_hidden: bool = False
     has_user_specified_description: bool = False
@@ -115,16 +108,10 @@ class PromptCommand(CommandBase):
     def command_type(self) -> CommandType:
         return CommandType.PROMPT
 
-    async def get_prompt_for_command(
-        self,
-        args: str,
-        context: CommandContext,
-    ) -> list[dict[str, Any]]:
-        """Get the prompt content for this command."""
-        # Default implementation - will be overridden
-        from .argument_substitution import substitute_arguments
-        content = substitute_arguments(self.markdown_content, args, self.arg_names)
-        return [{"type": "text", "text": content}]
+    def prompt_for(self, args: str, context: CommandContext) -> str:
+        """The prompt this command sends to the model, with its arguments filled in."""
+        from src.skills.argument_substitution import substitute_arguments
+        return substitute_arguments(self.markdown_content, args, argument_names=self.arg_names)
 
 
 @dataclass(frozen=True)
@@ -141,11 +128,14 @@ class LocalCommand(CommandBase):
         """Set the call implementation."""
         object.__setattr__(self, '_call_impl', call)
 
+    def run(self, args: str, context: CommandContext) -> LocalCommandResult:
+        """Execute the local command; its errors propagate to the caller."""
+        if self._call_impl is None:
+            raise NotImplementedError(f"/{self.name} has no implementation")
+        return self._call_impl(args, context)
+
     async def call(self, args: str, context: CommandContext) -> LocalCommandResult:
-        """Execute the local command."""
-        if self._call_impl is not None:
-            return self._call_impl(args, context)
-        return LocalCommandResult(type="text", value=f"Command {self.name} not implemented")
+        return self.run(args, context)
 
 
 # Type alias for any command
@@ -156,24 +146,3 @@ def get_command_name(cmd: CommandBase) -> str:
     """Get the user-facing name of a command."""
     return cmd.user_facing_name()
 
-
-def is_command_enabled(cmd: CommandBase) -> bool:
-    """Check if a command is enabled."""
-    return cmd.is_enabled()
-
-
-def meets_availability_requirement(
-    cmd: CommandBase,
-    is_claude_ai_subscriber: bool = False,
-    is_console_user: bool = False,
-) -> bool:
-    """Check if a command meets the availability requirement."""
-    if not cmd.availability:
-        return True
-
-    for availability in cmd.availability:
-        if availability == CommandAvailability.CLAUDE_AI and is_claude_ai_subscriber:
-            return True
-        if availability == CommandAvailability.CONSOLE and is_console_user:
-            return True
-    return False

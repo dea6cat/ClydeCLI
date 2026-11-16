@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Optional, Union
 
-from ..agent.conversation import Message, TextContentBlock
+from src.conversation import Message, TextContentBlock
 
 
 @dataclass

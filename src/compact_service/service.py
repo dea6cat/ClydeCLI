@@ -13,13 +13,12 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Any, Optional
 
-from ..agent import trace
-from ..agent.conversation import Conversation, Message
+from src import trace
+from src.conversation import Conversation, Message
 from ..context_system.microcompact import microcompact_messages, strip_images_from_messages
-from ..providers.base import Provider, stream_with_retry
+from ..providers.base import Provider, complete_text
 from ..providers.convert import to_canonical
 from .messages import (
     create_compact_boundary_message,
@@ -93,7 +92,7 @@ class CompactResult:
     user_display_message: Optional[str] = None
 
 
-async def compact_conversation(
+def compact_conversation(
     conversation: Conversation,
     provider: Provider,
     model: str,
@@ -162,15 +161,7 @@ async def compact_conversation(
         # Tool blocks are flattened to text: providers reject tool_use/tool_result blocks in a
         # request that defines no tools.
         request = to_canonical(summary_history, SUMMARY_SYSTEM_PROMPT, flatten_tools=True)
-        response = trace.model_call(provider, model, request, lambda: stream_with_retry(
-            provider,
-            request,
-            model,
-            (),
-            lambda _chunk: None,
-            reasoning="off",
-        ))
-        summary_text = (response.message.text or "").strip()
+        summary_text = complete_text(provider, model, SUMMARY_SYSTEM_PROMPT, request).text
     except Exception as e:
         logger.warning(f"Compact LLM call failed: {e}, using text extraction")
         summary_text = _fallback_summary(messages)
@@ -380,55 +371,16 @@ def _earlier_context(messages: list[Message], kept: int) -> str:
 
 
 def _fallback_summary(messages: list[Message]) -> str:
-    """
-    Generate a simple text fallback summary when the LLM call fails.
-    """
-    user_msgs: list[str] = []
-    assistant_msgs: list[str] = []
+    """A plain summary for when the model call fails: how long it was, the tools used, the last words on each side."""
+    def last(role: str) -> str:
+        return next((t for m in reversed(messages) if m.role == role and (t := _text_of(m).strip())), "")
 
-    for msg in messages:
-        role = getattr(msg, 'role', None)
-        if role is None and isinstance(msg, dict):
-            role = msg.get("role")
-
-        content = getattr(msg, 'content', '')
-        if content is None and isinstance(msg, dict):
-            content = msg.get("content", "")
-
-        if role == "user":
-            if isinstance(content, str):
-                user_msgs.append(content[:200])
-            elif isinstance(content, list):
-                for block in content:
-                    if isinstance(block, dict) and block.get("type") == "text":
-                        user_msgs.append(block.get("text", "")[:200])
-        elif role == "assistant":
-            if isinstance(content, str):
-                assistant_msgs.append(content[:200])
-            elif isinstance(content, list):
-                for block in content:
-                    if isinstance(block, dict) and block.get("type") == "text":
-                        assistant_msgs.append(block.get("text", "")[:200])
-
-    summary_parts = [f"Conversation had {len(messages)} messages."]
-
-    # Extract tool use info
-    tool_uses = []
-    for msg in messages:
-        content = getattr(msg, 'content', [])
-        if isinstance(msg, dict):
-            content = msg.get("content", [])
-        if isinstance(content, list):
-            for block in content:
-                if isinstance(block, dict) and block.get("type") == "tool_use":
-                    tool_uses.append(block.get("name", ""))
-
-    if tool_uses:
-        summary_parts.append(f"Tools used: {', '.join(tool_uses[:10])}")
-
-    if user_msgs:
-        summary_parts.append(f"Last user message: {user_msgs[-1][:150]}")
-    if assistant_msgs:
-        summary_parts.append(f"Last assistant message: {assistant_msgs[-1][:150]}")
-
-    return "\n".join(summary_parts)
+    tools = [b.name for m in messages if isinstance(m.content, list) for b in m.content if getattr(b, "type", "") == "tool_use"]
+    parts = [f"Conversation had {len(messages)} messages."]
+    if tools:
+        parts.append(f"Tools used: {', '.join(tools[:10])}")
+    if user := last("user"):
+        parts.append(f"Last user message: {user[:150]}")
+    if assistant := last("assistant"):
+        parts.append(f"Last assistant message: {assistant[:150]}")
+    return "\n".join(parts)

@@ -80,6 +80,8 @@ class TestAcp(unittest.TestCase):
         self.assertEqual([o["value"] for o in option["options"]], ["glm:glm-4.5", "glm:glm-4.6"])
         switched = self.call(3, "session/set_config_option", {"sessionId": new["sessionId"], "configId": "model", "value": "glm:glm-4.6"})
         self.assertEqual(switched["result"]["configOptions"][0]["currentValue"], "glm:glm-4.6")
+        from src.config import get_default_model
+        self.assertNotEqual(get_default_model(), "glm:glm-4.6")   # the editor's pick is for its session only
         self.assertEqual(self.call(4, "session/set_config_option", {"sessionId": new["sessionId"], "configId": "mode", "value": "x"})["error"]["code"], -32603)
 
     def test_a_model_that_failed_eval_is_left_out_of_the_picker(self):

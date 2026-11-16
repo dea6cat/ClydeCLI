@@ -26,7 +26,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from src.tool_system.hooks import normalize_hooks, settings_paths
+from src import settings
+from src.tool_system.hooks import normalize_hooks
 
 # The last entry is the older layout with plugin.json at the plugin root.
 MANIFESTS = (*(Path(d) / "plugin.json" for d in (".clyde-plugin", ".claude-plugin", ".codex-plugin", ".cursor-plugin")),
@@ -94,34 +95,23 @@ def installed() -> tuple[list[Plugin], list[str]]:
 
 # --- enable/disable state in ~/.clyde/settings.json -----------------------------------------
 
-def _settings() -> dict[str, Any]:
-    try:
-        data = json.loads(settings_paths()[0].read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return {}
-    if not isinstance(data, dict):
-        raise ValueError(f"{settings_paths()[0]} is not a JSON object")
-    return data
-
-
 def is_enabled(name: str) -> bool:
-    try:
-        entry = (_settings().get("plugins") or {}).get(name)
-    except (OSError, ValueError, AttributeError):
-        return False
+    entry = (settings.read_json().get("plugins") or {})
+    entry = entry.get(name) if isinstance(entry, dict) else None
     return isinstance(entry, dict) and entry.get("enabled") is True
 
 
 def set_enabled(name: str, enabled: bool | None) -> None:
     """Record the plugin's state; None drops its entry (on remove)."""
-    data = _settings()   # a malformed file raises rather than being overwritten
-    table = data.setdefault("plugins", {})
-    if enabled is None:
-        table.pop(name, None)
-    else:
-        table.setdefault(name, {})["enabled"] = enabled
-    path = settings_paths()[0]
-    write_json_safely(path, data)
+    def change(data: dict[str, Any]) -> bool:
+        table = data.setdefault("plugins", {})
+        if enabled is None:
+            table.pop(name, None)
+        else:
+            table.setdefault(name, {})["enabled"] = enabled
+        return True
+
+    settings.update(change)   # a malformed file raises rather than being overwritten
 
 
 def enabled_plugins() -> list[Plugin]:
@@ -232,9 +222,17 @@ def _register_tools(registry: Any, plugin: Plugin, loaded: Loaded) -> None:
 def apply_plugins(registry: Any, hooks: dict[str, list[dict[str, Any]]], servers: dict[str, dict[str, Any]]) -> list[Loaded]:
     """Add enabled plugins' tools to `registry` and their hooks / MCP servers to `hooks` / `servers`.
     Built-in tools and servers from settings.json keep their names; clashes become warnings.
-    Skills reach get_all_skills through skill_dirs()."""
+    Skills reach get_all_skills through skill_dirs(). A plugin the security scan blocks, and the user has not allowed,
+    loads nothing (its content may have changed since it was enabled)."""
+    from src.security import skill_scan
+
     result = []
     for plugin in enabled_plugins():
+        verdict = skill_scan.check("plugin", plugin.name, plugin.root)
+        if verdict.blocked:
+            result.append(Loaded(plugin, warnings=[f"plugin '{plugin.name}' not loaded: the security scan says {verdict.recommendation}. "
+                                                   f"Run `clyde plugin enable {plugin.name}` to see why and allow it."]))
+            continue
         loaded = Loaded(plugin, skills=skill_names(plugin))
         _register_tools(registry, plugin, loaded)
         try:

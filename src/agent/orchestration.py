@@ -22,16 +22,16 @@ from pathlib import Path
 from typing import Any, Callable
 
 from src.agent.agent_types import GENERAL, AgentType
-from src.agent.conversation import Conversation as History
+from src.conversation import Conversation as History
 from src.agent import cli_workers
-from src.agent.harness import LOCAL_PROVIDERS, RUNNABLE_KINDS, Harness, can_work, discover_all, harness_by_name
+from src.providers.base import LOCAL_PROVIDERS
+from src.agent.harness import RUNNABLE_KINDS, Harness, can_work, discover_all, harness_by_name
 from src.agent.runs import MAX_TEAM, Run, outbox_dir
-from src.providers.base import stream_with_retry
-from src.providers.types import Conversation, Message
+from src.providers.base import complete_text
 from src.security.git_safe import git_cmd, git_env
 from src.tool_system.context import ToolContext
 from src.tool_system.permissions import ToolPermissionContext
-from src.tool_system.tools.agent import offered_tools, run_agent
+from src.agent.subagent import offered_tools, run_agent
 
 _PATCH_CHARS = 20_000      # of one worker's patch shown to the advisor
 _SUMMARY_CHARS = 6_000     # of one worker's final answer shown to the advisor and the master
@@ -149,10 +149,9 @@ def repo_root(start: Path) -> Path | str:
 
 def _model_text(provider: Any, model: str, system: str, prompt: str, run: Run, who: str) -> str:
     """One tool-free model call; its spend goes in the run's ledger."""
-    response = stream_with_retry(provider, Conversation(system_prompt=system, messages=[Message.user(prompt)]),
-                                 model, (), lambda _c: None, reasoning="off")
-    run.spend(who, f"{provider.name}:{model}", response.usage)
-    return response.message.text or ""
+    reply = complete_text(provider, model, system, prompt)
+    run.spend(who, f"{provider.name}:{model}", reply.usage)
+    return reply.text
 
 
 def _split(text: str, count: int) -> list[str] | None:
@@ -260,7 +259,7 @@ def _work(run: Run, name: str, role: RoleAssignment, provider: Any, prompt: str,
             result, _ = run_agent(registry, context, agent, prompt, cancel=cancel, conversation=history, on_event=on_event)
             out["summary"] = result.response_text or ""
             run.spend(name, role.ref, result.usage)
-            out["ok"] = True
+            out["ok"] = result.stop_reason == "done"   # gave up (repeat, stall, budget, ran out): not finished
         out["patch"], out["files"] = _snapshot(worktree)
         out["ok"] = out["ok"] and not cancel.is_set()
     except Exception as e:   # a provider error, a stopped request: the run goes on without this worker

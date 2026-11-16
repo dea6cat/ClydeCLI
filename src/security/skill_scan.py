@@ -32,7 +32,12 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, NamedTuple
+
+from src import trace
+
+if TYPE_CHECKING:
+    from src.security.scanner.engine import ScanResult
 
 SAFE, CAUTION, BLOCK, ERROR = "SAFE", "CAUTION", "DO_NOT_INSTALL", "ERROR"
 _TIMEOUT_STATIC, _TIMEOUT_LLM = 120, 300   # a review that takes longer is skipped, not waited for
@@ -107,39 +112,33 @@ def digest(path: Path) -> str:
     return h.hexdigest()
 
 
-def llm_env(provider: Any, model: str | None) -> dict[str, str] | None:
-    """SkillSpector's provider settings for ClydeCLI's connected model, or None when SkillSpector
-    can't use it (then the scan runs with --no-llm)."""
+class Reviewer(NamedTuple):
+    """The model that reviews what the static scan flagged."""
+    provider: Any
+    model: str
+
+
+def llm_env(provider: Any, model: str | None) -> Reviewer | None:
+    """The reviewer for ClydeCLI's connected model, or None when there is none (then the scan is static only). Under
+    cardShuffle it is the top high-roller model, which does not change from deal to deal."""
     if provider is None or not model:
         return None
-    name = getattr(provider, "name", "")
-    if name == "cardShuffle":
+    if getattr(provider, "name", "") == "cardShuffle":
         from src.providers.card_shuffle import deck
         top = deck("high-roller", provider._candidates())
         if not top:
             return None
         real, _, real_model = top[0].partition(":")
         return llm_env(provider.registry.get(real), real_model)
-    if name == "anthropic":
-        key = getattr(provider, "api_key", "") or os.environ.get("ANTHROPIC_API_KEY", "")
-        return {"SKILLSPECTOR_PROVIDER": "anthropic", "ANTHROPIC_API_KEY": key, "SKILLSPECTOR_MODEL": model} if key else None
-    base = getattr(provider, "base_url", None)
-    if name in ("ollama", "ollama-cloud") and getattr(provider, "host", None):
-        base = f"{provider.host}/v1"
-    key = getattr(provider, "api_key", None) or ("ollama" if name == "ollama" else None)
-    if not base or not key:
-        return None
-    return {"SKILLSPECTOR_PROVIDER": "openai_compatible", "SKILLSPECTOR_COMPAT_API_KEY": key,
-            "SKILLSPECTOR_COMPAT_BASE_URL": base, "SKILLSPECTOR_MODEL": model}
+    return Reviewer(provider, model)
 
 
-def default_llm_env() -> dict[str, str] | None:
+def default_llm_env() -> Reviewer | None:
     """llm_env for the saved default model, for scans run outside the REPL (plugin installs)."""
     try:
         from src.config import get_default_model
-        from src.providers import build_registry, keys, resolve
+        from src.providers import build_registry, resolve
 
-        keys.load_into_env()
         model = get_default_model()
         resolved = resolve(build_registry(), model) if model else None
         return llm_env(*resolved) if resolved else None
@@ -160,63 +159,32 @@ def _verdict_from_scan_result(result: ScanResult, llm: bool = False) -> Verdict:
     )
 
 
-def _provider_from_env(env: dict[str, str]) -> tuple[Any, str | None]:
-    """Build a provider object and model from the env dict produced by llm_env().
-
-    Returns (provider, model), or (None, None) when no reviewable provider is configured.
-    """
-    prov = env.get("SKILLSPECTOR_PROVIDER")
-    model = env.get("SKILLSPECTOR_MODEL")
-    if not prov or not model:
-        return None, None
-    if prov == "anthropic":
-        key = env.get("ANTHROPIC_API_KEY", "")
-        if not key:
-            return None, None
-        os.environ["ANTHROPIC_API_KEY"] = key
-        from src.providers.anthropic import AnthropicProvider
-
-        return AnthropicProvider(name="anthropic"), model
-    if prov == "openai_compatible":
-        key = env.get("SKILLSPECTOR_COMPAT_API_KEY", "")
-        base = env.get("SKILLSPECTOR_COMPAT_BASE_URL", "")
-        if not key or not base:
-            return None, None
-        os.environ["SKILLSPECTOR_COMPAT_API_KEY"] = key
-        from src.providers.openai_compat import OpenAICompatProvider
-
-        return OpenAICompatProvider(
-            name="clyde-review", base_url=base, key_env="SKILLSPECTOR_COMPAT_API_KEY"
-        ), model
-    return None, None
-
-
-def _to_verdicts(results: list[ScanResult], env: dict[str, str] | None = None) -> list[Verdict]:
-    """Run optional LLM review over scan results and convert them to Verdicts."""
+def _to_verdicts(results: list[ScanResult], reviewer: Reviewer | None = None) -> list[Verdict]:
+    """Run the optional LLM review over scan results and convert them to Verdicts. A review that fails leaves the verdict
+    static-only, so the next check with a reviewer tries again."""
     from src.security.scanner.llm_review import enhance_with_llm
 
-    provider, model = _provider_from_env(env) if env else (None, None)
     verdicts: list[Verdict] = []
     for result in results:
-        llm_reviewed = False
-        if provider and model:
+        reviewed = False
+        if reviewer is not None:
             try:
-                result = enhance_with_llm(result, provider, model)
-                llm_reviewed = True
-            except Exception:
-                pass
-        verdicts.append(_verdict_from_scan_result(result, llm=llm_reviewed))
+                result = enhance_with_llm(result, reviewer.provider, reviewer.model)
+                reviewed = True
+            except Exception as e:  # pylint: disable=broad-exception-caught  # a provider error or an unreadable answer
+                trace.record("skill_scan_review_failed", name=result.name, error=f"{type(e).__name__}: {e}")
+        verdicts.append(_verdict_from_scan_result(result, llm=reviewed))
     return verdicts
 
 
-def scan(path: Path, *, recursive: bool = False, env: dict[str, str] | None = None) -> list[Verdict]:
+def scan(path: Path, *, recursive: bool = False, reviewer: Reviewer | None = None) -> list[Verdict]:
     """Scan with the in-house security scanner, replacing SkillSpector.
 
-    The static scan always runs. The LLM review runs when `env` names a provider
+    The static scan always runs. The LLM review runs when `reviewer` is given
     (built by llm_env / default_llm_env); otherwise static scan only.
     """
     if sys.stderr.isatty():
-        label = " with LLM review" if env else ""
+        label = " with LLM review" if reviewer else ""
         print(
             f"\x1b[2m♠ Scanning {path.name}{label}…\x1b[0m",
             end="",
@@ -232,7 +200,7 @@ def scan(path: Path, *, recursive: bool = False, env: dict[str, str] | None = No
     finally:
         if sys.stderr.isatty():
             print("\r\x1b[2K", end="", file=sys.stderr, flush=True)
-    return _to_verdicts(results, env)
+    return _to_verdicts(results, reviewer)
 
 
 # What a plugin can make ClydeCLI load (src/plugins.py). The rest of its folder (a repo's packages, tests,
@@ -240,12 +208,12 @@ def scan(path: Path, *, recursive: bool = False, env: dict[str, str] | None = No
 _PLUGIN_PARTS = ("skills", "hooks", "tools", ".mcp.json")
 
 
-def check(kind: str, name: str, path: Path, *, env: dict[str, str] | None = None, rescan: bool = False) -> Verdict:
+def check(kind: str, name: str, path: Path, *, reviewer: Reviewer | None = None, rescan: bool = False) -> Verdict:
     """The cached verdict for this exact content, scanning it when it is new or changed. An LLM
-    review (`env`) replaces a static-only verdict; a flagged static verdict is reviewed when `env` is given.
+    review (`reviewer`) replaces a static-only verdict; a flagged static verdict is reviewed when `reviewer` is given.
     A plugin is judged by the parts ClydeCLI loads, not its whole folder."""
     if kind != "plugin":
-        return _check(kind, name, path, env, rescan)
+        return _check(kind, name, path, reviewer, rescan)
     with tempfile.TemporaryDirectory() as tmp:
         staged = Path(tmp) / path.name
         staged.mkdir()
@@ -255,7 +223,7 @@ def check(kind: str, name: str, path: Path, *, env: dict[str, str] | None = None
                 shutil.copytree(src, staged / part)
             elif src.is_file():
                 shutil.copy2(src, staged / part)
-        return _check(kind, name, staged, env, rescan)
+        return _check(kind, name, staged, reviewer, rescan)
 
 
 def _chunks(path: Path, tmp: Path) -> list[Path]:
@@ -289,13 +257,13 @@ def _worst(name: str, verdicts: list[Verdict]) -> Verdict:
                    [f"{v.name}: {f}" if len(verdicts) > 1 else f for v in verdicts for f in v.findings], all(v.llm for v in verdicts))
 
 
-def _scan_chunked(name: str, path: Path, env: dict[str, str] | None) -> Verdict:
+def _scan_chunked(name: str, path: Path, reviewer: Reviewer | None) -> Verdict:
     with tempfile.TemporaryDirectory() as tmp:
         chunks = _chunks(path, Path(tmp))
         if len(chunks) == 1:
-            return next(iter(scan(path, env=env)), Verdict(name, ERROR, findings=["empty report"]))
+            return next(iter(scan(path, reviewer=reviewer)), Verdict(name, ERROR, findings=["empty report"]))
         with ThreadPoolExecutor(_CHUNK_WORKERS) as pool:
-            parts = list(pool.map(lambda c: next(iter(scan(c, env=env)), Verdict(c.name, ERROR, findings=["empty report"])), chunks))
+            parts = list(pool.map(lambda c: next(iter(scan(c, reviewer=reviewer)), Verdict(c.name, ERROR, findings=["empty report"])), chunks))
     return _worst(name, parts)
 
 
@@ -309,20 +277,19 @@ def _announce_failure(kind: str, name: str, verdict: Verdict) -> None:
         return
     _announced.add(f"{kind}:{name}")
     reason = "; ".join(verdict.findings)[:160] or "no reason given"
-    from src.agent import trace
     trace.record("scan_failed", kind=kind, name=name, reason=reason, closed=closed())
     outcome = ("held back, because CLYDE_SKILL_SCAN=closed (set it to off to load it anyway)" if closed()
                else "loaded WITHOUT a scan (CLYDE_SKILL_SCAN=closed holds such items back)")
     print(f"\x1b[33m⚠ Scanner could not scan {kind} {name}: {reason}. It is {outcome}.\x1b[0m", file=sys.stderr, flush=True)
 
 
-def _check(kind: str, name: str, path: Path, env: dict[str, str] | None, rescan: bool) -> Verdict:
-    verdict = _check_cached_or_scan(kind, name, path, env, rescan)
+def _check(kind: str, name: str, path: Path, reviewer: Reviewer | None, rescan: bool) -> Verdict:
+    verdict = _check_cached_or_scan(kind, name, path, reviewer, rescan)
     _announce_failure(kind, name, verdict)
     return verdict
 
 
-def _check_cached_or_scan(kind: str, name: str, path: Path, env: dict[str, str] | None, rescan: bool) -> Verdict:
+def _check_cached_or_scan(kind: str, name: str, path: Path, reviewer: Reviewer | None, rescan: bool) -> Verdict:
     if not enabled():
         return Verdict(name, SAFE)
     where = str(path) if kind == "skill" else ""
@@ -330,18 +297,18 @@ def _check_cached_or_scan(kind: str, name: str, path: Path, env: dict[str, str] 
     entry = _load_cache().get(key) or {}
     cached = Verdict(**entry["verdict"]) if entry.get("hash") == content and "verdict" in entry else None
     failed = entry.get("failed") or {}
-    if (not rescan and env is None and failed.get("hash") == content and time.time() - failed.get("at", 0) < _RETRY_AFTER
+    if (not rescan and reviewer is None and failed.get("hash") == content and time.time() - failed.get("at", 0) < _RETRY_AFTER
             and cached is None):
         return Verdict(name, ERROR, findings=["an earlier scan failed; trying again within a day or on /skills scan"])
-    needs_review = cached is not None and env is not None and not cached.llm and cached.recommendation != SAFE
+    needs_review = cached is not None and reviewer is not None and not cached.llm and cached.recommendation != SAFE
     if cached is not None and not rescan and not needs_review:
         return cached
-    verdict = _scan_chunked(name, path, env)
+    verdict = _scan_chunked(name, path, reviewer)
     verdict.name, verdict.approved = name, bool(cached and cached.approved)
     if verdict.recommendation == ERROR:
         # a timeout or a missing report says nothing about the content, so no verdict is kept; the failure is
         # remembered so the next launches don't pay for the same timeout
-        if env is None:
+        if reviewer is None:
             _store(key, {**entry, "path": where, "failed": {"hash": content, "at": time.time()}})
         return verdict
     _store(key, {"hash": content, "path": where, "verdict": asdict(verdict)})
@@ -434,7 +401,7 @@ def mcp_tools_skill_dir(server: str, tools: list[dict[str, Any]], into: Path) ->
     return root
 
 
-def check_mcp(server: str, tools: list[dict[str, Any]], *, env: dict[str, str] | None = None) -> Verdict:
+def check_mcp(server: str, tools: list[dict[str, Any]], *, reviewer: Reviewer | None = None) -> Verdict:
     """The worst verdict over an MCP server's tool list, cached by the list's content."""
     if not enabled() or not tools:
         return Verdict(server, SAFE)
@@ -445,7 +412,7 @@ def check_mcp(server: str, tools: list[dict[str, Any]], *, env: dict[str, str] |
         entry = cache.get(key) or {}
         if entry.get("hash") == content and "verdict" in entry:
             return Verdict(**entry["verdict"])
-        verdicts = scan(root, recursive=True, env=env) or [Verdict(server, ERROR, findings=["empty report"])]
+        verdicts = scan(root, recursive=True, reviewer=reviewer) or [Verdict(server, ERROR, findings=["empty report"])]
     rank = {SAFE: 0, ERROR: 1, CAUTION: 2, BLOCK: 3}
     worst = max(verdicts, key=lambda v: (rank.get(v.recommendation, 1), v.score))
     verdict = Verdict(server, worst.recommendation, worst.score, worst.severity,

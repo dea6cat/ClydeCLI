@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from src.agent.conversation import ToolResultContentBlock, ToolUseContentBlock
+from src.conversation import ToolResultContentBlock, ToolUseContentBlock
 from src.agent.session import Session
 from src.bonnie import artifacts
 

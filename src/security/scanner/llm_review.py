@@ -53,52 +53,27 @@ def review_with_llm(
     content: str,
     provider: Any,
     model: str,
-    timeout: float = 300.0,
-) -> dict[str, Any] | None:
-    """Send content to LLM for security review using provider.stream.
-
-    Returns a dict with findings, recommendation, score, and explanation,
-    or None if the review fails.
-    """
-    try:
-        prompt = LLM_REVIEW_PROMPT.format(content=content[:16000])
-        conversation = Conversation(system_prompt="", messages=[Message.user(prompt)])
-        collected: list[str] = []
-
-        def on_text(chunk: str) -> None:
-            collected.append(chunk)
-
-        response = provider.stream(conversation, model, (), on_text)
-        content_text = "".join(collected) or (
-            response.message.text if response and response.message else ""
-        )
-
-        if content_text:
-            try:
-                if "{" in content_text:
-                    json_start = content_text.index("{")
-                    json_end = content_text.rindex("}") + 1
-                    json_str = content_text[json_start:json_end]
-                    return json.loads(json_str)
-            except (ValueError, IndexError):
-                pass
-
-            return {
-                "findings": [],
-                "recommendation": "CAUTION",
-                "score": 50,
-                "explanation": "LLM review completed but response could not be parsed",
-            }
-
-        return None
-
-    except Exception as e:
-        return {
-            "findings": [],
-            "recommendation": "ERROR",
-            "score": 0,
-            "explanation": f"LLM review failed: {e}",
-        }
+) -> dict[str, Any]:
+    """Send content to the model for a security review. Returns its findings, recommendation, score and explanation.
+    Raises when the model can't be reached or gives no answer, so a failed review is never taken for one."""
+    prompt = LLM_REVIEW_PROMPT.format(content=content[:16000])
+    conversation = Conversation(system_prompt="", messages=[Message.user(prompt)])
+    collected: list[str] = []
+    response = provider.stream(conversation, model, (), collected.append)
+    content_text = "".join(collected) or (response.message.text if response and response.message else "")
+    if not content_text:
+        raise RuntimeError("the model gave no answer")
+    if "{" in content_text:
+        try:
+            return json.loads(content_text[content_text.index("{"):content_text.rindex("}") + 1])
+        except (ValueError, IndexError):
+            pass
+    return {
+        "findings": [],
+        "recommendation": "CAUTION",
+        "score": 50,
+        "explanation": "LLM review completed but response could not be parsed",
+    }
 
 
 def enhance_with_llm(

@@ -8,7 +8,6 @@ from .tools import (
     DataTool,
     AskUserQuestionTool,
     BashTool,
-    BriefTool,
     MapTool,
     RetrieveContextTool,
     RememberTool,
@@ -29,15 +28,11 @@ from .tools import (
     ListMcpResourcesTool,
     MCPTool,
     NotebookEditTool,
-    PowerShellTool,
     ReadMcpResourceTool,
-    SendMessageTool,
     SendUserMessageTool,
     SkillTool,
     SleepTool,
     StructuredOutputTool,
-    TeamCreateTool,
-    TeamDeleteTool,
     TaskCreateTool,
     TaskGetTool,
     TaskListTool,
@@ -48,7 +43,6 @@ from .tools import (
     WebFetchTool,
     WebSearchTool,
 )
-from .tools.agent import AgentTool
 from .tools.tool_search import ToolSearchTool
 
 
@@ -73,7 +67,6 @@ def build_default_registry(*, include_user_tools: bool = True) -> ToolRegistry:
             ReadMcpResourceTool(),
             LSPTool(),
             SkillTool(),
-            BriefTool(),
             AskUserQuestionTool(),
             TodoWriteTool(),
             TaskCreateTool(),
@@ -81,7 +74,6 @@ def build_default_registry(*, include_user_tools: bool = True) -> ToolRegistry:
             TaskListTool(),
             TaskUpdateTool(),
             TaskOutputTool(),
-            TeamDeleteTool(),
             EnterPlanModeTool(),
             ExitPlanModeTool(),
             EnterWorktreeTool(),
@@ -89,17 +81,13 @@ def build_default_registry(*, include_user_tools: bool = True) -> ToolRegistry:
             CronCreateTool(),
             CronListTool(),
             CronDeleteTool(),
-            SendMessageTool(),
             StructuredOutputTool(),
-            PowerShellTool(),
             NotebookEditTool(),
             MapTool(),
             RetrieveContextTool(),
             RememberTool(),
         ]
     )
-    registry.register(AgentTool(registry))
-    registry.register(TeamCreateTool(registry))
     registry.register(ToolSearchTool(registry))
 
     if include_user_tools:

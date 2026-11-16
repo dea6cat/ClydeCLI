@@ -119,6 +119,7 @@ class WebFetchTool:
     def spec(self) -> ToolSpec:
         return ToolSpec(
             name="WebFetch",
+            reaches_network=True,
             description="Fetch a URL and return extracted text content.",
             input_schema={
                 "type": "object",

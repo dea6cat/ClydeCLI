@@ -13,7 +13,8 @@ from src.context_system.git_context import collect_git_context
 from src.tool_system.context import ToolContext
 from src.tool_system.protocol import ToolCall, ToolResult
 from src.tool_system.registry import ToolRegistry, _is_major
-from src.tool_system.tools.bash import BashTool, reaches_outside_project
+from src.tool_system.shell import reaches_outside_project
+from src.tool_system.tools.bash import BashTool
 from src.tool_system.tools.write import FileWriteTool
 
 

@@ -14,14 +14,14 @@ from __future__ import annotations
 
 import os
 import re
-from dataclasses import replace
+from src.providers.base import LOCAL_PROVIDERS
 from typing import Any
 
 from ..providers.card_shuffle import _LEAKED_MIN, _LEAKED_TOKENS, CardShuffle
-from ..tool_system.registry import ToolRegistry
-from . import trace
+from ..providers.base import complete_text
+from src import trace
 
-_LOCAL = {"ollama", "omlx", CardShuffle.name}
+_NOT_CLOUD = LOCAL_PROVIDERS | {CardShuffle.name}
 _PRETEND_CALL = re.compile(r"\[TOOL_[A-Z_]+\]|<tool_call>|<function=")
 # First person only ("I can't run", "I don't have access"), a missing file, or the sandbox excuse: an explanation that
 # merely mentions that something cannot access something does not match.
@@ -57,10 +57,9 @@ def review_reply(request: str, reply: str, context: Any, *, registry: dict | Non
     if not why:
         return None
     try:
-        from ..providers import build_registry, keys, pick_default_model, resolve
-        keys.load_into_env()
+        from ..providers import build_registry, pick_default_model, resolve
         reg = registry if registry is not None else build_registry()
-        ref = pick_default_model({name: p for name, p in reg.items() if name not in _LOCAL})
+        ref = pick_default_model({name: p for name, p in reg.items() if name not in _NOT_CLOUD})
         resolved = resolve(reg, ref) if ref else None
         if resolved is None:
             return None   # no cloud model connected
@@ -74,13 +73,8 @@ def review_reply(request: str, reply: str, context: Any, *, registry: dict | Non
             context.cloud_review_ok = bool(allowed)
             if not allowed:
                 return None
-        from .agent_loop import run_agent_loop
-        from .conversation import Conversation
-        conversation = Conversation()
-        conversation.add_user_message(_REVIEW.format(request=request[-_CHARS:], reply=reply[-_CHARS:]))
-        sub = replace(context, read_file_fingerprints={}, todos=[])
-        sub.permission_handler, sub.ask_user = (lambda *a: (False, False)), None
-        text = run_agent_loop(conversation, provider, model, ToolRegistry([]), sub, max_turns=1).response_text.strip()
+        # Only the request and the reply leave: no system prompt, instruction files, memory or hooks.
+        text = complete_text(provider, model, "", _REVIEW.format(request=request[-_CHARS:], reply=reply[-_CHARS:])).text
     except Exception as e:   # a provider error, a missing key: the local reply stands
         trace.record("cloud_review", question="review", error=f"{type(e).__name__}: {e}")
         return None

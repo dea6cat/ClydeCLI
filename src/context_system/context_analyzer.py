@@ -7,36 +7,12 @@ a structured ContextData object that can be formatted as Markdown.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, Optional
 
 from .token_estimation import count_tokens, count_messages_tokens
 
-# Model context window sizes
-MODEL_CONTEXT_WINDOWS: dict[str, int] = {
-    "claude-sonnet-4-7": 200_000,
-    "claude-sonnet-4-6": 200_000,
-    "claude-opus-4-6": 200_000,
-    "claude-3-5-sonnet": 200_000,
-    "claude-3-5-haiku": 200_000,
-    "claude-3-opus": 200_000,
-    "claude-3-sonnet": 200_000,
-    "claude-3-haiku": 200_000,
-    # OpenAI
-    "gpt-4o": 128_000,
-    "gpt-4o-mini": 128_000,
-    "gpt-4-turbo": 128_000,
-    "gpt-4": 128_000,
-    # GLM / Minimax defaults
-    "glm-4": 128_000,
-    "glm-4-flash": 128_000,
-    "minimax": 128_000,
-    "abab": 128_000,
-}
 
-DEFAULT_CONTEXT_WINDOW = 200_000
 
 
 @dataclass
@@ -50,7 +26,7 @@ class ContextCategory:
 class ContextData:
     categories: list[ContextCategory] = field(default_factory=list)
     total_tokens: int = 0
-    max_tokens: int = DEFAULT_CONTEXT_WINDOW
+    max_tokens: int = 0
     percentage: float = 0.0
     model: str = ""
     memory_files: list[dict[str, Any]] = field(default_factory=list)
@@ -62,22 +38,6 @@ class ContextData:
     auto_compact_threshold: Optional[int] = None
     is_auto_compact_enabled: bool = False
     sections: list[dict[str, Any]] = field(default_factory=list)   # builder.section_report(): the context prompt's parts
-
-
-def get_context_window_for_model(model: str) -> int:
-    """Get the context window size for a model."""
-    model_lower = model.lower()
-    for name, window in MODEL_CONTEXT_WINDOWS.items():
-        if name in model_lower:
-            return window
-    # Try to extract a numeric window from model name (e.g., "gpt-4-32k")
-    match = re.search(r'(\d+)k', model_lower)
-    if match:
-        return int(match.group(1)) * 1_000
-    # Check for 1m suffix
-    if '1m' in model_lower or 'million' in model_lower:
-        return 1_000_000
-    return DEFAULT_CONTEXT_WINDOW
 
 
 def count_tool_definition_tokens(tool_schemas: list[dict[str, Any]]) -> int:
@@ -102,62 +62,10 @@ def count_claude_md_tokens(claude_md_content: str) -> int:
     return count_tokens(claude_md_content)
 
 
-def count_message_breakdown_tokens(
-    messages: list[dict[str, Any]],
-) -> dict[str, int]:
-    """
-    Break down message tokens by category.
-
-    Returns dict with: tool_call_tokens, tool_result_tokens,
-    attachment_tokens, assistant_message_tokens, user_message_tokens
-    """
-    breakdown = {
-        "tool_call_tokens": 0,
-        "tool_result_tokens": 0,
-        "attachment_tokens": 0,
-        "assistant_message_tokens": 0,
-        "user_message_tokens": 0,
-    }
-
-    for msg in messages:
-        role = msg.get("role", "")
-        content = msg.get("content", "")
-
-        if isinstance(content, str):
-            tokens = count_tokens(content)
-            if role == "user":
-                breakdown["user_message_tokens"] += tokens
-            elif role == "assistant":
-                breakdown["assistant_message_tokens"] += tokens
-            continue
-
-        if not isinstance(content, list):
-            continue
-
-        for block in content:
-            if not isinstance(block, dict):
-                continue
-            block_type = block.get("type", "")
-            if block_type == "tool_use":
-                name = block.get("name", "")
-                input_str = str(block.get("input", {}))
-                breakdown["tool_call_tokens"] += count_tokens(name) + count_tokens(input_str)
-            elif block_type == "tool_result":
-                breakdown["tool_result_tokens"] += count_tokens(str(block.get("content", "")))
-            elif block_type == "text":
-                if role == "assistant":
-                    breakdown["assistant_message_tokens"] += count_tokens(block.get("text", ""))
-                elif role == "user":
-                    breakdown["user_message_tokens"] += count_tokens(block.get("text", ""))
-            elif block_type in ("image", "document", "video"):
-                breakdown["attachment_tokens"] += 500
-
-    return breakdown
-
-
 def analyze_context(
     conversation_api_messages: list[dict[str, Any]],
     model: str,
+    window: int,
     system_prompt: str,
     tool_schemas: list[dict[str, Any]],
     claude_md_content: str,
@@ -189,7 +97,7 @@ def analyze_context(
     Returns:
         ContextData with per-category token breakdowns
     """
-    max_tokens = get_context_window_for_model(model)
+    max_tokens = window
 
     categories: list[ContextCategory] = []
 

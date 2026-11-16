@@ -88,6 +88,19 @@ class TestStripImagesFromMessages(unittest.TestCase):
 class TestMicrocompactMessages(unittest.TestCase):
     """Tests for microcompact_messages()."""
 
+    def test_it_clears_old_results_in_a_real_conversation(self):
+        from src.context_system.microcompact import CLEARED_MESSAGE, microcompact_messages
+        from src.conversation import Conversation, ToolUseContentBlock
+        conversation = Conversation()
+        conversation.add_user_message("read them")
+        for i in range(6):
+            conversation.add_assistant_message([ToolUseContentBlock(id=f"t{i}", name="Read", input={"file_path": f"f{i}"})])
+            conversation.add_tool_result_message(f"t{i}", "x" * 4000)
+        compacted, saved = microcompact_messages(conversation.get_messages())
+        self.assertGreater(saved, 0)
+        cleared = [b for m in compacted if isinstance(m["content"], list) for b in m["content"] if b.get("content") == CLEARED_MESSAGE]
+        self.assertEqual(len(cleared), 3)   # six results, the newest three kept
+
     def test_no_messages_returns_unchanged(self):
         """Empty message list returns unchanged."""
         from src.context_system.microcompact import microcompact_messages
@@ -112,7 +125,7 @@ class TestMicrocompactMessages(unittest.TestCase):
         from src.context_system.microcompact import microcompact_messages, CLEARED_MESSAGE
         messages = [
             {
-                "type": "assistant",
+                "role": "assistant",
                 "content": [
                     {"type": "tool_use", "id": "tool1", "name": "Read", "input": {"file_path": "a.txt"}},
                 ]
@@ -124,7 +137,7 @@ class TestMicrocompactMessages(unittest.TestCase):
                 ]
             },
             {
-                "type": "assistant",
+                "role": "assistant",
                 "content": [
                     {"type": "tool_use", "id": "tool2", "name": "Read", "input": {"file_path": "b.txt"}},
                 ]
@@ -151,7 +164,7 @@ class TestMicrocompactMessages(unittest.TestCase):
         from src.context_system.microcompact import microcompact_messages, CLEARED_MESSAGE
         messages = [
             {
-                "type": "assistant",
+                "role": "assistant",
                 "content": [
                     {"type": "tool_use", "id": "tool1", "name": "Read", "input": {"file_path": "old1.txt"}},
                 ]
@@ -163,7 +176,7 @@ class TestMicrocompactMessages(unittest.TestCase):
                 ]
             },
             {
-                "type": "assistant",
+                "role": "assistant",
                 "content": [
                     {"type": "tool_use", "id": "tool2", "name": "Read", "input": {"file_path": "old2.txt"}},
                 ]
@@ -175,7 +188,7 @@ class TestMicrocompactMessages(unittest.TestCase):
                 ]
             },
             {
-                "type": "assistant",
+                "role": "assistant",
                 "content": [
                     {"type": "tool_use", "id": "tool3", "name": "Read", "input": {"file_path": "recent.txt"}},
                 ]
@@ -206,7 +219,7 @@ class TestMicrocompactMessages(unittest.TestCase):
         from src.context_system.microcompact import microcompact_messages, CLEARED_MESSAGE
         messages = [
             {
-                "type": "assistant",
+                "role": "assistant",
                 "content": [
                     {"type": "tool_use", "id": "tool1", "name": "Write", "input": {"file_path": "a.txt", "content": "x" * 100}},
                 ]
@@ -218,7 +231,7 @@ class TestMicrocompactMessages(unittest.TestCase):
                 ]
             },
             {
-                "type": "assistant",
+                "role": "assistant",
                 "content": [
                     {"type": "tool_use", "id": "tool2", "name": "NotCompactable", "input": {}},
                 ]

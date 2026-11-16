@@ -130,12 +130,14 @@ class CliWorkers(unittest.TestCase):
 
     def test_aider_gets_only_its_providers_saved_key_and_no_way_to_run_commands(self):
         binary, record = _fake_cli(self.root, "aider")
-        stale = {"MISTRAL_API_KEY": "STALE", "OPENAI_API_KEY": "OTHER"}
+        stale = {"MISTRAL_API_KEY": "STALE", "OPENAI_API_KEY": "OTHER", "GOOGLE_API_KEY": "G", "GH_AUTH_TOKEN": "T"}
         with patch.dict(os.environ, stale), patch("src.providers.keys.saved_key", return_value="SAVED"):
             result = self._aider(binary)
         seen = json.loads(record.read_text())
         self.assertEqual(seen["env"]["MISTRAL_API_KEY"], "SAVED")   # the saved key beats a stale export
         self.assertNotIn("OPENAI_API_KEY", seen["env"])             # no other provider's key
+        self.assertNotIn("GOOGLE_API_KEY", seen["env"])             # nor any other secret, listed or not
+        self.assertNotIn("GH_AUTH_TOKEN", seen["env"])
         for flag in ("--no-suggest-shell-commands", "--no-auto-commits", "--yes-always", "--no-gitignore"):
             self.assertIn(flag, seen["argv"])
         self.assertEqual((self.folder / "prompt.txt").read_text(), "write y.txt")

@@ -8,6 +8,7 @@ OSError is swallowed. Secrets are redacted and long strings truncated before any
 from __future__ import annotations
 
 from src.config import clyde_home
+from src.secret_names import is_secret_name
 
 import json
 import os
@@ -22,8 +23,6 @@ MAX_CHARS = 500     # longer strings are truncated in the trace
 KEEP_FILES = 50     # newest trace files kept; older ones are pruned at start()
 MAX_BYTES = 20_000_000   # one session's trace stops growing here (a marker line says so)
 _REDACTED = "[redacted]"
-_SECRET_NAME = re.compile(r"api[_-]?key|(access|auth|refresh|bearer|session)[_-]?token|^token$|secret|password|passwd|"
-                          r"authorization|credential|cookie", re.I)
 _SECRET_VALUE = re.compile(r"\b(sk-[A-Za-z0-9_-]{12,}|AIza[0-9A-Za-z_-]{20,}|nvapi-[A-Za-z0-9_-]{12,}|"
                            r"gh[pousr]_[A-Za-z0-9]{20,}|Bearer\s+[A-Za-z0-9._~+/=-]{12,})")
 
@@ -65,9 +64,8 @@ def _prune() -> None:
 
 
 def _known_secrets() -> list[str]:
-    from src.providers.keys import PROVIDER_KEY_ENV
-
-    return [v for name in PROVIDER_KEY_ENV.values() if len(v := os.environ.get(name, "")) >= 8]
+    """Values of every environment variable named like a secret (provider keys included, whatever the provider)."""
+    return [v for name, v in os.environ.items() if is_secret_name(name) and len(v) >= 8]
 
 
 def redact(value: Any, secrets: list[str] | None = None) -> Any:
@@ -75,7 +73,7 @@ def redact(value: Any, secrets: list[str] | None = None) -> Any:
     replaced, and strings over MAX_CHARS truncated."""
     secrets = _known_secrets() if secrets is None else secrets
     if isinstance(value, dict):
-        return {str(k): _REDACTED if _SECRET_NAME.search(str(k)) and v else redact(v, secrets) for k, v in value.items()}
+        return {str(k): _REDACTED if is_secret_name(str(k)) and v else redact(v, secrets) for k, v in value.items()}
     if isinstance(value, (list, tuple)):
         return [redact(v, secrets) for v in value]
     if value is None or isinstance(value, (bool, int, float)):

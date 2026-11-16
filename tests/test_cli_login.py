@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 from rich.console import Console
 
-from src.cli import _login_choices, run_login_flow
+from src.login import _login_choices, run_login_flow
 from src.config import get_default_model
 from src.providers import keys
 from tests.fakes import FakeProvider
@@ -37,9 +37,9 @@ class TestRunLoginFlow(unittest.TestCase):
         provider = FakeProvider(name=name, models=models)
         registry = {name: provider, "ollama": FakeProvider(name="ollama")}
         answers = iter([provider_choice, model_answer])
-        with patch("src.cli.prompt_secret", return_value=key), \
-                patch("src.cli.pick", side_effect=lambda *a, **k: next(answers)), \
-                patch("src.cli.Prompt.ask", side_effect=lambda *a, **k: next(answers)), \
+        with patch("src.login.prompt_secret", return_value=key), \
+                patch("src.login.pick", side_effect=lambda *a, **k: next(answers)), \
+                patch("src.login.Prompt.ask", side_effect=lambda *a, **k: next(answers)), \
                 patch("rich.prompt.Confirm.ask", return_value=confirm), \
                 patch("src.providers.build_registry", return_value=registry):
             return run_login_flow(Console(file=io.StringIO()), registry)
@@ -70,8 +70,8 @@ class TestRunLoginFlow(unittest.TestCase):
 
     def test_a_given_provider_skips_the_question(self):
         provider = FakeProvider(name="openai", models=("gpt-5.4",))
-        with patch("src.cli.prompt_secret", return_value="sk-test"), \
-                patch("src.cli.pick", side_effect=["gpt-5.4"]) as ask, \
+        with patch("src.login.prompt_secret", return_value="sk-test"), \
+                patch("src.login.pick", side_effect=["gpt-5.4"]) as ask, \
                 patch("src.providers.build_registry", return_value={"openai": provider}):
             ref = run_login_flow(Console(file=io.StringIO()), {"openai": provider}, provider="openai")
         self.assertEqual((ref, ask.call_count), ("openai:gpt-5.4", 1))       # only the model was asked
@@ -104,9 +104,9 @@ class TestCustomProvider(unittest.TestCase):
         from src.providers import build_registry
 
         answers = iter(["custom", "together", "openai", "https://api.together.xyz/v1/", "meta-llama/Llama-4"])
-        with patch("src.cli.prompt_secret", return_value="tg-key"), \
-                patch("src.cli.pick", side_effect=lambda *a, **k: next(answers)), \
-                patch("src.cli.Prompt.ask", side_effect=lambda *a, **k: next(answers)), \
+        with patch("src.login.prompt_secret", return_value="tg-key"), \
+                patch("src.login.pick", side_effect=lambda *a, **k: next(answers)), \
+                patch("src.login.Prompt.ask", side_effect=lambda *a, **k: next(answers)), \
                 patch("src.providers.openai_compat.OpenAICompatProvider.list_models", return_value=["meta-llama/Llama-4"]):
             ref = run_login_flow(Console(file=io.StringIO()), {})
         self.assertEqual(ref, "together:meta-llama/Llama-4")
@@ -120,13 +120,13 @@ class TestCustomProvider(unittest.TestCase):
         self.assertEqual(os.environ["CLYDE_TOGETHER_API_KEY"], "tg-key")
 
     def test_logout_removes_a_custom_provider_and_its_key(self):
-        from src.cli import handle_logout
+        from src.login import handle_logout
 
         self.assertIsNone(keys.add_custom("mine", "https://x/v1"))
         keys.connect("mine", "k")
         keys.PROVIDER_KEY_ENV.pop("mine")             # a fresh process hasn't registered it yet
         keys.add_custom("other", "https://y/v1")
-        with patch("src.cli.Console"):
+        with patch("src.login.Console"):
             self.assertEqual(handle_logout("mine"), 0)
         self.assertNotIn("mine", keys.saved_providers())
         self.assertEqual(keys.custom_providers(), {"other": "https://y/v1"})   # gone from settings.json, the rest kept
@@ -174,21 +174,21 @@ class TestCustomProvider(unittest.TestCase):
             self.assertTrue(out.strip())
 
     def test_logout_with_a_corrupt_keys_file_reports_it_and_changes_nothing(self):
-        from src.cli import handle_logout
+        from src.login import handle_logout
 
         keys.keys_file().parent.mkdir(parents=True, exist_ok=True)
         keys.keys_file().write_text("{not json")
         out, repl = self._repl_logout("openai")
         self.assertIn("Fix or remove the file", out)
         self.assertEqual(repl.registry, {"old": 1})
-        with patch("src.cli.Console"):
+        with patch("src.login.Console"):
             self.assertEqual(handle_logout("openai"), 1)
 
     def test_a_keyless_server_still_connects(self):
         answers = iter(["custom", "vllm", "openai", "http://localhost:8000/v1", "qwen3"])
-        with patch("src.cli.prompt_secret", return_value=""), \
-                patch("src.cli.pick", side_effect=lambda *a, **k: next(answers)), \
-                patch("src.cli.Prompt.ask", side_effect=lambda *a, **k: next(answers)), \
+        with patch("src.login.prompt_secret", return_value=""), \
+                patch("src.login.pick", side_effect=lambda *a, **k: next(answers)), \
+                patch("src.login.Prompt.ask", side_effect=lambda *a, **k: next(answers)), \
                 patch("src.providers.openai_compat.OpenAICompatProvider.list_models", return_value=["qwen3"]):
             self.assertEqual(run_login_flow(Console(file=io.StringIO()), {}), "vllm:qwen3")
 
@@ -220,6 +220,8 @@ class TestReplLogin(unittest.TestCase):
 
         repl = ClydeREPL.__new__(ClydeREPL)
         repl._built_in_commands = ["/login"]
+        from src.command_system import builtin_registry
+        repl.command_registry = builtin_registry()
         for line, expected in (("/login nvidia", "nvidia"), ("/login", None)):
             with patch.object(ClydeREPL, "_handle_relogin") as relogin:
                 repl.handle_command(line)

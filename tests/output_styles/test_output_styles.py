@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from src.agent.conversation import Conversation
+from src.conversation import Conversation
 from src.output_styles import BUILTIN_OUTPUT_STYLES, load_output_styles_dir, resolve_output_style
 from src.agent.agent_loop import run_agent_loop
 from src.tool_system.context import ToolContext

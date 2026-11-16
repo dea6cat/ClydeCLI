@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from src.config import clyde_home
+from src.config import clyde_home, get_max_history
 from src.safe_write import write_json_safely
 
 import json
@@ -12,7 +12,7 @@ from datetime import datetime
 from typing import Optional
 from dataclasses import dataclass, field
 
-from .conversation import Conversation
+from src.conversation import Conversation
 
 
 @dataclass
@@ -113,7 +113,7 @@ class Session:
             session_id=data["session_id"],
             provider=data["provider"],
             model=data["model"],
-            conversation=Conversation.from_dict(data["conversation"]),
+            conversation=_with_cap(Conversation.from_dict(data["conversation"])),
             created_at=data["created_at"],
             updated_at=data["updated_at"],
             cwd=data.get("cwd", ""),   # sessions saved before cwd was recorded
@@ -131,8 +131,15 @@ class Session:
         return cls(
             session_id=session_id,
             provider=provider,
-            model=model
+            model=model,
+            conversation=Conversation(max_history=get_max_history()),
         )
+
+
+def _with_cap(conversation: Conversation) -> Conversation:
+    """A saved conversation under today's history setting, not the one it was saved with."""
+    conversation.max_history = get_max_history()
+    return conversation
 
 
 def _sessions_dir() -> Path:

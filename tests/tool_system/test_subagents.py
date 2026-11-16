@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 from src.agent import agent_types
 from src.tool_system.context import ToolContext
-from src.tool_system.defaults import build_default_registry
+from src.agent.subagent import build_tool_registry as build_default_registry
 from src.tool_system.errors import ToolInputError
 from src.tool_system.protocol import ToolCall
 from tests.fakes import FakeProvider, reply

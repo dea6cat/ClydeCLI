@@ -26,10 +26,9 @@ ListMcpResourcesTool / ReadMcpResourceTool.
 
 from __future__ import annotations
 
-from src.config import clyde_home
+from src import settings
 
 import atexit
-import hashlib
 import itertools
 import json
 import os
@@ -63,11 +62,7 @@ class McpAuthRequired(McpError):
 
 def load_servers(path: Path | None = None) -> dict[str, dict[str, Any]]:
     """`mcpServers` from the user settings file; {} when missing or unreadable."""
-    path = path or clyde_home() / "settings.json"
-    try:
-        servers = json.loads(path.read_text(encoding="utf-8")).get("mcpServers", {})
-    except (OSError, ValueError, AttributeError):
-        return {}
+    servers = settings.read_json(path).get("mcpServers", {})
     return {k: v for k, v in servers.items() if isinstance(v, dict)} if isinstance(servers, dict) else {}
 
 
@@ -187,35 +182,16 @@ def project_servers(root: Path) -> dict[str, dict[str, Any]]:
     return load_servers(Path(root) / ".mcp.json")
 
 
-def _approvals_path() -> Path:
-    return clyde_home() / "mcp_project_approvals.json"
-
-
-def _approval_key(root: Path, name: str, cfg: dict[str, Any]) -> str:
-    digest = hashlib.sha256(json.dumps(cfg, sort_keys=True).encode()).hexdigest()[:16]
-    return f"{Path(root).resolve()}::{name}::{digest}"
+_APPROVALS = settings.Approvals("mcp_project_approvals.json")
 
 
 def project_approval(root: Path, name: str, cfg: dict[str, Any]) -> bool | None:
     """True or False when this exact entry was answered before; None when it's new or changed."""
-    try:
-        answers = json.loads(_approvals_path().read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
-    value = answers.get(_approval_key(root, name, cfg)) if isinstance(answers, dict) else None
-    return value if isinstance(value, bool) else None
+    return _APPROVALS.get(_APPROVALS.key(root, cfg, name))
 
 
 def set_project_approval(root: Path, name: str, cfg: dict[str, Any], allowed: bool) -> None:
-    path = _approvals_path()
-    try:
-        answers = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        answers = {}
-    answers = answers if isinstance(answers, dict) else {}
-    answers[_approval_key(root, name, cfg)] = allowed
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(answers, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+    _APPROVALS.set(_APPROVALS.key(root, cfg, name), allowed)
 
 
 _REF = re.compile(r"\$\{(\w+)|\$(\w+)")
@@ -558,6 +534,7 @@ class McpServerTool:
             input_schema=schema,
             is_read_only=bool(annotations.get("readOnlyHint")),
             is_destructive=not annotations.get("readOnlyHint"),
+            reaches_network=True,
             max_result_size_chars=100_000,
         )
 
@@ -670,18 +647,13 @@ def find_foreign_servers(sources: tuple[tuple[str, Path, str], ...] | None = Non
 
 def import_servers(servers: dict[str, dict[str, Any]], dest: Path | None = None) -> list[str]:
     """Add servers to `mcpServers` in the settings file, keeping any with the same name; return the added names."""
-    dest = dest or clyde_home() / "settings.json"
-    try:
-        data = json.loads(dest.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        data = {}
-    if not isinstance(data, dict):
-        raise ValueError(f"{dest} is not a JSON object")
-    table = data.setdefault("mcpServers", {})
-    added = [name for name in servers if name not in table]
-    if added:
+    added: list[str] = []
+
+    def add(data: dict[str, Any]) -> bool:
+        table = data.setdefault("mcpServers", {})
+        added.extend(name for name in servers if name not in table)
         table.update({name: servers[name] for name in added})
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        dest.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-        dest.chmod(0o600)  # env blocks often carry API tokens
+        return bool(added)
+
+    settings.update(add, dest)
     return added

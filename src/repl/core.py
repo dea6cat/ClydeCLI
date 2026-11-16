@@ -12,10 +12,6 @@ try:
     from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
     from prompt_toolkit.styles import Style
     from prompt_toolkit.completion import Completer, Completion, WordCompleter
-    try:
-        from prompt_toolkit.completion import FuzzyCompleter
-    except Exception:  # pragma: no cover
-        FuzzyCompleter = None  # type: ignore
     from prompt_toolkit.key_binding import KeyBindings
 except ModuleNotFoundError:  # pragma: no cover
     class FileHistory:  # type: ignore
@@ -34,7 +30,6 @@ except ModuleNotFoundError:  # pragma: no cover
     class WordCompleter:  # type: ignore
         def __init__(self, *args, **kwargs):
             pass
-    FuzzyCompleter = None  # type: ignore
     Completer = Completion = None  # type: ignore
 
     class KeyBindings:  # type: ignore
@@ -49,13 +44,10 @@ except ModuleNotFoundError:  # pragma: no cover
             raise EOFError()
 
 try:
-    from rich.console import Console, Group
-    from rich.align import Align
-    from rich.panel import Panel
+    from rich.console import Console
     from rich.table import Table
     from rich.text import Text
     from rich.markdown import Markdown
-    from rich.columns import Columns
 except ModuleNotFoundError:  # pragma: no cover
     class Console:  # type: ignore
         def print(self, *args, **kwargs):
@@ -89,18 +81,19 @@ import json
 from datetime import datetime
 from typing import Any
 
-from src.agent import Session, trace
+from src import trace
+from src.agent.session import Session
 from src.agent.checkpoints import Checkpoints
-from src.agent.conversation import ImageContentBlock
+from src.conversation import ImageContentBlock
 from src.compact_service.service import auto_compact_threshold, compact_conversation, needs_auto_compact
-from src.context_system.context_analyzer import get_context_window_for_model
 from src.config import get_default_model, get_output_style, load_config, set_default_model, set_output_style
 from src.output_styles import resolve_output_style
 from src.providers import build_registry, keys, model_ref, pick_default_model, resolve, usable
 from src.providers import catalog
 from src.providers.model_eval import hidden_refs
 from src.system.vitals import line, sample
-from src.providers.base import ProviderError, ProviderResponse, is_auth_error
+from src.providers.base import (ProviderError, ProviderResponse, begin_turn, context_window, is_auth_error, retry_elsewhere,
+                                served_by, turn_spend)
 from src.providers.types import Message
 from src.providers import laya_client
 from src.providers.card_shuffle import CardShuffle, record_vote
@@ -113,29 +106,26 @@ from src.tool_system.hooks import load_hooks
 from src.runtime import activity
 from src.ui.picker import Choice, pick
 from src.tool_system.deferral import advertised
-from src.repl.esc import WATCHER
+from src.ui.esc import WATCHER
 from src.repl.images import IMAGE_TYPES, MAX_IMAGE_BYTES, clipboard_image, image_path, shrink
 from src.tool_system.permission_rules import load_rules, save_allow_rule
 from src.tool_system.tools.code_map import start_background_refresh
 from src.tool_system.mcp_client import connect_servers, load_servers, merge_servers, register_mcp_tools
-from src.tool_system.defaults import build_default_registry
+from src.agent.subagent import build_tool_registry
 from src.tool_system.protocol import ToolCall
 from src.tool_system.tools.cron import pop_due_jobs
 from src.agent.agent_loop import ToolEvent, run_agent_loop, summarize_tool_result, summarize_tool_use
 
 # New command system imports
 from src.command_system import (
-    CommandRegistry,
     CommandResult,
     create_command_context,
-    execute_command_async,
-    execute_command_sync,
-    register_builtin_commands,
+    builtin_registry,
+    run_command,
 )
 from src.agent.cost_tracker import CostTracker
 from src.tool_system import plan_file as plans
 from src.tool_system.plan_file import plan_file_for
-from src.agent.history import HistoryLog
 
 # Pastes longer than this collapse to a [Pasted text #N +X lines] marker in the prompt.
 _PASTE_MAX_LINES = 2
@@ -397,10 +387,10 @@ class ClydeREPL:
         self._input_buffer = ""             # partial line leftover from draining stdin
         self._input_reader: threading.Thread | None = None   # reads stdin while chat/command runs
 
-        keys.load_into_env()
         self.registry = build_registry()
         if (omlx := self.registry.get("omlx")) is not None:
-            omlx.confirm_install = self._confirm_install_omlx
+            if not headless:   # -p, an editor (ACP) and Bonnie have no terminal to answer on; there it never installs
+                omlx.confirm_install = self._confirm_install_omlx
             from src.providers.omlx import migrate_lmstudio_refs
             for line in migrate_lmstudio_refs():   # LM Studio was replaced by oMLX, which serves the same folders
                 self.console.print(f"[dim]Moved {line} (oMLX now runs LM Studio's models).[/dim]")
@@ -415,14 +405,14 @@ class ClydeREPL:
         self.checkpoints = Checkpoints(self.session.session_id)
         trace.start(self.session.session_id, **self._trace_options)
 
-        self.tool_registry = build_default_registry()
+        self.tool_registry = build_tool_registry()
         hooks, servers = load_hooks(), load_servers()
         servers = merge_servers(servers, self._project_mcp_servers(Path.cwd(), set(servers)))   # yours first: they win a clash
         self.plugins = apply_plugins(self.tool_registry, hooks, servers)
         for loaded in self.plugins:
             for warning in loaded.warnings:
                 self.console.print(warning, style="yellow", markup=False)
-        self.tool_context = ToolContext(workspace_root=Path.cwd(), hooks=hooks, permission_rules=self._project_rules(Path.cwd()),
+        self.tool_context = ToolContext(workspace_root=Path.cwd(), hooks=hooks, permission_rules=self.project_rules(Path.cwd()),
                                         output_style_name=get_output_style(), confirm_edits=True)
         self._mcp_servers, self._mcp_errors = servers, {}
         self._connect_mcp_servers(servers)
@@ -580,8 +570,6 @@ class ClydeREPL:
 
     def _reads_images(self) -> bool | None:
         """Whether the current model takes images: Ollama asks the server, others the catalog; None when unknown."""
-        if isinstance(self.provider, CardShuffle):
-            return None
         ask = getattr(self.provider, "reads_images", None)
         if callable(ask):
             try:
@@ -610,10 +598,10 @@ class ClydeREPL:
     def _investigate(self, provider: Any, model: str, cancel: threading.Event) -> ProviderResponse:
         """A council member's answer: it reads the repo on a copy of this conversation in plan mode (read-only tools, nobody to
         answer a permission prompt, so anything that would ask is denied) and its final text is the answer."""
-        from src.tool_system.tools.agent import _NO_NESTING
+        from src.agent.subagent import NO_NESTING
         context = dataclasses.replace(self.tool_context, plan_mode=True, read_file_fingerprints={}, todos=[],
                                       permission_handler=lambda *a: (False, False), ask_user=None)
-        tools = ToolRegistry([self.tool_registry.get(s.name) for s in self.tool_registry.list_specs() if s.name.lower() not in _NO_NESTING])
+        tools = ToolRegistry([self.tool_registry.get(s.name) for s in self.tool_registry.list_specs() if s.name.lower() not in NO_NESTING])
         result = run_agent_loop(copy.deepcopy(self.session.conversation), provider, model, tools, context,
                                 max_turns=_COUNCIL_MAX_TURNS, cancel=cancel, reasoning=self.reasoning, system_extra=self.system_extra)
         if result.ran_out:
@@ -694,7 +682,7 @@ class ClydeREPL:
     def _model_parts(self) -> tuple[str, str]:
         """The model in use for the corner of the status line: (`provider:model`, `→ dealt` when it is
         cardShuffle, which says which real model got the latest turn)."""
-        dealt = self.provider.dealt if isinstance(self.provider, CardShuffle) else None
+        dealt = served_by(self.provider)
         return model_ref(self.provider, self.model), f" → {dealt}" if dealt else ""
 
     def _mode_line(self):  # type: ignore[no-untyped-def]
@@ -707,7 +695,7 @@ class ClydeREPL:
         if room - len(ref + dealt) > len(pulse) + 2:   # only when the model keeps its full name
             room -= len(pulse) + 1
             left = [*left, ("", " "), ("class:vitals-strained" if vitals.strained else "class:vitals", pulse)]
-        if dealt and len(ref + dealt) > room and isinstance(self.provider, CardShuffle):
+        if dealt and len(ref + dealt) > room:
             ref = self.model   # too long: the tier alone ("high-roller") says as much as "cardShuffle:high-roller"
         shown = (ref + dealt)[-room:] if room > 8 else ""
         if not shown:
@@ -928,23 +916,17 @@ class ClydeREPL:
 
     def _init_command_system(self):
         """Initialize the new command system."""
-        # Also register to global registry so execute_command_async can find commands
-        register_builtin_commands(None)  # None = use global registry
-
         # Create command registry and register built-ins
-        self.command_registry = CommandRegistry()
-        register_builtin_commands(self.command_registry)
+        self.command_registry = builtin_registry()
 
         # Create cost tracker and history
         self.cost_tracker = CostTracker()
-        self.history_log = HistoryLog()
 
         # Create command context
         self.command_context = create_command_context(
             workspace_root=Path.cwd(),
             conversation=self.session.conversation,
             cost_tracker=self.cost_tracker,
-            history=self.history_log,
             provider=self.provider,
             model=self.model,
         )
@@ -971,33 +953,12 @@ class ClydeREPL:
         except Exception:
             pass
 
-    def _try_execute_new_command(self, command: str, args: str) -> tuple[bool, str | None]:
-        """Try to execute a command using the new command system (sync path for LocalCommand only).
-
-        Returns:
-            Tuple of (handled: bool, result_text: str | None)
-        """
+    def _run_command(self, name: str, args: str) -> CommandResult:
+        """A registered command's result; a command that fails comes back as an error result with its own message."""
         try:
-            success, result_text, error = execute_command_sync(
-                command, args, self.command_context
-            )
-            if success:
-                return True, result_text
-            else:
-                return False, error
-        except Exception as e:
-            return False, str(e)
-
-    async def _try_execute_command_async(self, command: str, args: str) -> CommandResult:
-        """Execute a command asynchronously, supporting both LocalCommand and PromptCommand.
-
-        Returns:
-            CommandResult with the execution result
-        """
-        try:
-            return await execute_command_async(command, args, self.command_context)
-        except Exception as e:
-            return CommandResult.error(command, str(e))
+            return run_command(self.command_registry, name, args, self.command_context)
+        except Exception as e:  # pylint: disable=broad-exception-caught  # any command's failure is reported, never swallowed
+            return CommandResult.failed(name, f"/{name} failed: {e}")
 
     def _handle_command_result(self, result: CommandResult) -> bool:
         """Handle the result of a command execution.
@@ -1024,10 +985,7 @@ class ClydeREPL:
                     break
 
             if prompt_text:
-                # Send the prompt to the LLM for interactive execution
-                # Use higher max_turns for complex commands like /init
-                self.console.print("[dim]Initializing workspace setup...[/dim]")
-                self.chat(prompt_text, max_turns=100)
+                self.chat(prompt_text, max_turns=100)   # a prompt command (/init, /review) is a long task
             return True
 
         elif result.result_type == "skip":
@@ -1221,7 +1179,7 @@ class ClydeREPL:
             self.console.print()
         updates.start_background_check()     # a thread: the answer shows on the next start
         start_background_refresh(self.tool_context.workspace_root)
-        if isinstance(self.provider, CardShuffle):
+        if self.provider_name == CardShuffle.name:
             laya_client.warm()   # ~17 s cold load in the background, ready before the first turn needs it
         if self._continue_last:
             self.resume_session(latest=True)
@@ -1379,61 +1337,13 @@ class ClydeREPL:
                 ''
             }
 
-            # Handle /init through the new command system (PromptCommand path)
-            if cmd_name == 'init':
-                # Use async path for PromptCommand
-                try:
-                    # Run async command execution in a new event loop
-                    import concurrent.futures
-                    with concurrent.futures.ThreadPoolExecutor() as executor:
-                        future = executor.submit(
-                            asyncio.run,
-                            self._try_execute_command_async(cmd_name, args)
-                        )
-                        result = future.result()
-
-                    if result.success:
-                        self._handle_command_result(result)
-                    elif result.error:
-                        self.console.print(f"[red]{result.error}[/red]")
-                except Exception as e:
-                    self.console.print(f"[red]Error executing /init: {e}[/red]")
-                return
-
             if cmd_name == 'doctor':
                 self.command_context.config.update(provider=self.provider, model=self.model,
                                                    permission_context=self.tool_context.permission_context)
 
-            if cmd_name not in special_commands:
-                # Try to execute via new command system
-                # First try sync path for LocalCommand (faster)
-                try:
-                    handled, result_text = self._try_execute_new_command(cmd_name, args)
-                    if handled:
-                        if result_text:
-                            self.console.print("\n" + result_text)
-                        self.console.print()
-                        return
-                except Exception as e:
-                    # Fall through to async path
-                    pass
-
-                # Use async path for PromptCommand
-                # Run in a new event loop since we're in a sync context
-                try:
-                    import concurrent.futures
-                    with concurrent.futures.ThreadPoolExecutor() as executor:
-                        future = executor.submit(
-                            asyncio.run,
-                            self._try_execute_command_async(cmd_name, args)
-                        )
-                        result = future.result()
-
-                    if result.success:
-                        if self._handle_command_result(result):
-                            return
-                except Exception:
-                    pass
+            if cmd_name not in special_commands and self.command_registry.has(cmd_name):
+                self._handle_command_result(self._run_command(cmd_name, args))
+                return
 
         # Fall back to original command handling
         cmd = raw.lower()
@@ -1476,17 +1386,13 @@ class ClydeREPL:
             self.console.print()
 
         elif cmd in ('/clear', '/reset', '/new'):
-            # Try new command system first, fall back to original
-            try:
-                handled, result_text = self._try_execute_new_command('clear', '')
-            except Exception:
-                handled, result_text = False, None
-            if not handled:
+            result = self._run_command('clear', '')
+            if not result.success:
                 self.session.conversation.clear()
             # Clear the screen as well, then redraw the banner
             self.console.clear()
             self._print_startup_header()
-            self.console.print(Text(result_text or "Conversation cleared.", style=_CARD_DIM))
+            self.console.print(Text(result.text if result.success and result.text else "Conversation cleared.", style=_CARD_DIM))
 
         elif cmd == '/save':
             self.save_session()
@@ -1524,7 +1430,7 @@ class ClydeREPL:
             if len(parts) == 1:
                 self._pick_model()
             else:
-                self._switch_model(parts[1].strip())
+                self._choose_model(parts[1].strip())
 
         elif cmd == '/brief' or cmd.startswith('/brief '):
             from src.repl import orchestrate as orchestrate_ui
@@ -1637,14 +1543,11 @@ class ClydeREPL:
             self.command_context.config["auto_compact_threshold"] = auto_compact_threshold(self._context_window())
             self.command_context.config["is_auto_compact_enabled"] = True
             # Try new command system
-            try:
-                handled, result_text = self._try_execute_new_command('context', '')
-                if handled and result_text:
-                    self.console.print(Markdown(result_text))
-                    return
-            except Exception:
-                pass
-            self.console.print("[yellow]/context analysis unavailable in this context.[/yellow]")
+            result = self._run_command('context', '')
+            if result.success and result.text:
+                self.console.print(Markdown(result.text))
+            else:
+                self.console.print(f"[yellow]/context analysis unavailable: {result.error or 'no data'}[/yellow]")
 
         elif cmd == '/compact':
             # Populate command context config for compact
@@ -1652,17 +1555,11 @@ class ClydeREPL:
             self.command_context.config["model"] = self.model
             self.command_context.config["system_prompt"] = ""
             self._refine_before_compaction()
-            # Try new command system
-            try:
-                handled, result_text = self._try_execute_new_command('compact', '')
-                if handled and result_text:
-                    self.console.print("\n[green]" + result_text + "[/green]")
-                    return
-            except Exception:
-                pass
-            # Simple fallback: just clear conversation
-            self.session.conversation.clear()
-            self.console.print("[green]Conversation cleared.[/green]")
+            result = self._run_command('compact', '')
+            if result.success:
+                self.console.print("\n[green]" + result.text + "[/green]")
+            else:   # the conversation stays as it was
+                self.console.print(f"[red]{result.error}[/red]")
 
         else:
             if raw.startswith("/"):
@@ -1747,9 +1644,9 @@ class ClydeREPL:
             if ok and kind == "skill":
                 get_all_skills(project_root=self.tool_context.cwd or self.tool_context.workspace_root)
             return
-        env = skill_scan.llm_env(self.provider, self.model)
+        reviewer = skill_scan.llm_env(self.provider, self.model)
         self.console.print("LLM review: " + (f"on, with {model_ref(self.provider, self.model)} (this can take minutes; Ctrl+C stops it)"
-                                             if env else "off (no connected model the scan can use), static scan only"))
+                                             if reviewer else "off (no connected model the scan can use), static scan only"))
         from src.plugins import skill_dirs
 
         root = Path(self.tool_context.cwd or self.tool_context.workspace_root)
@@ -1758,7 +1655,7 @@ class ClydeREPL:
             for folder in folders:
                 for s in load_skills_from_dir(folder, loaded_from="user"):
                     if s.skill_root:
-                        skill_scan.check("skill", s.name, Path(s.skill_root), env=env, rescan=True)
+                        skill_scan.check("skill", s.name, Path(s.skill_root), reviewer=reviewer, rescan=True)
         except KeyboardInterrupt:
             self.console.print("Stopped; the static verdicts already cached stay in force.")
         rows = sorted(skill_scan.cached_verdicts().items())
@@ -1895,7 +1792,7 @@ class ClydeREPL:
         self.console.print()
         return True
 
-    def _project_rules(self, root: Path) -> dict[str, list[str]]:
+    def project_rules(self, root: Path) -> dict[str, list[str]]:
         """The user's permission rules plus this project's .clyde/settings.json ones. Its deny and ask rules apply at once;
         its allow rules come from the repository, so they apply only once you have said yes to that exact list."""
         from rich.prompt import Confirm
@@ -2135,10 +2032,7 @@ class ClydeREPL:
 
     def _context_window(self) -> int:
         """The model's input window: the provider's own sizing, then the catalog, then a name heuristic."""
-        provider_window = getattr(self.provider, "context_window", None)
-        if callable(provider_window):
-            return provider_window(self.model)
-        return catalog.context_window(self.model) or get_context_window_for_model(self.model)
+        return context_window(self.provider, self.model)
 
     @contextmanager
     def _ticking(self, status, word: str, started: float, active=lambda: True):  # type: ignore[no-untyped-def]
@@ -2173,7 +2067,7 @@ class ClydeREPL:
         try:
             status = self.console.status(_spin_text("Compacting", started), spinner="dots", spinner_style=_CARD_ACCENT)
             with status, self._ticking(status, "Compacting", started):
-                result = asyncio.run(compact_conversation(self.session.conversation, self.provider, self.model, trigger="auto"))
+                result = compact_conversation(self.session.conversation, self.provider, self.model, trigger="auto")
         except Exception as e:
             self.console.print(f"[yellow]Auto-compact failed: {e}[/yellow]")
             return
@@ -2202,9 +2096,7 @@ class ClydeREPL:
                                     f"{model_ref(self.provider, self.model)} can't read images.", style=_CARD_DIM))
             images = []
         self.session.conversation.add_user_message(user_input, images)
-        if isinstance(self.provider, CardShuffle):
-            self.provider.mode, self.provider.on_deal, self.provider.investigate = self.mode, self._show_deal, self._investigate
-            laya_client.warm()
+        begin_turn(self.provider, mode=self.mode, on_deal=self._show_deal, investigate=self._investigate)
 
         turn_started = time.monotonic()
         word, past = random.choice(_THINKING_WORDS)
@@ -2333,31 +2225,18 @@ class ClydeREPL:
             with self._current_status, self._ticking(self._current_status, word, turn_started, lambda: not stream_started):
                 result = play()
                 # cardShuffle: a model stuck in its tool loop hands the turn to the next card.
-                while (result.ran_out and isinstance(self.provider, CardShuffle)
-                       and self.provider.redeal(f"{self.provider.dealt} hit max tool turns")):
+                while result.ran_out and retry_elsewhere(self.provider, f"{served_by(self.provider)} hit max tool turns"):
                     result = play()
             self._current_status = None
             self.last_result = result
             trace.record("turn_end", ran_out=result.ran_out, rounds=result.num_turns,
-                         model=self.provider.dealt if isinstance(self.provider, CardShuffle) else model_ref(self.provider, self.model))
+                         model=served_by(self.provider) or model_ref(self.provider, self.model))
 
-            # Record usage to cost tracker; cardShuffle reports each real model it dealt.
-            if isinstance(self.provider, CardShuffle):
-                for ref, usage in self.provider.spent:
-                    provider_name, _, model = ref.partition(":")
+            # Spend per real model that served the turn (a router reports each one it dealt).
+            for ref, usage in turn_spend(self.provider, model_ref(self.provider, self.model), result.usage):
+                provider_name, _, model = ref.partition(":")
+                if usage.get("input_tokens", 0) or usage.get("output_tokens", 0):
                     self.cost_tracker.record_usage(provider_name, model, usage, label=f"turn_{result.num_turns}_tokens")
-                self.provider.spent.clear()
-            elif result.usage:
-                input_tokens = result.usage.get("input_tokens", 0)
-                output_tokens = result.usage.get("output_tokens", 0)
-                if input_tokens > 0 or output_tokens > 0:
-                    self.cost_tracker.record_usage(
-                        self.provider_name, self.model, result.usage,
-                        label=f"turn_{result.num_turns}_tokens",
-                    )
-                    # Also update command context for new commands
-                    if hasattr(self, 'command_context') and self.command_context:
-                        self.command_context.cost_tracker = self.cost_tracker
 
             if self.headless:
                 pass   # `clyde -p` prints the answer itself, on stdout
@@ -2373,7 +2252,7 @@ class ClydeREPL:
                 else:
                     self.console.print(Markdown(result.response_text))
                     self.console.print()
-            dealt = self.provider.dealt if isinstance(self.provider, CardShuffle) else None
+            dealt = served_by(self.provider)
             self._turn_footer(past, turn_started, result.usage, dealt or model_ref(self.provider, self.model))
             self._refine_after_turn()
 
@@ -2450,16 +2329,23 @@ class ClydeREPL:
         return None
 
     def _switch_model(self, requested: str) -> bool:
+        """Use `requested` for this session only (an editor or Bonnie picking a model leaves other sessions alone)."""
         resolved = self._resolve_model(requested)
         if resolved is None:
             return False
         self.provider, self.model = resolved
         self.provider_name = self.provider.name
         self.session.provider, self.session.model = self.provider_name, self.model
+        self._warn_if_unlisted()
+        return True
+
+    def _choose_model(self, requested: str) -> bool:
+        """The terminal's /model: switch, and keep it as the default for the next `clyde`."""
+        if not self._switch_model(requested):
+            return False
         ref = model_ref(self.provider, self.model)
         set_default_model(ref)
         self.console.print(f"[green]Model: {ref}[/green] [dim](saved as default)[/dim]")
-        self._warn_if_unlisted()
         return True
 
     def _warn_if_unlisted(self) -> None:
@@ -2815,7 +2701,7 @@ class ClydeREPL:
             if len(shown) < len(refs) else "")
         chosen = pick(self.console, "Select model", [Choice(ref, ref) for ref in shown], current=current, description=description)
         if chosen and chosen != current:
-            self._switch_model(chosen)
+            self._choose_model(chosen)
 
     def _show_models(self, arg: str = "") -> None:
         """/models [all|refresh]: the model picker; `/models local ...` finds downloadable local models
@@ -2849,7 +2735,7 @@ class ClydeREPL:
     def _recover_auth(self) -> bool:
         """After a rejected key: re-enter just this provider's key (k), switch provider or model (s), or
         leave it (n). True when a new key or model is in place."""
-        key_name = "ollama" if self.provider_name == "ollama-cloud" else self.provider_name
+        key_name = keys.key_name(self.provider_name)
         can_rekey = key_name in keys.PROVIDER_KEY_ENV
         options = ([Choice("k", f"New {self.provider_name} key", "enter a replacement key")] if can_rekey else []) + [
             Choice("s", "Switch provider or model", "pick another one"), Choice("n", "Not now", "fix it later with clyde login or /model")]
@@ -2866,7 +2752,7 @@ class ClydeREPL:
 
     def _rekey(self, key_name: str) -> bool:
         """Ask for the current provider's key only, save it, and keep the same model."""
-        from src.cli import prompt_secret
+        from src.login import prompt_secret
 
         env = keys.PROVIDER_KEY_ENV[key_name]
         try:
@@ -2895,7 +2781,7 @@ class ClydeREPL:
 
     def _handle_logout(self, provider: str | None = None) -> None:
         """Remove a provider's saved API key (and its settings entry if custom), then rebuild the registry."""
-        from src.cli import _key_name, handle_logout
+        from src.login import handle_logout
 
         if not provider:
             self.console.print("[red]Usage: /logout <provider>[/red]")
@@ -2903,7 +2789,7 @@ class ClydeREPL:
         if handle_logout(provider, self.console) != 0:
             return
         self.registry = build_registry()
-        if _key_name(provider) == _key_name(self.provider_name):
+        if keys.key_name(provider) == keys.key_name(self.provider_name):
             self.console.print("[dim]The current model keeps its client until you switch: use /model.[/dim]")
 
     def _retry_last(self, user_input: str, max_turns: int) -> None:
@@ -2921,7 +2807,7 @@ class ClydeREPL:
 
     def _handle_relogin(self, provider: str | None = None, title: str = "Reconfigure API key"):
         """Connect a provider (or re-enter a failed key) and switch to the model picked."""
-        from src.cli import run_login_flow
+        from src.login import run_login_flow
 
         self.console.print(Text.assemble(("\n♠ ", _CARD_ACCENT), (title, f"bold {_CARD_TEXT}"), "\n"))
         with self._esc.paused():   # the flow reads the keyboard: pickers, key entry, questions
@@ -2929,7 +2815,7 @@ class ClydeREPL:
         if ref is None:
             return
         self.registry = build_registry()   # a new key can add providers (e.g. Ollama Cloud)
-        if self._switch_model(ref):
+        if self._choose_model(ref):
             self.console.print("[green]✓ You can continue chatting![/green]\n")
 
     def save_session(self):

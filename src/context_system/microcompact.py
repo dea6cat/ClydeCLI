@@ -20,7 +20,6 @@ CLEARED_MESSAGE = "[Old tool result content cleared]"
 COMPACTABLE_TOOL_NAMES: frozenset[str] = frozenset([
     "Read",
     "Bash",
-    "Shell",
     "Grep",
     "Glob",
     "WebSearch",
@@ -134,7 +133,7 @@ def microcompact_messages(
     compactable_ids: list[str] = []
     for msg in messages:
         content = msg.get("content", [])
-        if msg.get("type") == "assistant" and isinstance(content, list):
+        if msg.get("role") == "assistant" and isinstance(content, list):
             for block in content:
                 if (
                     isinstance(block, dict)
@@ -202,7 +201,7 @@ def trim_old_tool_results(conversation: Any, window: int, keep: int = TRIM_KEEP)
     A small local window fills with file dumps long before auto-compact (80%) summarizes it. The model can read
     a file again, so the results it no longer needs are cleared, newest `keep` first spared.
     """
-    from ..agent.conversation import ToolResultContentBlock
+    from src.conversation import ToolResultContentBlock
     from .token_estimation import count_messages_tokens
 
     if count_messages_tokens(conversation.get_messages()) < window * TRIM_FRACTION:

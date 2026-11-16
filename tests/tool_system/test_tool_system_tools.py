@@ -12,17 +12,17 @@ import urllib.request
 from pathlib import Path
 from unittest.mock import patch
 
-from src.agent.conversation import Conversation
+from src.conversation import Conversation
 from src.agent.agent_loop import run_agent_loop
 from src.tool_system.context import ToolContext
 from src.tool_system.errors import ToolExecutionError, ToolInputError
-from src.tool_system.defaults import build_default_registry
+from src.agent.subagent import build_tool_registry as build_default_registry
+from src.agent.team import TeamCreateTool, TeamDeleteTool
 from src.tool_system.protocol import ToolCall
 from src.tool_system.registry import ToolRegistry
 from src.tool_system.tools import (
     AskUserQuestionTool,
     BashTool,
-    BriefTool,
     ConfigTool,
     CronCreateTool,
     CronDeleteTool,
@@ -49,8 +49,6 @@ from src.tool_system.tools import (
     ToolSearchTool,
     WebFetchTool,
     WebSearchTool,
-    TeamCreateTool,
-    TeamDeleteTool,
     EnterWorktreeTool,
     ExitWorktreeTool,
     EnterPlanModeTool,
@@ -593,10 +591,6 @@ class TestRegistryAndHelloWorldTool(ToolSystemTests):
 
 
 class TestBriefAndAgentTools(ToolSystemTests):
-    def test_brief_tool(self) -> None:
-        out = BriefTool().run({"text": "abc", "max_chars": 2}, self.ctx).output
-        self.assertEqual(out["preview"], "ab…")
-
     def test_agent_tool_runs_a_sub_agent(self) -> None:
         reg = build_default_registry(include_user_tools=False)
         p = self.root / "x.txt"

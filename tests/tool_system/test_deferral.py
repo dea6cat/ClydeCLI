@@ -9,9 +9,9 @@ from pathlib import Path
 from unittest.mock import patch
 
 from src.agent.agent_loop import run_agent_loop
-from src.agent.conversation import Conversation
+from src.conversation import Conversation
 from src.tool_system.context import ToolContext
-from src.tool_system.defaults import build_default_registry
+from src.agent.subagent import build_tool_registry as build_default_registry
 from src.tool_system.deferral import CORE_TOOLS, VERIFY_PROMPT, advertised, hint, index_prompt, is_deferred
 from src.tool_system.protocol import ToolCall
 from src.tool_system.registry import ToolSpec
@@ -238,7 +238,7 @@ class TestLoopHelpers(unittest.TestCase):
         from src.agent.agent_loop import _small_local
         self.assertTrue(_small_local(NS(name="omlx", api_key="k")))
         self.assertTrue(_small_local(NS(name="ollama", api_key=None)))
-        self.assertFalse(_small_local(NS(name="ollama", api_key="cloud-key")))   # Ollama's cloud models
+        self.assertFalse(_small_local(NS(name="ollama-cloud", api_key="cloud-key")))   # Ollama's cloud models
         self.assertFalse(_small_local(NS(name="openrouter", api_key="k")))
 
     def test_the_prompt_is_the_users_last_message_not_a_tool_result_or_steering(self):
@@ -251,7 +251,7 @@ class TestLoopHelpers(unittest.TestCase):
 
     def test_the_prompt_is_found_in_the_agent_loops_own_history_too(self):
         from src.agent.agent_loop import _STEERING, _last_prompt
-        from src.agent.conversation import Conversation as History
+        from src.conversation import Conversation as History
         from src.tool_system.deferral import local_tools
         history = History()
         history.add_user_message("fix the login bug and run the tests")

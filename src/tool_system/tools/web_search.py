@@ -45,6 +45,7 @@ class WebSearchTool:
     def spec(self) -> ToolSpec:
         return ToolSpec(
             name="WebSearch",
+            reaches_network=True,
             description="Search the web and return top results.",
             input_schema={
                 "type": "object",

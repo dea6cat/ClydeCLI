@@ -9,26 +9,19 @@ import unittest
 from pathlib import Path
 
 
-class TestContextWindowForModel(unittest.TestCase):
-    """Tests for get_context_window_for_model()."""
+class TestContextWindow(unittest.TestCase):
+    """The window comes from the provider's own sizing first, then the catalog, then the model's name."""
 
-    def test_claude_sonnet_4_6(self):
-        """Claude Sonnet 4-6 returns 200k."""
-        from src.context_system.context_analyzer import get_context_window_for_model
-        result = get_context_window_for_model("claude-sonnet-4-6")
-        self.assertEqual(result, 200_000)
+    def test_a_provider_that_sizes_its_window_wins(self):
+        from types import SimpleNamespace as NS
+        from src.providers.base import context_window
+        self.assertEqual(context_window(NS(context_window=lambda m: 8192), "gpt-4o"), 8192)
 
-    def test_gpt_4o(self):
-        """GPT-4o returns 128k."""
-        from src.context_system.context_analyzer import get_context_window_for_model
-        result = get_context_window_for_model("gpt-4o")
-        self.assertEqual(result, 128_000)
-
-    def test_unknown_model_defaults(self):
-        """Unknown model returns default 200k."""
-        from src.context_system.context_analyzer import get_context_window_for_model
-        result = get_context_window_for_model("unknown-model-xyz")
-        self.assertEqual(result, 200_000)
+    def test_without_one_the_name_decides(self):
+        from types import SimpleNamespace as NS
+        from src.providers.base import context_window
+        self.assertEqual(context_window(NS(), "some-model-32k"), 32_000)
+        self.assertEqual(context_window(NS(), "unknown-model-xyz"), 200_000)
 
 
 class TestAnalyzeContext(unittest.TestCase):
@@ -36,10 +29,11 @@ class TestAnalyzeContext(unittest.TestCase):
 
     def test_empty_inputs(self):
         """Empty inputs returns reasonable defaults."""
-        from src.context_system.context_analyzer import analyze_context, get_context_window_for_model
+        from src.context_system.context_analyzer import analyze_context
         result = analyze_context(
             conversation_api_messages=[],
             model="claude-sonnet-4-6",
+            window=200_000,
             system_prompt="",
             tool_schemas=[],
             claude_md_content="",
@@ -55,6 +49,7 @@ class TestAnalyzeContext(unittest.TestCase):
         result = analyze_context(
             conversation_api_messages=[],
             model="claude-sonnet-4-6",
+            window=200_000,
             system_prompt="You are a helpful assistant. " * 50,  # ~500 chars
             tool_schemas=[],
             claude_md_content="",
@@ -69,6 +64,7 @@ class TestAnalyzeContext(unittest.TestCase):
         result = analyze_context(
             conversation_api_messages=[],
             model="claude-sonnet-4-6",
+            window=200_000,
             system_prompt="",
             tool_schemas=[
                 {"name": "Read", "description": "Read a file", "input_schema": {"type": "object"}},
@@ -89,6 +85,7 @@ class TestAnalyzeContext(unittest.TestCase):
                 {"role": "assistant", "content": "Hi there!"},
             ],
             model="claude-sonnet-4-6",
+            window=200_000,
             system_prompt="",
             tool_schemas=[],
             claude_md_content="",
@@ -103,6 +100,7 @@ class TestAnalyzeContext(unittest.TestCase):
         result = analyze_context(
             conversation_api_messages=[],
             model="claude-sonnet-4-6",
+            window=200_000,
             system_prompt="x",  # minimal
             tool_schemas=[],
             claude_md_content="",
@@ -119,6 +117,7 @@ class TestAnalyzeContext(unittest.TestCase):
         result = analyze_context(
             conversation_api_messages=[],
             model="claude-sonnet-4-6",
+            window=200_000,
             system_prompt="",
             tool_schemas=[],
             claude_md_content="",
@@ -144,6 +143,7 @@ class TestFormatContextAsMarkdown(unittest.TestCase):
                 {"role": "user", "content": "Hello"},
             ],
             model="claude-sonnet-4-6",
+            window=200_000,
             system_prompt="You are helpful.",
             tool_schemas=[],
             claude_md_content="",
@@ -160,6 +160,7 @@ class TestFormatContextAsMarkdown(unittest.TestCase):
         result = analyze_context(
             conversation_api_messages=[],
             model="claude-sonnet-4-6",
+            window=200_000,
             system_prompt="You are a helpful assistant. " * 100,
             tool_schemas=[],
             claude_md_content="",
@@ -173,6 +174,7 @@ class TestFormatContextAsMarkdown(unittest.TestCase):
         result = analyze_context(
             conversation_api_messages=[],
             model="claude-sonnet-4-6",
+            window=200_000,
             system_prompt="",
             tool_schemas=[],
             claude_md_content="# Project\n\nThis is a project.",
@@ -187,6 +189,7 @@ class TestFormatContextAsMarkdown(unittest.TestCase):
         result = analyze_context(
             conversation_api_messages=[],
             model="claude-sonnet-4-6",
+            window=200_000,
             system_prompt="",
             tool_schemas=[],
             claude_md_content="",

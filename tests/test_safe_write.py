@@ -72,13 +72,12 @@ class SafeWrite(unittest.TestCase):
             read_json_safely(self.dir / "e.json")
 
     def test_the_writers_that_matter_use_it(self):
-        from src import config, plugins
+        from src import config, settings
         from src.agent import runs, session
         from src.bonnie import automations, pins
         from src.providers import keys
-        from src.tool_system import hooks, permission_rules
         ours = (safe_write.write_safely, safe_write.write_json_safely)
-        for module in (config, runs, session, automations, pins, hooks, permission_rules, plugins, keys):
+        for module in (config, runs, session, automations, pins, settings, keys):   # hooks, rules, MCP and plugins write through settings
             self.assertTrue(any(getattr(module, name, None) in ours for name in dir(module)), module.__name__)
 
 
@@ -93,6 +92,17 @@ class ConfigSurvivesATornWrite(unittest.TestCase):
                 path.write_text('{"default_model": "a:tw')   # the process died halfway through a write
                 self.assertEqual(config.load_config().get("default_model"), "a:one")
 
+
+    def test_an_unreadable_config_is_kept_aside_not_overwritten_by_the_next_save(self):
+        from src import config
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "config.json"
+            path.write_text("{not json")                 # and no last good copy to fall back to
+            with patch.object(config, "get_config_path", return_value=path):
+                config.load_config()
+                config.set_default_model("a:new")
+            kept = list(Path(tmp).glob("config.json.unreadable-*"))
+            self.assertEqual([k.read_text() for k in kept], ["{not json"])
 
 if __name__ == "__main__":
     unittest.main()

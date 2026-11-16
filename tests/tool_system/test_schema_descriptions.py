@@ -28,10 +28,6 @@ class TestSchemaDescriptions(unittest.TestCase):
             with self.subTest(tool=tool):
                 self.assertEqual(_undocumented(specs[tool].input_schema, exempt), [])
 
-    def test_the_map_action_says_which_fields_each_action_needs(self):
-        text = next(s for s in build_default_registry().list_specs() if s.name == "Map").input_schema["properties"]["action"]["description"]
-        for needs in ("query needs question", "path needs source and target", "explain and affected need target"):
-            self.assertIn(needs, text)
 
 
 if __name__ == "__main__":

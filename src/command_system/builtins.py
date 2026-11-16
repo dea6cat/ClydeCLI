@@ -6,26 +6,23 @@ Implements core commands like /help, /clear, /exit, /skills, etc.
 
 from __future__ import annotations
 
-import asyncio
 import sys
+from src.providers.base import context_window
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
-from ..context_system.builder import build_context_prompt, section_report
+from ..context_system.builder import section_report
 from ..context_system.context_analyzer import (
     analyze_context,
     format_context_as_markdown,
-    get_context_window_for_model,
 )
-from ..context_system.microcompact import microcompact_messages, strip_images_from_messages
-from ..agent import cache_stats, trace
-from ..agent.cost_tracker import CostTracker, estimate_usd
-from ..agent.history import HistoryLog
-from ..startup.setup import run_setup
+from src import trace
+from ..agent import cache_stats
+from ..agent.cost_tracker import estimate_usd
 from .engine import CommandContext, CommandResult, LocalCommandResult
-from .registry import CommandRegistry, get_command_registry, list_commands
-from .types import Command, CommandType, CompactionResult, LocalCommand, PromptCommand
+from .registry import CommandRegistry, get_command_registry
+from .types import Command, CompactionResult, LocalCommand, PromptCommand
 
 
 # Official Claude Code /init prompts (Simplified)
@@ -103,29 +100,6 @@ description: <what it does>
 
 Tell the user what was set up and suggest any additional optimizations."""
 
-# Fallback prompt for simpler initialization
-OLD_INIT_PROMPT = """Please analyze this codebase and create a CLYDE.md file, which will be given to future ClydeCLI sessions to operate in this repository.
-
-What to add:
-1. Commands that will be commonly used, such as how to build, lint, and run tests. Include the necessary commands to develop in this codebase, such as how to run a single test.
-2. High-level code architecture and structure so that future instances can be productive more quickly. Focus on the "big picture" architecture that requires reading multiple files to understand.
-
-Usage notes:
-- If there's already a CLYDE.md, suggest improvements to it.
-- When you make the initial CLYDE.md, do not repeat yourself and do not include obvious instructions like "Provide helpful error messages to users", "Write unit tests for all new utilities", "Never include sensitive information (API keys, tokens) in code or commits".
-- Avoid listing every component or file structure that can be easily discovered.
-- Don't include generic development practices.
-- If there are Cursor rules (in .cursor/rules/ or .cursorrules) or Copilot rules (in .github/copilot-instructions.md), make sure to include the important parts.
-- If there is a README.md, make sure to include the important parts.
-- Do not make up information such as "Common Development Tasks", "Tips for Development", "Support and Documentation" unless this is expressly included in other files that you read.
-- Be sure to prefix the file with the following text:
-
-```
-# CLYDE.md
-
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-```"""
-
 
 def clear_command_call(args: str, context: CommandContext) -> LocalCommandResult:
     """
@@ -140,9 +114,6 @@ def clear_command_call(args: str, context: CommandContext) -> LocalCommandResult
     """
     if hasattr(context.conversation, "clear"):
         context.conversation.clear()
-
-    if hasattr(context.history, "events"):
-        context.history.events.clear()
 
     return LocalCommandResult(
         type="text",
@@ -367,6 +338,7 @@ def context_command_call(args: str, context: CommandContext) -> LocalCommandResu
         data = analyze_context(
             conversation_api_messages=conversation_api,
             model=model,
+            window=context_window(context.config.get("provider"), model),
             system_prompt=system_prompt,
             tool_schemas=tool_schemas,
             claude_md_content=claude_md_content,
@@ -388,7 +360,7 @@ def context_command_call(args: str, context: CommandContext) -> LocalCommandResu
         return LocalCommandResult(type="text", value=f"Context analysis failed: {e}")
 
 
-async def _compact_async(args: str, context: CommandContext) -> LocalCommandResult:
+def _compact(args: str, context: CommandContext) -> LocalCommandResult:
     """
     Async implementation of compact command.
     """
@@ -422,7 +394,7 @@ async def _compact_async(args: str, context: CommandContext) -> LocalCommandResu
         # Import here to avoid circular imports
         from ..compact_service.service import compact_conversation
 
-        result = await compact_conversation(
+        result = compact_conversation(
             conversation=context.conversation,
             provider=provider,
             model=model,
@@ -452,130 +424,8 @@ async def _compact_async(args: str, context: CommandContext) -> LocalCommandResu
 
 
 def compact_command_call(args: str, context: CommandContext) -> LocalCommandResult:
-    """
-    Handle /compact command - compact conversation context.
-
-    Args:
-        args: Command arguments
-        context: Command context
-
-    Returns:
-        LocalCommandResult
-    """
-    # Run the async version in a new event loop
-    try:
-        loop = asyncio.get_running_loop()
-        # If we're already in an async context, we can't use asyncio.run
-        # Fall back to sync path
-        return _sync_compact_fallback(context)
-    except RuntimeError:
-        # No running event loop — safe to use asyncio.run
-        try:
-            return asyncio.run(_compact_async(args, context))
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
-            return _sync_compact_fallback(context)
-
-
-def _sync_compact_fallback(context: CommandContext) -> LocalCommandResult:
-    """Synchronous fallback when async provider is not available."""
-    if not hasattr(context.conversation, "messages"):
-        return LocalCommandResult(type="text", value="No conversation to compact.")
-
-    messages = context.conversation.messages
-    if len(messages) < 2:
-        return LocalCommandResult(
-            type="text",
-            value=f"Nothing to compact: only {len(messages)} messages.",
-        )
-
-    # Get messages after last boundary
-    try:
-        from ..compact_service.messages import (
-            create_compact_boundary_message,
-            create_compact_summary_message,
-            get_messages_after_boundary,
-            is_compact_boundary_message,
-        )
-        from ..context_system.token_estimation import count_messages_tokens
-
-        after_boundary = get_messages_after_boundary(messages)
-        if len(after_boundary) < 2:
-            return LocalCommandResult(
-                type="text",
-                value=f"Nothing to compact: only {len(after_boundary)} messages after boundary.",
-            )
-
-        # Count tokens
-        api_messages = context.conversation.get_messages()
-        pre_tokens = count_messages_tokens(api_messages)
-
-        # Strip images and microcompact
-        stripped = strip_images_from_messages(api_messages)
-        compacted, saved = microcompact_messages(stripped)
-
-        # Find boundary position
-        boundary_indices = [
-            i for i, m in enumerate(messages)
-            if is_compact_boundary_message(m)
-        ]
-
-        if boundary_indices:
-            insert_pos = max(boundary_indices) + 1
-        else:
-            insert_pos = 0
-
-        # Create simple text summary
-        summary_parts = [f"Conversation had {len(after_boundary)} messages ({pre_tokens:,} tokens)."]
-        summary_text = "\n".join(summary_parts)
-
-        boundary = create_compact_boundary_message(
-            trigger="manual",
-            pre_compact_token_count=pre_tokens,
-        )
-        summary = create_compact_summary_message(summary_text)
-
-        # Rebuild conversation
-        if insert_pos == 0:
-            context.conversation.messages.clear()
-            context.conversation.messages.append(boundary)
-            context.conversation.messages.append(summary)
-        else:
-            context.conversation.messages = list(messages[:insert_pos])
-            context.conversation.messages.append(boundary)
-            context.conversation.messages.append(summary)
-
-        return LocalCommandResult(
-            type="compact",
-            value=f"Compacted: removed {len(after_boundary) - 2} messages ({pre_tokens:,} tokens → ~{saved} saved).",
-            compaction_result=CompactionResult(
-                pre_compact_count=len(messages),
-                post_compact_count=len(context.conversation.messages),
-                tokens_saved=saved,
-                trigger="manual",
-                summary_preview=summary_text[:200],
-            ),
-        )
-    except Exception as e:
-        # Last resort: just clear old messages
-        original_count = len(messages)
-        if original_count > 10:
-            context.conversation.messages = list(messages[-10:])
-            return LocalCommandResult(
-                type="compact",
-                value=f"Compacted: removed {original_count - 10} messages (fallback mode).",
-                compaction_result=CompactionResult(
-                    pre_compact_count=original_count,
-                    post_compact_count=10,
-                    tokens_saved=0,
-                    trigger="manual",
-                ),
-            )
-        return LocalCommandResult(
-            type="text",
-            value="Nothing to compact.",
-        )
+    """/compact: summarise the conversation so far."""
+    return _compact(args, context)
 
 
 def _requires_python() -> str | None:
@@ -656,6 +506,10 @@ def doctor_command_call(args: str, context: CommandContext) -> LocalCommandResul
 
     config_path = get_config_path()
     saved_model = None
+    kept = sorted(config_path.parent.glob("config.json.unreadable-*"))
+    if kept:   # load_config set an unreadable file aside rather than save the defaults over it
+        lines.append(_check(False, f"Config was unreadable and was kept as {kept[-1]}",
+                            "fix it and move it back to config.json, or delete it"))
     if not config_path.exists():
         lines.append(_check(True, f"Config {config_path} not created yet (defaults in use)"))
     else:
@@ -975,9 +829,9 @@ INIT_COMMAND = PromptCommand(
 class ReviewCommand(PromptCommand):
     """/review [commit SHA | base BRANCH]: the prompt is built from the git diff when the command runs."""
 
-    async def get_prompt_for_command(self, args: str, context: CommandContext) -> list[dict[str, Any]]:
+    def prompt_for(self, args: str, context: CommandContext) -> str:
         from ..review import build_review_prompt
-        return [{"type": "text", "text": build_review_prompt(args, context.workspace_root)}]
+        return build_review_prompt(args, context.workspace_root)
 
 
 REVIEW_COMMAND = ReviewCommand(
@@ -989,62 +843,16 @@ REVIEW_COMMAND = ReviewCommand(
 
 
 # Synchronous versions for REPL integration
-def execute_command_sync(cmd_name: str, args: str, context: CommandContext) -> tuple[bool, str | None, str | None]:
-    """
-    Execute a command synchronously.
-
-    Returns:
-        Tuple of (success: bool, result_text: str | None, error: str | None)
-    """
-    cmd = None
-    for builtin_cmd in get_builtin_commands():
-        if builtin_cmd.name.lower() == cmd_name.lower() or cmd_name.lower() in [a.lower() for a in builtin_cmd.aliases]:
-            cmd = builtin_cmd
-            break
-
+def run_command(registry: CommandRegistry, cmd_name: str, args: str, context: CommandContext) -> CommandResult:
+    """Run a registered slash command: a local command's text, or a prompt command's prompt for the model. A command's
+    own error propagates, so the caller shows it rather than taking it for an unknown command."""
+    cmd = registry.get(cmd_name)
     if cmd is None:
-        return False, None, f"Unknown command: {cmd_name}"
-
-    try:
-        # This is a synchronous wrapper - we directly call the underlying function
-        # instead of going through the async call() method
-        if cmd is HELP_COMMAND:
-            result = help_command_call(args, context)
-        elif cmd is CLEAR_COMMAND:
-            result = clear_command_call(args, context)
-        elif cmd is EXIT_COMMAND:
-            result = exit_command_call(args, context)
-        elif cmd is SKILLS_COMMAND:
-            result = skills_command_call(args, context)
-        elif cmd is COST_COMMAND:
-            result = cost_command_call(args, context)
-        elif cmd is CONTEXT_COMMAND:
-            result = context_command_call(args, context)
-        elif cmd is COMPACT_COMMAND:
-            result = compact_command_call(args, context)
-        elif cmd is DOCTOR_COMMAND:
-            result = doctor_command_call(args, context)
-        elif cmd is PROXY_COMMAND:
-            result = proxy_command_call(args, context)
-        elif cmd is CHECK_COMMAND:
-            result = check_command_call(args, context)
-        elif cmd is MAP_COMMAND:
-            result = map_command_call(args, context)
-        elif cmd is BRIEF_COMMAND:
-            result = brief_command_call(args, context)
-        elif cmd is HARNESS_COMMAND:
-            result = harness_command_call(args, context)
-        elif cmd is ORCHESTRATE_COMMAND:
-            result = orchestrate_command_call(args, context)
-        elif cmd is TODO_COMMAND:
-            result = todo_command_call(args, context)
-        else:
-            return False, None, f"Command not implemented for sync execution: {cmd_name}"
-
-        return True, result.value, None
-    except Exception as e:
-        return False, None, str(e)
-
+        return CommandResult.failed(cmd_name, f"Unknown command: {cmd_name}")
+    if isinstance(cmd, PromptCommand):
+        return CommandResult.success_prompt(cmd.name, [{"type": "text", "text": cmd.prompt_for(args, context)}])
+    result = cmd.run(args, context)
+    return CommandResult.skip(cmd.name) if result.type == "skip" else CommandResult.success_text(cmd.name, result.value)
 
 # Set the call implementations
 HELP_COMMAND.set_call(help_command_call)
@@ -1087,6 +895,13 @@ def get_builtin_commands() -> list[Command]:
     ]
 
 
+def builtin_registry() -> CommandRegistry:
+    """A registry holding every built-in command."""
+    registry = CommandRegistry()
+    register_builtin_commands(registry)
+    return registry
+
+
 def register_builtin_commands(registry: CommandRegistry | None = None) -> None:
     """
     Register all built-in commands.
@@ -1098,46 +913,3 @@ def register_builtin_commands(registry: CommandRegistry | None = None) -> None:
     for cmd in get_builtin_commands():
         reg.register(cmd)
 
-
-async def execute_command_async(
-    cmd_name: str,
-    args: str,
-    context: CommandContext,
-) -> CommandResult:
-    """
-    Execute a command asynchronously.
-
-    This function handles both LocalCommand and PromptCommand types.
-    For PromptCommand, it returns the prompt content that should be sent to the LLM.
-
-    Args:
-        cmd_name: Name of the command to execute
-        args: Arguments for the command
-        context: Command context
-
-    Returns:
-        CommandResult with the execution result
-    """
-    from .engine import CommandEngine
-
-    registry = get_command_registry()
-    cmd = registry.get(cmd_name)
-
-    if cmd is None:
-        return CommandResult.error(cmd_name, f"Unknown command: {cmd_name}")
-
-    if not cmd.is_enabled():
-        return CommandResult.error(cmd_name, f"Command {cmd_name} is disabled")
-
-    engine = CommandEngine(
-        registry=registry,
-        workspace_root=context.workspace_root,
-        context=context,
-    )
-
-    # Create a fake command input string for the engine
-    command_input = f"/{cmd_name}"
-    if args:
-        command_input += f" {args}"
-
-    return await engine.execute(command_input)

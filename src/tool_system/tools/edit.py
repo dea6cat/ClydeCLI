@@ -3,7 +3,7 @@ from __future__ import annotations
 import difflib
 from typing import Any
 
-from ...agent import trace
+from src import trace
 from ..context import ToolContext
 from ..errors import ToolInputError, ToolPermissionError
 from ..permission_handler import PermissionResult
@@ -186,6 +186,7 @@ class FileEditTool:
     def spec(self) -> ToolSpec:
         return ToolSpec(
             name="Edit",
+            path_field="file_path", writes_files=True,
             description=(
                 "Performs string replacements in files. old_string should match the file exactly; "
                 "a unique match that differs only in trailing whitespace or indentation is also accepted. "
@@ -220,7 +221,7 @@ class FileEditTool:
             return PermissionResult.allow()  # Input validation happens in run()
 
         try:
-            path = context.ensure_allowed_path(file_path)
+            path = context.ensure_allowed_path(file_path, write=True)
         except ToolPermissionError:
             return PermissionResult.allow()  # Path validation happens in run()
 
@@ -242,7 +243,7 @@ class FileEditTool:
         if edits is None and (not isinstance(old, str) or not isinstance(new, str)):
             raise ToolInputError("give old_string and new_string (both text), or edits")
 
-        path = context.ensure_allowed_path(file_path)
+        path = context.ensure_allowed_path(file_path, write=True)
 
         if not path.exists():
             raise ToolInputError(f"file does not exist: {path}")

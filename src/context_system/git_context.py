@@ -4,7 +4,7 @@ import subprocess
 from pathlib import Path
 
 from ..security.git_safe import git_cmd, git_env
-from .context_cache import cut
+from src.context_cache import cut
 from .models import GitContext
 
 _MAX_STATUS_CHARS = 2_000

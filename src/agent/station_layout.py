@@ -17,7 +17,7 @@ from typing import Any
 
 _READ = {"Read", "Glob", "Grep", "Map", "LSP", "Data", "RetrieveContext"}
 _WRITE = {"Edit", "Write", "NotebookEdit"}
-_SHELL = {"Bash", "PowerShell"}
+_SHELL = {"Bash"}
 _WEB = {"WebFetch", "WebSearch"}
 _MCP = {"MCP", "ListMcpResourcesTool", "ReadMcpResourceTool"}
 FAMILIES = ("read", "write", "shell", "web", "mcp", "other")   # display families; grouping is presentation, not a claim

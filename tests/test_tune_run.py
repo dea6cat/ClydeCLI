@@ -13,10 +13,11 @@ from unittest.mock import MagicMock, patch
 
 from rich.console import Console
 
-from src.tuning import tune, tune_profile
+from src import tune_profile
+from src.tuning import tune
 from src.providers.base import ProviderError
 from src.tuning.tune import Quality, Result
-from src.tuning.tune_profile import Profile
+from src.tune_profile import Profile
 
 GB = 2 ** 30
 CODING = Profile(("coding",), "context")
@@ -138,14 +139,14 @@ class RunTests(unittest.TestCase):
     def test_asking_without_a_terminal_is_a_clear_error(self):
         with patch.object(tune.shutil, "which", return_value="/usr/bin/ollama"), \
                 patch.object(tune_profile, "load", return_value=None), \
-                patch.object(tune_profile, "ask", side_effect=EOFError):
+                patch.object(tune, "ask_profile", side_effect=EOFError):
             self.assertEqual(tune.run(self.console), 1)
         self.assertIn("terminal", self.out.getvalue())
 
     def test_reask_ignores_the_saved_profile(self):
         with patch.object(tune.shutil, "which", return_value="/usr/bin/ollama"), \
                 patch.object(tune_profile, "load", return_value=CODING) as load, \
-                patch.object(tune_profile, "ask", side_effect=EOFError) as ask:
+                patch.object(tune, "ask_profile", side_effect=EOFError) as ask:
             tune.run(self.console, reask=True)
         load.assert_not_called()
         ask.assert_called_once()
@@ -268,9 +269,9 @@ class ShowTests(unittest.TestCase):
 class AskTests(unittest.TestCase):
     def _ask(self, uses, priority, headroom):
         with tempfile.TemporaryDirectory() as home, patch.object(tune_profile, "clyde_home", return_value=Path(home)), \
-                patch.object(tune_profile.Prompt, "ask", return_value=uses), \
-                patch.object(tune_profile.IntPrompt, "ask", side_effect=[priority, headroom]):
-            profile = tune_profile.ask(Console(file=io.StringIO()))
+                patch.object(tune.Prompt, "ask", return_value=uses), \
+                patch.object(tune.IntPrompt, "ask", side_effect=[priority, headroom]):
+            profile = tune.ask_profile(Console(file=io.StringIO()))
             return profile, tune_profile.load()
 
     def test_several_uses_a_priority_and_headroom_become_a_saved_profile(self):

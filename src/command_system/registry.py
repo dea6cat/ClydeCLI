@@ -167,30 +167,3 @@ def get_command_registry() -> CommandRegistry:
     """Get the global command registry."""
     return _REGISTRY
 
-
-def register_command(command: Command) -> None:
-    """Register a command in the global registry."""
-    _REGISTRY.register(command)
-
-
-def get_command(name: str) -> Optional[Command]:
-    """Get a command from the global registry."""
-    return _REGISTRY.get(name)
-
-
-def has_command(name: str) -> bool:
-    """Check if a command exists in the global registry."""
-    return _REGISTRY.has(name)
-
-
-def list_commands(
-    include_hidden: bool = False,
-    include_disabled: bool = False,
-) -> list[Command]:
-    """List commands from the global registry."""
-    return _REGISTRY.list_commands(include_hidden, include_disabled)
-
-
-def find_commands(query: str, limit: int = 20) -> list[Command]:
-    """Find commands in the global registry."""
-    return _REGISTRY.find_commands(query, limit)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from src.providers.base import LOCAL_PROVIDERS
 from dataclasses import dataclass, field
 
 from ..providers import catalog
@@ -34,9 +35,9 @@ class CostTracker:
 
 
 def estimate_usd(ref: str, usage: dict[str, int]) -> float | None:
-    """Estimated USD for a "provider:model" usage total; 0 for local Ollama, None if unpriced."""
+    """Estimated USD for a "provider:model" usage total; 0 for a local model, None if unpriced."""
     provider, _, model = ref.partition(":")
-    if provider == "ollama":
+    if provider in LOCAL_PROVIDERS:
         return 0.0
     info = catalog.lookup(model)
     if info is None or info.input_per_mtok is None or info.output_per_mtok is None:

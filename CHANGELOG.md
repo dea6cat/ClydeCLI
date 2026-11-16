@@ -7,9 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Picking a model in an editor (`clyde --acp`, such as Zed) or in Bonnie changes that session's model only. It also saved it as the default for every later `clyde`; `/model` in the terminal still does.
+- `~/.clyde/settings.toml` now applies to every setting, not only hooks, checks and trusted folders: permission rules, MCP servers, plugins and custom providers are read from it too. With both files present, settings.json wins entry by entry and lists from the two are combined. Clyde still writes only settings.json.
+
+### Fixed
+
+- A team worker that gave up (repeating a failing call, stalling, or out of budget) is reported as not finished; the station showed it as done.
+- A slash command that fails says why. It was run a second time through another path with its error thrown away, and then reported as "Unknown command". A failed `/compact` no longer clears the conversation: it said so and kept nothing.
+- `/harness list` shows your MCP servers. It read `~/.clyde/mcp_servers.json`, a file Clyde never writes, instead of `mcpServers` in your settings.
+- `git branch -D` (force-deleting a branch) asks even in "all in" mode, as it was meant to; the check lowercased the command first, so only a separate patch caught it. `git branch -d` still doesn't ask.
+- One slow answer from Ollama about a model no longer leaves its window, image support and reasoning control unknown for the rest of the session: only an answer is remembered, and a failed lookup is tried again.
+- A config.json that cannot be read (and has no good copy to fall back to) is kept as `config.json.unreadable-<time>`. Clyde used to carry on with the defaults and write them over your file the next time a setting changed.
+- `/compact` can no longer throw the conversation away. When its model call could not be started it replaced the history with a one-line note and kept only the last 10 messages, silently; compaction now runs directly, and a failed summary call falls back to a short summary of the real messages (it read only a message shape the conversation never has, so it came out nearly empty).
+- Compaction clears old tool results before summarizing, as it was meant to: the step looked for the model's turns under the wrong key and never cleared anything, so `/compact` sent every old file dump to the summarizer.
+- The "Max history" setting applies: a conversation keeps that many messages (100 unless you change it in /settings), and the first one, your original request or a compaction's summary, always stays. Every conversation used to drop its oldest message past 100, the first one included, whatever the setting said.
+- `/context` shows the window the model really has: the one Ollama or oMLX pinned, else the catalog's. It read a short, out-of-date table of names and reported 200,000 tokens for most local models.
+- oMLX models count as free in the spend line, as Ollama's do, and `/eval` runs them one at a time like Ollama's instead of four at once on the same memory.
+
+### Removed
+
+- The SendMessage, PowerShell and BriefPreview tools, which the model was offered but which did nothing: SendMessage queued a message nobody read, PowerShell always refused to run, and BriefPreview only cut the model's own text short.
+- The migration from the config layout used before keys.json (per-provider `api_key` entries in config.json). That layout predates the first release, v0.2.3.
+
 ### Security
 
+- Bonnie's API wants the session cookie as well as the token, as the station's does; the token alone, which is in the page, was enough. Both local servers now send the same safety headers (Bonnie had no `Referrer-Policy`, and the station did not clean newlines out of header values).
+- Switching Bonnie to another project applies that project's permission rules and drops the old project's; it kept the old ones. `clyde -p`, an editor over ACP and Bonnie never ask to install oMLX: the question read from the terminal, which under ACP is the editor's message channel.
+- When the LLM review of a flagged skill or plugin fails (the model is down, or gives no answer), the verdict stays a static one and the review is tried again on the next check; it was recorded as reviewed and never retried. The scan also no longer copies the reviewing provider's key into the process environment.
+- A plugin the security scan blocks loads nothing until you allow it. `clyde plugin enable` used to turn one on without a scan, and a plugin whose files changed after it was enabled loaded its tools, hooks and MCP servers unscanned. Each enabled plugin is now checked at startup (a cached verdict when its content is unchanged); `clyde plugin enable` shows the scan and asks before allowing a blocked one, and so does `clyde plugin import`.
+- A yes to read or look around a folder outside the project is no longer a yes to change files there. In "all in" mode, `cd` into an outside folder was let through as a read and then let any later Write or Edit in that folder through without asking; reading an outside file also covered editing it. Changes outside the project now ask on their own, and a yes to change a file covers later changes to it; a shell command that changes files after `cd` to an outside folder asks too, since every relative path in it lands there.
+- The cloud check of a weak local reply sends only your request and that reply, as its question says. It used to send Clyde's whole system prompt with it (your CLAUDE.md or CLYDE.md files, memory notes, plan and goal) and to run your prompt and stop hooks on it.
 - After a web or MCP result tries to instruct the model, Clyde asks before anything else leaves the machine for the rest of the session. The injection check already put a notice in front of such a result, but the next call still ran without asking when an allow rule (a saved `WebSearch` rule, a `WebFetch(domain:...)` rule) or "all in" let it through, and that next call is how an injected page gets the conversation out. Now WebFetch, WebSearch, MCP tools and every Bash command that is not read-only (curl, git push, ssh, dig) ask; the question names the result that tripped it and offers no "don't ask again". Deny rules still deny. Sub-agents and workers share the flag, and in `clyde -p`, which cannot ask, those calls are refused.
+- A CLI worker (aider) starts without any environment variable named like a secret, except the one key it is handed; it used to strip only the built-in providers' key variables. `clyde logout google` also unsets `GOOGLE_API_KEY`, which Google's adapter reads as well.
+- Traces redact the value of every environment variable named like a secret. They used to redact only the key variables of the built-in providers, so a key in `GOOGLE_API_KEY` or `CLOUDFLARE_API_TOKEN` could reach a trace file.
 - The injection check also reads MCP results that come through the generic `MCP`, `ReadMcpResourceTool` and `ListMcpResourcesTool` tools; before, only `mcp__<server>__<tool>` results were checked.
 
 ## [0.9.0] - 2026-11-04

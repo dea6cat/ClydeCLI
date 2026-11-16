@@ -74,7 +74,7 @@ class TestOMLX(unittest.TestCase):
         entry = {"id": "Qwen3-8B-4bit", "model_path": str(folder), "estimated_size": 4 * GB, "model_context_length": 40960,
                  "loaded": False}
         calls = []
-        with patch.object(self.provider, "_status", return_value=[entry]), patch.object(omlx, "fixed_window", return_value=None), \
+        with patch.object(self.provider, "_status", return_value=[entry]), patch.object(omlx.config, "fixed_window", return_value=None), \
                 patch.object(omlx.fit, "budget_bytes", return_value=12 * GB), \
                 patch.object(omlx, "post_json", side_effect=lambda url, payload, **kw: calls.append((kw["method"], url, payload))):
             self.provider.ensure_loaded("Qwen3-8B-4bit")
@@ -108,7 +108,7 @@ class TestOMLX(unittest.TestCase):
         self.assertEqual(settings.read_text(), "{not json")
 
     def test_each_memory_guard_choice_becomes_serve_arguments(self):
-        with patch("src.providers.ollama._total_ram_bytes", return_value=18 * GB):
+        with patch("src.system.machine.total_ram_bytes", return_value=18 * GB):
             choices = omlx.memory_guard_choices()
         self.assertEqual(choices, ("balanced", "aggressive", "custom 7 GB", "custom 9 GB", "custom 10 GB", "off"))
         self.assertEqual(omlx.memory_guard_args("custom 9 GB"), ["--memory-guard-gb", "9"])

@@ -4,10 +4,10 @@ import unittest
 from pathlib import Path
 import tempfile
 
-from src.agent.conversation import Conversation
+from src.conversation import Conversation
 from src.agent.agent_loop import run_agent_loop
 from src.tool_system.context import ToolContext
-from src.tool_system.defaults import build_default_registry
+from src.agent.subagent import build_tool_registry as build_default_registry
 from src.tool_system.protocol import ToolCall
 from tests.fakes import FakeProvider, reply
 
@@ -42,10 +42,8 @@ class TestClaudeCodeToolParity(unittest.TestCase):
             "ListMcpResourcesTool",
             "MCP",
             "NotebookEdit",
-            "PowerShell",
             "Read",
             "ReadMcpResourceTool",
-            "SendMessage",
             "SendUserMessage",
             "Skill",
             "Sleep",
@@ -124,14 +122,14 @@ if __name__ == "__main__":
 class TestToolSchemasAreObjects(unittest.TestCase):
     def test_every_tool_schema_is_an_object_at_the_top(self) -> None:
         # Strict OpenAI-compatible servers (some local ones) reject a tool whose parameters aren't type: object.
-        from src.tool_system.defaults import build_default_registry
+        from src.agent.subagent import build_tool_registry as build_default_registry
 
         bad = [s.name for s in build_default_registry().list_specs() if s.input_schema.get("type") != "object"]
         self.assertEqual(bad, [])
 
     def test_openai_wire_schemas_always_have_type_and_properties(self) -> None:
         from src.providers.toolspec import from_specs, to_openai
-        from src.tool_system.defaults import build_default_registry
+        from src.agent.subagent import build_tool_registry as build_default_registry
 
         for tool in to_openai(from_specs(build_default_registry().list_specs())):
             params = tool["function"]["parameters"]

@@ -12,10 +12,11 @@ from unittest.mock import patch
 
 from rich.console import Console
 
-from src.tuning import tune, tune_profile
+from src import tune_profile
+from src.tuning import tune
 from src.providers.base import ProviderError
 from src.tuning.tune import Candidate, Quality, Result, Row
-from src.tuning.tune_profile import Profile
+from src.tune_profile import Profile
 
 GB = 2 ** 30
 CODING = Profile(("coding",), "context")
@@ -47,7 +48,7 @@ class ProfileTests(unittest.TestCase):
             self.assertEqual(tune_profile.load(), Profile(("coding", "research"), "context", 6))
 
     def test_numbers_ignores_junk_and_out_of_range(self):
-        self.assertEqual(tune_profile._numbers("3, 1 x 9 1", 5), [1, 3])
+        self.assertEqual(tune._numbers("3, 1 x 9 1", 5), [1, 3])
 
 
 class CandidateTests(unittest.TestCase):

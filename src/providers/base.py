@@ -11,7 +11,6 @@ import http.client
 import codecs
 import json
 import ssl
-import threading
 import time as _time
 import urllib.error
 import urllib.parse
@@ -19,8 +18,9 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Callable, Protocol
 
-from .. import __version__
+from .. import __version__, trace
 from ..runtime import activity
+from ..runtime import connections
 from .toolspec import ToolSpec
 from .types import Conversation, Message
 
@@ -29,6 +29,46 @@ from .types import Conversation, Message
 # real one.
 _USER_AGENT = f"clyde-cli/{__version__}"
 
+
+# Providers that serve models on this machine: no cost, bounded by its memory, and usually small models.
+LOCAL_PROVIDERS = frozenset({"ollama", "omlx"})
+
+
+
+def context_window(provider: object, model: str) -> int:
+    """The model's input window: the provider's own sizing (a local runtime knows what it pinned), else the catalog,
+    else a guess from the name."""
+    from . import catalog
+
+    own = getattr(provider, "context_window", None)
+    return own(model) if callable(own) else (catalog.context_window(model) or catalog.window_from_name(model))
+
+
+
+# A provider can be a router (cardShuffle) that hands each turn to a real model. These answer the same questions for
+# either kind, so a session never needs to know which it has.
+def served_by(provider: object) -> str | None:
+    """The real `provider:model` a router dealt the latest turn to; None for a plain provider (it served itself)."""
+    return getattr(provider, "dealt", None)
+
+
+def begin_turn(provider: object, **hooks: object) -> None:
+    """Let a router set up for a turn (permission mode, deal callback, council reader); a plain provider has nothing to do."""
+    setup = getattr(provider, "begin_turn", None)
+    if callable(setup):
+        setup(**hooks)
+
+
+def turn_spend(provider: object, ref: str, usage: dict | None) -> list[tuple[str, dict]]:
+    """(provider:model, usage) for each real model that served the turn."""
+    take = getattr(provider, "take_spent", None)
+    return take() if callable(take) else ([(ref, usage)] if usage else [])
+
+
+def retry_elsewhere(provider: object, reason: str) -> bool:
+    """Whether a router handed the turn to another model after `reason`; a plain provider never does."""
+    redeal = getattr(provider, "redeal", None)
+    return bool(callable(redeal) and redeal(reason))
 
 @dataclass(slots=True)
 class ProviderResponse:
@@ -53,41 +93,11 @@ class ProviderError(RuntimeError):
         self.retry_after = retry_after   # seconds the provider asked us to wait, when it said
 
 
-# --- Abortable connections -------------------------------------------------
-# A flag can't wake a thread blocked in a C-level socket read; the socket has to be
-# closed. Every live response registers here so abort_all_connections() can close them
-# all at once. A close mid-read raises OSError/ValueError in the blocked thread, which the
-# helpers translate to _Cancelled when the caller's cancel Event is set.
-_active_conns: set = set()
-_conns_lock = threading.Lock()
-
-
 class _Cancelled(Exception):
     """Raised by the HTTP helpers when their cancel Event is set, either before connecting or
-    because abort_all_connections() closed the socket mid-read. Not a ProviderError, so
+    because connections.abort_all_connections() closed the socket mid-read. Not a ProviderError, so
     stream_with_retry re-raises it immediately (never retries)."""
 
-
-def _register(resp) -> None:
-    with _conns_lock:
-        _active_conns.add(resp)
-
-
-def _unregister(resp) -> None:
-    with _conns_lock:
-        _active_conns.discard(resp)
-
-
-def abort_all_connections() -> None:
-    """Close every live HTTP response so any thread blocked reading one raises at once."""
-    with _conns_lock:
-        conns = list(_active_conns)
-        _active_conns.clear()
-    for resp in conns:
-        try:
-            resp.close()
-        except Exception:
-            pass
 
 
 class Provider(Protocol):
@@ -280,7 +290,7 @@ def post_json(url: str, payload: dict, headers: dict | None = None, timeout: int
         raise _Cancelled()
     resp = _open(_request(url, payload, headers, method), timeout, provider, cancel)
     _note_limits(resp, provider)
-    _register(resp)
+    connections.register(resp)
     try:
         with resp:
             return json.loads(resp.read())
@@ -289,7 +299,7 @@ def post_json(url: str, payload: dict, headers: dict | None = None, timeout: int
             raise _Cancelled() from e
         raise ProviderError(provider, f"read failed: {e}", retryable=True) from e
     finally:
-        _unregister(resp)
+        connections.unregister(resp)
 
 
 def post_stream(url: str, payload: dict, headers: dict | None = None, timeout: int | None = None,
@@ -302,7 +312,7 @@ def post_stream(url: str, payload: dict, headers: dict | None = None, timeout: i
     timeout = timeout or _stall_timeout(url)
     resp = _open(_request(url, payload, headers), timeout, provider, cancel)
     _note_limits(resp, provider)
-    _register(resp)
+    connections.register(resp)
     try:
         with resp:
             for raw in resp:
@@ -316,10 +326,26 @@ def post_stream(url: str, payload: dict, headers: dict | None = None, timeout: i
             raise _stalled(provider, timeout) from e
         raise ProviderError(provider, f"stream read failed: {e}", retryable=True) from e
     finally:
-        _unregister(resp)
+        connections.unregister(resp)
 
 
 MAX_RETRY_AFTER_WAIT_S = 30.0   # longer asks bench the card instead of stalling the turn
+
+
+@dataclass(slots=True)
+class TextReply:
+    text: str
+    usage: dict | None
+
+
+def complete_text(provider, model: str, system: str, prompt: "str | Conversation", *, cancel=None,
+                  retries: int = 3) -> TextReply:
+    """One request with no tools and reasoning off, traced: the reply's text, after any reasoning a model wrote first
+    (`</think>`), and its usage. `prompt` is the user's message, or a whole request already in canonical form."""
+    request = prompt if isinstance(prompt, Conversation) else Conversation(system_prompt=system, messages=[Message.user(prompt)])
+    response = trace.model_call(provider, model, request, lambda: stream_with_retry(
+        provider, request, model, (), lambda _chunk: None, retries=retries, cancel=cancel, reasoning="off"))
+    return TextReply((response.message.text or "").rsplit("</think>", 1)[-1].strip(), response.usage)
 
 
 def stream_with_retry(provider, conversation, model, tools, on_text, *, retries=3, cancel=None,
@@ -350,7 +376,6 @@ def stream_with_retry(provider, conversation, model, tools, on_text, *, retries=
                 # Part of the answer already printed: a retry would print it again from the top (Kilo never
                 # retries past output). Hand back what arrived as an interrupted reply; the agent loop asks the
                 # model to continue it, as it does for a reply cut off at the output limit.
-                from ..agent import trace   # lazy: the agent package imports this module
                 trace.record("stream_interrupted", provider=e.provider, chars=len("".join(shown)), error=str(e)[:200])
                 return ProviderResponse(message=Message.assistant(text="".join(shown)), raw={}, done_reason="interrupted")
             if e.retry_after and e.retry_after > MAX_RETRY_AFTER_WAIT_S:
