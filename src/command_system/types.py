@@ -146,8 +146,3 @@ def get_command_name(cmd: CommandBase) -> str:
     """Get the user-facing name of a command."""
     return cmd.user_facing_name()
 
-
-def is_command_enabled(cmd: CommandBase) -> bool:
-    """Check if a command is enabled."""
-    return cmd.is_enabled()
-

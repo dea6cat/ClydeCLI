@@ -18,7 +18,6 @@ from .base import _USER_AGENT
 from .fit import Offer, pick
 
 SEARCH_URL = "https://ollama.com/search?c=tools"
-CODING_URL = "https://ollama.com/search?q=coding&c=tools"
 _MAX_BYTES = 5_000_000
 
 _HX_HEADERS = {

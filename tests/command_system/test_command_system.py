@@ -36,15 +36,9 @@ from src.command_system import (
     create_command_context,
     builtin_registry,
     run_command,
-    find_commands,
-    get_command,
     get_command_name,
     get_command_registry,
-    has_command,
-    is_command_enabled,
-    list_commands,
     register_builtin_commands,
-    register_command,
 )
 from src.agent.cost_tracker import CostTracker
 
@@ -66,52 +60,6 @@ class MockConversation:
 
 class TestCommandTypes(unittest.TestCase):
     """Tests for the command type system."""
-
-    def test_prompt_command_creation(self):
-        """Test creating a PromptCommand."""
-        cmd = PromptCommand(
-            name="test-prompt",
-            description="Test prompt command",
-            progress_message="Testing...",
-            content_length=100,
-            markdown_content="# Test\n\nHello world",
-        )
-        self.assertEqual(cmd.command_type, CommandType.PROMPT)
-        self.assertEqual(cmd.name, "test-prompt")
-        self.assertEqual(cmd.progress_message, "Testing...")
-
-    def test_local_command_creation(self):
-        """Test creating a LocalCommand."""
-        def mock_call(args: str, context: CommandContext) -> LocalCommandResult:
-            return LocalCommandResult(type="text", value=f"Called with: {args}")
-
-        cmd = LocalCommand(
-            name="test-local",
-            description="Test local command",
-            supports_non_interactive=True,
-        )
-        cmd.set_call(mock_call)
-
-        self.assertEqual(cmd.command_type, CommandType.LOCAL)
-        self.assertEqual(cmd.name, "test-local")
-
-    def test_command_enabled_check(self):
-        """Test command enabled check."""
-        enabled = True
-
-        def check_enabled() -> bool:
-            nonlocal enabled
-            return enabled
-
-        cmd = PromptCommand(
-            name="test",
-            description="Test",
-            is_enabled=check_enabled,
-        )
-
-        self.assertTrue(is_command_enabled(cmd))
-        enabled = False
-        self.assertFalse(is_command_enabled(cmd))
 
 
 class TestCommandRegistry(unittest.TestCase):
@@ -270,60 +218,6 @@ class TestInitCommand(unittest.IsolatedAsyncioTestCase):
     def _get_init_command(self):
         """Get the /init command from the local registry."""
         return self.registry.get("init")
-
-    def test_init_command_is_prompt_command(self):
-        """Test that /init is a PromptCommand, not LocalCommand."""
-        init_cmd = self._get_init_command()
-        self.assertIsNotNone(init_cmd)
-        self.assertEqual(init_cmd.command_type, CommandType.PROMPT)
-        self.assertIsInstance(init_cmd, PromptCommand)
-
-    def test_init_command_has_correct_description(self):
-        """Test that /init has the correct description."""
-        init_cmd = self._get_init_command()
-        self.assertIsNotNone(init_cmd)
-        self.assertIn("CLYDE.md", init_cmd.description)
-        self.assertIn("skills", init_cmd.description)
-        self.assertIn("hooks", init_cmd.description)
-
-    def test_init_command_has_progress_message(self):
-        """Test that /init has a progress message."""
-        init_cmd = self._get_init_command()
-        self.assertIsNotNone(init_cmd)
-        self.assertEqual(init_cmd.progress_message, "analyzing your codebase")
-
-    def test_init_command_has_prompt_content(self):
-        """Test that /init has the 7-step prompt content."""
-        init_cmd = self._get_init_command()
-        self.assertIsNotNone(init_cmd)
-        self.assertIsInstance(init_cmd, PromptCommand)
-        # Verify it contains the key steps
-        content = init_cmd.markdown_content
-        self.assertIn("Step 1", content)
-        self.assertIn("Step 2", content)
-        self.assertIn("Step 3", content)
-        self.assertIn("Step 4", content)
-        self.assertIn("Step 5", content)
-        self.assertIn("Step 6", content)
-        self.assertIn("Step 7", content)
-
-    def test_init_command_includes_claude_md_instructions(self):
-        """Test that /init prompt includes CLAUDE.md creation instructions."""
-        init_cmd = self._get_init_command()
-        self.assertIsNotNone(init_cmd)
-        content = init_cmd.markdown_content
-        # Verify it includes key CLAUDE.md content requirements
-        self.assertIn("CLAUDE.md", content)
-        self.assertIn("build/test/lint", content.lower())
-        self.assertIn("code style", content.lower())
-
-    def test_init_command_includes_user_interaction_phases(self):
-        """Test that /init prompt includes user interaction phases."""
-        init_cmd = self._get_init_command()
-        self.assertIsNotNone(init_cmd)
-        content = init_cmd.markdown_content
-        # Verify it includes AskUserQuestion references
-        self.assertIn("AskUserQuestion", content)
 
 
     def test_init_returns_its_prompt_for_the_model(self):

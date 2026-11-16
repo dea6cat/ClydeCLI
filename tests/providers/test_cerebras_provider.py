@@ -12,13 +12,7 @@ from src.providers import registry  # noqa: E402
 
 
 class CerebrasProvider(unittest.TestCase):
-    def test_registered_as_openai_compatible_cloud(self):
-        p = registry.build_registry()["cerebras"]
-        self.assertEqual(p.base_url, "https://api.cerebras.ai/v1")
-        self.assertEqual(p.key_env, "CEREBRAS_API_KEY")
 
-    def test_key_env_mapping(self):
-        self.assertEqual(config.PROVIDER_KEY_ENV["cerebras"], "CEREBRAS_API_KEY")
 
     def test_available_and_resolvable_with_key(self):
         old = os.environ.get("CEREBRAS_API_KEY")

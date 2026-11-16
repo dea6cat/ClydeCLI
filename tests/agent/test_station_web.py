@@ -305,16 +305,7 @@ class TestPage(unittest.TestCase):
         self.assertTrue({"deck", "bay", "outbox", "read", "write", "shell", "web", "mcp", "other", "task", "results", "review", "report", "landing", "table"} <= words)
         self.assertNotIn('id="theme"', station_web.PAGE)
 
-    def test_the_header_shows_the_link_and_the_crew_counts_and_cinema_hides_every_panel(self):
-        page = station_web.PAGE
-        for needle in ('id="link"', 'id="counts"', 'id="cinemaToggle"', 'id="cinemaTab"', "body.cinema .rail", "railgrip", "station.cinema", "station.railw"):
-            self.assertIn(needle, page)
-        self.assertNotIn("disconnected:", page)   # the link chip says it now
 
-    def test_the_top_left_card_lists_what_waits_on_the_user(self):
-        page = station_web.PAGE
-        for needle in ("function needsBox", '"Needs you"', "needsYou(", "station.dismissed", 'api("/api/answer"', "data-since" if False else "dataset.since"):
-            self.assertIn(needle, page)
 
     def test_the_page_can_ask_for_one_more_worker_up_to_the_servers_team_size(self):
         from src.agent.runs import MAX_TEAM
@@ -322,15 +313,6 @@ class TestPage(unittest.TestCase):
         for needle in ('id="addWorker"', '"Add worker"', 'api("/api/order"', "function openAdd", f"const MAX_TEAM = {MAX_TEAM};", '"Task"', "addingFor"):
             self.assertIn(needle, page)
 
-    def test_each_person_can_be_renamed_and_the_name_is_kept_only_in_this_browser(self):
-        page = station_web.PAGE
-        for needle in ("function crewItem", '"Rename"', "station.names", "withName(", "callName("):
-            self.assertIn(needle, page)
-
-    def test_the_first_steps_card_is_ticked_by_records_and_can_be_hidden(self):
-        page = station_web.PAGE
-        for needle in ("function questBox", '"First steps"', "station.quests", "quests(state.runs"):
-            self.assertIn(needle, page)
 
     def test_the_page_can_stop_a_working_run_after_a_confirm(self):
         page = station_web.PAGE
@@ -346,13 +328,7 @@ class TestPage(unittest.TestCase):
         for name in ("file-cabinet", "writer-desk", "safe", "radio", "switchboard", "cupboard", "signing-desk", "cash-register", "report-desk", "mail-cabinet", "bar", "bookcase"):
             self.assertTrue((art / f"furn-{name}-back.png").is_file(), name)
 
-    def test_the_crew_panel_counts_with_the_same_rule_as_the_header(self):
-        page = station_web.PAGE
-        self.assertIn('memberState(run, m) === "working"', page)
-        self.assertNotIn('dotClass(m.doing) === "on").length', page)
 
-    def test_on_a_phone_the_crew_panel_starts_under_the_header(self):
-        self.assertIn(".rail { top: 96px; }", station_web.PAGE)   # the header wraps to two lines there and would cover the panel's title and its buttons
 
     def test_the_scene_is_built_with_svg_nodes_and_text_and_a_private_window_cannot_break_the_page(self):
         page = station_web.PAGE

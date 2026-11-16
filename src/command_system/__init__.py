@@ -25,12 +25,7 @@ from .engine import (
 )
 from .registry import (
     CommandRegistry,
-    find_commands,
-    get_command,
     get_command_registry,
-    has_command,
-    list_commands,
-    register_command,
 )
 from .types import (
     Command,
@@ -40,7 +35,6 @@ from .types import (
     LocalCommandResult,
     PromptCommand,
     get_command_name,
-    is_command_enabled,
 )
 
 __all__ = [
@@ -52,16 +46,10 @@ __all__ = [
     "LocalCommand",
     "LocalCommandResult",
     "get_command_name",
-    "is_command_enabled",
     # Argument substitution
     # Registry
     "CommandRegistry",
     "get_command_registry",
-    "register_command",
-    "get_command",
-    "has_command",
-    "list_commands",
-    "find_commands",
     # Engine
     "CommandContext",
     "CommandResult",
