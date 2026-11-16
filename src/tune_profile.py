@@ -9,9 +9,6 @@ from __future__ import annotations
 import json
 from dataclasses import asdict, dataclass
 
-from rich.console import Console
-from rich.prompt import IntPrompt, Prompt
-
 from src.config import clyde_home
 
 USES = {
@@ -93,23 +90,3 @@ def save_serve_env(env: dict[str, str]) -> None:
     _write({"serve_env": env})
 
 
-def _numbers(answer: str, limit: int) -> list[int]:
-    return sorted({int(t) for t in answer.replace(",", " ").split() if t.isdigit() and 1 <= int(t) <= limit})
-
-
-def ask(console: Console) -> Profile:
-    """Ask what the model is for. Several uses can be picked; an empty answer means chat."""
-    console.print("\n[bold]What will you mainly use your local models for?[/bold] (numbers, e.g. 1,3)")
-    keys = list(USES)
-    for i, key in enumerate(keys, 1):
-        console.print(f"  {i}. {USES[key]}")
-    picked = [keys[n - 1] for n in _numbers(Prompt.ask("Uses", default="2"), len(keys))] or ["chat"]
-    console.print("\n[bold]What matters most?[/bold]")
-    order = list(PRIORITIES)
-    for i, key in enumerate(order, 1):
-        console.print(f"  {i}. {PRIORITIES[key]}")
-    priority = order[IntPrompt.ask("Most important", choices=[str(i) for i in range(1, len(order) + 1)], default=1) - 1]
-    headroom = IntPrompt.ask("GB of RAM to keep free for your other apps", default=4)
-    profile = Profile(tuple(picked), priority, max(0, headroom))
-    save(profile)
-    return profile

@@ -24,16 +24,16 @@ from urllib.parse import urlparse
 from typing import Callable, ContextManager, Iterator
 
 from rich.console import Console
-from rich.prompt import Confirm
+from rich.prompt import Confirm, IntPrompt, Prompt
 from rich.table import Table
 
-from src.tuning import tune_profile
+from src import tune_profile
 from src.providers import model_eval
 from src.providers.base import ProviderError, get_json, post_json
 from src import config
 from src.providers import fit
 from src.providers.ollama import OllamaProvider, local
-from src.tuning.tune_profile import Profile
+from src.tune_profile import Profile
 
 FLASH = {"OLLAMA_FLASH_ATTENTION": "1"}
 # Bytes per cache element against f16, from ggml's block layouts: q8_0 is 8.5 bits, q4_0 4.5 bits.
@@ -450,7 +450,7 @@ def run(console: Console, model: str | None = None, ctx: int | None = None, reas
         console.print("[red]ollama is not installed or not on PATH.[/red]")
         return 1
     try:
-        profile = (None if reask else tune_profile.load()) or tune_profile.ask(console)
+        profile = (None if reask else tune_profile.load()) or ask_profile(console)
     except (EOFError, KeyboardInterrupt):
         console.print("[red]clyde tune asks what you use the model for; run it in a terminal.[/red]")
         return 1
@@ -528,3 +528,24 @@ def offer(console: Console, model: str | None = None, assume_yes: bool = False) 
         run(console, model=model)
     else:
         console.print("• Run [bold]clyde tune[/bold] any time to tune it.")
+
+def _numbers(answer: str, limit: int) -> list[int]:
+    return sorted({int(t) for t in answer.replace(",", " ").split() if t.isdigit() and 1 <= int(t) <= limit})
+
+
+def ask_profile(console: Console) -> tune_profile.Profile:
+    """Ask what the model is for. Several uses can be picked; an empty answer means chat."""
+    console.print("\n[bold]What will you mainly use your local models for?[/bold] (numbers, e.g. 1,3)")
+    keys = list(tune_profile.USES)
+    for i, key in enumerate(keys, 1):
+        console.print(f"  {i}. {tune_profile.USES[key]}")
+    picked = [keys[n - 1] for n in _numbers(Prompt.ask("Uses", default="2"), len(keys))] or ["chat"]
+    console.print("\n[bold]What matters most?[/bold]")
+    order = list(tune_profile.PRIORITIES)
+    for i, key in enumerate(order, 1):
+        console.print(f"  {i}. {tune_profile.PRIORITIES[key]}")
+    priority = order[IntPrompt.ask("Most important", choices=[str(i) for i in range(1, len(order) + 1)], default=1) - 1]
+    headroom = IntPrompt.ask("GB of RAM to keep free for your other apps", default=4)
+    profile = tune_profile.Profile(tuple(picked), priority, max(0, headroom))
+    tune_profile.save(profile)
+    return profile

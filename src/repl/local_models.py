@@ -22,7 +22,8 @@ from rich.prompt import Confirm
 from rich.table import Table
 from rich.text import Text
 
-from src.tuning import tune, tune_profile
+from src import tune_profile
+from src.tuning import tune
 from src.ui.picker import Choice, pick
 from src.providers import best_fit, discover, fit, huggingface, mlx, omlx
 from src.providers.base import ProviderError, post_stream
