@@ -31,7 +31,7 @@ from src.providers.base import complete_text
 from src.security.git_safe import git_cmd, git_env
 from src.tool_system.context import ToolContext
 from src.tool_system.permissions import ToolPermissionContext
-from src.tool_system.tools.agent import offered_tools, run_agent
+from src.agent.subagent import offered_tools, run_agent
 
 _PATCH_CHARS = 20_000      # of one worker's patch shown to the advisor
 _SUMMARY_CHARS = 6_000     # of one worker's final answer shown to the advisor and the master

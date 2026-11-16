@@ -110,7 +110,7 @@ from src.repl.images import IMAGE_TYPES, MAX_IMAGE_BYTES, clipboard_image, image
 from src.tool_system.permission_rules import load_rules, save_allow_rule
 from src.tool_system.tools.code_map import start_background_refresh
 from src.tool_system.mcp_client import connect_servers, load_servers, merge_servers, register_mcp_tools
-from src.tool_system.defaults import build_default_registry
+from src.agent.subagent import build_tool_registry
 from src.tool_system.protocol import ToolCall
 from src.tool_system.tools.cron import pop_due_jobs
 from src.agent.agent_loop import ToolEvent, run_agent_loop, summarize_tool_result, summarize_tool_use
@@ -405,7 +405,7 @@ class ClydeREPL:
         self.checkpoints = Checkpoints(self.session.session_id)
         trace.start(self.session.session_id, **self._trace_options)
 
-        self.tool_registry = build_default_registry()
+        self.tool_registry = build_tool_registry()
         hooks, servers = load_hooks(), load_servers()
         servers = merge_servers(servers, self._project_mcp_servers(Path.cwd(), set(servers)))   # yours first: they win a clash
         self.plugins = apply_plugins(self.tool_registry, hooks, servers)
@@ -600,10 +600,10 @@ class ClydeREPL:
     def _investigate(self, provider: Any, model: str, cancel: threading.Event) -> ProviderResponse:
         """A council member's answer: it reads the repo on a copy of this conversation in plan mode (read-only tools, nobody to
         answer a permission prompt, so anything that would ask is denied) and its final text is the answer."""
-        from src.tool_system.tools.agent import _NO_NESTING
+        from src.agent.subagent import NO_NESTING
         context = dataclasses.replace(self.tool_context, plan_mode=True, read_file_fingerprints={}, todos=[],
                                       permission_handler=lambda *a: (False, False), ask_user=None)
-        tools = ToolRegistry([self.tool_registry.get(s.name) for s in self.tool_registry.list_specs() if s.name.lower() not in _NO_NESTING])
+        tools = ToolRegistry([self.tool_registry.get(s.name) for s in self.tool_registry.list_specs() if s.name.lower() not in NO_NESTING])
         result = run_agent_loop(copy.deepcopy(self.session.conversation), provider, model, tools, context,
                                 max_turns=_COUNCIL_MAX_TURNS, cancel=cancel, reasoning=self.reasoning, system_extra=self.system_extra)
         if result.ran_out:

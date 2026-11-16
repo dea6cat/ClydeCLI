@@ -11,7 +11,7 @@ from unittest.mock import patch
 from src.agent.agent_loop import run_agent_loop
 from src.conversation import Conversation
 from src.tool_system.context import ToolContext
-from src.tool_system.defaults import build_default_registry
+from src.agent.subagent import build_tool_registry as build_default_registry
 from src.tool_system.deferral import CORE_TOOLS, VERIFY_PROMPT, advertised, hint, index_prompt, is_deferred
 from src.tool_system.protocol import ToolCall
 from src.tool_system.registry import ToolSpec

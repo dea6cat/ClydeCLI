@@ -33,8 +33,6 @@ from .tools import (
     SkillTool,
     SleepTool,
     StructuredOutputTool,
-    TeamCreateTool,
-    TeamDeleteTool,
     TaskCreateTool,
     TaskGetTool,
     TaskListTool,
@@ -45,7 +43,6 @@ from .tools import (
     WebFetchTool,
     WebSearchTool,
 )
-from .tools.agent import AgentTool
 from .tools.tool_search import ToolSearchTool
 
 
@@ -77,7 +74,6 @@ def build_default_registry(*, include_user_tools: bool = True) -> ToolRegistry:
             TaskListTool(),
             TaskUpdateTool(),
             TaskOutputTool(),
-            TeamDeleteTool(),
             EnterPlanModeTool(),
             ExitPlanModeTool(),
             EnterWorktreeTool(),
@@ -92,8 +88,6 @@ def build_default_registry(*, include_user_tools: bool = True) -> ToolRegistry:
             RememberTool(),
         ]
     )
-    registry.register(AgentTool(registry))
-    registry.register(TeamCreateTool(registry))
     registry.register(ToolSearchTool(registry))
 
     if include_user_tools:

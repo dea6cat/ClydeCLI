@@ -16,7 +16,8 @@ from src.conversation import Conversation
 from src.agent.agent_loop import run_agent_loop
 from src.tool_system.context import ToolContext
 from src.tool_system.errors import ToolExecutionError, ToolInputError
-from src.tool_system.defaults import build_default_registry
+from src.agent.subagent import build_tool_registry as build_default_registry
+from src.agent.team import TeamCreateTool, TeamDeleteTool
 from src.tool_system.protocol import ToolCall
 from src.tool_system.registry import ToolRegistry
 from src.tool_system.tools import (
@@ -48,8 +49,6 @@ from src.tool_system.tools import (
     ToolSearchTool,
     WebFetchTool,
     WebSearchTool,
-    TeamCreateTool,
-    TeamDeleteTool,
     EnterWorktreeTool,
     ExitWorktreeTool,
     EnterPlanModeTool,

@@ -289,7 +289,7 @@ class EndToEnd(unittest.TestCase):
 
     def test_a_worker_never_has_more_than_its_lead(self):
         from src.tool_system.permissions import ToolPermissionContext
-        from src.tool_system.tools.agent import offered_tools
+        from src.agent.subagent import offered_tools
         from src.agent.agent_types import GENERAL, AgentType
         parent = ToolContext(workspace_root=self.repo, permission_context=ToolPermissionContext.from_iterables(["Bash"], ["mcp__evil"], workspace_root=self.repo),
                              permission_rules={"deny": ["WebFetch"], "ask": [], "allow": []})
