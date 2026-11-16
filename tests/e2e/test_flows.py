@@ -177,12 +177,13 @@ class TestF02Ask(Case):
         self.assertIn("héllo wörld 🎉 日本語", server.user_texts()[-1])
 
     def test_F02_E3_a_very_long_paste_is_sent_whole(self):
-        server = self.model(say("ok"))
+        server = self.model(say("got the long paste"))
         t = self.app(server)
         long = "word " * 4000
         t.paste(long)
         t.send(ENTER)
-        t.expect("ok", 60)
+        t.expect("got the long paste", 60)   # "ok" alone also matched other text on screen before the request went out
+        t.turn_done()
         self.assertIn(long.strip(), server.user_texts()[-1])
 
     def test_F02_E7_a_paste_inside_typed_text_is_expanded_before_it_is_sent(self):
@@ -215,7 +216,8 @@ class TestF02Ask(Case):
 
     def test_F02_E9_a_reply_with_no_answer_text_says_so_instead_of_going_quiet(self):
         # A reasoning model can spend its whole turn thinking and send no answer; the screen used to show only the footer.
-        t = self.app(self.model(say("", thinking="pondering the poem at length")))
+        # Every try is empty: the first reply and each of the agent loop's three "answer now" nudges.
+        t = self.app(self.model(*[say("", thinking="pondering the poem at length")] * 4))
         t.send_line("make this rhyme")
         t.expect("without any answer text", 30)
         t.turn_done()
@@ -424,7 +426,7 @@ class TestF04Plan(Case):
         t.turn_done()
         self.assertNotIn("About the user", server.system_prompt(0))
         self.assertIn("About the user:\n- prefers short answers", server.system_prompt(2))
-        self.assertEqual((t.home / ".clyde" / "memory.md").read_text(), "- prefers short answers\n")
+        self.assertRegex((t.home / ".clyde" / "memory.md").read_text(), r"\A- prefers short answers <!--\d{4}-\d{2}-\d{2}-->\n\Z")   # dated: /memory stale
 
     def test_F04_E1_shift_tab_cycles_through_all_three_modes_and_back_to_hold(self):
         # The status line is redrawn cell by cell, so the modes are checked by what they do to a doc write:
@@ -712,7 +714,8 @@ class TestF12Model(Case):
         t.expect("dealt fake:m", 30)                        # the deal line
         t.turn_done()
         self.assertEqual(server.requests[0]["model"], "m")
-        self.assertIn("cardShuffle:house → fake:m", t.tail(600))
+        # The corner is redrawn cell by cell, sometimes with a color change between the two names: compare the text only.
+        self.assertIn("cardShuffle:house → fake:m", re.sub(r"\x1b\[[0-9;]*m", "", t.tail(600)))
 
     def test_F12_E5_a_narrow_terminal_keeps_the_dealt_model_readable(self):
         server = self.model(say("ok"))

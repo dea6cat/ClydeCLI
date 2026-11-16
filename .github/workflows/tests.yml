@@ -23,3 +23,21 @@ jobs:
           pip install .
       - name: Run the tests
         run: python -m unittest discover -s tests -t . -q
+
+  e2e:
+    # The user flows in a real terminal (tests/e2e): each test starts Clyde on a pty against a scripted local model server.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install .
+      - name: Run the end-to-end flows
+        env:
+          CLYDE_E2E: "1"
+        run: python -m unittest tests.e2e.test_flows -v
