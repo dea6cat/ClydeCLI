@@ -44,6 +44,32 @@ def context_window(provider: object, model: str) -> int:
     return own(model) if callable(own) else (catalog.context_window(model) or catalog.window_from_name(model))
 
 
+
+# A provider can be a router (cardShuffle) that hands each turn to a real model. These answer the same questions for
+# either kind, so a session never needs to know which it has.
+def served_by(provider: object) -> str | None:
+    """The real `provider:model` a router dealt the latest turn to; None for a plain provider (it served itself)."""
+    return getattr(provider, "dealt", None)
+
+
+def begin_turn(provider: object, **hooks: object) -> None:
+    """Let a router set up for a turn (permission mode, deal callback, council reader); a plain provider has nothing to do."""
+    setup = getattr(provider, "begin_turn", None)
+    if callable(setup):
+        setup(**hooks)
+
+
+def turn_spend(provider: object, ref: str, usage: dict | None) -> list[tuple[str, dict]]:
+    """(provider:model, usage) for each real model that served the turn."""
+    take = getattr(provider, "take_spent", None)
+    return take() if callable(take) else ([(ref, usage)] if usage else [])
+
+
+def retry_elsewhere(provider: object, reason: str) -> bool:
+    """Whether a router handed the turn to another model after `reason`; a plain provider never does."""
+    redeal = getattr(provider, "redeal", None)
+    return bool(callable(redeal) and redeal(reason))
+
 @dataclass(slots=True)
 class ProviderResponse:
     message: Message

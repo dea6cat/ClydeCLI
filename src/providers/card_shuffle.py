@@ -277,6 +277,18 @@ class CardShuffle:
         trace.record("laya", question="stuck", noul=round(p, 2), acted=p >= STUCK_AT, model=self.dealt)
         return p
 
+    def begin_turn(self, mode: str, on_deal: Callable[[str, str], None] | None,
+                   investigate: Callable[[object, str, threading.Event], ProviderResponse] | None) -> None:
+        """What the session hands the dealer before each turn: the permission mode, who to tell about a deal, and how
+        a council member reads the project."""
+        self.mode, self.on_deal, self.investigate = mode, on_deal, investigate
+        laya_client.warm()
+
+    def take_spent(self) -> list[tuple[str, dict]]:
+        """(provider:model, usage) for every real model this turn used, cleared as it is read."""
+        spent, self.spent = self.spent, []
+        return spent
+
     def redeal(self, why: str, bench_s: float = 0.0, whole_provider: bool = False) -> bool:
         """Burn the dealt card and deal the next one; False when the deck is spent.
         bench_s keeps the card out of later turns' deals for that long (it is still burned for this turn);

@@ -92,7 +92,8 @@ from src.providers import build_registry, keys, model_ref, pick_default_model, r
 from src.providers import catalog
 from src.providers.model_eval import hidden_refs
 from src.system.vitals import line, sample
-from src.providers.base import ProviderError, ProviderResponse, context_window, is_auth_error
+from src.providers.base import (ProviderError, ProviderResponse, begin_turn, context_window, is_auth_error, retry_elsewhere,
+                                served_by, turn_spend)
 from src.providers.types import Message
 from src.providers import laya_client
 from src.providers.card_shuffle import CardShuffle, record_vote
@@ -117,12 +118,10 @@ from src.agent.agent_loop import ToolEvent, run_agent_loop, summarize_tool_resul
 
 # New command system imports
 from src.command_system import (
-    CommandRegistry,
     CommandResult,
     create_command_context,
     builtin_registry,
     run_command,
-    register_builtin_commands,
 )
 from src.agent.cost_tracker import CostTracker
 from src.tool_system import plan_file as plans
@@ -571,8 +570,6 @@ class ClydeREPL:
 
     def _reads_images(self) -> bool | None:
         """Whether the current model takes images: Ollama asks the server, others the catalog; None when unknown."""
-        if isinstance(self.provider, CardShuffle):
-            return None
         ask = getattr(self.provider, "reads_images", None)
         if callable(ask):
             try:
@@ -685,7 +682,7 @@ class ClydeREPL:
     def _model_parts(self) -> tuple[str, str]:
         """The model in use for the corner of the status line: (`provider:model`, `→ dealt` when it is
         cardShuffle, which says which real model got the latest turn)."""
-        dealt = self.provider.dealt if isinstance(self.provider, CardShuffle) else None
+        dealt = served_by(self.provider)
         return model_ref(self.provider, self.model), f" → {dealt}" if dealt else ""
 
     def _mode_line(self):  # type: ignore[no-untyped-def]
@@ -698,7 +695,7 @@ class ClydeREPL:
         if room - len(ref + dealt) > len(pulse) + 2:   # only when the model keeps its full name
             room -= len(pulse) + 1
             left = [*left, ("", " "), ("class:vitals-strained" if vitals.strained else "class:vitals", pulse)]
-        if dealt and len(ref + dealt) > room and isinstance(self.provider, CardShuffle):
+        if dealt and len(ref + dealt) > room:
             ref = self.model   # too long: the tier alone ("high-roller") says as much as "cardShuffle:high-roller"
         shown = (ref + dealt)[-room:] if room > 8 else ""
         if not shown:
@@ -1182,7 +1179,7 @@ class ClydeREPL:
             self.console.print()
         updates.start_background_check()     # a thread: the answer shows on the next start
         start_background_refresh(self.tool_context.workspace_root)
-        if isinstance(self.provider, CardShuffle):
+        if self.provider_name == CardShuffle.name:
             laya_client.warm()   # ~17 s cold load in the background, ready before the first turn needs it
         if self._continue_last:
             self.resume_session(latest=True)
@@ -2099,9 +2096,7 @@ class ClydeREPL:
                                     f"{model_ref(self.provider, self.model)} can't read images.", style=_CARD_DIM))
             images = []
         self.session.conversation.add_user_message(user_input, images)
-        if isinstance(self.provider, CardShuffle):
-            self.provider.mode, self.provider.on_deal, self.provider.investigate = self.mode, self._show_deal, self._investigate
-            laya_client.warm()
+        begin_turn(self.provider, mode=self.mode, on_deal=self._show_deal, investigate=self._investigate)
 
         turn_started = time.monotonic()
         word, past = random.choice(_THINKING_WORDS)
@@ -2230,31 +2225,18 @@ class ClydeREPL:
             with self._current_status, self._ticking(self._current_status, word, turn_started, lambda: not stream_started):
                 result = play()
                 # cardShuffle: a model stuck in its tool loop hands the turn to the next card.
-                while (result.ran_out and isinstance(self.provider, CardShuffle)
-                       and self.provider.redeal(f"{self.provider.dealt} hit max tool turns")):
+                while result.ran_out and retry_elsewhere(self.provider, f"{served_by(self.provider)} hit max tool turns"):
                     result = play()
             self._current_status = None
             self.last_result = result
             trace.record("turn_end", ran_out=result.ran_out, rounds=result.num_turns,
-                         model=self.provider.dealt if isinstance(self.provider, CardShuffle) else model_ref(self.provider, self.model))
+                         model=served_by(self.provider) or model_ref(self.provider, self.model))
 
-            # Record usage to cost tracker; cardShuffle reports each real model it dealt.
-            if isinstance(self.provider, CardShuffle):
-                for ref, usage in self.provider.spent:
-                    provider_name, _, model = ref.partition(":")
+            # Spend per real model that served the turn (a router reports each one it dealt).
+            for ref, usage in turn_spend(self.provider, model_ref(self.provider, self.model), result.usage):
+                provider_name, _, model = ref.partition(":")
+                if usage.get("input_tokens", 0) or usage.get("output_tokens", 0):
                     self.cost_tracker.record_usage(provider_name, model, usage, label=f"turn_{result.num_turns}_tokens")
-                self.provider.spent.clear()
-            elif result.usage:
-                input_tokens = result.usage.get("input_tokens", 0)
-                output_tokens = result.usage.get("output_tokens", 0)
-                if input_tokens > 0 or output_tokens > 0:
-                    self.cost_tracker.record_usage(
-                        self.provider_name, self.model, result.usage,
-                        label=f"turn_{result.num_turns}_tokens",
-                    )
-                    # Also update command context for new commands
-                    if hasattr(self, 'command_context') and self.command_context:
-                        self.command_context.cost_tracker = self.cost_tracker
 
             if self.headless:
                 pass   # `clyde -p` prints the answer itself, on stdout
@@ -2270,7 +2252,7 @@ class ClydeREPL:
                 else:
                     self.console.print(Markdown(result.response_text))
                     self.console.print()
-            dealt = self.provider.dealt if isinstance(self.provider, CardShuffle) else None
+            dealt = served_by(self.provider)
             self._turn_footer(past, turn_started, result.usage, dealt or model_ref(self.provider, self.model))
             self._refine_after_turn()
 
