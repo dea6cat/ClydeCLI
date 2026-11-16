@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Looking leaves no trace: reading the settings created `~/.clyde/config.json` full of defaults when there was none, so even a cancelled `clyde login` left one behind. The file now appears with the first setting you save.
 - A team worker that gave up (repeating a failing call, stalling, or out of budget) is reported as not finished; the station showed it as done.
 - A slash command that fails says why. It was run a second time through another path with its error thrown away, and then reported as "Unknown command". A failed `/compact` no longer clears the conversation: it said so and kept nothing.
 - `/harness list` shows your MCP servers. It read `~/.clyde/mcp_servers.json`, a file Clyde never writes, instead of `mcpServers` in your settings.
