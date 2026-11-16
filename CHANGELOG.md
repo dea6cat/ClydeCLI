@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-11-16
+
 ### Changed
 
 - `clyde -p`, editors (`clyde --acp`) and Bonnie run on a session engine of their own (`src/agent/engine.py`) instead of a hidden terminal REPL; the terminal extends that engine. What you may notice: they no longer print the terminal's turn footer to stderr, and Auto-refine "before compaction" now runs only in the terminal, as "every N turns" already did.
@@ -886,6 +888,7 @@ The focus was on building a solid foundation with clean architecture, comprehens
 
 ---
 
+[0.10.0]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.10.0
 [0.9.0]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.9.0
 [0.8.0]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.8.0
 [0.7.0]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.7.0
