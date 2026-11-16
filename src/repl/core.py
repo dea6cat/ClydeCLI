@@ -12,10 +12,6 @@ try:
     from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
     from prompt_toolkit.styles import Style
     from prompt_toolkit.completion import Completer, Completion, WordCompleter
-    try:
-        from prompt_toolkit.completion import FuzzyCompleter
-    except Exception:  # pragma: no cover
-        FuzzyCompleter = None  # type: ignore
     from prompt_toolkit.key_binding import KeyBindings
 except ModuleNotFoundError:  # pragma: no cover
     class FileHistory:  # type: ignore
@@ -34,7 +30,6 @@ except ModuleNotFoundError:  # pragma: no cover
     class WordCompleter:  # type: ignore
         def __init__(self, *args, **kwargs):
             pass
-    FuzzyCompleter = None  # type: ignore
     Completer = Completion = None  # type: ignore
 
     class KeyBindings:  # type: ignore
@@ -49,13 +44,10 @@ except ModuleNotFoundError:  # pragma: no cover
             raise EOFError()
 
 try:
-    from rich.console import Console, Group
-    from rich.align import Align
-    from rich.panel import Panel
+    from rich.console import Console
     from rich.table import Table
     from rich.text import Text
     from rich.markdown import Markdown
-    from rich.columns import Columns
 except ModuleNotFoundError:  # pragma: no cover
     class Console:  # type: ignore
         def print(self, *args, **kwargs):
@@ -135,7 +127,6 @@ from src.command_system import (
 from src.agent.cost_tracker import CostTracker
 from src.tool_system import plan_file as plans
 from src.tool_system.plan_file import plan_file_for
-from src.agent.history import HistoryLog
 
 # Pastes longer than this collapse to a [Pasted text #N +X lines] marker in the prompt.
 _PASTE_MAX_LINES = 2
@@ -936,14 +927,12 @@ class ClydeREPL:
 
         # Create cost tracker and history
         self.cost_tracker = CostTracker()
-        self.history_log = HistoryLog()
 
         # Create command context
         self.command_context = create_command_context(
             workspace_root=Path.cwd(),
             conversation=self.session.conversation,
             cost_tracker=self.cost_tracker,
-            history=self.history_log,
             provider=self.provider,
             model=self.model,
         )

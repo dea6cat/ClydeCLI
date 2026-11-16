@@ -34,13 +34,6 @@ from .registry import (
     list_commands,
     register_command,
 )
-from .skills_integration import (
-    get_skill_command,
-    load_and_register_skills,
-    load_skill_from_directory,
-    register_skill_as_command,
-    skill_to_prompt_command,
-)
 from .types import (
     Command,
     CommandAvailability,
@@ -94,9 +87,4 @@ __all__ = [
     "get_builtin_commands",
     "register_builtin_commands",
     # Skills integration
-    "skill_to_prompt_command",
-    "register_skill_as_command",
-    "load_and_register_skills",
-    "get_skill_command",
-    "load_skill_from_directory",
 ]

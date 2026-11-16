@@ -12,12 +12,10 @@ Tests cover:
 
 from __future__ import annotations
 
-import os
 import tempfile
 import unittest
 from dataclasses import dataclass
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 from src.command_system import (
     CLEAR_COMMAND,
@@ -54,7 +52,6 @@ from src.command_system import (
     substitute_arguments,
 )
 from src.agent.cost_tracker import CostTracker
-from src.agent.history import HistoryLog
 
 
 @dataclass
@@ -223,7 +220,7 @@ class TestBuiltinCommands(unittest.TestCase):
         self.workspace_root = Path(self.tmpdir.name).resolve()
         self.conversation = MockConversation()
         self.cost_tracker = CostTracker()
-        self.history = HistoryLog()
+        self.history = None
 
         self.context = create_command_context(
             workspace_root=self.workspace_root,
@@ -293,7 +290,7 @@ class TestCommandEngine(unittest.IsolatedAsyncioTestCase):
 
         self.conversation = MockConversation()
         self.cost_tracker = CostTracker()
-        self.history = HistoryLog()
+        self.history = None
 
         self.context = create_command_context(
             workspace_root=self.workspace_root,
@@ -340,31 +337,6 @@ class TestSkillsIntegration(unittest.TestCase):
         """Clean up test fixtures."""
         self.tmpdir.cleanup()
 
-    def test_skill_to_prompt_command(self):
-        """Test converting a skill to a prompt command."""
-        from src.command_system.skills_integration import skill_to_prompt_command
-        from src.skills.create import create_skill
-
-        skill_path = create_skill(
-            directory=self.skills_dir,
-            name="test-skill",
-            description="Test skill",
-            when_to_use="When testing",
-            allowed_tools=["Read", "Grep"],
-            arguments=["name"],
-            body="Hello $name",
-        )
-
-        from src.skills.loader import load_skills_from_dir
-
-        skills = load_skills_from_dir(self.skills_dir)
-        self.assertEqual(len(skills), 1)
-
-        cmd = skill_to_prompt_command(skills[0])
-
-        self.assertEqual(cmd.name, "test-skill")
-        self.assertEqual(cmd.description, "Test skill")
-        self.assertEqual(cmd.markdown_content, "Hello $name")
 
 
 class TestInitCommand(unittest.IsolatedAsyncioTestCase):
@@ -379,7 +351,7 @@ class TestInitCommand(unittest.IsolatedAsyncioTestCase):
 
         self.conversation = MockConversation()
         self.cost_tracker = CostTracker()
-        self.history = HistoryLog()
+        self.history = None
 
         self.context = create_command_context(
             workspace_root=self.workspace_root,

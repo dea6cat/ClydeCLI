@@ -11,9 +11,9 @@ import sys
 from src.providers.base import context_window
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
-from ..context_system.builder import build_context_prompt, section_report
+from ..context_system.builder import section_report
 from ..context_system.context_analyzer import (
     analyze_context,
     format_context_as_markdown,
@@ -21,12 +21,10 @@ from ..context_system.context_analyzer import (
 from ..context_system.microcompact import microcompact_messages, strip_images_from_messages
 from src import trace
 from ..agent import cache_stats
-from ..agent.cost_tracker import CostTracker, estimate_usd
-from ..agent.history import HistoryLog
-from ..startup.setup import run_setup
+from ..agent.cost_tracker import estimate_usd
 from .engine import CommandContext, CommandResult, LocalCommandResult
-from .registry import CommandRegistry, get_command_registry, list_commands
-from .types import Command, CommandType, CompactionResult, LocalCommand, PromptCommand
+from .registry import CommandRegistry, get_command_registry
+from .types import Command, CompactionResult, LocalCommand, PromptCommand
 
 
 # Official Claude Code /init prompts (Simplified)
@@ -104,29 +102,6 @@ description: <what it does>
 
 Tell the user what was set up and suggest any additional optimizations."""
 
-# Fallback prompt for simpler initialization
-OLD_INIT_PROMPT = """Please analyze this codebase and create a CLYDE.md file, which will be given to future ClydeCLI sessions to operate in this repository.
-
-What to add:
-1. Commands that will be commonly used, such as how to build, lint, and run tests. Include the necessary commands to develop in this codebase, such as how to run a single test.
-2. High-level code architecture and structure so that future instances can be productive more quickly. Focus on the "big picture" architecture that requires reading multiple files to understand.
-
-Usage notes:
-- If there's already a CLYDE.md, suggest improvements to it.
-- When you make the initial CLYDE.md, do not repeat yourself and do not include obvious instructions like "Provide helpful error messages to users", "Write unit tests for all new utilities", "Never include sensitive information (API keys, tokens) in code or commits".
-- Avoid listing every component or file structure that can be easily discovered.
-- Don't include generic development practices.
-- If there are Cursor rules (in .cursor/rules/ or .cursorrules) or Copilot rules (in .github/copilot-instructions.md), make sure to include the important parts.
-- If there is a README.md, make sure to include the important parts.
-- Do not make up information such as "Common Development Tasks", "Tips for Development", "Support and Documentation" unless this is expressly included in other files that you read.
-- Be sure to prefix the file with the following text:
-
-```
-# CLYDE.md
-
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-```"""
-
 
 def clear_command_call(args: str, context: CommandContext) -> LocalCommandResult:
     """
@@ -141,9 +116,6 @@ def clear_command_call(args: str, context: CommandContext) -> LocalCommandResult
     """
     if hasattr(context.conversation, "clear"):
         context.conversation.clear()
-
-    if hasattr(context.history, "events"):
-        context.history.events.clear()
 
     return LocalCommandResult(
         type="text",

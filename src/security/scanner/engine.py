@@ -8,12 +8,8 @@ Pure-Python, stdlib-only static scanner for skills, plugins, and MCP servers.
 from __future__ import annotations
 
 import ast
-import json
-import re
-from bisect import bisect_right
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 from src.security.scanner.rules import (
     DANGEROUS_BUILTINS,
@@ -74,28 +70,6 @@ class ScanResult:
     recommendation: str = "SAFE"
     severity: str = ""
 
-    def to_verdict_dict(self) -> dict[str, Any]:
-        """Convert to a dict compatible with skill_scan.Verdict."""
-        from src.security.skill_scan import SAFE, CAUTION, BLOCK, ERROR
-
-        # Map recommendation
-        rec_map = {
-            "SAFE": SAFE,
-            "CAUTION": CAUTION,
-            "DO_NOT_INSTALL": BLOCK,
-            "ERROR": ERROR,
-        }
-        return {
-            "name": self.name,
-            "recommendation": rec_map.get(self.recommendation, SAFE),
-            "score": self.score,
-            "severity": self.severity,
-            "findings": [
-                f"{f.rule_id} {f.severity}: {f.message}" for f in self.findings
-            ],
-            "llm": False,
-            "approved": False,
-        }
 
 
 # File extensions to scan
@@ -283,27 +257,6 @@ def scan_skill_folder(skill_path: Path) -> ScanResult:
     )
 
 
-def scan_mcp_tools(tools: list[dict[str, Any]], server_name: str) -> ScanResult:
-    """Scan MCP server tool definitions."""
-    all_findings = []
-
-    # Convert tools to pseudo-SKILL.md content
-    tool_content = json.dumps(tools, indent=2)
-
-    # Check text patterns in tool definitions
-    all_findings.extend(check_text_patterns_all(tool_content, f"{server_name}.mcp.json"))
-
-    score, severity_band, recommendation = _compute_risk_score(all_findings)
-
-    return ScanResult(
-        name=server_name,
-        findings=all_findings,
-        score=score,
-        recommendation=recommendation,
-        severity=severity_band,
-    )
-
-
 def _compute_risk_score(findings: list[Finding]) -> tuple[int, str, str]:
     """Compute risk score ported verbatim from SkillSpector nodes/report.py.
 
@@ -377,4 +330,4 @@ def scan(skill_path: Path, *, recursive: bool = False, env: dict[str, str] | Non
     return results
 
 
-__all__ = ["scan", "scan_skill_folder", "scan_mcp_tools", "_compute_risk_score", "ScanResult", "Finding"]
+__all__ = ["scan", "scan_skill_folder", "_compute_risk_score", "ScanResult", "Finding"]

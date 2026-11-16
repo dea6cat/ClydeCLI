@@ -99,12 +99,6 @@ def record_answer(state: BriefingState, answer: str) -> BriefingState:
     return replace(state, answers=[*state.answers, answer[:MAX_ANSWER_CHARS]])
 
 
-def parse_briefing_args(args: str) -> str | None:
-    """Extract the initial request from /brief args; None when empty."""
-    args = args.strip()
-    return args or None
-
-
 # --- File persistence for multi-turn briefing sessions ---
 
 def _state_path(session_id: str | None = None) -> Path:

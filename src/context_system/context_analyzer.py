@@ -62,59 +62,6 @@ def count_claude_md_tokens(claude_md_content: str) -> int:
     return count_tokens(claude_md_content)
 
 
-def count_message_breakdown_tokens(
-    messages: list[dict[str, Any]],
-) -> dict[str, int]:
-    """
-    Break down message tokens by category.
-
-    Returns dict with: tool_call_tokens, tool_result_tokens,
-    attachment_tokens, assistant_message_tokens, user_message_tokens
-    """
-    breakdown = {
-        "tool_call_tokens": 0,
-        "tool_result_tokens": 0,
-        "attachment_tokens": 0,
-        "assistant_message_tokens": 0,
-        "user_message_tokens": 0,
-    }
-
-    for msg in messages:
-        role = msg.get("role", "")
-        content = msg.get("content", "")
-
-        if isinstance(content, str):
-            tokens = count_tokens(content)
-            if role == "user":
-                breakdown["user_message_tokens"] += tokens
-            elif role == "assistant":
-                breakdown["assistant_message_tokens"] += tokens
-            continue
-
-        if not isinstance(content, list):
-            continue
-
-        for block in content:
-            if not isinstance(block, dict):
-                continue
-            block_type = block.get("type", "")
-            if block_type == "tool_use":
-                name = block.get("name", "")
-                input_str = str(block.get("input", {}))
-                breakdown["tool_call_tokens"] += count_tokens(name) + count_tokens(input_str)
-            elif block_type == "tool_result":
-                breakdown["tool_result_tokens"] += count_tokens(str(block.get("content", "")))
-            elif block_type == "text":
-                if role == "assistant":
-                    breakdown["assistant_message_tokens"] += count_tokens(block.get("text", ""))
-                elif role == "user":
-                    breakdown["user_message_tokens"] += count_tokens(block.get("text", ""))
-            elif block_type in ("image", "document", "video"):
-                breakdown["attachment_tokens"] += 500
-
-    return breakdown
-
-
 def analyze_context(
     conversation_api_messages: list[dict[str, Any]],
     model: str,
