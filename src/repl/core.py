@@ -114,7 +114,7 @@ from src.tool_system.hooks import load_hooks
 from src.runtime import activity
 from src.ui.picker import Choice, pick
 from src.tool_system.deferral import advertised
-from src.repl.esc import WATCHER
+from src.ui.esc import WATCHER
 from src.repl.images import IMAGE_TYPES, MAX_IMAGE_BYTES, clipboard_image, image_path, shrink
 from src.tool_system.permission_rules import load_rules, save_allow_rule
 from src.tool_system.tools.code_map import start_background_refresh

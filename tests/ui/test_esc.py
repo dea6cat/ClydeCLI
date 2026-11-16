@@ -11,7 +11,7 @@ import unittest
 CHILD = r'''
 import sys, time, termios
 sys.path.insert(0, %r)
-from src.repl.esc import EscWatcher
+from src.ui.esc import EscWatcher
 before = termios.tcgetattr(0)
 try:
     with EscWatcher().active():
@@ -72,7 +72,7 @@ class TestTypedDuringATurnIsKept(unittest.TestCase):
 
     def _typed_while_watching(self, *chunks: bytes) -> str:
         import pty
-        from src.repl.esc import EscWatcher
+        from src.ui.esc import EscWatcher
 
         master, slave = pty.openpty()
         stream = os.fdopen(slave, "r")
@@ -93,7 +93,7 @@ class TestTypedDuringATurnIsKept(unittest.TestCase):
 
     def test_what_was_taken_is_forgotten(self):
         import pty
-        from src.repl.esc import EscWatcher
+        from src.ui.esc import EscWatcher
 
         master, slave = pty.openpty()
         stream = os.fdopen(slave, "r")

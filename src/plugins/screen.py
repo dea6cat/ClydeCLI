@@ -129,7 +129,7 @@ def show(loaded: list[plugins.Loaded], *, input: Any = None, output: Any = None)
     from prompt_toolkit.layout import Layout, Window
     from prompt_toolkit.layout.controls import FormattedTextControl
 
-    from src.repl.esc import WATCHER
+    from src.ui.esc import WATCHER
 
     visible = 8
     state = {"tab": 0, "cursor": 0, "top": 0, "note": ""}

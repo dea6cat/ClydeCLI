@@ -17,7 +17,7 @@ from rich.table import Table
 from src.agent import briefing
 from src.agent.harness import RUNNABLE_KINDS, Harness, can_work, discover_all
 from src.agent.orchestration import build_plan, format_plan, land, orchestrate
-from src.repl.esc import WATCHER
+from src.ui.esc import WATCHER
 from src.ui.picker import Choice, pick
 
 _NONE, _DONE = "-", "done"

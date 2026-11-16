@@ -115,7 +115,7 @@ class TestKeys(unittest.TestCase):
         self.assertIsNone(_drive(DOWN + CTRL_C))
 
     def test_the_esc_watcher_is_paused_while_it_is_open(self):
-        from src.repl.esc import WATCHER
+        from src.ui.esc import WATCHER
         seen = []
         original = WATCHER.stop
         with patch.object(WATCHER, "stop", side_effect=lambda: (seen.append("stopped"), original())[1]):

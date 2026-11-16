@@ -250,7 +250,7 @@ def show(snap: Snapshot, *, input: Any = None, output: Any = None, today: date |
     from prompt_toolkit.layout import Layout, Window
     from prompt_toolkit.layout.controls import FormattedTextControl
 
-    from src.repl.esc import WATCHER
+    from src.ui.esc import WATCHER
 
     today = today or date.today()
     requests, sessions = stats.load_requests(), stats.load_sessions()

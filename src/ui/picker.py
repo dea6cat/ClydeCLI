@@ -117,7 +117,7 @@ def pick(console: Any, title: str, choices: list[Choice], *, description: str = 
     from prompt_toolkit.layout import Layout, Window
     from prompt_toolkit.layout.controls import FormattedTextControl
 
-    from src.repl.esc import WATCHER
+    from src.ui.esc import WATCHER
 
     state = {"query": "", "cursor": next((i for i, c in enumerate(choices) if c.value == current), 0), "top": 0}
     hint = "Enter to select · Esc to cancel" + (" · type to filter" if len(choices) > visible or allow_custom else "")
@@ -237,7 +237,7 @@ def ask(header: str, question: str, options: list[dict], *, multi: bool = False,
     from prompt_toolkit.layout import Layout, Window
     from prompt_toolkit.layout.controls import FormattedTextControl
 
-    from src.repl.esc import WATCHER
+    from src.ui.esc import WATCHER
 
     n = len(options)
     labels = [str(o.get("label", "")) for o in options]
