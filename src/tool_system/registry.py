@@ -8,7 +8,7 @@ from typing import Any, Iterable, Mapping, Protocol
 from src import trace
 from .context import ToolContext
 from .hooks import run_hooks
-from .permission_handler import PermissionResult
+from .permission_handler import PermissionBehavior, PermissionResult
 from .permission_rules import check_rules, suggest_rule
 from .protocol import ToolCall, ToolResult
 
@@ -156,6 +156,44 @@ def _clip_input(tool_input: dict[str, Any], limit: int = 300) -> str:
     return text if len(text) <= limit else f"{text[:limit]}… (+{len(text) - limit} more characters)"
 
 
+@dataclass(frozen=True)
+class _Concern:
+    """One reason a call needs the user's yes, and what may answer it instead: a saved allow rule, or "all in" mode
+    (which never answers for a major call: hard to undo, outside the project, or touching secrets)."""
+    message: str
+    by_rule: bool = True
+    by_auto: bool = True
+    offer_rule: bool = True   # whether "don't ask again" may save an allow rule for it
+
+
+def _concerns(spec: ToolSpec, tool_input: dict[str, Any], context: ToolContext, own: PermissionResult, ruling: str | None) -> list[_Concern]:
+    """Everything about this call that wants a yes, the tool's own question first."""
+    found: list[_Concern] = []
+    if own.behavior is PermissionBehavior.ASK:
+        found.append(_Concern(own.message or f"Tool '{spec.name}' requires permission"))
+    if _reads_secret(spec, tool_input):
+        found.append(_Concern(f"{spec.name} wants to read a secret file: {_read_target(spec, tool_input)}"))
+    outside = _outside_target(spec, tool_input, context)
+    if outside is not None:
+        what = "change a file" if spec.writes_files else "use a folder" if spec.name.lower() == "bash" else "read"
+        found.append(_Concern(f"{spec.name} wants to {what} outside the project: {outside}"))
+    target = _edit_target(spec, tool_input, context) if context.confirm_edits else None
+    if target is not None:
+        found.append(_Concern(f"{spec.name} wants to change {_shown(target, context)}"))   # hold mode
+    if ruling == "ask":
+        found.append(_Concern(f"{spec.name}: an ask rule in settings wants your yes", by_rule=False, by_auto=False))
+    if context.injection_sources and _sends_out(spec, tool_input):
+        # An outside result already tried to steer the model: what this sends out could carry the session's data.
+        found.append(_Concern("", by_rule=False, by_auto=False, offer_rule=False))
+    return found
+
+
+def _taint_message(spec: ToolSpec, tool_input: dict[str, Any], context: ToolContext, left: list[_Concern]) -> str:
+    what = next((c.message for c in left if c.message), f"{spec.name} {_clip_input(tool_input)}")
+    return (f"{what}\n(Asking because {context.injection_sources[-1]} returned text addressed to the model this session. "
+            "Check this sends nothing of yours.)")
+
+
 def _mcp_alias(spec: ToolSpec, tool_input: dict[str, Any]) -> str | None:
     """The mcp__<server>__<tool> name a generic MCP call is really for, so a deny written for that name also stops this route.
     The resource tools get a name under the server's prefix, so a server-wide deny covers them too."""
@@ -240,33 +278,23 @@ class ToolRegistry:
                 tool_use_id=call.tool_use_id,
             )
         check = getattr(tool, "check_permissions", None)   # optional hook (see Tool)
-        permission_result = check(call.input, context) if check is not None else PermissionResult.allow()
-        if ruling != "allow" and permission_result.behavior.value == "allow" and _reads_secret(spec, call.input):
-            # Keys and .env files reach the model only with a yes (or an allow rule); _is_major keeps all-in asking too.
-            permission_result = PermissionResult.ask(f"{spec.name} wants to read a secret file: {_read_target(spec, call.input)}")
-        outside = _outside_target(spec, call.input, context)
-        if outside is not None and permission_result.behavior.value == "allow":
-            what = "change a file" if spec.writes_files else "use a folder" if spec.name.lower() == "bash" else "read"
-            permission_result = PermissionResult.ask(f"{spec.name} wants to {what} outside the project: {outside}")
-        target = _edit_target(spec, call.input, context) if context.confirm_edits else None
-        if target is not None and permission_result.behavior.value == "allow":
-            permission_result = PermissionResult.ask(f"{spec.name} wants to change {_shown(target, context)}")   # hold mode
-        if ruling == "ask" and permission_result.behavior.value == "allow":   # an ask rule: always a prompt
-            permission_result = PermissionResult.ask(f"{spec.name}: an ask rule in settings wants your yes")
-        tainted = bool(context.injection_sources) and _sends_out(spec, call.input)
-        if tainted and permission_result.behavior.value != "deny":
-            # An outside result already tried to steer the model: what it sends out now could carry this session's data,
-            # so allow rules and "all in" do not wave it through, and no "don't ask again" rule is offered.
-            what = permission_result.message if permission_result.behavior.value == "ask" and permission_result.message else (
-                f"{spec.name} {_clip_input(call.input)}")
-            permission_result = PermissionResult.ask(
-                f"{what}\n(Asking because {context.injection_sources[-1]} returned text addressed to the model this session. "
-                "Check this sends nothing of yours.)")
-        auto = context.auto_approve and not _is_major(spec, call.input, context) and ruling != "ask" and not tainted
-        if permission_result.behavior.value == "ask" and not tainted and (ruling == "allow" or auto):
-            if auto and ruling != "allow":
-                trace.record("permission_auto", tool=spec.name, message=permission_result.message)
-            permission_result = PermissionResult.allow(permission_result.updated_input)
+        own = check(call.input, context) if check is not None else PermissionResult.allow()
+        outside = _outside_target(spec, call.input, context)   # granted below once the call goes ahead
+        tainted = False
+        if own.behavior is PermissionBehavior.DENY:
+            permission_result = own
+        else:
+            concerns = _concerns(spec, call.input, context, own, ruling)
+            tainted = any(not c.offer_rule for c in concerns)
+            major = _is_major(spec, call.input, context)
+            left = [c for c in concerns if not (ruling == "allow" and c.by_rule) and not (context.auto_approve and c.by_auto and not major)]
+            if not left:
+                if concerns and ruling != "allow":
+                    trace.record("permission_auto", tool=spec.name, message=concerns[0].message)
+                permission_result = PermissionResult.allow(own.updated_input)
+            else:
+                message = left[0].message if not tainted else _taint_message(spec, call.input, context, left)
+                permission_result = PermissionResult.ask(message)
         if permission_result.behavior.value == "deny":
             return ToolResult(
                 name=spec.name,
