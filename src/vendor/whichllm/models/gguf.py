@@ -20,8 +20,11 @@ _QUANT_ALIASES = {
 def _extract_quant_type(filename: str) -> str:
     """Extract quantization type from a GGUF filename.
 
-    The returned key is canonicalized to match QUANT_BYTES_PER_WEIGHT, so
-    callers can look it up directly. Returns "unknown" when nothing matches.
+    The returned key keeps the filename's own case, because an hf.co pull tag
+    is derived from the filename case-included (`-q8_0.gguf` pulls as `:q8_0`).
+    Aliases (FP16 -> F16) are still canonicalized; callers that look the quant
+    up in QUANT_BYTES_PER_WEIGHT / QUANT_QUALITY_PENALTY use .upper() anyway.
+    Returns "unknown" when nothing matches.
     """
     patterns = [
         r"[.-](Q\d+_K_[SMLA])",
@@ -32,12 +35,11 @@ def _extract_quant_type(filename: str) -> str:
         r"[.-](MXFP4|NVFP4)",
         r"[.-](F16|FP16|BF16|F32|FP32)",
     ]
-    upper = filename.upper()
     for pattern in patterns:
-        m = re.search(pattern, upper)
+        m = re.search(pattern, filename, re.IGNORECASE)
         if m:
             quant = m.group(1)
-            return _QUANT_ALIASES.get(quant, quant)
+            return _QUANT_ALIASES.get(quant.upper(), quant)
     return "unknown"
 
 

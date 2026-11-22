@@ -71,6 +71,28 @@ class TestHuggingFace(unittest.TestCase):
         with patch.object(huggingface, "get_json", side_effect=lambda url, **_: tree if "/tree/" in url else [{"id": "u/m", "downloads": 9}]):
             self.assertEqual(huggingface.search("m", 12 * GB), [])     # the 12 GB model does not fit and the 1 GB file is not the model
 
+    def test_a_dspark_draft_file_at_the_repo_root_is_not_a_quantization_of_the_model(self):
+        # unsloth ships its speculative-decoding draft at the root as `dspark-<model>-Q8_0.gguf` (seen on
+        # unsloth/Inkling-2-Mini-GGUF): Hugging Face exposes no Q8_0 tag for it, so offering it fails at pull time.
+        tree = [{"type": "file", "path": "Model-UD-Q4_K_M.gguf", "size": 16 * GB},
+                {"type": "file", "path": "dspark-Model-Q8_0.gguf", "size": 402 * 1024 ** 2},
+                {"type": "file", "path": "dspark/dspark-Model-BF16.gguf", "size": 1 * GB},
+                {"type": "file", "path": "mmproj-F16.gguf", "size": 1 * GB}]
+        self.assertEqual(huggingface._quants(tree), [("Q4_K_M", 16 * GB)])
+
+    def test_a_repo_whose_only_fitting_file_is_a_dspark_draft_is_not_offered(self):
+        tree = [{"type": "file", "path": "Model-UD-Q8_K_XL.gguf", "size": 60 * GB},
+                {"type": "file", "path": "dspark-Model-Q8_0.gguf", "size": 402 * 1024 ** 2}]
+        with patch.object(huggingface, "get_json", side_effect=lambda url, **_: tree if "/tree/" in url else [{"id": "u/m", "downloads": 9}]):
+            self.assertEqual(huggingface.search("m", 12 * GB), [])
+
+    def test_the_pull_tag_keeps_the_filenames_case(self):
+        # Ollama's hf.co tag is derived from the GGUF filename, case included: `-q8_0.gguf` pulls as :q8_0.
+        tree = [{"type": "file", "path": "Model-q8_0.gguf", "size": 8 * GB}]
+        with patch.object(huggingface, "get_json", side_effect=lambda url, **_: tree if "/tree/" in url else [{"id": "u/m", "downloads": 5}]):
+            (offer,) = huggingface.search("m", 12 * GB)
+        self.assertEqual((offer.pull_tag, offer.note), ("hf.co/u/m:q8_0", "q8_0"))
+
     def test_drafter_repos_are_dropped_from_the_search(self):
         listing = [{"id": "g/gemma-4-12B-it-assistant", "downloads": 9, "config": {"model_type": "gemma4_unified_assistant"}},
                    {"id": "m/gemma-4-12B-it-qat-assistant-4bit", "downloads": 8, "config": {"model_type": "gemma4"}, "tags": ["mlx", "draft-model"]},

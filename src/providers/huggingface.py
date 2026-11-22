@@ -23,9 +23,9 @@ _CATALOG = {"gguf": "lmstudio-community", "mlx": "mlx-community"}
 PREFERRED = ("lmstudio-community", "mlx-community", "unsloth", "bartowski")   # publishers whose repo leads a model's row
 _QUANT = re.compile(r"[-_.]((?:I?Q\d(?:_[A-Z0-9]+)*)|F16|BF16)\.gguf$", re.I)
 _SPLIT = re.compile(r"-\d{5}-of-\d{5}\.gguf$")
-# Files in a GGUF repo that are not the model: a vision projector, a speculative-decoding draft, an MTP head (but not
-# "noMTP", the full model without it).
-_NOT_THE_MODEL = re.compile(r"mmproj|draft|(?<![a-z])mtp(?![a-z])")
+# Files in a GGUF repo that are not the model: a vision projector, a speculative-decoding draft (unsloth's
+# `dspark-…` at the repo root, or `draft`/`MTP`), an MTP head (but not "noMTP", the full model without it).
+_NOT_THE_MODEL = re.compile(r"mmproj|draft|dspark|(?<![a-z])mtp(?![a-z])")
 # Repos tagged text-generation that can't chat: embedding and reranker models (seen live: Qwen3-Embedding).
 _NOT_CHAT = re.compile(r"embed|rerank", re.I)
 
@@ -78,7 +78,9 @@ def _quants(files: list[dict]) -> list[tuple[str, int]]:
     """(quant, bytes) for the single-file GGUFs at the repo root. Split files, vision projectors
     (mmproj) and speculative-decoding drafts are skipped. When several files share a quant (a
     `noMTP-Q4_K_M` beside `Q4_K_M`), Ollama's `:Q4_K_M` tag may fetch any of them, so the largest
-    size is the one reported: a rating must never understate the download."""
+    size is the one reported: a rating must never understate the download. The quant keeps the
+    filename's own case: Ollama's `hf.co/<repo>:<quant>` tag is derived from the filename, case
+    included, so `-q8_0.gguf` must be pulled as `:q8_0`, not `:Q8_0`."""
     sizes: dict[str, int] = {}
     for f in files:
         path, size = str(f.get("path", "")), f.get("size")
@@ -86,7 +88,7 @@ def _quants(files: list[dict]) -> list[tuple[str, int]]:
         lower = path.lower()
         if f.get("type") != "file" or not m or not isinstance(size, int) or _SPLIT.search(path) or _NOT_THE_MODEL.search(lower):
             continue
-        quant = m.group(1).upper()
+        quant = m.group(1)
         sizes[quant] = max(size, sizes.get(quant, 0))
     return list(sizes.items())
 

@@ -377,6 +377,10 @@ def _pull_ollama(repl: Any, offer: fit.Offer) -> None:
                 status.update(f"[dim]Pulling {tag}: {event.get('status', '')}{progress}[/dim]")
     except (ProviderError, ValueError) as e:
         repl.console.print(f"[red]Download failed:[/red] {e}")
+        msg = str(e)
+        if tag.startswith("hf.co/") and ("doesn't exist" in msg or "not found" in msg.lower()):
+            repo, _, quant = tag.removeprefix("hf.co/").rpartition(":")
+            repl.console.print(f"[dim]{repo} publishes no {quant} tag; pick another quant or model in /models local.[/dim]")
         return
     except KeyboardInterrupt:
         repl.console.print("Download stopped. Running it again resumes it.")
