@@ -623,6 +623,20 @@ class TestTuneAfterDownload(unittest.TestCase):
     def test_a_failed_download_offers_nothing(self):
         self._pull(['{"error": "boom"}']).assert_not_called()
 
+    def test_a_tag_the_repo_does_not_publish_gets_a_clearer_message(self):
+        repl = _Repl()
+        repl.registry = {"ollama": type("O", (), {"host": "http://h", "name": "ollama"})()}
+        offer = Offer("u/m", "hf.co/u/m:Q8_0", 8 * GB, "relax", 1, "Q8_0", "hf")
+        with patch.object(local_models, "post_stream",
+                          return_value=['{"error": "The tag Q8_0 doesn\'t exist for that model. Try q8_0 (lowercase) or omit the tag to use the default."}']), \
+                patch.object(local_models, "_offer_eval"), \
+                patch.object(local_models.tune, "offer") as tune_offer:
+            local_models._pull_ollama(repl, offer)
+        tune_offer.assert_not_called()
+        text = repl.console.export_text()
+        self.assertIn("Download failed", text)
+        self.assertIn("u/m publishes no Q8_0 tag", text)
+
 
 class TestStoppedEval(unittest.TestCase):
     def _provider(self):

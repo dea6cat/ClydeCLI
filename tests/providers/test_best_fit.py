@@ -35,6 +35,18 @@ class TestBestFit(unittest.TestCase):
         self.assertEqual((offer.pull_tag, offer.source, offer.note), ("hf.co/bartowski/Qwen3-8B-GGUF:Q4_K_M", "hf", "Q4_K_M"))
         self.assertEqual(offer.detail, "quality 62 (direct benchmark) · ~32 tok/s (11-63, low confidence) · apache-2.0")
 
+    def test_the_pull_tag_keeps_the_quants_own_case(self):
+        # an hf.co tag is derived from the GGUF filename, case included: `-q8_0.gguf` pulls as :q8_0
+        from src.vendor.whichllm.models import gguf
+        self.assertEqual(gguf._extract_quant_type("Inkling-2-Mini-q8_0.gguf"), "q8_0")
+        self.assertEqual(gguf._extract_quant_type("Inkling-2-Mini-UD-Q4_K_M.gguf"), "Q4_K_M")
+        self.assertEqual(gguf._extract_quant_type("Model-FP16.gguf"), "F16")     # aliases still canonicalize
+        self.assertEqual(gguf._extract_quant_type("README.md"), "unknown")
+        ranked = _ranked()
+        ranked.artifact_variant = ranked.gguf_variant = NS(quant_type="q8_0", file_size_bytes=8 * GB)
+        (offer,) = self._search([ranked])
+        self.assertEqual((offer.pull_tag, offer.note), ("hf.co/bartowski/Qwen3-8B-GGUF:q8_0", "q8_0"))
+
     def test_models_without_a_gguf_repo_or_that_do_not_fit_are_left_out(self):
         self.assertEqual(self._search([_ranked(repo=None), _ranked(size=40 * GB)]), [])
 
