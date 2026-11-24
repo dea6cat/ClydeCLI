@@ -24,11 +24,13 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/configure-pages@v5
+      # Node 24 releases: on 2026-11-24 the Node 20 ones (checkout@v4, configure-pages@v5, upload-pages-artifact@v3,
+      # deploy-pages@v4), forced onto Node 24 by the runner, uploaded the artifact and then could not find it.
+      - uses: actions/checkout@v5
+      - uses: actions/configure-pages@v6
       - run: python3 tools/build_docs.py
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5   # leaves out dotfiles since v4; site/ has none
         with:
           path: site
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
