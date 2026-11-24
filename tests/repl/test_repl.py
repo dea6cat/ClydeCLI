@@ -735,6 +735,21 @@ class TestREPL(unittest.TestCase):
                         repl.handle_command("/model glm:glm-4.5")
                     shown = [str(a[0]) for a, _k in repl.console.print.call_args_list if a]
                     self.assertEqual(sum("isn't in glm's model list" in line for line in shown), 1)   # only for the unlisted one
+                    self.assertFalse(any("can't answer until" in line for line in shown))   # a normal window: no warning
+
+    def test_switching_to_a_model_whose_window_cant_hold_clydes_own_prompt_warns(self):
+        with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
+            with patch('src.repl.core.Session.create'):
+                with _fake_provider_env():
+                    repl = ClydeREPL(model="glm:glm-4.5")
+                    repl.console.print = Mock()
+                    with patch('src.repl.core.set_default_model'), \
+                            patch('src.agent.agent_loop.context_window', return_value=500):
+                        self.assertTrue(repl._choose_model("glm:glm-4.5"))   # still switches: memory may free up
+                    shown = [str(a[0]) for a, _k in repl.console.print.call_args_list if a]
+                    warning = next(line for line in shown if "can't answer until" in line)
+                    self.assertIn("500-token window", warning)
+                    self.assertIn("Context window (local models)", warning)
 
     def test_model_command_rejects_unknown_provider(self):
         with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):

@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from src.agent.agent_loop import run_agent_loop
+from src.agent.agent_loop import run_agent_loop, window_shortfall
 from src.agent.subagent import build_tool_registry
 from src.context_system.token_estimation import count_messages_tokens
 from src.conversation import Conversation
@@ -95,6 +95,17 @@ class TestWindowBudget(unittest.TestCase):
         result, context = _run(provider)
         self.assertEqual(result.stop_reason, "done")
         self.assertGreater(context.prompt_overhead, 0)   # the engine's pre-turn compaction check reads it
+
+    def test_a_window_below_the_fixed_part_is_reported_before_any_request(self):
+        registry = build_tool_registry(include_user_tools=False)
+        context = ToolContext(workspace_root=Path(tempfile.mkdtemp()))
+        short = window_shortfall(_Windowed(500), "m", registry, context)
+        self.assertIsNotNone(short)
+        fixed, window = short
+        self.assertEqual(window, 500)
+        self.assertGreater(fixed, 500)
+        self.assertIsNone(window_shortfall(_Windowed(200_000), "m", registry, context))
+        self.assertEqual(context.local_only, frozenset())   # only looks: the session's offered tools are unchanged
 
 
 if __name__ == "__main__":
