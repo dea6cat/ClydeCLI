@@ -78,16 +78,40 @@ def hint(spec: ToolSpec) -> str:
     return first[:_HINT_CHARS].rsplit(" ", 1)[0] + "…"   # at a word boundary
 
 
+def _mcp_server(name: str) -> str | None:
+    """The MCP server a tool comes from (`mcp__rea__open_binary` -> `rea`); None for a built-in tool."""
+    parts = name.split("__")
+    return parts[1] if len(parts) >= 3 and parts[0] == "mcp" else None
+
+
+def _server_rows(deferred: list[ToolSpec]) -> list[str]:
+    """One line per MCP server instead of one per tool. A local model's window can't carry them all: measured 2026-11-24,
+    226 MCP tools from three servers (207 from one) were 4,590 of the 6,954 tokens in K2-Horizon's first request."""
+    servers: dict[str, list[str]] = {}
+    for spec in deferred:
+        if (server := _mcp_server(spec.name)) is not None:
+            servers.setdefault(server, []).append(spec.name.split("__", 2)[2])
+    # No "list them all" hint: told it could, K2-Horizon loaded 50 of them and its next request was 140,008 tokens. The
+    # full prefix, not the bare server name: `rea` alone also matches "read" and "create".
+    return [f"- mcp__{server}__… ({len(tools)} tools, e.g. {', '.join(sorted(tools)[:3])}): find the one you need with "
+            f"ToolSearch `mcp__{server}__ <word from the task>`" for server, tools in servers.items()]
+
+
 def index_prompt(specs: Iterable[ToolSpec], only: frozenset[str] | None = None, names_only: bool = False) -> str:
     """The system-prompt section naming the tools that aren't sent; "" when everything is. `names_only` drops the
-    descriptions (about 400 tokens fewer): see NAMES_ONLY_UP_TO_BILLIONS."""
+    descriptions (about 400 tokens fewer): see NAMES_ONLY_UP_TO_BILLIONS. A local model (`only` set) sees one line per
+    MCP server, not one per tool."""
     deferred = [s for s in specs if is_deferred(s.name, only)]
     if not deferred:
         return ""
+    servers = _server_rows(deferred) if only is not None else []
+    if servers:
+        deferred = [s for s in deferred if _mcp_server(s.name) is None]
     if names_only:
         return ("## More tools\nNot loaded, to save tokens: " + ", ".join(s.name for s in deferred)
-                + ". Call ToolSearch with `select:Name` (several: `select:A,B`) before using one.")
-    rows = [f"- {s.name}: {hint(s)}" for s in deferred]
+                + ". Call ToolSearch with `select:Name` (several: `select:A,B`) before using one."
+                + "".join("\n" + row for row in servers))
+    rows = [f"- {s.name}: {hint(s)}" for s in deferred] + servers
     return ("## More tools\nThese exist, but their definitions aren't loaded, to save tokens. Before using one, call "
             "ToolSearch with `select:Name` (several: `select:A,B`) or keywords; it is ready on your next step.\n"
             + "\n".join(rows))

@@ -48,6 +48,8 @@ class ToolSearchTool:
             missing = [n for n in wanted if self._registry.get(n) is None]
             return self._result(query, found, context, missing)
 
+        # Every word, in any order: K2-Horizon searched "rea string list binary" as one phrase and found nothing.
+        words = lowered.split()
         scored: list[tuple[int, ToolSpec]] = []
         for spec in self._registry.list_specs():
             hay = f"{spec.name}\n{spec.description}".lower()
@@ -55,6 +57,8 @@ class ToolSearchTool:
                 scored.append((0, spec))
             elif lowered in hay:
                 scored.append((1, spec))
+            elif len(words) > 1 and all(w in hay for w in words):
+                scored.append((2, spec))
         scored.sort(key=lambda t: (t[0], t[1].name.lower()))
         return self._result(query, [spec for _, spec in scored[:max_results]], context, [])
 
