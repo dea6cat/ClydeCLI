@@ -72,6 +72,12 @@ class TestDeferral(unittest.TestCase):
         self.assertIn("sleep", self.ctx.loaded_tools)                    # earlier loads stay
         self.assertGreater(out["total_deferred_tools"], 20)
 
+    def test_tool_search_matches_every_word_in_any_order(self):
+        out = self.registry.dispatch(ToolCall(name="ToolSearch", input={"query": "schedule cron create"}), self.ctx).output
+        self.assertIn("CronCreate", out["matches"])
+        out = self.registry.dispatch(ToolCall(name="ToolSearch", input={"query": "cron nonsenseword"}), self.ctx).output
+        self.assertEqual(out["matches"], [])
+
 
 class TestAgentLoopDeferral(unittest.TestCase):
     def setUp(self):
@@ -184,6 +190,25 @@ class TestLocalToolRouting(unittest.TestCase):
         index = index_prompt(specs, only)
         self.assertIn("- Edit:", index)
         self.assertNotIn("- Read:", index)
+
+    MCP = [ToolSpec(f"mcp__rea__{n}", f"{n} a binary. More.", {}) for n in ("open_binary", "list_strings", "xrefs", "comment")]
+
+    def test_a_local_model_sees_one_line_per_mcp_server(self):
+        from src.tool_system.deferral import local_tools
+        specs = [ToolSpec("Bash", "Run a command. More.", {})] + self.MCP
+        index = index_prompt(specs, local_tools("explain this"))
+        self.assertIn("- Bash:", index)   # built-in tools keep their own line
+        self.assertIn("- mcp__rea__… (4 tools, e.g. comment, list_strings, open_binary)", index)
+        self.assertNotIn("mcp__rea__xrefs", index)
+        self.assertNotIn("max_results", index)   # told it could list them all, a model loaded 50
+        names = index_prompt(specs, local_tools("explain this"), names_only=True)
+        self.assertIn("mcp__rea__… (4 tools", names)
+        self.assertNotIn("mcp__rea__xrefs", names)
+
+    def test_a_cloud_model_still_sees_every_mcp_tool(self):
+        index = index_prompt(self.MCP)
+        self.assertIn("- mcp__rea__xrefs:", index)
+        self.assertNotIn("4 tools", index)
 
 
 class TestNamesOnlyIndex(unittest.TestCase):
