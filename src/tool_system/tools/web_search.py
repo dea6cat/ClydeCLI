@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import html
 import re
+import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from typing import Any
@@ -20,8 +22,18 @@ _RESULT_RE = re.compile(
 )
 
 
-# DuckDuckGo answers a plainly labelled script with an anti-bot page and no results, so the request looks like a browser's.
-_BROWSER_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"
+# DuckDuckGo answers a plainly labelled script with an anti-bot page and no results, so the request carries a full browser header set.
+_BROWSER_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Encoding": "identity",
+    "Upgrade-Insecure-Requests": "1",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "none",
+}
+_ENDPOINTS = ("https://html.duckduckgo.com/html/?", "https://lite.duckduckgo.com/lite/?")   # lite is the fallback when html serves the anti-bot page
 
 
 def _real_url(href: str) -> str:
@@ -77,11 +89,35 @@ class WebSearchTool:
         if not isinstance(num, int) or num < 1 or num > 10:
             raise ToolInputError("num must be an integer between 1 and 10")
 
-        url = "https://html.duckduckgo.com/html/?" + urllib.parse.urlencode({"q": query})
-        req = urllib.request.Request(url, headers={"User-Agent": _BROWSER_UA, "Accept-Language": "en"})
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            raw = resp.read(1_000_000).decode("utf-8", errors="replace")
+        raw = ""
+        blocked = False
+        for attempt in range(2):   # one retry with a pause: a rate-limit answer sometimes clears
+            for endpoint in _ENDPOINTS:   # html first, lite if html serves the anti-bot page
+                url = endpoint + urllib.parse.urlencode({"q": query})
+                req = urllib.request.Request(url, headers=_BROWSER_HEADERS)
+                try:
+                    with urllib.request.urlopen(req, timeout=15) as resp:
+                        raw = resp.read(1_000_000).decode("utf-8", errors="replace")
+                except urllib.error.HTTPError as e:
+                    if e.code in {429, 503} and attempt == 0:
+                        break   # retry after the pause below
+                    raise ToolExecutionError(f"web search failed: HTTP {e.code} from the search engine") from e
+                if "anomaly" not in raw.lower():
+                    break
+                blocked = True   # anti-bot page on this endpoint: try the next one
+            else:
+                break
+            if self._parse(raw, num):
+                break
+            time.sleep(2)
 
+        results = self._parse(raw, num)
+        if not results and blocked:   # every endpoint served the anti-bot page: say so, don't pass off "no results"
+            raise ToolExecutionError("web search was blocked by the search engine (anti-bot check); try again later or use WebFetch on a known page")
+        return ToolResult(name="WebSearch", output={"query": query, "results": results})
+
+    @staticmethod
+    def _parse(raw: str, num: int) -> list[dict[str, str]]:
         results: list[dict[str, str]] = []
         for match in _RESULT_RE.finditer(raw):
             results.append(
@@ -93,8 +129,4 @@ class WebSearchTool:
             )
             if len(results) >= num:
                 break
-
-        if not results and "anomaly" in raw.lower():   # the anti-bot page: say so, don't pass off "no results"
-            raise ToolExecutionError("web search was blocked by the search engine (anti-bot check); try again later or use WebFetch on a known page")
-        return ToolResult(name="WebSearch", output={"query": query, "results": results})
-
+        return results
