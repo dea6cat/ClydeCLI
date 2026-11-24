@@ -7,6 +7,7 @@ import os
 import re
 import threading
 import time
+from pathlib import Path
 from src.providers.base import LOCAL_PROVIDERS, context_window
 from dataclasses import dataclass
 from types import SimpleNamespace
@@ -23,6 +24,7 @@ from ..tool_system.permission_rules import bare_denied
 from ..memory import memory_prompt
 from ..tool_system.plan_file import PLAN_SHAPE, plan_prompt, read_plan
 from ..context_system.microcompact import trim_old_tool_results
+from ..context_system.token_estimation import count_messages_tokens, request_overhead
 from ..tool_system.deferral import NAMES_ONLY_UP_TO_BILLIONS, VERIFY_PROMPT, advertised, index_prompt, is_deferred, local_tools
 from .cloud_review import review_reply
 from .repeat_guard import RepeatedCall, RepeatGuard
@@ -124,8 +126,9 @@ class AgentLoopResult:
     usage: dict[str, Any] | None = None  # {"input_tokens": int, "output_tokens": int}
     num_turns: int = 0
     # Why the loop stopped: "done" (the model answered), "blocked" (a prompt hook refused it), "repeat" (it kept making the
-    # same call), "stalled" (failing calls in a row), "budget" (the token budget ran out) or "ran_out" (every tool turn used;
-    # response_text is then the model's own wrap-up).
+    # same call), "stalled" (failing calls in a row), "budget" (the token budget ran out), "window" (the next request
+    # can't fit the model's context window, so it was not sent) or "ran_out" (every tool turn used; response_text is then
+    # the model's own wrap-up).
     stop_reason: str = "done"
 
     @property
@@ -154,6 +157,33 @@ _ANSWER_NUDGE = "Your last reply had no answer text. Answer now in plain text; k
 # A Stop hook that blocks keeps the turn going with its reason; past this many blocks in a row the turn ends anyway
 # (Claude Code's override is 8), so a hook that never passes can't loop forever.
 _MAX_STOP_BLOCKS = 8
+
+
+def _forget_read(tool_context: ToolContext) -> Callable[[Any], None]:
+    """For a cleared Read result: drop its file's fingerprint, so reading it again returns the content, not "unchanged"
+    (live run: K2-Horizon re-read five trimmed files, got "unchanged" for each and decided they were empty)."""
+    def forget(content: Any) -> None:
+        path = (content.get("file") or {}).get("filePath") if isinstance(content, dict) else None
+        if isinstance(path, str):
+            tool_context.read_file_fingerprints.pop(Path(path).resolve(), None)
+    return forget
+
+
+# The estimate runs a little under the runtime's own count once heavy tool schemas are loaded: K2-Horizon on Ollama,
+# 8,343 estimated vs 8,496 counted and 9,755 vs 9,969 (2.2% under). A request this close to the window is not sent.
+_ESTIMATE_MARGIN = 1.05
+
+
+def _over(estimate: int, window: int) -> bool:
+    """Whether a request estimated at `estimate` tokens may not fit `window`, allowing for the estimate's error."""
+    return estimate * _ESTIMATE_MARGIN > window
+
+
+def _over_window(needed: int, overhead: int, window: int) -> str:
+    """Why a request was not sent: it can't fit the model's window."""
+    return (f"Stopped: the next request needs about {needed:,} tokens, more than this model's {window:,}-token window "
+            f"({overhead:,} of them are Clyde's instructions and tool definitions). Run /compact, start a new "
+            f"conversation, or give the model a larger window (CLYDE_CONTEXT_TOKENS).")
 _HOOK_CONTEXT = "Context from a UserPromptSubmit hook:\n"
 _STOP_HOOK = "A Stop hook did not let the turn end yet: "
 _WRAP_UP = ("You have used every tool turn this task allows. Do not call tools. In plain text, say briefly: what is done, "
@@ -421,12 +451,27 @@ def run_agent_loop(
         if added:
             conversation.add_user_message(_HOOK_CONTEXT + added)
 
+    # The fixed part as the runtime measured it this run; only grows, since a cached prompt may report fewer tokens.
+    overhead_seen = 0
     for _turn in range(max_turns):
         if _turn and steer is not None and (steering := steer()):
             conversation.add_user_message(f"{_STEERING}{steering}")
-        if only is not None:   # a local window fills with old file dumps long before auto-compact
-            trim_old_tool_results(conversation, context_window(provider, model))
         specs = from_specs(advertised(all_specs, tool_context.loaded_tools, only))   # again each turn: ToolSearch may have loaded more
+        window = context_window(provider, model)
+        # Every round, not only before the turn: the system prompt and tool definitions are most of a small window, so
+        # one tool result can push the next request past it.
+        overhead = tool_context.prompt_overhead = max(request_overhead(system_prompt, specs), overhead_seen)
+        forget = _forget_read(tool_context)
+        if only is not None:   # a local window fills with old file dumps long before auto-compact
+            trim_old_tool_results(conversation, window, overhead=overhead, forget=forget)
+        sent = count_messages_tokens(conversation.get_messages())
+        # Past the window even after that: clear all but the newest result (the model can read a file again), and only
+        # then refuse. The usual four kept whole filled a 12k window with K2-Horizon after four reads.
+        if _over(sent + overhead, window) and trim_old_tool_results(conversation, window, keep=1, overhead=overhead, forget=forget):
+            sent = count_messages_tokens(conversation.get_messages())
+        if _over(sent + overhead, window):   # the server would refuse it: say why instead
+            return AgentLoopResult(response_text=_over_window(sent + overhead, overhead, window), usage=_usage_or_none(),
+                                   num_turns=turn_count, stop_reason="window")
         activity.set(f"waiting for {getattr(provider, 'name', '')}:{model}")
         request = to_canonical(conversation, system_prompt)
         response = trace.model_call(provider, model, request, lambda: stream_with_retry(
@@ -440,6 +485,8 @@ def run_agent_loop(
             on_thinking=on_thinking if stream else None,
         ))
         turn_count += 1
+        if measured := getattr(response, "prompt_tokens", None):   # the runtime's own count, in its own tokenizer
+            overhead_seen = max(overhead_seen, measured - sent)
         _add_usage(total_usage, response.usage)
         if max_tokens:
             spent += sum(response.usage.get(k) or 0 for k in _BUDGET_KEYS) if response.usage else \

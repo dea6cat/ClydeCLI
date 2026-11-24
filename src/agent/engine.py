@@ -438,8 +438,8 @@ class Engine:
         return result
 
     def _maybe_auto_compact(self) -> None:
-        """Compact the conversation before a turn when it nears the context window."""
-        if not needs_auto_compact(self.session.conversation, self.context_window()):
+        """Compact the conversation before a turn when it, with the last request's fixed part, nears the context window."""
+        if not needs_auto_compact(self.session.conversation, self.context_window(), self.tool_context.prompt_overhead):
             return
         self._before_compaction()
         self.console.print("[dim]Context is nearly full; compacting the conversation...[/dim]")

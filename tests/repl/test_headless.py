@@ -148,6 +148,13 @@ class TestRun(unittest.TestCase):
         data = json.loads(out)
         self.assertEqual((code, data["error"], data["usage"]), (1, "token budget reached (50)", {}))   # usage stays what was reported
 
+    def test_a_request_that_cant_fit_the_window_is_an_error_not_an_answer(self):
+        with patch("src.agent.agent_loop.context_window", return_value=500):
+            code, out, _, _ = self._run(reply("never sent"), output_format="json")
+        data = json.loads(out)
+        self.assertEqual((code, data["is_error"], data["error"]), (1, True, "context window full"))
+        self.assertIn("500-token window", data["result"])
+
     def test_a_run_under_max_tokens_is_not_stopped(self):
         code, out, _, _ = self._run(reply("4", usage={"input_tokens": 10, "output_tokens": 1}), max_tokens=1000)
         self.assertEqual((code, out), (0, "4\n"))

@@ -35,6 +35,18 @@ class TestTrimOldToolResults(unittest.TestCase):
         convo = _conversation(8, size=100)
         self.assertEqual(trim_old_tool_results(convo, window=100), 0)
 
+    def test_the_system_prompt_and_tools_count_toward_half_the_window(self):
+        self.assertEqual(trim_old_tool_results(_conversation(8), window=20_000), 0)
+        self.assertEqual(trim_old_tool_results(_conversation(8), window=20_000, overhead=9_000), 4)
+
+    def test_a_read_result_stored_as_a_dict_is_cleared_too(self):
+        convo = Conversation()
+        for i in range(6):
+            convo.add_user_message(f"step {i}")
+            convo.add_tool_result_message(f"id{i}", {"type": "text", "file": {"filePath": "a.py", "content": "x" * 4000}})
+        self.assertEqual(trim_old_tool_results(convo, window=4000), 2)
+        self.assertEqual(_contents(convo)[:2], [CLEARED_MESSAGE] * 2)
+
     def test_running_it_again_clears_nothing_more(self):
         convo = _conversation(8)
         trim_old_tool_results(convo, window=4000)

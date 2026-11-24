@@ -369,6 +369,15 @@ class TestAutoCompact(unittest.TestCase):
         from src.compact_service.service import needs_auto_compact
         self.assertTrue(needs_auto_compact(self._conversation(9_000), context_window=10_000))
 
+    def test_the_system_prompt_and_tools_count_toward_the_threshold(self):
+        from src.compact_service.service import needs_auto_compact
+        self.assertFalse(needs_auto_compact(self._conversation(5_000), context_window=10_000))
+        self.assertTrue(needs_auto_compact(self._conversation(5_000), context_window=10_000, overhead=4_000))
+
+    def test_a_fixed_part_past_the_threshold_alone_never_compacts(self):
+        from src.compact_service.service import needs_auto_compact   # compaction can't get under it: don't spend a call
+        self.assertFalse(needs_auto_compact(self._conversation(9_000), context_window=10_000, overhead=8_000))
+
     def test_single_message_never_compacts(self):
         from src.compact_service.service import needs_auto_compact
         conv = Conversation()
@@ -381,6 +390,7 @@ class TestAutoCompact(unittest.TestCase):
 
         repl = ClydeREPL.__new__(ClydeREPL)
         repl.session = type("S", (), {"conversation": self._conversation(9_000)})()
+        repl.tool_context = type("T", (), {"prompt_overhead": 0})()   # __new__ skips the engine's own
         repl.provider = FakeProvider(reply("Summary of the work"))
         repl.model = "fake-model"
         repl.console = Console(file=io.StringIO())
@@ -389,3 +399,17 @@ class TestAutoCompact(unittest.TestCase):
         messages = repl.session.conversation.messages
         self.assertEqual(len(messages), 2)
         self.assertIn("Summary of the work", str(messages[1].content))
+
+    def test_repl_counts_the_last_requests_fixed_part_before_a_turn(self):
+        from rich.console import Console
+        from src.repl.core import ClydeREPL
+
+        repl = ClydeREPL.__new__(ClydeREPL)
+        repl.session = type("S", (), {"conversation": self._conversation(3_000)})()   # under 80% of 10,000 alone
+        repl.tool_context = type("T", (), {"prompt_overhead": 6_000})()   # what the last request's system prompt and tools cost
+        repl.provider = FakeProvider(reply("Summary of the work"))
+        repl.model = "fake-model"
+        repl.console = Console(file=io.StringIO())
+        with patch.object(ClydeREPL, "context_window", return_value=10_000):
+            repl._maybe_auto_compact()
+        self.assertIn("Summary of the work", str(repl.session.conversation.messages[1].content))
