@@ -184,15 +184,15 @@ _HELP_TEXT = """
 - `/think [off|low|medium|high|on|default]` - Set the reasoning level
 - `/tools` - List available built-in tools
 - `/tool <name> <json>` - Run a tool directly
-- `/skills` - List all available skills
+- `/skills` - Pick a skill to run, with where each comes from; Ctrl+D then y removes one of your own (~/.clyde/skills)
 - `/init` - Create a CLYDE.md memory file for the project
 - `/cost` - Show session cost and usage
 - `/compact` - Compact conversation to save context space
 - `/doctor` - Diagnose environment, config, keys and permissions
 - `/proxy [system|off|<url>|ca <file>]` - Show or set the network proxy and a company root certificate
-- `/mcp` - Show connected MCP servers and their tools
+- `/mcp` - MCP servers with their state and source; Enter lists a server's tools, Ctrl+D then y removes one of yours from ~/.clyde/settings.json
 - `/mcp login <server>` / `/mcp logout <server>` - OAuth sign-in for a remote MCP server (opens your browser), or forget its tokens
-- `/plugins` - Installed, Errors and Stats tabs: what each plugin added, what went wrong, Space turns one on or off
+- `/plugins` - Installed, Errors and Stats tabs: what each plugin added, what went wrong, Space turns one on or off, d then y removes one
 - `/debug [path]` - Show the last turn's model and tool calls from the trace, or the trace file path
 - `/login [provider]` - Connect a provider or replace its key, or add an OpenAI-compatible one (`custom`), then switch to a model
 - `/logout <provider>` - Remove a saved API key (and the entry of a custom provider)
@@ -1330,7 +1330,8 @@ class ClydeREPL(Engine):
                 self.load_session(session_id)
 
         elif cmd == '/mcp':
-            self._print_mcp_status()
+            from src.plugins import screen as plugin_screen
+            self._mcp_screen() if plugin_screen.interactive() else self._print_mcp_status()
         elif raw.strip().startswith(('/mcp login', '/mcp logout')):
             self._mcp_auth(*raw.strip().split()[1:3])
 
@@ -1502,12 +1503,14 @@ class ClydeREPL(Engine):
         self.console.print(table if rows else "Nothing scanned yet.")
 
     def _handle_skill_command(self) -> None:
-        """/skills and /skill: choose a skill with the arrow keys; Enter runs it (as typing /<name> would)."""
-        from src.skills.loader import get_all_skills
+        """/skills and /skill: choose a skill with the arrow keys; Enter runs it (as typing /<name> would), Ctrl+D then y
+        removes one of your own (~/.clyde/skills). Skills read from other agents' folders, plugins or the project are
+        listed but left alone."""
+        from src.skills.loader import get_all_skills, skill_source
 
+        root = self.tool_context.cwd or self.tool_context.workspace_root
         try:
-            skills = sorted(get_all_skills(project_root=self.tool_context.cwd or self.tool_context.workspace_root),
-                            key=lambda s: s.name.lower())
+            skills = sorted(get_all_skills(project_root=root), key=lambda s: s.name.lower())
         except Exception as e:
             self.console.print(f"[red]Error loading skills: {e}[/red]")
             return
@@ -1515,11 +1518,35 @@ class ClydeREPL(Engine):
         if not runnable:
             self.console.print("[dim]No skills found. Create them in ~/.clyde/skills/, ~/.claude/skills/ or .clyde/skills/ in your project.[/dim]")
             return
-        choices = [Choice(s.name, s.name, one_line(getattr(s, "description", None) or "", 110)) for s in runnable]
+        by_name = {s.name: s for s in runnable}
+        choices = [Choice(s.name, s.name, one_line(f"{skill_source(s)} · {getattr(s, 'description', None) or ''}", 110))
+                   for s in runnable]
         note = f" {len(skills) - len(runnable)} more are for the model only." if len(skills) > len(runnable) else ""
-        name = pick(self.console, "Run a skill", choices, description="Enter runs it; type to filter, Esc cancels." + note)
+        name = pick(self.console, "Run a skill", choices, on_remove=lambda value: self._skill_removal(by_name[value], root),
+                    description="Enter runs it; type to filter, Esc cancels; Ctrl+D removes one of your own (~/.clyde/skills)."
+                                + note)
         if name:
             self.handle_command(f"/{name}")
+
+    def _skill_removal(self, skill, root):  # type: ignore[no-untyped-def]
+        """For /skills' Ctrl+D: the note to show, and the removal when the skill is one of ClydeCLI's own (see pick)."""
+        from src.skills.loader import all_skill_dirs, load_skills_from_dir, own_skill, remove_skill, skill_source
+
+        if not own_skill(skill):
+            return (f"{skill.name} comes from {skill_source(skill)}: ClydeCLI only removes its own skills (~/.clyde/skills), "
+                    "so other agents and projects keep theirs."), None
+
+        def remove() -> tuple[str, bool]:
+            try:
+                gone = remove_skill(skill)
+            except (ValueError, OSError) as e:
+                return f"{skill.name} was not removed: {e}", False
+            others = [s for base, origin, confine in all_skill_dirs(project_root=root)
+                      for s in load_skills_from_dir(base, loaded_from=origin, confine_to=confine) if s.name == skill.name]
+            then = f" Another {skill.name} ({skill_source(others[-1])}) is used from now on." if others else ""
+            return f"{skill.name} removed ({gone}).{then}", True
+
+        return f"Press y to remove {skill.name}: this deletes {skill.skill_root}. Any other key keeps it.", remove
 
     def _get_last_assistant_text(self) -> str | None:
         for message in reversed(self.session.conversation.messages):
@@ -1679,17 +1706,75 @@ class ClydeREPL(Engine):
         self.console.print(f"[green]✓ Signed in to {name}[/green]: {len(client.tools)} tool(s) connected." if client
                            else f"Signed in, but {name} didn't connect: {self._mcp_errors.get(name, 'unknown error')}")
 
-    def _print_mcp_status(self) -> None:
+    def _print_mcp_status(self, only: str | None = None) -> None:
         clients, errors = self.tool_context.mcp_clients, getattr(self, "_mcp_errors", {})
         if not clients and not errors:
             self.console.print("No MCP servers configured. Add them under `mcpServers` in ~/.clyde/settings.json.")
             return
         for name, client in clients.items():
-            self.console.print(f"[green]✓[/green] {name}: {len(client.tools)} tool(s)")
-            for tool in client.tools:
-                self.console.print(f"    mcp__{name}__{tool['name']}", markup=False)
+            if only in (None, name):
+                self.console.print(f"[green]✓[/green] {name}: {len(client.tools)} tool(s)")
+                for tool in client.tools:
+                    self.console.print(f"    mcp__{name}__{tool['name']}", markup=False)
         for name, error in errors.items():
-            self.console.print(f"[red]✗[/red] {name}: {error}")
+            if only in (None, name):
+                self.console.print(f"[red]✗[/red] {name}: {error}")
+
+    def _mcp_source(self, name: str) -> tuple[str, bool]:
+        """Where server `name` comes from, as the start-up merge decided (your settings, then the project's .mcp.json,
+        then plugins), and whether /mcp may remove it: only from ~/.clyde/settings.json."""
+        from src import settings
+        from src.tool_system.mcp_client import user_server_file
+
+        defined_in = user_server_file(name)
+        if defined_in == settings.json_path():
+            return "yours, ~/.clyde/settings.json", True
+        if defined_in is not None:
+            return f"yours, {defined_in.name}", False
+        plugin = next((loaded.plugin.name for loaded in self.plugins if name in loaded.mcp_servers), None)
+        return (f"plugin {plugin}" if plugin else "this project's .mcp.json"), False
+
+    def _mcp_screen(self) -> None:
+        """/mcp in a terminal: every server with its state and source; Enter lists its tools, Ctrl+D then y removes one
+        of your own from ~/.clyde/settings.json. Without a terminal /mcp prints the status instead."""
+        clients, errors = self.tool_context.mcp_clients, getattr(self, "_mcp_errors", {})
+        names = list(clients) + [n for n in errors if n not in clients]
+        if not names:
+            self._print_mcp_status()
+            return
+        choices = []
+        for name in names:
+            state = f"✓ {len(clients[name].tools)} tools" if name in clients else f"✗ {errors[name]}"
+            choices.append(Choice(name, name, one_line(f"{state} · {self._mcp_source(name)[0]}", 110)))
+        picked = pick(self.console, "MCP servers", choices, on_remove=self._mcp_removal,
+                      description="Enter lists its tools; Esc closes. Only your own servers (~/.clyde/settings.json) "
+                                  "can be removed; `/mcp login|logout <server>` signs in or out.")
+        if picked:
+            self._print_mcp_status(only=picked)
+
+    def _mcp_removal(self, name: str):  # type: ignore[no-untyped-def]
+        """For /mcp's Ctrl+D: the note to show, and the removal when the server is one of yours (see pick)."""
+        from src.tool_system import mcp_oauth
+        from src.tool_system.mcp_client import remote_spec, remove_user_server
+
+        source, removable = self._mcp_source(name)
+        if not removable:
+            how = "edit that file" if source.startswith("yours") else "it isn't ClydeCLI's to remove"
+            return f"{name} comes from {source}: {how}. /mcp only removes servers in ~/.clyde/settings.json.", None
+
+        def remove() -> tuple[str, bool]:
+            try:
+                cfg = remove_user_server(name)
+            except (ValueError, OSError) as e:
+                return f"{name} was not removed: {e}", False
+            if cfg is None:
+                return f"{name} is no longer in ~/.clyde/settings.json.", False
+            spec = remote_spec(cfg)
+            signed_out = bool(spec) and mcp_oauth.logout(spec[1])
+            return (f"{name} removed from ~/.clyde/settings.json{'; its sign-in is forgotten' if signed_out else ''}. "
+                    "Its tools stay available until ClydeCLI restarts."), True
+
+        return f"Press y to remove {name} from ~/.clyde/settings.json. Any other key keeps it.", remove
 
     def _print_plugins(self) -> None:
         if not self.plugins:

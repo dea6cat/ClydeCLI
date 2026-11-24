@@ -66,6 +66,27 @@ def load_servers(path: Path | None = None) -> dict[str, dict[str, Any]]:
     return {k: v for k, v in servers.items() if isinstance(v, dict)} if isinstance(servers, dict) else {}
 
 
+def user_server_file(name: str) -> Path | None:
+    """The user settings file that defines server `name` (settings.json wins over settings.toml); None when neither does."""
+    return next((path for path in settings.paths() if name in load_servers(path)), None)
+
+
+def remove_user_server(name: str) -> dict[str, Any] | None:
+    """Delete server `name` from `mcpServers` in ~/.clyde/settings.json; its config, or None when that file doesn't
+    define it. ValueError when the file can't be safely rewritten. settings.toml is never edited."""
+    removed: dict[str, Any] = {}
+
+    def change(data: dict[str, Any]) -> bool:
+        servers = data.get("mcpServers")
+        if isinstance(servers, dict) and isinstance(servers.get(name), dict):
+            removed["cfg"] = servers.pop(name)
+            return True
+        return False
+
+    settings.update(change)
+    return removed.get("cfg")
+
+
 class McpClient:
     """The protocol over any transport; requests may come from any thread. A transport implements
     `_send` and feeds every message it receives to `_receive`."""

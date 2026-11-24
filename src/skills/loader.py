@@ -39,6 +39,47 @@ def _candidate_user_skills_dirs() -> list[Path]:
     return dirs
 
 
+_SHARED = {".claude": "Claude Code", ".agents": "agents", ".codex": "Codex", ".copilot": "Copilot", ".gemini": "Gemini"}
+
+
+def own_skill(skill: PromptSkill) -> bool:
+    """A skill in ClydeCLI's own folder (~/.clyde/skills), which ClydeCLI may remove. Not one read in place from
+    another agent's folder or a project, and not when ~/.clyde/skills is itself a link to someone else's folder."""
+    own, root = clyde_home() / "skills", getattr(skill, "skill_root", None)
+    if not root or not own.is_dir() or own.is_symlink():
+        return False
+    return Path(root).parent == own.resolve()
+
+
+def skill_source(skill: PromptSkill) -> str:
+    """Where a skill comes from, in a few words: yours, shared with another agent, a plugin's, or the project's."""
+    if own_skill(skill):
+        return "yours"
+    root, origin = Path(getattr(skill, "skill_root", None) or ""), getattr(skill, "loaded_from", "")
+    if origin == "plugin":
+        return f"plugin {root.parent.parent.name}"
+    if origin == "project":
+        return "project"
+    for folder, agent in _SHARED.items():
+        if root.parent == (Path.home() / folder / "skills").resolve():
+            return f"{agent}, shared"
+    return origin or "skills"
+
+
+def remove_skill(skill: PromptSkill) -> Path:
+    """Delete one of ClydeCLI's own skills; a skill that is a link in ~/.clyde/skills loses the link, never its target.
+    ValueError for any other skill."""
+    if not own_skill(skill):
+        raise ValueError(f"{skill.name} is not in {clyde_home() / 'skills'}; ClydeCLI only removes its own skills")
+    root = Path(skill.skill_root or "")
+    if root.is_symlink():
+        root.unlink()
+    else:
+        import shutil
+        shutil.rmtree(root)
+    return root
+
+
 @dataclass
 class SkillRegistry:
     by_name: Dict[str, PromptSkill]

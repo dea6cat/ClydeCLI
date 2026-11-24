@@ -697,7 +697,7 @@ class TestREPL(unittest.TestCase):
                         repl.handle_command("/skills")
                     choices = pick.call_args.args[2]
                     self.assertEqual([c.value for c in choices], ["alpha", "zeta"])            # sorted, runnable only
-                    self.assertEqual(choices[1].hint, "Last one. Second line.")               # one line
+                    self.assertEqual(choices[1].hint, "skills · Last one. Second line.")      # where it's from, then one line
                     self.assertTrue(choices[0].hint.endswith("…") and len(choices[0].hint) <= 110)
                     self.assertIn("1 more are for the model only", pick.call_args.kwargs["description"])
                     self.assertEqual(handle.call_args_list[-1].args[0], "/zeta")              # Enter runs it
