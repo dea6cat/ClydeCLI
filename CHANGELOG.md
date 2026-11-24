@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- On an Apple Silicon Mac the installer also installs oMLX (into `~/.clyde/omlx`, with its Metal kernels when Xcode's toolchain is there), and `clyde setup` offers to (`--yes` skips it), so an MLX model no longer stops to install it on first use.
+
+### Changed
+
+- A local model's list of tools it can load shows one line per MCP server (how many tools, three examples, how to search them) instead of one line per tool. With 226 MCP tools installed, that list was 4,590 of the 6,954 tokens in a local model's first request; the request is now 2,486. Built-in tools, and cloud models, are listed as before.
+- ToolSearch matches every word of a query, in any order: "rea string list binary" found nothing, since the whole query had to appear as one phrase.
+
+### Fixed
+
+- Clyde no longer sends a request bigger than the model's context window. Its checks counted only the conversation, not its own instructions and tool definitions, which are most of a local model's request, so an 8,192-token window got a request of 8,456 and the server refused it. Clyde now counts them (as the server measured them, when it says), checks before every model call, clears old tool results to make room, and otherwise stops and says why; `clyde -p` exits 1 with "context window full".
+- Auto-compact counts the instructions and tool definitions too, and doesn't run when they alone are past its threshold: compacting could not help then, and would have cost a model call every turn.
+- On a small local window, old file reads are cleared to make room, as they were meant to be: a Read result was never cleared. A cleared file read again returns its content; it answered "unchanged", and a model took five files for empty.
+- Pulling a GGUF from hf.co offers only the tags the repo publishes: a `-q8_0.gguf` file pulls as `:q8_0`, not `:Q8_0`, and `dspark-*` drafts are no longer offered. A pull that fails for a missing tag says so and points to `/models local`.
+
 ## [0.10.0] - 2026-11-16
 
 ### Changed
