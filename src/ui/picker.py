@@ -10,7 +10,11 @@ from __future__ import annotations
 
 import sys
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
+
+# pick(on_remove=...): for a value, the note to show and, when it can be removed, the action that removes it, which
+# returns (note, removed). Ctrl+D asks; only `y` then confirms, since a second Ctrl+D is too easy a slip.
+Removal = Callable[[str], tuple[str, Callable[[], tuple[str, bool]] | None]]
 
 from rich.prompt import Prompt
 from rich.text import Text
@@ -102,11 +106,12 @@ def _ask_numbered(console: Any, title: str, choices: list[Choice], current: str 
 
 def pick(console: Any, title: str, choices: list[Choice], *, description: str = "", current: str | None = None,
          allow_custom: bool = False, visible: int = 8, header: tuple[str, str] | None = None, input: Any = None,
-         output: Any = None) -> str | None:
+         output: Any = None, on_remove: Removal | None = None) -> str | None:
     """Let the user choose one of `choices`; its value, or None when they cancel. `current` is marked
     and starts selected. With `allow_custom`, Enter on a filter that matches nothing returns the typed
     text (for model ids the list doesn't know). `header` titles the label and hint columns when the hints
-    are laid out as aligned columns. `input`/`output` are prompt_toolkit's, for tests."""
+    are laid out as aligned columns. With `on_remove`, Ctrl+D on a row asks to remove it and `y` confirms
+    (see Removal); a removed row leaves the list. `input`/`output` are prompt_toolkit's, for tests."""
     if not choices and not allow_custom:
         return None
     if input is None and not _interactive():
@@ -119,47 +124,70 @@ def pick(console: Any, title: str, choices: list[Choice], *, description: str = 
 
     from src.ui.esc import WATCHER
 
-    state = {"query": "", "cursor": next((i for i, c in enumerate(choices) if c.value == current), 0), "top": 0}
-    hint = "Enter to select · Esc to cancel" + (" · type to filter" if len(choices) > visible or allow_custom else "")
+    items = list(choices)   # rows removed with on_remove leave this list, not the caller's
+    state: dict[str, Any] = {"query": "", "cursor": next((i for i, c in enumerate(items) if c.value == current), 0), "top": 0,
+                             "note": "", "confirm": None}   # confirm: the removal waiting for `y`
+    hint = ("Enter to select · Esc to cancel" + (" · type to filter" if len(items) > visible or allow_custom else "")
+            + (" · Ctrl+D remove" if on_remove else ""))
 
     def view() -> list[Choice]:
-        return narrow(choices, state["query"])
+        return narrow(items, state["query"])
 
     def draw() -> list[tuple[str, str]]:
         rows = view()
         state["cursor"] = max(0, min(state["cursor"], len(rows) - 1))
         state["top"] = scroll(state["top"], state["cursor"], len(rows), visible)
         return render(rows, state["cursor"], state["top"], visible, title=title, description=description,
-                      current=current, query=state["query"], hint=hint, header=header)
+                      current=current, query=state["query"], hint=(state["note"] + "\n" if state["note"] else "") + hint,
+                      header=header)
+
+    def disarm() -> None:   # any key but `y` keeps the row a removal was waiting on
+        if state["confirm"] is not None:
+            state["confirm"], state["note"] = None, ""
 
     keys = KeyBindings()
 
     @keys.add("up", eager=True)
     def _up(event: Any) -> None:
+        disarm()
         state["cursor"] = max(0, state["cursor"] - 1)
 
     @keys.add("down", eager=True)
     def _down(event: Any) -> None:
+        disarm()
         state["cursor"] = min(len(view()) - 1, state["cursor"] + 1)
 
     @keys.add("pageup")
     def _page_up(event: Any) -> None:
+        disarm()
         state["cursor"] = max(0, state["cursor"] - visible)
 
     @keys.add("pagedown")
     def _page_down(event: Any) -> None:
+        disarm()
         state["cursor"] = min(len(view()) - 1, state["cursor"] + visible)
 
     @keys.add("home")
     def _home(event: Any) -> None:
+        disarm()
         state["cursor"] = 0
 
     @keys.add("end")
     def _end(event: Any) -> None:
+        disarm()
         state["cursor"] = len(view()) - 1
+
+    if on_remove is not None:
+        @keys.add("c-d")
+        def _ask_remove(event: Any) -> None:
+            rows = view()
+            if rows:
+                state["note"], state["confirm"] = on_remove(rows[state["cursor"]].value)
+                state["confirm_value"] = rows[state["cursor"]].value
 
     @keys.add("enter")
     def _enter(event: Any) -> None:
+        disarm()
         rows = view()
         if rows:
             event.app.exit(result=rows[state["cursor"]].value)
@@ -173,11 +201,19 @@ def pick(console: Any, title: str, choices: list[Choice], *, description: str = 
 
     @keys.add("backspace")
     def _back(event: Any) -> None:
+        disarm()
         state["query"] = state["query"][:-1]
         state["cursor"] = 0
 
     @keys.add("<any>")
     def _type(event: Any) -> None:
+        if (confirm := state["confirm"]) is not None and event.data == "y":
+            state["confirm"] = None
+            state["note"], removed = confirm()
+            if removed:
+                items[:] = [c for c in items if c.value != state.get("confirm_value")]
+            return
+        disarm()
         if event.data.isprintable():
             state["query"] += event.data
             state["cursor"] = 0

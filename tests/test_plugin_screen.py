@@ -59,6 +59,24 @@ class TestPluginScreen(PluginHomeCase):
             plugin_screen.show([], input=pipe, output=DummyOutput())
         self.assertEqual((plugins.is_enabled("one"), plugins.is_enabled("two")), (False, True))
 
+    def test_d_then_y_removes_the_highlighted_plugin(self) -> None:
+        make_plugin(plugins.plugins_dir(), "one")
+        make_plugin(plugins.plugins_dir(), "two")
+        with create_pipe_input() as pipe:
+            pipe.send_text(DOWN + "dy" + ESC)
+            plugin_screen.show([], input=pipe, output=DummyOutput())
+        self.assertEqual([p.name for p in plugins.installed()[0]], ["one"])
+        self.assertFalse((plugins.plugins_dir() / "two").exists())
+
+    def test_any_other_key_after_d_keeps_the_plugin(self) -> None:
+        make_plugin(plugins.plugins_dir(), "one")
+        make_plugin(plugins.plugins_dir(), "two")
+        with create_pipe_input() as pipe:
+            pipe.send_text("d" + DOWN + "y" + "dd" + ESC)   # moving cancels the ask, y alone means nothing, d twice is no yes
+            plugin_screen.show([], input=pipe, output=DummyOutput())
+        self.assertEqual([p.name for p in plugins.installed()[0]], ["one", "two"])
+        self.assertIn("d remove", _text(plugin_screen.render(0, 0, 0, 8, [], "")))
+
 
 if __name__ == "__main__":
     unittest.main()

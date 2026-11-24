@@ -1,7 +1,7 @@
 """/plugins: one screen with three tabs, Installed, Errors and Stats.
 
 Left/Right switch tabs, Up/Down move, Space turns the highlighted plugin on or off (it applies the next
-time ClydeCLI starts, like `clyde plugin enable`), Esc closes. Where there is no terminal /plugins prints the
+time ClydeCLI starts, like `clyde plugin enable`), d or Ctrl+D then y removes it (like `clyde plugin remove`), Esc closes. Where there is no terminal /plugins prints the
 plain list instead (see ClydeREPL._print_plugins). The data functions are plain so tests need no screen.
 """
 
@@ -109,7 +109,7 @@ def render(tab: int, cursor: int, top: int, visible: int, loaded: list[plugins.L
             out.append((f"fg:{_BAD}" if tab == 1 else "", f"  {line}\n"))
     out.append(("", "\n"))
     out.append((f"fg:{_DIM}", (note + "\n") if note else ""))
-    out.append((f"fg:{_DIM}", "←/→ tabs · ↑/↓ move · Space enable/disable · Esc close"))
+    out.append((f"fg:{_DIM}", "←/→ tabs · ↑/↓ move · Space enable/disable · d remove · Esc close"))
     return out
 
 
@@ -117,6 +117,20 @@ def toggle(p: plugins.Plugin) -> str:
     now = not plugins.is_enabled(p.name)
     plugins.set_enabled(p.name, now)
     return f"{p.name} {'enabled' if now else 'disabled'}; this applies the next time ClydeCLI starts."
+
+
+def confirm_note(p: plugins.Plugin) -> str:
+    return (f"Press y to remove {p.name}: this deletes {p.root} (ClydeCLI's copy only; another agent's install "
+            "stays). Any other key keeps it.")
+
+
+def remove_note(p: plugins.Plugin) -> str:
+    """Remove the plugin, as `clyde plugin remove` does, and say what happened."""
+    try:
+        plugins.remove(p.name)
+    except (ValueError, OSError) as e:
+        return f"{p.name} was not removed: {e}"
+    return f"{p.name} removed; it stays loaded in this session until ClydeCLI restarts."
 
 
 def interactive() -> bool:
@@ -132,7 +146,7 @@ def show(loaded: list[plugins.Loaded], *, input: Any = None, output: Any = None)
     from src.ui.esc import WATCHER
 
     visible = 8
-    state = {"tab": 0, "cursor": 0, "top": 0, "note": ""}
+    state: dict[str, Any] = {"tab": 0, "cursor": 0, "top": 0, "note": "", "removing": None}   # removing: awaiting y
 
     def draw() -> list[tuple[str, str]]:
         count = len(plugins.installed()[0])
@@ -144,25 +158,48 @@ def show(loaded: list[plugins.Loaded], *, input: Any = None, output: Any = None)
 
     @keys.add("left", eager=True)
     def _left(event: Any) -> None:
-        state["tab"], state["note"] = (state["tab"] - 1) % len(TABS), ""
+        state["tab"], state["note"], state["removing"] = (state["tab"] - 1) % len(TABS), "", None
 
     @keys.add("right", eager=True)
     def _right(event: Any) -> None:
-        state["tab"], state["note"] = (state["tab"] + 1) % len(TABS), ""
+        state["tab"], state["note"], state["removing"] = (state["tab"] + 1) % len(TABS), "", None
+
+    def _keep() -> None:   # any key but y cancels a removal waiting for it
+        if state["removing"] is not None:
+            state["removing"], state["note"] = None, ""
 
     @keys.add("up", eager=True)
     def _up(event: Any) -> None:
+        _keep()
         state["cursor"] = max(0, state["cursor"] - 1)
 
     @keys.add("down", eager=True)
     def _down(event: Any) -> None:
+        _keep()
         state["cursor"] += 1
 
     @keys.add("space")
     def _space(event: Any) -> None:
+        _keep()
         found = plugins.installed()[0]
         if state["tab"] == 0 and found:
             state["note"] = toggle(found[state["cursor"]])
+
+    @keys.add("d")
+    @keys.add("c-d")
+    def _ask_remove(event: Any) -> None:
+        found = plugins.installed()[0]
+        if state["tab"] == 0 and found:
+            plugin = found[state["cursor"]]
+            state["removing"], state["note"] = plugin.name, confirm_note(plugin)
+
+    @keys.add("y")
+    def _confirm(event: Any) -> None:
+        plugin = next((p for p in plugins.installed()[0] if p.name == state["removing"]), None)
+        if plugin is not None:   # y only means yes right after d asked
+            state["removing"], state["note"] = None, remove_note(plugin)
+        else:
+            _keep()
 
     @keys.add("escape", eager=True)
     @keys.add("c-c")

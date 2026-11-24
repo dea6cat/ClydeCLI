@@ -181,5 +181,37 @@ class TestAskQuestion(unittest.TestCase):
         self.assertNotIn("line one", other)   # the preview follows the cursor
 
 
+CTRL_D, ESC = "\x04", "\x1b"
+
+
+class TestRemoveFromPicker(unittest.TestCase):
+    def _removal(self, removed: list, allowed=("b",)):
+        def on_remove(value):
+            if value not in allowed:
+                return f"{value} isn't yours", None
+            return f"Press y to remove {value}", lambda: (removed.append(value) or (f"{value} removed", True))
+        return on_remove
+
+    def test_ctrl_d_then_y_removes_the_row_and_the_list_goes_on_without_it(self):
+        removed = []
+        chosen = _drive(DOWN + CTRL_D + "y" + ENTER, on_remove=self._removal(removed))
+        self.assertEqual(removed, ["b"])
+        self.assertEqual(chosen, "c")   # b left the list, so the cursor now sits on c
+
+    def test_any_other_key_keeps_it_and_a_second_ctrl_d_is_no_yes(self):
+        removed = []
+        _drive(DOWN + CTRL_D + DOWN + "y" + CTRL_D + CTRL_D + ESC, on_remove=self._removal(removed, allowed=("b", "c")))
+        self.assertEqual(removed, [])
+
+    def test_a_row_that_isnt_removable_only_says_why(self):
+        removed = []
+        BACKSPACE = "\x7f"   # with nothing to confirm, y is just typing: it filters, and backspace takes it back
+        self.assertEqual(_drive(CTRL_D + "y" + BACKSPACE + ENTER, on_remove=self._removal(removed)), "a")
+        self.assertEqual(removed, [])
+
+    def test_without_on_remove_ctrl_d_and_y_are_ignored_and_typing_still_filters(self):
+        self.assertEqual(_drive(CTRL_D + "gam" + ENTER), "c")
+
+
 if __name__ == "__main__":
     unittest.main()
