@@ -341,6 +341,44 @@ def _small_local(provider: Provider) -> bool:
     return getattr(provider, "name", "") in LOCAL_PROVIDERS
 
 
+def _request_frame(provider: Provider, model: str, tool_registry: ToolRegistry, tool_context: ToolContext, prompt: str,
+                   system_extra: str | None = None) -> tuple[str, list, frozenset[str] | None]:
+    """(system prompt, tool specs, the local core set) a request for `prompt` starts from. Changes nothing: the loop
+    stores the grown core set itself, and window_shortfall builds the same request without sending it."""
+    rules = getattr(tool_context, "permission_rules", None) or {"deny": []}
+    # A tool denied by bare name (`Bash`, `mcp__github__*`) is not shown at all, as Claude Code does: the model can't
+    # spend turns calling it, and its definition costs no prompt tokens.
+    all_specs = [s for s in tool_registry.list_specs() if not bare_denied(s.name, rules)]
+    style_prompt = resolve_output_style(getattr(tool_context, "output_style_name", None),
+                                        getattr(tool_context, "output_style_dir", None)).prompt
+    small = _small_local(provider)
+    filter_user_file = instruction_filter.for_project(tool_context.workspace_root, provider, model) if small else None
+    system_prompt = _build_effective_system_prompt(style_prompt, tool_context, compact=small, filter_user_file=filter_user_file,
+                                                   request=prompt)
+    if system_extra:   # a custom sub-agent's own instructions
+        system_prompt += "\n\n" + system_extra
+    # The few tools this prompt needs, grown onto the ones offered so far (see ToolContext.local_only).
+    only = tool_context.local_only | local_tools(prompt) if small else None
+    size = model_size.billions(provider, model) if only is not None else None
+    names_only = size is not None and size <= NAMES_ONLY_UP_TO_BILLIONS
+    if index := index_prompt(all_specs, only, names_only=names_only):
+        system_prompt += "\n\n" + index
+    if only is not None:   # a small local model checks code against the project and the docs before it presents it
+        system_prompt += "\n\n" + VERIFY_PROMPT
+    return system_prompt, all_specs, only
+
+
+def window_shortfall(provider: Provider, model: str, tool_registry: ToolRegistry, tool_context: ToolContext,
+                     system_extra: str | None = None) -> tuple[int, int] | None:
+    """(fixed part, window) when `model`'s window can't hold even Clyde's instructions and tool definitions, so every
+    request would be refused; None when it can. A machine short of free memory can size a local model's window below
+    that: K2-Horizon got 2,048 tokens against a 4,510-token fixed part."""
+    system_prompt, all_specs, only = _request_frame(provider, model, tool_registry, tool_context, "", system_extra)
+    fixed = request_overhead(system_prompt, from_specs(advertised(all_specs, tool_context.loaded_tools, only)))
+    window = context_window(provider, model)
+    return (fixed, window) if _over(fixed, window) else None
+
+
 # What Clyde itself adds as user turns; never the user's prompt (local reply review, hooks and tool routing read it).
 _INJECTED = (_STEERING, _HOOK_CONTEXT, _STOP_HOOK, _CONTINUE_NUDGE, _ANSWER_NUDGE, _WRAP_UP)
 
@@ -404,29 +442,11 @@ def run_agent_loop(
         AgentLoopResult with final text response, usage info, and turn count
     """
     tool_context.provider, tool_context.model = provider, model
-    rules = getattr(tool_context, "permission_rules", None) or {"deny": []}
-    # A tool denied by bare name (`Bash`, `mcp__github__*`) is not shown at all, as Claude Code does: the model can't
-    # spend turns calling it, and its definition costs no prompt tokens.
-    all_specs = [s for s in tool_registry.list_specs() if not bare_denied(s.name, rules)]
-    known_tools = tuple(s.name for s in all_specs)   # every tool runs when called; only some are sent (deferral.py)
-    style_name = getattr(tool_context, "output_style_name", None)
-    style_dir = getattr(tool_context, "output_style_dir", None)
-    style_prompt = resolve_output_style(style_name, style_dir).prompt
-    small = _small_local(provider)
-    filter_user_file = instruction_filter.for_project(tool_context.workspace_root, provider, model) if small else None
-    system_prompt = _build_effective_system_prompt(style_prompt, tool_context, compact=small, filter_user_file=filter_user_file,
-                                                   request=_last_prompt(conversation))
-    if system_extra:   # a custom sub-agent's own instructions
-        system_prompt += "\n\n" + system_extra
-    only = local_tools(_last_prompt(conversation)) if _small_local(provider) else None   # the few tools this prompt needs
+    system_prompt, all_specs, only = _request_frame(provider, model, tool_registry, tool_context, _last_prompt(conversation),
+                                                    system_extra)
     if only is not None:   # grow-only: see ToolContext.local_only; a changed tool list re-prefills the server's cache
-        only = tool_context.local_only = tool_context.local_only | only
-    size = model_size.billions(provider, model) if only is not None else None
-    names_only = size is not None and size <= NAMES_ONLY_UP_TO_BILLIONS
-    if index := index_prompt(all_specs, only, names_only=names_only):
-        system_prompt += "\n\n" + index
-    if only is not None:   # a small local model checks code against the project and the docs before it presents it
-        system_prompt += "\n\n" + VERIFY_PROMPT
+        tool_context.local_only = only
+    known_tools = tuple(s.name for s in all_specs)   # every tool runs when called; only some are sent (deferral.py)
     text_handler = on_text_chunk if (stream and on_text_chunk is not None) else _discard
 
     last_user_visible_message: str | None = None

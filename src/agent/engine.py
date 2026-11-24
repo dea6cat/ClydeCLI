@@ -23,7 +23,8 @@ from rich.console import Console
 from rich.text import Text
 
 from src import trace
-from src.agent.agent_loop import AgentLoopResult, ToolEvent, run_agent_loop, summarize_tool_result, summarize_tool_use
+from src.agent.agent_loop import AgentLoopResult, ToolEvent, run_agent_loop, summarize_tool_result, summarize_tool_use, \
+    window_shortfall
 from src.agent.checkpoints import Checkpoints
 from src.agent.cost_tracker import CostTracker
 from src.agent.session import Session
@@ -203,7 +204,24 @@ class Engine:
         self.provider_name = self.provider.name
         self.session.provider, self.session.model = self.provider_name, self.model
         self._warn_if_unlisted()
+        self._warn_if_window_too_small()
         return True
+
+    def _warn_if_window_too_small(self) -> None:
+        """A local model sized below Clyde's own instructions and tools can't answer anything: say so at the pick, with
+        what to do, instead of letting every message be refused."""
+        if callable(refresh := getattr(self.provider, "refresh_context", None)):
+            refresh(self.model)   # size it from the memory free now
+        try:
+            short = window_shortfall(self.provider, self.model, self.tool_registry, self.tool_context, self.system_extra)
+        except Exception:   # a server that doesn't answer: the first request will say so
+            return
+        if short is not None:
+            fixed, window = short
+            self.console.print(f"[yellow]{self.model} gets a {window:,}-token window on this machine right now, but Clyde's "
+                               f"instructions and tool definitions alone need about {fixed:,}: it can't answer until it has "
+                               "more. Free some memory and pick it again, or set \"Context window (local models)\" in "
+                               "/settings.[/yellow]")
 
     def _warn_if_unlisted(self) -> None:
         """A model the provider's own list doesn't contain usually fails on the first request: say so now."""

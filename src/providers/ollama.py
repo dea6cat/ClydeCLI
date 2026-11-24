@@ -178,6 +178,11 @@ class OllamaProvider:
         """Use `tokens` as this model's window instead of computing one (an env override still wins)."""
         self._ctx_cache[model] = tokens
 
+    def refresh_context(self, model: str) -> None:
+        """Size `model`'s window again on next use, from the memory free then: picking a model again after closing
+        apps should get the room they gave back, not the window computed when it was short."""
+        self._ctx_cache.pop(model, None)
+
     def context_window(self, model: str) -> int:
         """The window pinned via num_ctx and budgeted for. CLYDE_CONTEXT_TOKENS overrides globally,
         CLYDE_MODEL_CONTEXT_<MODEL> per model; cloud isn't pinned; otherwise computed per

@@ -53,6 +53,15 @@ class WindowSizingTests(unittest.TestCase):
     def test_more_ram_gives_a_longer_window(self):
         self.assertGreater(_window(64, 2.33, 144, 262_144)[0], _window(18, 2.33, 144, 262_144)[0])
 
+    def test_a_refresh_sizes_the_window_again_from_the_memory_free_then(self):
+        provider = OllamaProvider()
+        with patch("src.config.window_override", return_value=None), patch("src.config.get_context_tokens", return_value=None), \
+                patch.object(provider, "_compute_ctx", side_effect=[2048, 8192]):
+            self.assertEqual(provider.context_window("m"), 2048)   # sized while memory was short
+            self.assertEqual(provider.context_window("m"), 2048)   # cached
+            provider.refresh_context("m")                          # picked again after closing apps
+            self.assertEqual(provider.context_window("m"), 8192)
+
 
 if __name__ == "__main__":
     unittest.main()
