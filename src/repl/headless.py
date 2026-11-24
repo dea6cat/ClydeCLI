@@ -130,11 +130,13 @@ def run(prompt: str, *, model: str | None = None, mode: str = "hold", output_for
     answer = result.response_text if result is not None else ""
     ran_out = bool(result is not None and result.ran_out)
     over_budget = result is not None and result.stop_reason == "budget"
-    failed = error is not None or result is None or ran_out or over_budget
+    full = result is not None and result.stop_reason == "window"   # the next request was not sent: it can't fit
+    failed = error is not None or result is None or ran_out or over_budget or full
     if output_format in ("json", "stream-json"):
         payload: dict[str, Any] = {
             "result": answer, "is_error": failed,
-            "error": error or ("ran out of tool rounds" if ran_out else f"token budget reached ({max_tokens})" if over_budget else None),
+            "error": error or ("ran out of tool rounds" if ran_out else f"token budget reached ({max_tokens})" if over_budget
+                               else "context window full" if full else None),
             "model": model_ref(engine.provider, engine.model), "num_turns": result.num_turns if result else 0,
             "usage": (result.usage if result else None) or {}, "denied": denied, "session_id": engine.session.session_id,
         }

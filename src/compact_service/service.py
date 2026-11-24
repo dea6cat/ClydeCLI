@@ -40,12 +40,17 @@ def auto_compact_threshold(context_window: int) -> int:
     return int(context_window * AUTO_COMPACT_FRACTION)
 
 
-def needs_auto_compact(conversation: Conversation, context_window: int) -> bool:
-    """Whether the conversation has grown past the auto-compact threshold."""
+def needs_auto_compact(conversation: Conversation, context_window: int, overhead: int = 0) -> bool:
+    """Whether the conversation plus the request's fixed part (`overhead`: system prompt and tool definitions) has grown
+    past the auto-compact threshold. False when the fixed part alone is past it: compacting the messages can't get under
+    it then, and would only spend a model call every turn."""
     if len(get_messages_after_boundary(conversation.messages)) < 2:
         return False
+    threshold = auto_compact_threshold(context_window)
+    if overhead >= threshold:
+        return False
     from ..context_system.token_estimation import count_messages_tokens
-    return count_messages_tokens(conversation.get_messages()) >= auto_compact_threshold(context_window)
+    return count_messages_tokens(conversation.get_messages()) + overhead >= threshold
 
 
 def _has_tool_result(api_message: dict[str, Any]) -> bool:

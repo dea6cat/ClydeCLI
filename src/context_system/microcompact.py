@@ -8,7 +8,7 @@ sent to the API without losing the model-visible history structure.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable
 
 # Token size estimate for images/documents in tool results
 IMAGE_TOKEN_SIZE = 2000
@@ -195,20 +195,26 @@ TRIM_MIN_CHARS = 500
 TRIM_KEEP = 4         # the newest tool results stay whole
 
 
-def trim_old_tool_results(conversation: Any, window: int, keep: int = TRIM_KEEP) -> int:
-    """Clear the content of old, long tool results once the conversation passes half the window; returns how many.
+def trim_old_tool_results(conversation: Any, window: int, keep: int = TRIM_KEEP, overhead: int = 0,
+                          forget: Callable[[Any], None] | None = None) -> int:
+    """Clear the content of old, long tool results once the request passes half the window; returns how many.
 
     A small local window fills with file dumps long before auto-compact (80%) summarizes it. The model can read
-    a file again, so the results it no longer needs are cleared, newest `keep` first spared.
+    a file again, so the results it no longer needs are cleared, newest `keep` first spared. `overhead` is the request's
+    fixed part (system prompt and tool definitions), which the message count leaves out. `forget` gets each cleared
+    content first, so the caller can let a file be read in full again (Read answers "unchanged" to a file it already sent).
     """
     from src.conversation import ToolResultContentBlock
     from .token_estimation import count_messages_tokens
 
-    if count_messages_tokens(conversation.get_messages()) < window * TRIM_FRACTION:
+    if count_messages_tokens(conversation.get_messages()) + overhead < window * TRIM_FRACTION:
         return 0
     results = [b for m in conversation.messages if isinstance(m.content, list) for b in m.content if isinstance(b, ToolResultContentBlock)]
     cleared = 0
     for block in results[:-keep] if keep else results:
-        if isinstance(block.content, str) and len(block.content) > TRIM_MIN_CHARS:
+        # Any shape: Read's result is a dict ({'type': 'text', 'file': {...}}), and a str-only check never cleared one.
+        if block.content != CLEARED_MESSAGE and len(str(block.content)) > TRIM_MIN_CHARS:
+            if forget is not None:
+                forget(block.content)
             block.content, cleared = CLEARED_MESSAGE, cleared + 1
     return cleared

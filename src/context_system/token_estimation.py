@@ -7,6 +7,7 @@ with a character-based fallback for other encodings or when tiktoken is absent.
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any, Optional
 
@@ -85,6 +86,12 @@ def count_messages_tokens(messages: list[dict[str, Any]]) -> int:
                 else:
                     total += count_tokens(str(block))
     return total
+
+
+def request_overhead(system_prompt: str, specs: Any) -> int:
+    """Tokens of a request's fixed part, which the message count leaves out: the system prompt and the tool definitions."""
+    return count_tokens(system_prompt) + sum(
+        count_tokens(s.name) + count_tokens(s.description) + count_tokens(json.dumps(s.input_schema)) for s in specs)
 
 
 def rough_token_count(text: str) -> int:
