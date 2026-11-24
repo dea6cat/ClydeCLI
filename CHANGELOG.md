@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-11-24
+
 ### Added
 
 - On an Apple Silicon Mac the installer also installs oMLX (into `~/.clyde/omlx`, with its Metal kernels when Xcode's toolchain is there), and `clyde setup` offers to (`--yes` skips it), so an MLX model no longer stops to install it on first use.
@@ -904,6 +906,7 @@ The focus was on building a solid foundation with clean architecture, comprehens
 
 ---
 
+[0.11.0]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.11.0
 [0.10.0]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.10.0
 [0.9.0]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.9.0
 [0.8.0]: https://github.com/dea6cat/ClydeCLI/releases/tag/v0.8.0
