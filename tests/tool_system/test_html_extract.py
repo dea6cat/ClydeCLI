@@ -96,5 +96,27 @@ class TestStructure(unittest.TestCase):
         self.assertIn("bottom", text)
 
 
+class TestReviewFixes(unittest.TestCase):
+    def test_indented_paragraph_stays_one_line(self):
+        # all whitespace in text nodes collapses; only _render's markers break lines
+        self.assertEqual("Hello bold world", _html_extract.extract_text("<p>\n  Hello <b>bold</b>\n  world\n</p>"))
+
+    def test_link_inside_inline_tag_keeps_target(self):
+        self.assertEqual("[link](/x)", _html_extract.extract_text('<p><strong><a href="/x">link</a></strong></p>'))
+
+    def test_link_inside_heading_keeps_target(self):
+        self.assertEqual("## [head](/y)", _html_extract.extract_text('<h2><a href="/y">head</a></h2>'))
+
+    def test_unclosed_p_does_not_nest_or_overflow(self):
+        page = "<h1>Head</h1>" + "<p>para &amp; more" * 2000 + "<script>alert(1)</script>"
+        text = _html_extract.extract_text(page)
+        self.assertIn("# Head", text)
+        self.assertIn("para & more", text)
+        self.assertNotIn("alert(1)", text)
+
+    def test_plain_text_drops_script_and_unescapes(self):
+        self.assertEqual("Tom & Jerry", _html_extract._plain_text("<p>Tom &amp; Jerry</p><script>alert(1)"))
+
+
 if __name__ == "__main__":
     unittest.main()

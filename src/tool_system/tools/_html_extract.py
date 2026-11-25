@@ -6,12 +6,13 @@ CSS selector (tag, .class, #id, tag.class, descendant combinator) over the parse
 """
 from __future__ import annotations
 
+import html
 import re
 from html.parser import HTMLParser
 
 _SKIP_TAGS = {"script", "style", "noscript", "template", "svg"}
 _HEADING_LEVELS = {"h1", "h2", "h3", "h4", "h5", "h6"}
-_WS_RE = re.compile(r"[^\S\n]+")   # horizontal whitespace only: newlines are block separators in the output
+_WS_RE = re.compile(r"\s+")   # all whitespace collapses in text nodes, so only the markers _render adds can break a line
 
 
 class _Node:
@@ -29,12 +30,17 @@ class _TreeBuilder(HTMLParser):
 
     _VOID = {"br", "hr", "img", "input", "meta", "link", "area", "base", "col", "embed", "source", "track", "wbr"}
 
+    _IMPLIED_END = {"p": {"p"}, "li": {"li"}, "td": {"td", "th"}, "th": {"td", "th"}, "option": {"option"}}
+
     def __init__(self):
         super().__init__(convert_charrefs=True)
         self.root = _Node("#root", {}, None)
         self._stack = [self.root]
 
     def handle_starttag(self, tag, attrs):
+        # a new <p>/<li>/<td>/<th>/<option> closes the open one instead of nesting (2,000 unclosed <p> must not overflow the stack)
+        while len(self._stack) > 1 and self._stack[-1].tag in self._IMPLIED_END.get(tag, ()):
+            self._stack.pop()
         node = _Node(tag, {k: (v or "") for k, v in attrs}, self._stack[-1])
         self._stack[-1].children.append(node)
         if tag not in self._VOID:
@@ -80,10 +86,9 @@ def _render(node: _Node, out: list[str], depth: int = 0) -> None:
         if tag in _SKIP_TAGS:
             continue
         if tag in _HEADING_LEVELS:
-            text = _text_of(child)
-            if text:
-                out.append("\n" + "#" * int(tag[1]) + " " + text)
-                out.append("\n")
+            out.append("\n" + "#" * int(tag[1]) + " ")
+            _render(child, out, depth)   # render children so a link inside a heading keeps its target
+            out.append("\n")
         elif tag == "a":
             text = _text_of(child)
             href = child.attrs.get("href", "")
@@ -93,9 +98,7 @@ def _render(node: _Node, out: list[str], depth: int = 0) -> None:
             out.append("\n" + "  " * depth + "- ")
             _render(child, out, depth)   # a nested <ul> raises depth through the container branch
         elif tag in _INLINE_TAGS:
-            text = _text_of(child)
-            if text:
-                out.append(text)
+            _render(child, out, depth)   # render children so a link inside <strong>/<em>/<span> keeps its target
         elif tag in _BLOCK_TAGS:
             out.append("\n")
             _render(child, out, depth)
@@ -128,8 +131,10 @@ def _join(out: list[str]) -> str:
 
 
 def _plain_text(raw_html: str) -> str:
-    """Fallback for pages too deep to structure: tags stripped, all whitespace collapsed."""
-    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", raw_html)).strip()
+    """Fallback for pages too deep to structure: script/style bodies dropped, tags stripped, entities unescaped, whitespace collapsed."""
+    no_script = re.sub(r"(?is)<(script|style)\b[^>]*>.*?</\1\s*>", " ", raw_html)
+    no_script = re.sub(r"(?is)<(script|style)\b[^>]*>.*$", " ", no_script)   # unclosed script swallows the rest
+    return re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", no_script))).strip()
 
 
 def extract_text(raw_html: str) -> str:
