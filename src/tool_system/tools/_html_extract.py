@@ -39,7 +39,8 @@ class _TreeBuilder(HTMLParser):
 
     _VOID = {"br", "hr", "img", "input", "meta", "link", "area", "base", "col", "embed", "source", "track", "wbr"}
 
-    _IMPLIED_END = {"p": {"p"}, "li": {"li"}, "td": {"td", "th"}, "th": {"td", "th"}, "option": {"option"}}
+    # these tags auto-close each other: a new one pops any of them open at the top, so "<p>a<li>b" repeated can't nest unboundedly
+    _AUTO_CLOSE = {"p", "li", "td", "th", "option"}
 
     def __init__(self):
         super().__init__(convert_charrefs=True)
@@ -48,8 +49,9 @@ class _TreeBuilder(HTMLParser):
 
     def handle_starttag(self, tag, attrs):
         # a new <p>/<li>/<td>/<th>/<option> closes the open one instead of nesting inside it
-        while len(self._stack) > 1 and self._stack[-1].tag in self._IMPLIED_END.get(tag, ()):
-            self._stack.pop()
+        if tag in self._AUTO_CLOSE:
+            while len(self._stack) > 1 and self._stack[-1].tag in self._AUTO_CLOSE:
+                self._stack.pop()
         node = _Node(tag, {k: (v or "") for k, v in attrs}, self._stack[-1])
         self._stack[-1].children.append(node)
         if tag not in self._VOID:

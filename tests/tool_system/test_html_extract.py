@@ -119,6 +119,11 @@ class TestReviewFixes(unittest.TestCase):
         text = _html_extract.extract_text("<div>" * 3000 + "<p>Tom &amp; Jerry</p><script>alert(1)" + "<script>" * 5000)
         self.assertEqual("Tom & Jerry", text)
 
+    def test_alternating_auto_close_tags_do_not_nest(self):
+        # "<p>a<li>b" repeated must not build a 2000-deep tree: a new auto-close tag pops any auto-close tag on top
+        text = _html_extract.extract_text("<p>a<li>b" * 2000)
+        self.assertEqual(4000, len(text.splitlines()))
+
 
 class TestThirdReview(unittest.TestCase):
     """Inline text is joined as the source spaced it, code blocks keep their lines, and nothing is quadratic."""
