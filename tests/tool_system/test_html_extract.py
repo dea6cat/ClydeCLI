@@ -114,8 +114,45 @@ class TestReviewFixes(unittest.TestCase):
         self.assertIn("para & more", text)
         self.assertNotIn("alert(1)", text)
 
-    def test_plain_text_drops_script_and_unescapes(self):
-        self.assertEqual("Tom & Jerry", _html_extract._plain_text("<p>Tom &amp; Jerry</p><script>alert(1)"))
+    def test_a_hostile_deep_page_drops_script_and_unescapes(self):
+        # there is no plain-text fallback any more: every walk is iterative, so deep pages render like any other
+        text = _html_extract.extract_text("<div>" * 3000 + "<p>Tom &amp; Jerry</p><script>alert(1)" + "<script>" * 5000)
+        self.assertEqual("Tom & Jerry", text)
+
+
+class TestThirdReview(unittest.TestCase):
+    """Inline text is joined as the source spaced it, code blocks keep their lines, and nothing is quadratic."""
+
+    def test_tags_inside_a_word_or_number_add_no_space(self):
+        text = _html_extract.extract_text('<p>un<b>bold</b>ed and <a href="/x">link</a>. $<span>5</span>.99</p>')
+        self.assertEqual("unbolded and [link](/x). $5.99", text)
+
+    def test_a_code_block_keeps_its_lines_and_indentation(self):
+        text = _html_extract.extract_text("<p>before</p><pre>def f():\n    return 1\n</pre><p>after</p>")
+        self.assertEqual("before\ndef f():\n    return 1\nafter", text)
+
+    def test_br_hr_and_block_containers_break_lines(self):
+        self.assertEqual("line1\nline2\nx", _html_extract.extract_text("<p>line1<br>line2</p><hr><p>x</p>"))
+        self.assertEqual("outer\ninner", _html_extract.select("<div>outer<div>inner</div></div>", "div"))
+        self.assertEqual("Price: $5", _html_extract.extract_text("<p>Price: <label>$</label><mark>5</mark></p>"))
+
+    def test_lists_start_at_the_margin_and_keep_their_marker(self):
+        self.assertEqual("- a\n- b", _html_extract.extract_text("<ul><li>a<li>b</ul>"))
+        self.assertEqual("- a\n  - b", _html_extract.extract_text("<ul><li>a<ul><li>b</li></ul></li></ul>"))
+        self.assertEqual("- x", _html_extract.extract_text("<ul><li><p>x</p></li></ul>"))
+
+    def test_an_empty_heading_prints_nothing(self):
+        self.assertEqual("body", _html_extract.extract_text("<h1><img src=logo.png alt=Logo></h1><p>body</p>"))
+
+    def test_select_on_a_deep_match_returns_only_the_match(self):
+        page = "<div id=main><p>k</p>" + "<b>" * 3000 + "</div><p>secret-other</p>"
+        self.assertNotIn("secret-other", _html_extract.select(page, "#main"))
+
+    def test_a_deep_descendant_selector_is_linear(self):
+        import time
+        started = time.monotonic()
+        _html_extract.select("<div>" * 20000 + "x", "div div")
+        self.assertLess(time.monotonic() - started, 2.0)   # was about two minutes when each match re-walked its subtree
 
 
 if __name__ == "__main__":

@@ -49,6 +49,15 @@ def _real_url(href: str) -> str:
     return href
 
 
+def _antibot_page(raw: str, query: str) -> bool:
+    """DuckDuckGo's anti-bot page: it says "anomaly". The results page echoes the query back (as typed, HTML-escaped and
+    URL-encoded), so those echoes are removed first: an empty search for "anomaly detection" must not read as a block."""
+    page = raw.lower()
+    for echo in {query, html.escape(query), urllib.parse.quote_plus(query), urllib.parse.quote(query)}:
+        page = page.replace(echo.lower(), " ")
+    return "anomaly" in page
+
+
 def _strip_tags(s: str) -> str:
     return html.unescape(re.sub(r"<[^>]+>", "", s)).strip()
 
@@ -90,31 +99,31 @@ class WebSearchTool:
             raise ToolInputError("num must be an integer between 1 and 10")
 
         results: list[dict[str, str]] = []
-        blocked = False
+        failure: str | None = None        # why the last attempt got nothing: "anti-bot" or the HTTP status of a rate limit
         for attempt in range(2):          # one retry, only after a rate limit or the anti-bot page
-            blocked = False               # each attempt starts clean
+            failure = None                # each attempt starts clean
             url = _ENDPOINT + urllib.parse.urlencode({"q": query})
             try:
                 with urllib.request.urlopen(urllib.request.Request(url, headers=_BROWSER_HEADERS), timeout=15) as resp:
                     raw = resp.read(1_000_000).decode("utf-8", errors="replace")
             except urllib.error.HTTPError as e:
-                if e.code in {429, 503}:
-                    blocked = True
-                    if attempt == 0:
-                        time.sleep(2)
-                    continue
-                raise ToolExecutionError(f"web search failed: HTTP {e.code} from the search engine") from e
-            results = self._parse(raw, num)
-            if results:
-                break
-            if "anomaly" in raw.lower():  # no results AND the marker: the anti-bot page (the query is echoed back, so parse first)
-                blocked = True
-                if attempt == 0:
-                    time.sleep(2)
-                continue
-            break                         # a genuine empty answer: no retry
-        if not results and blocked:
+                e.close()
+                if e.code not in {429, 503}:
+                    raise ToolExecutionError(f"web search failed: HTTP {e.code} from the search engine") from e
+                failure = f"HTTP {e.code}"
+            else:
+                results = self._parse(raw, num)
+                if results:
+                    break
+                if not _antibot_page(raw, query):
+                    break                 # a genuine empty answer: no retry
+                failure = "anti-bot"
+            if attempt == 0:
+                time.sleep(2)
+        if not results and failure == "anti-bot":
             raise ToolExecutionError("web search was blocked by the search engine (anti-bot check); try again later or use WebFetch on a known page")
+        if not results and failure:   # rate limited or unavailable twice: say that, not "anti-bot"
+            raise ToolExecutionError(f"web search failed: {failure} from the search engine twice; try again later")
         return ToolResult(name="WebSearch", output={"query": query, "results": results})
 
     @staticmethod

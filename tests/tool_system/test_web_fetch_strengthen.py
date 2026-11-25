@@ -220,6 +220,31 @@ class TestWebSearchRetry(unittest.TestCase):
         self.assertEqual(2, len(calls))
         self.assertEqual(1, len(result.output["results"]))
 
+    def test_an_empty_search_for_the_word_anomaly_is_not_a_block(self):
+        # the query comes back in the empty results page (input value, title): that echo is not the anti-bot page
+        echo = '<html><head><title>anomaly detection at DuckDuckGo</title></head><body><input value="anomaly detection"></body></html>'
+        calls, fake = self._fetch([echo])
+        with patch.object(web_search.urllib.request, "urlopen", side_effect=fake), patch.object(web_search.time, "sleep"):
+            result = self.tool.run({"query": "anomaly detection"}, self.ctx)
+        self.assertEqual(([], 1), (result.output["results"], len(calls)))
+
+    def test_a_rate_limit_on_both_attempts_reports_the_status_not_anti_bot(self):
+        def fake_urlopen(req, timeout=15):
+            raise urllib.error.HTTPError(req.full_url, 503, "unavailable", None, io.BytesIO(b""))
+
+        with self.assertRaises(ToolExecutionError) as cm:
+            self._run(fake_urlopen)
+        self.assertIn("HTTP 503", str(cm.exception))
+        self.assertNotIn("anti-bot", str(cm.exception))
+
+
+class TestSelectorBeforeFetch(unittest.TestCase):
+    def test_a_bad_selector_is_refused_before_any_request(self):
+        with patch.object(web_fetch.urllib.request, "build_opener") as opener:
+            with self.assertRaises(ToolInputError):
+                WebFetchTool().run({"url": "https://example.com/", "selector": "div > p"}, ToolContext(workspace_root="."))
+        opener.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

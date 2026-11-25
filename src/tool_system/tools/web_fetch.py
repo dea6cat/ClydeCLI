@@ -9,7 +9,7 @@ from typing import Any
 
 from . import _html_extract
 from ..context import ToolContext
-from ..errors import ToolExecutionError, ToolInputError, ToolPermissionError
+from ..errors import ToolInputError, ToolPermissionError
 from ..permission_handler import PermissionResult
 from ..protocol import ToolResult
 from ..registry import ToolSpec
@@ -145,6 +145,11 @@ class WebFetchTool:
         selector = tool_input.get("selector")
         if selector is not None and (not isinstance(selector, str) or not selector.strip()):
             raise ToolInputError("selector must be a non-empty string")
+        if selector is not None:
+            try:
+                _html_extract.validate_selector(selector)   # before the request: a bad selector costs no download
+            except ValueError as e:
+                raise ToolInputError(str(e)) from e
 
         _check_url(url)
         req = urllib.request.Request(url, headers={"User-Agent": "clyde-cli/0.1"})
