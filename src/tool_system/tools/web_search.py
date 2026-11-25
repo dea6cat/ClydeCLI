@@ -53,8 +53,9 @@ def _antibot_page(raw: str, query: str) -> bool:
     """DuckDuckGo's anti-bot page: it says "anomaly". The results page echoes the query back (as typed, HTML-escaped and
     URL-encoded), so those echoes are removed first: an empty search for "anomaly detection" must not read as a block."""
     page = raw.lower()
-    for echo in {query, html.escape(query), urllib.parse.quote_plus(query), urllib.parse.quote(query)}:
-        page = page.replace(echo.lower(), " ")
+    if "anomaly" in query.lower():   # only then can an echo fake the marker; stripping a short query like "an" would
+        for echo in {query, html.escape(query), urllib.parse.quote_plus(query), urllib.parse.quote(query)}:   # cut the word itself
+            page = page.replace(echo.lower(), " ")
     return "anomaly" in page
 
 

@@ -160,5 +160,30 @@ class TestThirdReview(unittest.TestCase):
         self.assertLess(time.monotonic() - started, 2.0)   # was about two minutes when each match re-walked its subtree
 
 
+class TestFourthReview(unittest.TestCase):
+    """A <p> inside a list item or cell stays inside it, a selected element keeps its own formatting, and stray end tags are cheap."""
+
+    def test_a_paragraph_inside_a_cell_or_item_stays_inside_it(self):
+        self.assertEqual("$5", _html_extract.select("<table><tr><td class=price><p>$5</p></td></tr></table>", "td.price p"))
+        self.assertEqual("- Hello", _html_extract.select("<ul><li class=x><p>Hello</p></li></ul>", ".x"))
+        nested = "<ul><li>outer<ul><li><p>x</p></li><li>y</li></ul></li><li>z</li></ul>"
+        self.assertEqual("- outer\n  - x\n  - y\n- z", _html_extract.extract_text(nested))
+
+    def test_a_selected_element_keeps_its_own_formatting(self):
+        self.assertEqual("a\n    b", _html_extract.select("<pre class=c>a\n    b</pre>", "pre"))
+        self.assertEqual("[link](/u)", _html_extract.select("<a href=/u>link</a>", "a"))
+        self.assertEqual("## Title", _html_extract.select("<h2 id=t>Title</h2>", "#t"))
+        self.assertEqual("", _html_extract.select("<script>var x=1</script>", "script"))
+
+    def test_an_empty_list_item_passes_its_marker_to_nothing(self):
+        self.assertEqual("Note", _html_extract.extract_text("<ul><li></li><div>Note</div></ul>"))
+
+    def test_stray_end_tags_on_a_deep_page_are_linear(self):
+        import time
+        started = time.monotonic()
+        _html_extract.extract_text("<div>" * 20000 + "x" + "</span>" * 20000)
+        self.assertLess(time.monotonic() - started, 2.0)   # was 6 s: each stray end tag scanned the whole open-tag stack
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -237,6 +237,14 @@ class TestWebSearchRetry(unittest.TestCase):
         self.assertIn("HTTP 503", str(cm.exception))
         self.assertNotIn("anti-bot", str(cm.exception))
 
+    def test_a_short_query_cannot_hide_the_anti_bot_page(self):
+        # stripping every "an" from the page used to cut "anomaly" itself, so the block came back as an empty result
+        calls, fake = self._fetch([ANOMALY_HTML, ANOMALY_HTML])
+        with patch.object(web_search.urllib.request, "urlopen", side_effect=fake), patch.object(web_search.time, "sleep"):
+            with self.assertRaises(ToolExecutionError) as cm:
+                self.tool.run({"query": "an"}, self.ctx)
+        self.assertIn("anti-bot", str(cm.exception))
+
 
 class TestSelectorBeforeFetch(unittest.TestCase):
     def test_a_bad_selector_is_refused_before_any_request(self):

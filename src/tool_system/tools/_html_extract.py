@@ -39,31 +39,39 @@ class _TreeBuilder(HTMLParser):
 
     _VOID = {"br", "hr", "img", "input", "meta", "link", "area", "base", "col", "embed", "source", "track", "wbr"}
 
-    # these tags auto-close each other: a new one pops any of them open at the top, so "<p>a<li>b" repeated can't nest unboundedly
-    _AUTO_CLOSE = {"p", "li", "td", "th", "option"}
+    # A new tag closes an open one of its own group only: <p> closes <p>, <li> closes <li>, <td>/<th> close each other. Not
+    # across groups: a <p> inside an <li> or <td> is ordinary markup, and closing the li/td there broke `select("td p")`.
+    _IMPLIED_END = {"p": {"p"}, "li": {"li"}, "td": {"td", "th"}, "th": {"td", "th"}, "option": {"option"}}
 
     def __init__(self):
         super().__init__(convert_charrefs=True)
         self.root = _Node("#root", {}, None)
         self._stack = [self.root]
+        self._open: dict[str, int] = {}   # how many of each tag are on the stack: an end tag nobody opened costs nothing
+
+    def _pop_from(self, index: int) -> None:
+        for node in self._stack[index:]:
+            self._open[node.tag] -= 1
+        del self._stack[index:]
 
     def handle_starttag(self, tag, attrs):
-        # a new <p>/<li>/<td>/<th>/<option> closes the open one instead of nesting inside it
-        if tag in self._AUTO_CLOSE:
-            while len(self._stack) > 1 and self._stack[-1].tag in self._AUTO_CLOSE:
-                self._stack.pop()
+        while len(self._stack) > 1 and self._stack[-1].tag in self._IMPLIED_END.get(tag, ()):
+            self._pop_from(len(self._stack) - 1)
         node = _Node(tag, {k: (v or "") for k, v in attrs}, self._stack[-1])
         self._stack[-1].children.append(node)
         if tag not in self._VOID:
             self._stack.append(node)
+            self._open[tag] = self._open.get(tag, 0) + 1
 
     def handle_startendtag(self, tag, attrs):
         self._stack[-1].children.append(_Node(tag, {k: (v or "") for k, v in attrs}, self._stack[-1]))
 
     def handle_endtag(self, tag):
-        for i in range(len(self._stack) - 1, 0, -1):
+        if not self._open.get(tag):   # a stray end tag: scanning a deep stack for it each time made such a page quadratic
+            return
+        for i in range(len(self._stack) - 1, 0, -1):   # every node this walks past is popped, so the scans add up to linear
             if self._stack[i].tag == tag:
-                del self._stack[i:]
+                self._pop_from(i)
                 return
 
     def handle_data(self, data):
@@ -129,6 +137,7 @@ def _render(root: _Node, out: list) -> None:
                 out.append(f"[{text}]({href})" if href else text)
         elif tag == "li":
             out.append((_OPEN, "  " * max(depth - 1, 0) + "- "))   # depth counts the enclosing lists: a top-level item has none
+            stack.append(("emit", (_CLOSE,)))   # an empty item must not pass its "- " to whatever block comes next
             stack.extend(kids)
         elif tag in _INLINE_TAGS:
             stack.extend(kids)   # flows into the current line; a link inside keeps its target
@@ -230,5 +239,7 @@ def select(raw_html: str, selector: str) -> str:
     out: list = []
     for node in matches:
         out.append((_CLOSE,))   # each match starts on its own line
-        _render(node, out)
+        holder = _Node("#root", {}, None)   # render the match itself, not just its children: a <pre> keeps its lines,
+        holder.children = [node]            # an <a> its target, an <h2> its "## ", and a <script> stays out
+        _render(holder, out)
     return _join(out)
