@@ -2,9 +2,7 @@ from __future__ import annotations
 
 import http.client
 import ipaddress
-import shutil
 import socket
-import subprocess
 import urllib.parse
 import urllib.request
 from typing import Any
@@ -112,39 +110,6 @@ class _CheckedRedirects(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
-_CHROMIUM_CANDIDATES = ("chromium", "chromium-browser", "google-chrome", "google-chrome-stable")
-
-
-def _chromium_binary() -> str | None:
-    for name in _CHROMIUM_CANDIDATES:
-        path = shutil.which(name)
-        if path:
-            return path
-    return None
-
-
-def _render_with_chromium(url: str) -> str:
-    """Fetch `url` in a headless Chromium that is already installed on the machine and return the rendered DOM. The URL was
-    checked by _check_url before this runs, and Chromium follows redirects itself, so its own navigation is confined to the
-    same origin the user approved only if it does not redirect; the DOM that comes back is data and still passes the
-    injection guard like any other outside result. No browser installed: say so plainly instead of pretending."""
-    binary = _chromium_binary()
-    if not binary:
-        raise ToolExecutionError("render=true needs a headless Chromium (chromium/google-chrome) installed; none found on PATH")
-    try:
-        proc = subprocess.run(
-            [binary, "--headless=new", "--disable-gpu", "--no-sandbox", "--virtual-time-budget=10000", "--dump-dom", url],
-            capture_output=True,
-            timeout=30,
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired) as e:
-        raise ToolExecutionError(f"render failed: {e}") from e
-    if proc.returncode != 0:
-        raise ToolExecutionError(f"render failed: chromium exited with {proc.returncode}: {proc.stderr.decode('utf-8', errors='replace')[:300]}")
-    return proc.stdout.decode("utf-8", errors="replace")
-
-
 class WebFetchTool:
     def spec(self) -> ToolSpec:
         return ToolSpec(
@@ -157,7 +122,6 @@ class WebFetchTool:
                 "properties": {
                     "url": {"type": "string"},
                     "selector": {"type": "string", "description": "Optional CSS selector (tag, .class, #id, tag.class, descendant). Only matching elements are returned."},
-                    "render": {"type": "boolean", "description": "Render the page in headless Chromium (must be installed) before extracting text. For JavaScript-heavy pages."},
                 },
                 "required": ["url"],
             },
@@ -181,20 +145,16 @@ class WebFetchTool:
         selector = tool_input.get("selector")
         if selector is not None and (not isinstance(selector, str) or not selector.strip()):
             raise ToolInputError("selector must be a non-empty string")
-        render = tool_input.get("render", False)
-        if not isinstance(render, bool):
-            raise ToolInputError("render must be a boolean")
 
         _check_url(url)
-        if render:
-            raw = _render_with_chromium(url)
-            content_type = "text/html"
-        else:
-            req = urllib.request.Request(url, headers={"User-Agent": "clyde-cli/0.1"})
-            with urllib.request.build_opener(_CheckedHTTP, _CheckedHTTPS, _CheckedRedirects).open(req, timeout=15) as resp:
-                raw_bytes = resp.read(1_000_000)
-                content_type = resp.headers.get("Content-Type", "")
-            raw = raw_bytes.decode("utf-8", errors="replace")
+        req = urllib.request.Request(url, headers={"User-Agent": "clyde-cli/0.1"})
+        with urllib.request.build_opener(_CheckedHTTP, _CheckedHTTPS, _CheckedRedirects).open(req, timeout=15) as resp:
+            raw_bytes = resp.read(1_000_000)
+            content_type = resp.headers.get("Content-Type", "")
+        raw = raw_bytes.decode("utf-8", errors="replace")
+
+        if selector and "text/html" not in content_type:
+            raise ToolInputError(f"selector only applies to HTML pages; this response is {content_type or 'unknown'}")
 
         text = raw
         if "text/html" in content_type:

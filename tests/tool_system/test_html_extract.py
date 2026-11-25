@@ -68,6 +68,33 @@ class TestSelect(unittest.TestCase):
         with self.assertRaises(ValueError):
             _html_extract.select(PAGE, "")
 
+    def test_unsupported_selector_raises_on_empty_page(self):
+        with self.assertRaises(ValueError):
+            _html_extract.select("<html></html>", "a > b")
+
+    def test_nested_matches_dont_repeat_text(self):
+        self.assertEqual("x", _html_extract.select("<div><div><p>x</p></div></div>", "div p"))
+
+
+class TestStructure(unittest.TestCase):
+    def test_link_inside_p_kept(self):
+        self.assertIn("[docs](/docs)", _html_extract.extract_text('<p>See <a href="/docs">docs</a></p>'))
+
+    def test_nested_list_indented(self):
+        lines = _html_extract.extract_text("<ul><li>one<ul><li>inner</li></ul></li></ul>").splitlines()
+        self.assertEqual(2, len(lines))
+        self.assertTrue(lines[1].startswith("  "))
+        self.assertIn("inner", lines[1])
+
+    def test_heading_does_not_fuse_with_following_text(self):
+        lines = _html_extract.extract_text("<h2>Install</h2>Run the command").splitlines()
+        self.assertEqual(["## Install", "Run the command"], lines)
+
+    def test_deep_nesting_does_not_raise(self):
+        deep = "<div>" * 1500 + "bottom" + "</div>" * 1500
+        text = _html_extract.extract_text(deep)
+        self.assertIn("bottom", text)
+
 
 if __name__ == "__main__":
     unittest.main()

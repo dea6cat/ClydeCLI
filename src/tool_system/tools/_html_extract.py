@@ -64,10 +64,12 @@ def _text_of(node: _Node) -> str:
 
 
 _INLINE_TAGS = {"b", "i", "em", "strong", "span", "code", "small", "sub", "sup", "u", "s", "abbr", "cite", "q", "time"}
+_BLOCK_TAGS = {"p", "blockquote", "tr", "td", "th", "pre", "dt", "dd"}
 
 
 def _render(node: _Node, out: list[str], depth: int = 0) -> None:
-    """Markdown-ish rendering of one node's subtree. Block tags start a new line; inline tags flow into it."""
+    """Markdown-ish rendering of one node's subtree. Block tags open a line ("\n"), recurse so links and nested
+    lists survive, then close it ("\n"); inline tags flow into the current line."""
     for child in node.children:
         if isinstance(child, str):
             text = _WS_RE.sub(" ", child)
@@ -77,38 +79,57 @@ def _render(node: _Node, out: list[str], depth: int = 0) -> None:
         tag = child.tag
         if tag in _SKIP_TAGS:
             continue
-        text = _text_of(child)
-        if not text:
-            continue
         if tag in _HEADING_LEVELS:
-            out.append("\n" + "#" * int(tag[1]) + " " + text)
+            text = _text_of(child)
+            if text:
+                out.append("\n" + "#" * int(tag[1]) + " " + text)
+                out.append("\n")
         elif tag == "a":
+            text = _text_of(child)
             href = child.attrs.get("href", "")
-            out.append(f"[{text}]({href})" if href else text)
+            if text:
+                out.append(f"[{text}]({href})" if href else text)
         elif tag == "li":
-            out.append("\n" + "  " * depth + "- " + text)
+            out.append("\n" + "  " * depth + "- ")
+            _render(child, out, depth)   # a nested <ul> raises depth through the container branch
         elif tag in _INLINE_TAGS:
-            out.append(text)
-        elif tag in {"p", "blockquote", "tr", "td", "th", "h1", "h2", "h3", "h4", "h5", "h6", "pre", "dt", "dd"} or tag in _HEADING_LEVELS:
-            out.append("\n" + text)
+            text = _text_of(child)
+            if text:
+                out.append(text)
+        elif tag in _BLOCK_TAGS:
+            out.append("\n")
+            _render(child, out, depth)
+            out.append("\n")
         else:   # container (div, section, ul, body, ...): recurse, don't emit its text (that would duplicate the children's)
             _render(child, out, depth + (1 if tag in {"ul", "ol"} else 0))
 
 
 def _join(out: list[str]) -> str:
-    """One line per rendered block: a piece that starts with "\n" opens a new line and a piece that ends with one
-    closes it, so nested children can't fuse into the parent's line. Whitespace runs collapse to one space."""
+    """One line per rendered block. A piece that starts with "\n" opens a new line, a bare "\n" piece closes it, so a
+    heading or paragraph can't fuse with the text after it. Leading spaces of a block piece (list indent) are kept."""
     lines: list[str] = []
+    close = False
     for piece in out:
+        if piece == "\n":
+            close = True
+            continue
         opens_block = piece.startswith("\n")
-        text = _WS_RE.sub(" ", piece).strip()
+        body = piece.lstrip("\n")
+        indent = body[: len(body) - len(body.lstrip(" "))] if opens_block else ""
+        text = indent + _WS_RE.sub(" ", body).strip()
         if not text:
             continue
-        if opens_block or not lines:
+        if opens_block or close or not lines:
             lines.append(text)
         else:
-            lines[-1] = (lines[-1] + " " + text).strip()
+            lines[-1] = lines[-1] + " " + text.strip()   # keep a merged line's leading indent
+        close = False
     return "\n".join(lines)
+
+
+def _plain_text(raw_html: str) -> str:
+    """Fallback for pages too deep to structure: tags stripped, all whitespace collapsed."""
+    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", raw_html)).strip()
 
 
 def extract_text(raw_html: str) -> str:
@@ -117,7 +138,10 @@ def extract_text(raw_html: str) -> str:
     builder.feed(raw_html)
     builder.close()
     out: list[str] = []
-    _render(builder.root, out)
+    try:
+        _render(builder.root, out)
+    except RecursionError:
+        return _plain_text(raw_html)   # a hostile page must not break the fetch
     return _join(out)
 
 
@@ -127,9 +151,7 @@ _SIMPLE_RE = re.compile(r"^(?P<tag>[a-zA-Z][\w-]*)?(?:\.(?P<cls>[\w-]+))?(?:#(?P
 
 
 def _matches_simple(node: _Node, simple: str) -> bool:
-    m = _SIMPLE_RE.match(simple.strip())
-    if not m or not (m.group("tag") or m.group("cls") or m.group("id")):
-        raise ValueError(f"unsupported selector part: {simple!r} (supported: tag, .class, #id, tag.class, descendant)")
+    m = _SIMPLE_RE.match(simple)
     if m.group("tag") and node.tag != m.group("tag").lower():
         return False
     if m.group("cls") and m.group("cls") not in node.attrs.get("class", "").split():
@@ -140,10 +162,12 @@ def _matches_simple(node: _Node, simple: str) -> bool:
 
 
 def _descendants(node: _Node):
-    for child in node.children:
-        if isinstance(child, _Node):
-            yield child
-            yield from _descendants(child)
+    """Iterative pre-order walk: a hostile page nests deep enough to overflow a recursive walk."""
+    stack = [c for c in reversed(node.children) if isinstance(c, _Node)]
+    while stack:
+        n = stack.pop()
+        yield n
+        stack.extend(c for c in reversed(n.children) if isinstance(c, _Node))
 
 
 def select(raw_html: str, selector: str) -> str:
@@ -151,15 +175,36 @@ def select(raw_html: str, selector: str) -> str:
     parts = [p for p in selector.split() if p.strip()]
     if not parts:
         raise ValueError("empty selector")
+    for part in parts:   # validate every part before parsing, so "a > b" fails even on an empty page
+        m = _SIMPLE_RE.match(part)
+        if not m or not (m.group("tag") or m.group("cls") or m.group("id")):
+            raise ValueError(f"unsupported selector part: {part!r} (supported: tag, .class, #id, tag.class, descendant)")
     builder = _TreeBuilder()
     builder.feed(raw_html)
     builder.close()
     current: list[_Node] = [builder.root]
     for part in parts:
         current = [d for node in current for d in _descendants(node) if _matches_simple(d, part)]
+    # drop duplicate nodes, then any node whose ancestor also matched (its text is already in the ancestor's)
+    seen: set[int] = set()
+    unique = [n for n in current if not (id(n) in seen or seen.add(id(n)))]
+    matched = {id(n) for n in unique}
+
+    def _under_match(n: _Node) -> bool:
+        p = n.parent
+        while p is not None:
+            if id(p) in matched:
+                return True
+            p = p.parent
+        return False
+
+    current = [n for n in unique if not _under_match(n)]
     if not current:
         return ""
     out: list[str] = []
-    for node in current:
-        _render(node, out)
+    try:
+        for node in current:
+            _render(node, out)
+    except RecursionError:
+        return _plain_text(raw_html)   # a hostile page must not break the fetch
     return _join(out)

@@ -415,7 +415,7 @@ class TestWebSearchTool(ToolSystemTests):
             def __exit__(self, exc_type, exc, tb):
                 return False
 
-        with patch.object(urllib.request, "urlopen", return_value=_Resp(b"<html>anomaly-modal challenge</html>")):
+        with patch.object(urllib.request, "urlopen", side_effect=lambda *a, **k: _Resp(b"<html>anomaly-modal challenge</html>")), patch.object(time, "sleep"):
             with self.assertRaises(ToolExecutionError):
                 WebSearchTool().run({"query": "example"}, self.ctx)
 

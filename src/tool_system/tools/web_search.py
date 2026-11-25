@@ -33,7 +33,7 @@ _BROWSER_HEADERS = {
     "Sec-Fetch-Mode": "navigate",
     "Sec-Fetch-Site": "none",
 }
-_ENDPOINTS = ("https://html.duckduckgo.com/html/?", "https://lite.duckduckgo.com/lite/?")   # lite is the fallback when html serves the anti-bot page
+_ENDPOINT = "https://html.duckduckgo.com/html/?"
 
 
 def _real_url(href: str) -> str:
@@ -89,30 +89,31 @@ class WebSearchTool:
         if not isinstance(num, int) or num < 1 or num > 10:
             raise ToolInputError("num must be an integer between 1 and 10")
 
-        raw = ""
+        results: list[dict[str, str]] = []
         blocked = False
-        for attempt in range(2):   # one retry with a pause: a rate-limit answer sometimes clears
-            for endpoint in _ENDPOINTS:   # html first, lite if html serves the anti-bot page
-                url = endpoint + urllib.parse.urlencode({"q": query})
-                req = urllib.request.Request(url, headers=_BROWSER_HEADERS)
-                try:
-                    with urllib.request.urlopen(req, timeout=15) as resp:
-                        raw = resp.read(1_000_000).decode("utf-8", errors="replace")
-                except urllib.error.HTTPError as e:
-                    if e.code in {429, 503} and attempt == 0:
-                        break   # retry after the pause below
-                    raise ToolExecutionError(f"web search failed: HTTP {e.code} from the search engine") from e
-                if "anomaly" not in raw.lower():
-                    break
-                blocked = True   # anti-bot page on this endpoint: try the next one
-            else:
+        for attempt in range(2):          # one retry, only after a rate limit or the anti-bot page
+            blocked = False               # each attempt starts clean
+            url = _ENDPOINT + urllib.parse.urlencode({"q": query})
+            try:
+                with urllib.request.urlopen(urllib.request.Request(url, headers=_BROWSER_HEADERS), timeout=15) as resp:
+                    raw = resp.read(1_000_000).decode("utf-8", errors="replace")
+            except urllib.error.HTTPError as e:
+                if e.code in {429, 503}:
+                    blocked = True
+                    if attempt == 0:
+                        time.sleep(2)
+                    continue
+                raise ToolExecutionError(f"web search failed: HTTP {e.code} from the search engine") from e
+            results = self._parse(raw, num)
+            if results:
                 break
-            if self._parse(raw, num):
-                break
-            time.sleep(2)
-
-        results = self._parse(raw, num)
-        if not results and blocked:   # every endpoint served the anti-bot page: say so, don't pass off "no results"
+            if "anomaly" in raw.lower():  # no results AND the marker: the anti-bot page (the query is echoed back, so parse first)
+                blocked = True
+                if attempt == 0:
+                    time.sleep(2)
+                continue
+            break                         # a genuine empty answer: no retry
+        if not results and blocked:
             raise ToolExecutionError("web search was blocked by the search engine (anti-bot check); try again later or use WebFetch on a known page")
         return ToolResult(name="WebSearch", output={"query": query, "results": results})
 

@@ -1,4 +1,4 @@
-"""WebFetch/WebSearch strengthening: selector extraction, render fallback, redirect cap, lite fallback, injection notice on fetched pages."""
+"""WebFetch/WebSearch strengthening: selector extraction, redirect cap, search retry, injection notice on fetched pages."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 from src.security import injection
 from src.tool_system.context import ToolContext
-from src.tool_system.errors import ToolExecutionError, ToolInputError, ToolPermissionError
+from src.tool_system.errors import ToolExecutionError, ToolInputError
 from src.tool_system.tools import web_fetch, web_search
 from src.tool_system.tools.web_fetch import WebFetchTool
 from src.tool_system.tools.web_search import WebSearchTool
@@ -82,26 +82,24 @@ class TestSelectorParam(unittest.TestCase):
         with self.assertRaises(ToolInputError):
             self._run(selector="div > p")
 
-    def test_render_without_browser_fails_honestly(self):
-        with patch.object(web_fetch, "_chromium_binary", return_value=None):
-            with self.assertRaises(ToolExecutionError) as cm:
-                self._run(render=True)
-        self.assertIn("headless Chromium", str(cm.exception))
+    def test_selector_on_non_html_is_input_error(self):
+        class Json(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(b'{"a": 1}')
 
-    def test_render_uses_chromium_dom(self):
-        rendered = "<html><body><p>rendered content</p></body></html>"
-        with patch.object(web_fetch, "_chromium_binary", return_value="/usr/bin/chromium"), patch.object(
-            web_fetch.subprocess, "run", return_value=type("P", (), {"returncode": 0, "stdout": rendered.encode(), "stderr": b""})()
-        ) as run:
-            result = self._run(render=True)
-        self.assertIn("rendered content", result.output["content"])
-        args = run.call_args[0][0]
-        self.assertIn("--dump-dom", args)
-        self.assertIn(self.url, args)
+            def log_message(self, *args):
+                pass
 
-    def test_render_still_checks_url(self):
-        with self.assertRaises(ToolPermissionError):
-            self.tool.run({"url": "http://127.0.0.1:1/x", "render": True}, self.ctx)  # loopback refused before any browser runs
+        server = _serve(Json)
+        self.addCleanup(lambda: server.shutdown() or server.server_close())
+        url = f"http://127.0.0.1:{server.server_port}/"
+        p1, p2 = _public(url)
+        with p1, p2, self.assertRaises(ToolInputError) as cm:
+            self.tool.run({"url": url, "selector": "p"}, self.ctx)
+        self.assertIn("application/json", str(cm.exception))
 
     def test_injection_notice_on_fetched_page(self):
         # a page carrying injection text comes back flagged by the guard, like any reaches_network result
@@ -162,7 +160,7 @@ RESULTS_HTML = (
 ANOMALY_HTML = "<html><body>anomaly detected</body></html>"
 
 
-class TestWebSearchFallback(unittest.TestCase):
+class TestWebSearchRetry(unittest.TestCase):
     def setUp(self):
         self.tool = WebSearchTool()
         self.ctx = ToolContext(workspace_root=".")
@@ -177,20 +175,37 @@ class TestWebSearchFallback(unittest.TestCase):
 
         return calls, fake_urlopen
 
-    def test_lite_fallback_after_anomaly(self):
-        calls, fake = self._fetch([ANOMALY_HTML, RESULTS_HTML])
+    def _run(self, fake):
         with patch.object(web_search.urllib.request, "urlopen", side_effect=fake), patch.object(web_search.time, "sleep"):
-            result = self.tool.run({"query": "test", "num": 5}, self.ctx)
-        self.assertEqual(2, len(calls))
-        self.assertIn("lite.duckduckgo.com", calls[1])
-        self.assertEqual("https://example.com/a", result.output["results"][0]["url"])
+            return self.tool.run({"query": "test"}, self.ctx)
 
-    def test_blocked_when_all_endpoints_anomaly(self):
+    def test_results_page_containing_word_anomaly_is_not_blocked(self):
+        # the query is echoed back in the results page, so "anomaly" in the query must not misfire
+        page = RESULTS_HTML.replace("Title A", "anomaly Title A")
+        calls, fake = self._fetch([page])
+        result = self._run(fake)
+        self.assertEqual(1, len(calls))   # no retry
+        self.assertEqual(1, len(result.output["results"]))
+
+    def test_empty_page_makes_exactly_one_request(self):
+        calls, fake = self._fetch(["<html><body></body></html>"])
+        result = self._run(fake)
+        self.assertEqual(1, len(calls))
+        self.assertEqual([], result.output["results"])
+
+    def test_anomaly_then_clean_empty_page_is_not_blocked(self):
+        calls, fake = self._fetch([ANOMALY_HTML, "<html><body></body></html>"])
+        result = self._run(fake)
+        self.assertEqual(2, len(calls))
+        self.assertEqual([], result.output["results"])   # no "blocked" error
+
+    def test_blocked_when_both_attempts_anomaly(self):
         calls, fake = self._fetch([ANOMALY_HTML, ANOMALY_HTML])
         with patch.object(web_search.urllib.request, "urlopen", side_effect=fake), patch.object(web_search.time, "sleep"):
             with self.assertRaises(ToolExecutionError) as cm:
                 self.tool.run({"query": "test"}, self.ctx)
         self.assertIn("anti-bot", str(cm.exception))
+        self.assertEqual(2, len(calls))
 
     def test_429_retried_once(self):
         calls: list[str] = []
@@ -201,8 +216,7 @@ class TestWebSearchFallback(unittest.TestCase):
                 raise urllib.error.HTTPError(req.full_url, 429, "rate limited", None, None)
             return _FakeResp(RESULTS_HTML.encode())
 
-        with patch.object(web_search.urllib.request, "urlopen", side_effect=fake_urlopen), patch.object(web_search.time, "sleep"):
-            result = self.tool.run({"query": "test"}, self.ctx)
+        result = self._run(fake_urlopen)
         self.assertEqual(2, len(calls))
         self.assertEqual(1, len(result.output["results"]))
 
